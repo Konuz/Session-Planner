@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Pobrane źródła katalogów (scripts/build-catalog.ts)
+scripts/.cache

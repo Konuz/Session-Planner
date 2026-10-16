@@ -24,6 +24,10 @@ export default defineConfig([
     },
   },
   {
+    files: ['scripts/**/*.ts'],
+    languageOptions: { globals: globals.node },
+  },
+  {
     // Sekcja 11: astronomy-engine tylko przez src/services/astroMath.ts (testy używają go jako referencji).
     files: ['src/**/*.{ts,tsx}'],
     ignores: ['src/services/astroMath.ts', 'src/**/*.test.ts'],

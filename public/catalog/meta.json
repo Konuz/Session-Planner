@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-16T20:44:18.572Z",
+  "objectCount": 16516,
+  "sources": [
+    {
+      "id": "OpenNGC NGC.csv",
+      "title": null,
+      "url": "https://raw.githubusercontent.com/mattiaverga/OpenNGC/4e2398a263de663d83f7b86be80c368c34335764/database_files/NGC.csv",
+      "version": "4e2398a263de663d83f7b86be80c368c34335764 (2026-10-10T15:54:12Z)",
+      "retrievedAt": "2026-10-16T20:44:10.358Z",
+      "license": "CC BY-SA 4.0",
+      "records": 13167,
+      "rejected": 0,
+      "skipped": 803
+    },
+    {
+      "id": "OpenNGC addendum.csv",
+      "title": null,
+      "url": "https://raw.githubusercontent.com/mattiaverga/OpenNGC/4e2398a263de663d83f7b86be80c368c34335764/database_files/addendum.csv",
+      "version": "4e2398a263de663d83f7b86be80c368c34335764 (2026-10-10T15:54:12Z)",
+      "retrievedAt": "2026-10-16T20:44:10.609Z",
+      "license": "CC BY-SA 4.0",
+      "records": 63,
+      "rejected": 0,
+      "skipped": 1
+    },
+    {
+      "id": "VizieR VII/20/catalog",
+      "title": "Catalogue of HII Regions (Sharpless 1959)",
+      "url": "https://vizier.cds.unistra.fr/viz-bin/asu-tsv?-out.max=unlimited&-out.all&-out.add=_RAJ,_DEJ&-oc.form=d&-source=VII/20/catalog",
+      "version": null,
+      "retrievedAt": "2026-10-16T18:31:23.685Z",
+      "license": "Dane VizieR (CDS); przy wykorzystaniu cytuj autorów katalogu",
+      "records": 313,
+      "rejected": 0,
+      "skipped": 0
+    },
+    {
+      "id": "VizieR VII/7A/ldn",
+      "title": "Lynds' Catalogue of Dark Nebulae (LDN) (Lynds 1962)",
+      "url": "https://vizier.cds.unistra.fr/viz-bin/asu-tsv?-out.max=unlimited&-out.all&-out.add=_RAJ,_DEJ&-oc.form=d&-source=VII/7A/ldn",
+      "version": null,
+      "retrievedAt": "2026-10-16T18:32:08.756Z",
+      "license": "Dane VizieR (CDS); przy wykorzystaniu cytuj autorów katalogu",
+      "records": 1787,
+      "rejected": 4,
+      "skipped": 0
+    },
+    {
+      "id": "VizieR VII/9/catalog",
+      "title": "Lynds' Catalogue of Bright Nebulae (Lynds 1965)",
+      "url": "https://vizier.cds.unistra.fr/viz-bin/asu-tsv?-out.max=unlimited&-out.all&-out.add=_RAJ,_DEJ&-oc.form=d&-source=VII/9/catalog",
+      "version": null,
+      "retrievedAt": "2026-10-16T18:34:47.369Z",
+      "license": "Dane VizieR (CDS); przy wykorzystaniu cytuj autorów katalogu",
+      "records": 1125,
+      "rejected": 0,
+      "skipped": 0
+    },
+    {
+      "id": "VizieR VII/21/catalog",
+      "title": "Catalogue of Reflection Nebulae (Van den Bergh, 1966)",
+      "url": "https://vizier.cds.unistra.fr/viz-bin/asu-tsv?-out.max=unlimited&-out.all&-out.add=_RAJ,_DEJ&-oc.form=d&-source=VII/21/catalog",
+      "version": null,
+      "retrievedAt": "2026-10-16T18:34:58.340Z",
+      "license": "Dane VizieR (CDS); przy wykorzystaniu cytuj autorów katalogu",
+      "records": 158,
+      "rejected": 0,
+      "skipped": 0
+    },
+    {
+      "id": "VizieR VII/220A/barnard",
+      "title": "Barnard's Catalogue of 349 Dark Objects in the Sky (Barnard, 1927)",
+      "url": "https://vizier.cds.unistra.fr/viz-bin/asu-tsv?-out.max=unlimited&-out.all&-out.add=_RAJ,_DEJ&-oc.form=d&-source=VII/220A/barnard",
+      "version": null,
+      "retrievedAt": "2026-10-16T18:26:55.259Z",
+      "license": "Dane VizieR (CDS); przy wykorzystaniu cytuj autorów katalogu",
+      "records": 349,
+      "rejected": 0,
+      "skipped": 0
+    },
+    {
+      "id": "VizieR VII/297/snrs",
+      "title": "A Catalogue of Galactic Supernova Remnants (Green, 2025)",
+      "url": "https://vizier.cds.unistra.fr/viz-bin/asu-tsv?-out.max=unlimited&-out.all&-out.add=_RAJ,_DEJ&-oc.form=d&-source=VII/297/snrs",
+      "version": null,
+      "retrievedAt": "2026-10-16T20:44:17.950Z",
+      "license": "Dane VizieR (CDS); przy wykorzystaniu cytuj autorów katalogu",
+      "records": 310,
+      "rejected": 0,
+      "skipped": 0
+    }
+  ],
+  "aliases": 11,
+  "skippedLinks": 8
+}

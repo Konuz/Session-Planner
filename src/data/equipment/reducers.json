@@ -1,0 +1,9 @@
+[
+  { "factor": 0.63, "note": "reduktor-korektor f/6,3 do teleskopów SCT" },
+  { "factor": 0.7, "note": "np. reduktor Celestron do EdgeHD" },
+  { "factor": 0.73, "note": "np. reduktor Takahashi do FSQ-85" },
+  { "factor": 0.8, "note": null },
+  { "factor": 0.85, "note": "np. reduktor-spłaszczacz Sky-Watcher do Evostar 80ED/100ED" },
+  { "factor": 1, "note": "spłaszczacz lub korektor komy bez zmiany ogniskowej" },
+  { "factor": 2, "note": "soczewka Barlowa" }
+]

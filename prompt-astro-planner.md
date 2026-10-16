@@ -303,10 +303,10 @@ Skrypt `scripts/build-catalog.ts` (Node) pobiera źródła, mapuje je na `DsoObj
 
 | Katalog | Źródło (sprawdzone 16.10.2026) | Liczba wierszy | Uwagi do mapowania |
 |---|---|---|---|
-| NGC, IC, M | OpenNGC: `database_files/NGC.csv` i `database_files/addendum.csv` z `github.com/mattiaverga/OpenNGC` | 13 970 + 64 | Separator `;`. RA `HH:MM:SS.ss`, Dec `±DD:MM:SS.s`. `MajAx`/`MinAx` w arcmin, `PosAng` od N przez E, `SurfBr` tylko dla galaktyk. Krzyżowe ID w kolumnach `M`, `NGC`, `IC`, `Identifiers`, `Common names`. Nazwy z zerami wiodącymi (`NGC0224` → NGC 224). Pomiń typy `*`, `**`, `Nova`, `NonEx`. `Dup` scal z obiektem głównym |
+| NGC, IC, M | OpenNGC: `database_files/NGC.csv` i `database_files/addendum.csv` z `github.com/mattiaverga/OpenNGC` | 13 970 + 64 | Separator `;`. RA `HH:MM:SS.ss`, Dec `±DD:MM:SS.s`. `MajAx`/`MinAx` w arcmin, `PosAng` od N przez E, `SurfBr` tylko dla galaktyk. Krzyżowe ID w kolumnach `M`, `NGC`, `IC`, `Identifiers`, `Common names`. Nazwy z zerami wiodącymi (`NGC0224` → NGC 224). Pomiń typy `*`, `**`, `Nova`, `NonEx`. `Dup` scal z obiektem głównym (`Dup` wskazujący pominiętą gwiazdę też pomiń). Pola w cudzysłowach mogą zawierać `;` |
 | Sh2 | VizieR VII/20 (Sharpless 1959) | 313 | Pozycje oryginalne są z epoki B1900, więc użyj wyliczonych przez VizieR `_RAJ2000`/`_DEJ2000`. `Diam` w arcmin, `Bright` 1–3 |
-| LDN | VizieR VII/7A (Lynds 1962) | 1 791 | `Opacity` 1–6. `Area` w stopniach kwadratowych → średnica równoważna w arcmin: `60 · 2·√(Area/π)`. `Barn` = krzyżowe ID Barnarda |
-| LBN | VizieR VII/9 (Lynds 1965) | 1 125 | `Diam1`/`Diam2` w arcmin, `Bright` 1–6 |
+| LDN | VizieR VII/7A (Lynds 1962) | 1 791 | `Opacity` 1–6. `Area` w stopniach kwadratowych → średnica równoważna w arcmin: `60 · 2·√(Area/π)`. Kolumna `Barn` (numery Barnarda) nie łączy obiektów: rozstrzygnięte 16.10.2026, bo zwykle wskazuje części obłoku (np. LDN 1630 → B 33). Wiersze bez numeru LDN (4) są odrzucane |
+| LBN | VizieR VII/9 (Lynds 1965) | 1 125 | `Seq` = numer LBN. `Diam1`/`Diam2` w arcmin, `Bright` 1–6. Kolumna `Name` (np. „S 155”, „NGC 7000”) nie łączy obiektów: rozstrzygnięte 16.10.2026 |
 | VdB | VizieR VII/21 (van den Bergh 1966) | 158 | `Vmag` = gwiazda oświetlająca. Rozmiar = 2 × większy z promieni `BRadMax`/`RRadMax` |
 | Barnard | VizieR VII/220A (Barnard 1927) | 349 | `Diam` w arcmin |
 | SNR | VizieR VII/297 (Green, wersja 2024-10) | 310 | Oznaczenie z kolumny `SNR` (`G…`), nazwy z `Names`, `MajDiam`/`MinDiam` w arcmin |
@@ -327,7 +327,7 @@ Skrypt `scripts/build-catalog.ts` (Node) pobiera źródła, mapuje je na `DsoObj
 | `Cl+N` | `cluster_nebula` |
 | `Other` | `other` |
 
-Katalogi VizieR mają typ ustalony przez katalog: Sh2 → emisyjna, LDN i B → ciemna, VdB → refleksyjna, Green → SNR. LBN → emisyjna to uproszczenie, bo LBN zawiera też mgławice refleksyjne; jeśli obiekt ma krzyżowe ID z VdB, pierwszeństwo ma typ z VdB.
+Katalogi VizieR mają typ ustalony przez katalog: Sh2 → emisyjna, LDN i B → ciemna, VdB → refleksyjna, Green → SNR. LBN → emisyjna to uproszczenie, bo LBN zawiera też mgławice refleksyjne. Przy łączeniu typ bierze się kolejno z OpenNGC, VdB, Green, Sh2, LBN, LDN, B (rozstrzygnięte 16.10.2026). Konkretna klasyfikacja z VdB i Greena wygrywa więc z ogólnym „emisyjna” z Sh2 i LBN: vdB 141 = Sh2-136 jest refleksyjna, a Simeis 147 jest SNR.
 
 Jednostki kolumn VizieR potwierdź w liniach `#Column` odpowiedzi TSV (VizieR podaje je dla każdej kolumny), zanim zapiszesz mapowanie.
 
@@ -337,14 +337,16 @@ Jednostki kolumn VizieR potwierdź w liniach `#Column` odpowiedzi TSV (VizieR po
 https://vizier.cds.unistra.fr/viz-bin/asu-tsv?-source=<ID>&-out.max=unlimited&-out.all&-out.add=_RAJ,_DEJ&-oc.form=d
 ```
 
-Serwery CDS mają ochronę przed botami: narzędzia udające przeglądarkę dostają odmowę, a zwykłe zapytanie HTTP z Node z własnym nagłówkiem `User-Agent` działa. Pojedyncze zapytanie trwa do kilkudziesięciu sekund. Gwiazdozbiór licz przez `Constellation(raDeg / 15, decDeg)` z astronomy-engine.
+Skrypt pyta o konkretne tabele (`VII/20/catalog`, `VII/7A/ldn`, `VII/9/catalog`, `VII/21/catalog`, `VII/220A/barnard`, `VII/297/snrs`), bo odpowiedź dla całego VII/220A zawiera też tabelę notatek. Serwery CDS mają ochronę przed botami: narzędzia udające przeglądarkę dostają odmowę, a zwykłe zapytanie HTTP z Node z własnym nagłówkiem `User-Agent` działa. Pojedyncze zapytanie trwa do kilku minut (LBN ok. 5 min), a przy wielu zapytaniach serwer zrywa połączenia, więc skrypt pobiera pliki po kolei, ponawia próby i zachowuje pobrane pliki w `scripts/.cache`. Gwiazdozbiór licz przez `Constellation(raDeg / 15, decDeg)` z astronomy-engine.
 
 ### 6.2 Łączenie oznaczeń [Z23]
 
 - Oznaczenia są łączone tylko przez krzyżowe identyfikatory ze źródeł oraz ręczną tabelę `src/data/aliases.json`.
 - Identyczne oznaczenia z różnych źródeł to ten sam obiekt (np. B 33 występuje w `addendum.csv` OpenNGC i w VII/220A).
-- Pierwszeństwo pól przy łączeniu: współrzędne, rozmiar i typ z OpenNGC, potem kolejno Sh2, VdB, LBN, LDN, B, Green. Pola specyficzne dla katalogu (`ldnOpacity`, `sh2Brightness` itd.) zawsze pochodzą z własnego katalogu.
-- Przykładowe wpisy tabeli aliasów:
+- Pierwszeństwo pól przy łączeniu: współrzędne i rozmiar (razem z kątem pozycyjnym) z OpenNGC, potem kolejno Sh2, VdB, LBN, LDN, B, Green. Typ według kolejności z 6.1. Pola specyficzne dla katalogu (`ldnOpacity`, `sh2Brightness` itd.) zawsze pochodzą z własnego katalogu.
+- Jeden obiekt nigdy nie łączy dwóch rekordów z tego samego źródła. Jeśli wiersz podaje kilka oznaczeń z jednego katalogu (np. IC 1396 → LBN 451, LBN 452), są to części obiektu i nie są łączone (rozstrzygnięte 16.10.2026: „unikalny obiekt to unikalny obiekt”).
+- Oznaczenie główne to pierwsze w kolejności M, NGC, IC, Simeis, vdB, Sh2, LBN, LDN, B, G (SNR), inne. Klucz `uid` to oznaczenie wiersza z najważniejszego źródła (kolejność jak dla współrzędnych), bez spacji: `NGC1976` (M 42), `Mel22` (M 45), `C9` (Sh2-155).
+- Wpisy tabeli aliasów (`src/data/aliases.json`):
   - Simeis 147 = Sh2-240
   - IC 1396 = Sh2-131
   - IC 1805 = Sh2-190
@@ -353,6 +355,7 @@ Serwery CDS mają ochronę przed botami: narzędzia udające przeglądarkę dost
   - NGC 281 = Sh2-184
   - NGC 6888 = Sh2-105
   - vdB 141 = Sh2-136
+  - M 1 = G184.6-05.8, IC 443 = G189.1+03.0, Simeis 147 = G180.0-01.7 (dodane 16.10.2026, żeby pozostałości po supernowych nie występowały podwójnie)
 - Bliskość pozycji nie łączy obiektów; widok szczegółów pokazuje ją tylko jako listę „Pokrewne obiekty”.
 
 ### 6.3 Import w aplikacji

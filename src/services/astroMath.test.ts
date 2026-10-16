@@ -5,6 +5,7 @@ import {
   angularSeparationDeg,
   assessSampling,
   computeOptics,
+  constellationOf,
   gnomonicProject,
   gnomonicUnproject,
   horizonAltitudeDeg,
@@ -131,6 +132,16 @@ describe('T8 szybki wzór Alt/Az a astronomy-engine (M 31, doba co 7 min)', () =
 
     expect(maxAltDiff).toBeLessThanOrEqual(0.01)
     expect(maxAzDiff).toBeLessThanOrEqual(0.05)
+  })
+})
+
+describe('gwiazdozbiór (skrót IAU)', () => {
+  it.each([
+    [10.6848, 41.2691, 'And'],
+    [83.8187, -5.3897, 'Ori'],
+    [37.95, 89.26, 'UMi'],
+  ])('(%s°, %s°) → %s', (raDeg, decDeg, expected) => {
+    expect(constellationOf(raDeg, decDeg)).toBe(expected)
   })
 })
 

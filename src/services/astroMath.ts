@@ -3,6 +3,7 @@
 // wysokości geometryczne (bez refrakcji).
 import {
   Body,
+  Constellation,
   Equator,
   Horizon,
   Illumination,
@@ -81,6 +82,11 @@ export function horizontalFromHourAngle(haDeg: number, decDeg: number, latDeg: n
 export function horizontalAt(ofDate: EquatorialDeg, site: GeoPosition, timeMs: number): HorizontalDeg {
   const ha = hourAngleDeg(localSiderealTimeDeg(timeMs, site.lonDegEast), ofDate.raDeg)
   return horizontalFromHourAngle(ha, ofDate.decDeg, site.latDeg)
+}
+
+/** Skrót IAU gwiazdozbioru dla współrzędnych J2000. */
+export function constellationOf(raDeg: number, decDeg: number): string {
+  return Constellation(raDeg / 15, decDeg).symbol
 }
 
 /** Odległość kątowa [°] wzorem haversine. */
