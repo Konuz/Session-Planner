@@ -19,7 +19,7 @@ Zbuduj kompletną, działającą aplikację webową PWA do planowania sesji astr
 | ID | Założenie | Co zmienić, jeśli nie pasuje |
 |---|---|---|
 | Z1 | Rozstrzygnięte 16.10.2026: eksport do ASIAIR jest wykluczony; aplikacja eksportuje CSV dla N.I.N.A. i JSON | — |
-| Z2 | Rozstrzygnięte 16.10.2026: profil aktywny domyślnie: Newton 150/600 (f/4), korektor 1,0×, montaż paralaktyczny niemiecki (GEM) | Wpisz rzeczywistą ogniskową i współczynnik korektora |
+| Z2 | Rozstrzygnięte 16.10.2026: profil aktywny domyślnie to Newton 150/600 (f/4) z korektorem, który nie zmienia ogniskowej (1,0×). Założeniem pozostaje montaż paralaktyczny niemiecki (GEM) | Zmień typ montażu, jeśli nie jest to GEM |
 | Z3 | Dane startowe to pełne katalogi pobrane skryptem plus lista „Klasyki” (zamiast „min. 40 obiektów z każdego katalogu”) | Ogranicz skrypt do wybranych obiektów |
 | Z4 | Interfejs po polsku; formaty pl-PL (zegar 24 h, przecinek dziesiętny) | Zmień język i formaty |
 | Z5 | Lokalizacja domyślna: „Polska centralna (demo)”, 52,0°N, 19,0°E, 150 m n.p.m., strefa `Europe/Warsaw` | Wpisz własne miejsce |
@@ -268,6 +268,31 @@ export interface PlanningSettings {
   fitRange: [number, number];               // [Z21]
   moonRules: MoonRuleThresholds;            // [Z12], sekcja 7A
 }
+
+// Progi rekomendacji filtrów z tabeli w 7A [Z12].
+// illum = oświetlenie Księżyca (0–1) w środku okna efektywnego; sep = minimalna topocentryczna separacja w oknie [°].
+// Porównania: pola *Max* są wyłączne (illum < max), pola *Min* włączne (wartość ≥ min).
+// Wartości domyślne (stała DEFAULT_MOON_RULES) podano w komentarzach.
+export interface MoonRuleThresholds {
+  moonDownMinFraction: number;       // 0.8: Księżyc pod horyzontem przez ≥ tę część okna → wszystkie filtry zielone
+  broadband: {                       // L, R, G, B, OSC; obiekty inne niż mgławice refleksyjne i ciemne
+    greenMaxIllum: number;           // 0.15
+    yellowMaxIllum: number;          // 0.5
+    yellowMinSepDeg: number;         // 90
+  };
+  broadbandFaintNebula: {            // L, R, G, B, OSC dla mgławic refleksyjnych i ciemnych; bez stanu żółtego
+    greenMaxIllum: number;           // 0.15
+  };
+  hydrogenSulfur: {                  // Ha, SII
+    greenMinSepDeg: number;          // 50
+    yellowMinSepDeg: number;         // 25
+  };
+  oxygen: {                          // OIII, DualBand
+    greenMinSepDeg: number;          // 70
+    greenMaxIllum: number;           // 0.75
+    yellowMinSepDeg: number;         // 40
+  };
+}
 ```
 
 ## 6. Dane
@@ -432,7 +457,7 @@ Tabele teleskopów i kamer są w załączniku B.
 | 2. Księżyc obecny; mgławica refleksyjna lub ciemna | zielony: `illum` < 0,15; czerwony: reszta | jak w wierszu 3 | jak w wierszu 3 |
 | 3. Księżyc obecny; pozostałe obiekty | zielony: `illum` < 0,15; żółty: `illum` < 0,5 i `sep` ≥ 90°; czerwony: reszta | zielony: `sep` ≥ 50°; żółty: 25° ≤ `sep` < 50°; czerwony: `sep` < 25° | zielony: `sep` ≥ 70° i `illum` < 0,75; żółty: `sep` ≥ 40°; czerwony: reszta |
 
-Progi są edytowalne w ustawieniach. Pokazuj tylko filtry z aktywnego profilu.
+Progi to pola typu `MoonRuleThresholds` (sekcja 5) i są edytowalne w ustawieniach. Pokazuj tylko filtry z aktywnego profilu.
 
 **Wydajność:**
 - Filtr widoczności liczy się w Web Workerze. Czas gwiazdowy i pozycje Słońca liczysz raz na krok czasu, a macierz precesji raz na noc.
@@ -723,8 +748,8 @@ Dane z 16.10.2026, policzone skryptem z astronomy-engine 2.1.19. Wysokości obie
 
 | ID | Wejście | Oczekiwany wynik |
 |---|---|---|
-| T1 | FOV i skala (binning 1, reduktor 1,0×) | RedCat 51 + ASI2600MC: matryca 23,49 × 15,70 mm, FOV 5,380° × 3,597°, 3,102″/px, f/4,90 · Newton 200/1000 + ASI533MM: 0,648° × 0,648° (38,9′), 0,776″/px, f/5,00 · Esprit 100 + ASI6200MM: 3,750° × 2,502°, 1,410″/px, f/5,50 · Newton 150/750 + Ares-M Pro: 0,864° × 0,864° (51,8′), 1,034″/px, f/5,00 |
-| T2 | Próbkowanie, seeing 2,5″ (zakres idealny 0,833–1,25″/px) | RedCat → podpróbkowanie; Newton 200 → nadpróbkowanie; Esprit → podpróbkowanie; Newton 150 + Ares → idealne |
+| T1 | FOV i skala (binning 1, reduktor 1,0×) | RedCat 51 + ASI2600MC: matryca 23,49 × 15,70 mm, FOV 5,380° × 3,597°, 3,102″/px, f/4,90 · Newton 200/1000 + ASI533MM: 0,648° × 0,648° (38,9′), 0,776″/px, f/5,00 · Esprit 100 + ASI6200MM: 3,750° × 2,502°, 1,410″/px, f/5,50 · Newton 150/750 + Ares-M Pro: 0,864° × 0,864° (51,8′), 1,034″/px, f/5,00 · Newton 150/600 + Ares-M Pro (zestaw użytkownika): 1,080° × 1,080° (64,8′), 1,293″/px, f/4,00 |
+| T2 | Próbkowanie, seeing 2,5″ (zakres idealny 0,833–1,25″/px) | RedCat → podpróbkowanie; Newton 200 → nadpróbkowanie; Esprit → podpróbkowanie; Newton 150/750 + Ares → idealne; Newton 150/600 + Ares (zestaw użytkownika) → podpróbkowanie (idealnie przy seeingu 2,59–3,87″) |
 | T3 | Minimalna wysokość Słońca, noc 21/22.06.2026, 19°E | 49°N: −17,57°; 52°N: −14,57°; 54,5°N: −12,07°; 54,83°N: −11,74° (o 00:46 CEST). W całej Polsce w przesileniu nie ma nocy astronomicznej |
 | T4 | Noc 16/17.10.2026 | zachód Słońca 17:47 CEST; −6° 18:22; −12° 19:01; −18° od 19:40 do 05:19 CEST (noc astronomiczna 9 h 39 min); wschód 07:12 CEST. Księżyc: zachód 16.10 o 20:25 CEST; o 00:00 CEST 17.10 oświetlenie 33,8%, wysokość −27,7° |
 | T5 | Noc 24/25.10.2026 (zmiana czasu) | zachód Słońca 17:31 CEST; −18° od 19:24 CEST do 04:32 CET; wschód 06:26 CET. Księżyc nad horyzontem całą noc (wschód 16:28 CEST, zachód 05:29 CET), oświetlenie 98,0% o 01:00 CEST. Oś wykresu ma powtórzoną godzinę oznaczoną CEST/CET |

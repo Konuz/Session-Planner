@@ -32,6 +32,7 @@ const SETUPS = {
   newton200: { apertureMm: 200, focalLengthMm: 1000, reducerFactor: 1, resolutionXPx: 3008, resolutionYPx: 3008, pixelSizeUm: 3.76, binning: 1 },
   esprit100: { apertureMm: 100, focalLengthMm: 550, reducerFactor: 1, resolutionXPx: 9576, resolutionYPx: 6388, pixelSizeUm: 3.76, binning: 1 },
   newton150: { apertureMm: 150, focalLengthMm: 750, reducerFactor: 1, resolutionXPx: 3008, resolutionYPx: 3008, pixelSizeUm: 3.76, binning: 1 },
+  myNewton150: { apertureMm: 150, focalLengthMm: 600, reducerFactor: 1, resolutionXPx: 3008, resolutionYPx: 3008, pixelSizeUm: 3.76, binning: 1 },
 }
 
 describe('T1 FOV i skala (binning 1, reduktor 1,0×)', () => {
@@ -71,6 +72,15 @@ describe('T1 FOV i skala (binning 1, reduktor 1,0×)', () => {
     expect(o.focalRatio).toBeCloseTo(5, 2)
   })
 
+  it('Newton 150/600 + Ares-M Pro (zestaw użytkownika): 1,080° × 1,080° (64,8′), 1,293″/px, f/4,00', () => {
+    const o = computeOptics(SETUPS.myNewton150)
+    expect(o.fovWidthDeg).toBeCloseTo(1.08, 3)
+    expect(o.fovHeightDeg).toBeCloseTo(1.08, 3)
+    expect(o.fovWidthDeg * 60).toBeCloseTo(64.8, 1)
+    expect(o.scaleArcsecPerPx).toBeCloseTo(1.293, 3)
+    expect(o.focalRatio).toBeCloseTo(4, 2)
+  })
+
   it('mnożnik reduktora skraca ogniskową efektywną', () => {
     const o = computeOptics({ ...SETUPS.newton200, reducerFactor: 0.5 })
     expect(o.effectiveFocalLengthMm).toBe(500)
@@ -83,7 +93,8 @@ describe('T2 ocena próbkowania, seeing 2,5″ (zakres idealny 0,833–1,25″/p
     ['RedCat', SETUPS.redCat, 'undersampled'],
     ['Newton 200', SETUPS.newton200, 'oversampled'],
     ['Esprit', SETUPS.esprit100, 'undersampled'],
-    ['Newton 150 + Ares', SETUPS.newton150, 'ideal'],
+    ['Newton 150/750 + Ares', SETUPS.newton150, 'ideal'],
+    ['Newton 150/600 + Ares (zestaw użytkownika)', SETUPS.myNewton150, 'undersampled'],
   ] as const)('%s → %s', (_, setup, expected) => {
     expect(assessSampling(computeOptics(setup).scaleArcsecPerPx, 2.5)).toBe(expected)
   })
