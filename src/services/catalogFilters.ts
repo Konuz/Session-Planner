@@ -79,7 +79,7 @@ function visibleIn(results: readonly ObjectNightSummary[] | null | undefined, mi
 }
 
 /** Zakres „Pasuje do kadru” [′]: części `fitRange` krótszego boku kadru z `computeOptics` [Z21]. */
-function frameRange(profile: EquipmentProfile, fitRange: readonly [number, number]): NumberRange {
+export function frameRange(profile: EquipmentProfile, fitRange: readonly [number, number]): NumberRange {
   const { telescope, camera } = profile
   const optics = computeOptics({
     apertureMm: telescope.apertureMm,
