@@ -1,0 +1,1 @@
+- 2026-10-17: 1 próba, 1 keep (dc5baf0), wynik 56/56, review approve z 3 uwagami, które nie blokują. Nie było nieudanych prób, więc nie ma ich przyczyny. Jedyny incydent: pierwszy przebieg test-author przerwał limit użycia i zostawił tymczasową implementację referencyjną w plikach produkcyjnych. Wznowiony przebieg zamienił ją na zaślepki przed sprawdzeniem (baseline 0/56).
