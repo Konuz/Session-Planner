@@ -1,6 +1,6 @@
 import { Body, DefineStar, Equator, Horizon, Observer } from 'astronomy-engine'
 import { describe, expect, it } from 'vitest'
-import { DEMO_HORIZON, HOUR_MS, M31, MINUTE_MS, SITE } from '../test/fixtures'
+import { DEMO_HORIZON, HOUR_MS, M31, MINUTE_MS, SITE, at, expectWithin } from '../test/fixtures'
 import {
   angularSeparationDeg,
   assessSampling,
@@ -10,6 +10,7 @@ import {
   gnomonicUnproject,
   horizonAltitudeDeg,
   horizontalAt,
+  moonPhaseAngleDeg,
   normalizeDeg,
   precessionMatrix,
   toEquatorOfDate,
@@ -207,5 +208,15 @@ describe('rzut gnomoniczny: ξ w stronę E, η w stronę N', () => {
     const back = gnomonicUnproject(highCenter, gnomonicProject(highCenter, { raDeg: 40, decDeg: 84 }))
     expect(back.raDeg).toBeCloseTo(40, 9)
     expect(back.decDeg).toBeCloseTo(84, 9)
+  })
+})
+
+describe('faza Księżyca (kąt fazowy z MoonPhase: 0° nów, 180° pełnia)', () => {
+  it('17.10.2026 00:00 CEST: przybywa, 70,9° (oświetlenie 33,8% z T4)', () => {
+    expectWithin(moonPhaseAngleDeg(at('2026-10-17 00:00', 'CEST')), 70.9, 0.05)
+  })
+
+  it('30.10.2026: po pełni z 26.10 ubywa (kąt > 180°)', () => {
+    expect(moonPhaseAngleDeg(Date.UTC(2026, 9, 30))).toBeGreaterThan(180)
   })
 })

@@ -22,7 +22,7 @@ Zbuduj kompletną, działającą aplikację webową PWA do planowania sesji astr
 | Z2 | Rozstrzygnięte 16.10.2026: profil aktywny domyślnie to Newton 150/600 (f/4) z korektorem, który nie zmienia ogniskowej (1,0×). Założeniem pozostaje montaż paralaktyczny niemiecki (GEM) | Zmień typ montażu, jeśli nie jest to GEM |
 | Z3 | Dane startowe to pełne katalogi pobrane skryptem plus lista „Klasyki” (zamiast „min. 40 obiektów z każdego katalogu”) | Ogranicz skrypt do wybranych obiektów |
 | Z4 | Interfejs po polsku; formaty pl-PL (zegar 24 h, przecinek dziesiętny) | Zmień język i formaty |
-| Z5 | Lokalizacja domyślna: „Polska centralna (demo)”, 52,0°N, 19,0°E, 150 m n.p.m., strefa `Europe/Warsaw` | Wpisz własne miejsce |
+| Z5 | Rozstrzygnięte 16.10.2026: lokalizacja domyślna „Chrząstawa Wielka”, 51,0956°N, 17,3022°E, 125 m n.p.m., strefa `Europe/Warsaw` (współrzędne środka wsi z pl.wikipedia.org, wysokość z EU-DEM), z horyzontem płaskim do czasu wczytania pliku z N.I.N.A. „Polska centralna (demo)” (52,0°N, 19,0°E, 150 m n.p.m.) zostaje drugą lokalizacją i miejscem wektorów z załącznika A | Popraw współrzędne w Ustawieniach |
 | Z6 | Próg ciemności −18°; gdy w nocy nie ma takiego okna, automatyczne obniżenie do −15°, potem do −12° | Zmień próg albo wyłącz obniżanie |
 | Z7 | Minimalna wysokość h_min = 30°; „widoczny” = łącznie co najmniej 3 h czasu efektywnego (nie musi być ciągiem) | Zmień progi lub wymagaj ciągłości |
 | Z8 | Krok próbkowania: 5 min dla całego katalogu, 1 min dla widoku jednego obiektu | Zmień krok |
@@ -30,7 +30,7 @@ Zbuduj kompletną, działającą aplikację webową PWA do planowania sesji astr
 | Z10 | Przerzut przez południk (meridian flip): 10 min po górowaniu | Wpisz wartość z ustawień N.I.N.A. |
 | Z11 | Kadrowanie: ramka stała w środku widoku, przesuwa się niebo (zamiast przeciągania ramki) | Wróć do przeciągania ramki |
 | Z12 | Progi rekomendacji filtrów z sekcji 7A są heurystyką do kalibracji w praktyce | Zmień progi w ustawieniach |
-| Z13 | Horyzont demonstracyjny z sekcji 6.4 | Podmień na własny plik |
+| Z13 | Horyzont demonstracyjny z sekcji 6.4 (lokalizacja „Polska centralna (demo)”) | Wczytaj własny plik w Ustawieniach |
 | Z14 | Nawigacja: 5 zakładek (sekcja 9) | Zmień układ |
 | Z15 | Kolory mgławic planetarnych (turkus) i gromad (żółty), których nie było w pierwotnym prompcie | Zmień kolory |
 | Z16 | Biblioteki pomocnicze: Zustand, Dexie, d3-scale, date-fns-tz, @tanstack/react-virtual, vite-plugin-pwa, Vitest | Podmień na inne |
@@ -375,7 +375,7 @@ Skrypt pyta o konkretne tabele (`VII/20/catalog`, `VII/7A/ldn`, `VII/9/catalog`,
   - M 31, M 42, M 45, M 33, M 101, M 81, M 1
   - IC 1805, IC 1848, NGC 7635, NGC 281, NGC 6888
   - B 33, NGC 1499, NGC 2237
-- **Lokalizacja** [Z5] z horyzontem demonstracyjnym [Z13]: drzewa na N i NE, budynek na SE, otwarte południe. Punkty (az°: wysokość°):
+- **Lokalizacja demonstracyjna** „Polska centralna (demo)” [Z5] z horyzontem demonstracyjnym [Z13]: drzewa na N i NE, budynek na SE, otwarte południe. Punkty (az°: wysokość°):
   - 0: 12, 15: 14, 30: 18, 45: 22, 60: 25, 75: 20
   - 90: 15, 105: 12, 120: 28, 135: 35, 150: 30, 165: 10
   - 180: 8, 195: 6, 210: 9, 225: 14, 240: 20, 255: 24

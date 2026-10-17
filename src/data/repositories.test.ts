@@ -1,9 +1,10 @@
 import 'fake-indexeddb/auto'
 import { describe, expect, it } from 'vitest'
-import type { CameraSpec, DsoObject, TelescopeSpec } from '../types'
+import type { CameraSpec, DsoObject, ObserverLocation, TelescopeSpec } from '../types'
 import { openPlannerDb } from './db'
 import { BUILTIN_CAMERAS, BUILTIN_TELESCOPES } from './equipmentCatalog'
-import { cameraRepository, telescopeRepository, userCatalogRepository } from './repositories'
+import { DEMO_LOCATION } from './demo'
+import { cameraRepository, locationRepository, telescopeRepository, userCatalogRepository } from './repositories'
 
 let databases = 0
 const freshDb = () => openPlannerDb(`planner-test-${++databases}`)
@@ -86,5 +87,39 @@ describe('warstwa katalogu użytkownika (6.3)', () => {
     await userCatalogRepository.save(db, [imported])
     await userCatalogRepository.clear(db)
     expect(await userCatalogRepository.list(db)).toEqual([])
+  })
+})
+
+const otherSite: ObserverLocation = { ...DEMO_LOCATION, id: 'inne-miejsce', name: 'Inne miejsce', horizon: [] }
+
+describe('repozytorium lokalizacji', () => {
+  it('pierwsze uruchomienie zapisuje lokalizacje startowe', async () => {
+    const db = freshDb()
+    expect(await locationRepository.seed(db, [DEMO_LOCATION, otherSite])).toHaveLength(2)
+    expect(await locationRepository.list(db)).toEqual(expect.arrayContaining([DEMO_LOCATION, otherSite]))
+  })
+
+  it('dane startowe nie nadpisują zmian użytkownika ani nie dublują się przy podwójnym wywołaniu', async () => {
+    const db = freshDb()
+    await Promise.all([locationRepository.seed(db, [DEMO_LOCATION]), locationRepository.seed(db, [DEMO_LOCATION])])
+    await locationRepository.save(db, { ...DEMO_LOCATION, name: 'Ogród' })
+    expect(await locationRepository.seed(db, [DEMO_LOCATION])).toEqual([{ ...DEMO_LOCATION, name: 'Ogród' }])
+  })
+
+  it('lista posortowana po nazwie (pl-PL), niezależnie od id', async () => {
+    const db = freshDb()
+    await locationRepository.save(db, { ...otherSite, id: 'a', name: 'Żywiec' })
+    await locationRepository.save(db, { ...otherSite, id: 'b', name: 'Chrząstawa Wielka' })
+    await locationRepository.save(db, { ...otherSite, id: 'c', name: 'Łódź' })
+    expect((await locationRepository.list(db)).map((location) => location.name)).toEqual(['Chrząstawa Wielka', 'Łódź', 'Żywiec'])
+  })
+
+  it('zapis, edycja i usunięcie lokalizacji razem z horyzontem', async () => {
+    const db = freshDb()
+    await locationRepository.save(db, otherSite)
+    await locationRepository.save(db, { ...otherSite, horizon: DEMO_LOCATION.horizon })
+    expect(await locationRepository.list(db)).toEqual([{ ...otherSite, horizon: DEMO_LOCATION.horizon }])
+    await locationRepository.remove(db, otherSite.id)
+    expect(await locationRepository.list(db)).toEqual([])
   })
 })

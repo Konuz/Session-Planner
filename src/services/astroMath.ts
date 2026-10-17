@@ -7,6 +7,7 @@ import {
   Equator,
   Horizon,
   Illumination,
+  MoonPhase,
   Observer,
   Rotation_EQJ_EQD,
   SearchAltitude,
@@ -240,4 +241,9 @@ export function bodyPosition(body: SolarSystemBody, site: GeoPosition, timeMs: n
 /** Oświetlona część tarczy Księżyca, 0–1. */
 export function moonIlluminatedFraction(timeMs: number): number {
   return Illumination(Body.Moon, new Date(timeMs)).phase_fraction
+}
+
+/** Faza Księżyca jako różnica długości ekliptycznych Księżyca i Słońca [°]: 0 nów, 90 I kwadra, 180 pełnia; < 180 = przybywa. */
+export function moonPhaseAngleDeg(timeMs: number): number {
+  return MoonPhase(new Date(timeMs))
 }

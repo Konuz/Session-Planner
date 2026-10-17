@@ -1,0 +1,195 @@
+// Stan globalny (7.0): lokalizacje, noc D, aktywny zestaw, kursor czasu, Red Mode i zakładka.
+// W localStorage zostają tylko drobne preferencje interfejsu (sekcja 3); lokalizacje są w IndexedDB.
+import { create } from 'zustand'
+import { createJSONStorage, persist } from 'zustand/middleware'
+import { appDb } from '../data/appDb'
+import { DEFAULT_PROFILE_ID, DEMO_PROFILES } from '../data/demo'
+import { DEFAULT_LOCATIONS, DEFAULT_LOCATION_ID } from '../data/locations'
+import { locationRepository } from '../data/repositories'
+import { defaultCursorMs, type NightSettings } from '../services/nightChart'
+import { currentNightDate } from '../services/time'
+import { darknessWindow, nightRange } from '../services/visibility'
+import type { EquipmentProfile, ObserverLocation } from '../types'
+
+/** Parametry planowania z założeń Z6 i Z8 (pola PlanningSettings z sekcji 5). */
+export const NIGHT_SETTINGS: NightSettings = { darknessThresholdDeg: -18, autoLowerThreshold: true, detailStepMin: 1 }
+/** h_min [Z7]. */
+export const MIN_ALTITUDE_DEG = 30
+
+/** Profile sprzętu z 6.4; dodawanie i edycję profili obejmuje moduł 7F. */
+export const PROFILES: readonly EquipmentProfile[] = DEMO_PROFILES
+
+export type Tab = 'night' | 'settings'
+
+interface PlannerState {
+  locations: ObserverLocation[]
+  locationsReady: boolean
+  storageError: string | null
+  activeLocationId: string
+  activeProfileId: string
+  /** Noc D, 'RRRR-MM-DD'. */
+  nightDate: string
+  cursorMs: number
+  /** Tryb „Teraz”: kursor podąża za zegarem. */
+  followNow: boolean
+  redMode: boolean
+  tab: Tab
+  /** Obiekt na wykresie nocy (uid z katalogu); null = obiekt domyślny. */
+  objectUid: string | null
+}
+
+interface PlannerActions {
+  loadLocations: () => Promise<void>
+  saveLocation: (location: ObserverLocation) => Promise<void>
+  removeLocation: (id: string) => Promise<void>
+  selectLocation: (id: string) => void
+  selectProfile: (id: string) => void
+  setNightDate: (nightDate: string) => void
+  setCursor: (timeMs: number) => void
+  goNow: (nowMs: number) => void
+  toggleRedMode: () => void
+  setTab: (tab: Tab) => void
+  selectObject: (uid: string) => void
+}
+
+export type PlannerStore = PlannerState & PlannerActions
+
+/** Aktywna lokalizacja; przed wczytaniem bazy – pierwsza z lokalizacji startowych. */
+export function activeLocationOf(state: Pick<PlannerState, 'locations' | 'activeLocationId'>): ObserverLocation {
+  return state.locations.find((location) => location.id === state.activeLocationId) ?? state.locations[0] ?? DEFAULT_LOCATIONS[0]
+}
+
+export function activeProfileOf(state: Pick<PlannerState, 'activeProfileId'>): EquipmentProfile {
+  return (
+    PROFILES.find((profile) => profile.id === state.activeProfileId) ??
+    PROFILES.find((profile) => profile.id === DEFAULT_PROFILE_ID) ??
+    PROFILES[0]
+  )
+}
+
+/** Noc D i kursor: w trybie „Teraz” bieżąca noc i zegar, inaczej kursor domyślny dla nocy (7.0). */
+function nightAndCursor(location: ObserverLocation, nightDate: string, followNow: boolean, nowMs: number) {
+  if (followNow) return { nightDate: currentNightDate(nowMs, location.timezone), cursorMs: nowMs }
+  const night = nightRange(nightDate, location.timezone)
+  const darkness = darknessWindow(location, night, NIGHT_SETTINGS.darknessThresholdDeg, NIGHT_SETTINGS.autoLowerThreshold)
+  return { nightDate, cursorMs: defaultCursorMs({ darkness, nightDate, timeZone: location.timezone }) }
+}
+
+const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error))
+
+export const usePlannerStore = create<PlannerStore>()(
+  persist(
+    (set, get) => {
+      const startMs = Date.now()
+      return {
+        locations: [],
+        locationsReady: false,
+        storageError: null,
+        activeLocationId: DEFAULT_LOCATION_ID,
+        activeProfileId: DEFAULT_PROFILE_ID,
+        nightDate: currentNightDate(startMs, DEFAULT_LOCATIONS[0].timezone),
+        cursorMs: startMs,
+        followNow: true,
+        redMode: false,
+        tab: 'night',
+        objectUid: null,
+
+        async loadLocations() {
+          let locations: ObserverLocation[]
+          let storageError: string | null = null
+          try {
+            locations = await locationRepository.seed(appDb, DEFAULT_LOCATIONS)
+          } catch (error) {
+            locations = [...DEFAULT_LOCATIONS]
+            storageError = `Baza danych przeglądarki jest niedostępna, więc zmian lokalizacji nie da się zapisać (${errorText(error)}).`
+          }
+          set((state) => {
+            const location = activeLocationOf({ locations, activeLocationId: state.activeLocationId })
+            return {
+              locations,
+              locationsReady: true,
+              storageError,
+              activeLocationId: location.id,
+              ...nightAndCursor(location, state.nightDate, state.followNow, Date.now()),
+            }
+          })
+        },
+
+        async saveLocation(location) {
+          await locationRepository.save(appDb, location)
+          const locations = await locationRepository.list(appDb)
+          set((state) => ({
+            locations,
+            activeLocationId: location.id,
+            ...(state.followNow ? nightAndCursor(location, state.nightDate, true, Date.now()) : {}),
+          }))
+        },
+
+        async removeLocation(id) {
+          if (get().locations.length <= 1) return
+          await locationRepository.remove(appDb, id)
+          const locations = await locationRepository.list(appDb)
+          set((state) => {
+            const location = activeLocationOf({ locations, activeLocationId: state.activeLocationId })
+            return {
+              locations,
+              activeLocationId: location.id,
+              ...nightAndCursor(location, state.nightDate, state.followNow, Date.now()),
+            }
+          })
+        },
+
+        selectLocation(id) {
+          set((state) => {
+            const location = activeLocationOf({ locations: state.locations, activeLocationId: id })
+            return { activeLocationId: location.id, ...nightAndCursor(location, state.nightDate, state.followNow, Date.now()) }
+          })
+        },
+
+        selectProfile(id) {
+          set({ activeProfileId: id })
+        },
+
+        setNightDate(nightDate) {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(nightDate)) return
+          set((state) => ({ followNow: false, ...nightAndCursor(activeLocationOf(state), nightDate, false, Date.now()) }))
+        },
+
+        setCursor(timeMs) {
+          set({ followNow: false, cursorMs: timeMs })
+        },
+
+        goNow(nowMs) {
+          set((state) => ({ followNow: true, ...nightAndCursor(activeLocationOf(state), state.nightDate, true, nowMs) }))
+        },
+
+        toggleRedMode() {
+          set((state) => ({ redMode: !state.redMode }))
+        },
+
+        setTab(tab) {
+          set({ tab })
+        },
+
+        selectObject(uid) {
+          set({ objectUid: uid })
+        },
+      }
+    },
+    {
+      name: 'astrophotography-planner-ui',
+      version: 1,
+      storage: createJSONStorage(() => localStorage),
+      partialize: ({ activeLocationId, activeProfileId, redMode, tab, objectUid }) => ({
+        activeLocationId,
+        activeProfileId,
+        redMode,
+        tab,
+        objectUid,
+      }),
+    },
+  ),
+)
+
+export const useActiveLocation = () => usePlannerStore(activeLocationOf)
+export const useActiveProfile = () => usePlannerStore(activeProfileOf)

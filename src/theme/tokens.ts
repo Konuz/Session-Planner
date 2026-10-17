@@ -51,7 +51,7 @@ export const redMode: Palette = {
 /** Rozmycie tła karty: w Red Mode karta jest nieprzezroczysta i bez rozmycia. */
 const cardBlurPx = { darkCosmos: 12, redMode: 0 }
 
-const RED_MODE_CLASS = 'red-mode'
+export const RED_MODE_CLASS = 'red-mode'
 
 /** Nazwa tokenu w CSS, np. 'reflectionNebula' → 'reflection-nebula'. */
 export function tokenCssName(token: ColorToken): string {

@@ -1,6 +1,7 @@
-// Repozytoria danych użytkownika: własny sprzęt widoczny razem z wbudowanym (6.5) i warstwa katalogu z importu (6.3).
+// Repozytoria danych użytkownika: własny sprzęt widoczny razem z wbudowanym (6.5), warstwa katalogu z importu (6.3)
+// i lokalizacje z horyzontem (7C).
 import type { EntityTable } from 'dexie'
-import type { DsoObject } from '../types'
+import type { DsoObject, ObserverLocation } from '../types'
 import type { PlannerDb } from './db'
 import { BUILTIN_CAMERAS, BUILTIN_TELESCOPES } from './equipmentCatalog'
 
@@ -38,5 +39,23 @@ export const userCatalogRepository = {
   },
   async clear(db: PlannerDb): Promise<void> {
     await db.userObjects.clear()
+  },
+}
+
+export const locationRepository = {
+  /** Lokalizacje posortowane po nazwie (pl-PL). */
+  async list(db: PlannerDb): Promise<ObserverLocation[]> {
+    return (await db.locations.toArray()).sort((a, b) => a.name.localeCompare(b.name, 'pl'))
+  },
+  /** Przy pierwszym uruchomieniu zapisuje lokalizacje startowe; zapis po id, więc podwójne wywołanie nie dubluje wpisów. */
+  async seed(db: PlannerDb, defaults: readonly ObserverLocation[]): Promise<ObserverLocation[]> {
+    if ((await db.locations.count()) === 0) await db.locations.bulkPut([...defaults])
+    return locationRepository.list(db)
+  },
+  async save(db: PlannerDb, location: ObserverLocation): Promise<void> {
+    await db.locations.put(location)
+  },
+  async remove(db: PlannerDb, id: string): Promise<void> {
+    await db.locations.delete(id)
   },
 }
