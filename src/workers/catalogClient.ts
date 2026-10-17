@@ -1,5 +1,4 @@
 // Klient Workera katalogu w wątku głównym: numeruje żądania i przyjmuje tylko odpowiedź na ostatnie.
-// ZAŚLEPKA funkcji „obliczenia-w-tle”: każde wywołanie zgłasza NotImplementedError.
 import type { CatalogNightParams, CatalogTarget } from '../services/catalogNight'
 import type { CatalogWorkerRequest, CatalogWorkerResponse } from './catalogMessages'
 
@@ -16,19 +15,26 @@ export interface CatalogClient {
   request(params: CatalogNightParams): number
 }
 
-function notImplemented(name: string): never {
-  throw new Error(`NotImplementedError: ${name}`)
-}
-
 /**
  * Klient Workera. `onResponse` dostaje odpowiedzi z wyjątkiem „wynik” i „błąd” dla żądań starszych niż ostatnie wysłane.
  * Bez `worker` klient tworzy Worker z `catalog.worker.ts`.
  */
 export function createCatalogClient(
   onResponse: (response: CatalogWorkerResponse) => void,
-  worker?: CatalogWorkerPort,
+  worker: CatalogWorkerPort = new Worker(new URL('./catalog.worker.ts', import.meta.url), { type: 'module' }),
 ): CatalogClient {
-  void onResponse
-  void worker
-  return notImplemented('createCatalogClient')
+  let latest = 0
+  worker.onmessage = ({ data }) => {
+    if (data.type !== 'ready' && data.requestId !== latest) return
+    onResponse(data)
+  }
+  return {
+    sendCatalog(objects) {
+      worker.postMessage({ type: 'catalog', objects: objects.map(({ uid, raDeg, decDeg }) => ({ uid, raDeg, decDeg })) })
+    },
+    request(params) {
+      worker.postMessage({ type: 'compute', requestId: ++latest, params })
+      return latest
+    },
+  }
 }
