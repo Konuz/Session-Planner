@@ -7,9 +7,10 @@ import { DEFAULT_PROFILE_ID, DEMO_PROFILES } from '../data/demo'
 import { DEFAULT_LOCATIONS, DEFAULT_LOCATION_ID } from '../data/locations'
 import { locationRepository } from '../data/repositories'
 import { defaultCursorMs, type NightSettings } from '../services/nightChart'
+import { DEFAULT_PLANNING_SETTINGS } from '../services/planningSettings'
 import { currentNightDate } from '../services/time'
 import { darknessWindow, nightRange } from '../services/visibility'
-import type { EquipmentProfile, ObserverLocation } from '../types'
+import type { EquipmentProfile, ObserverLocation, PlanningSettings } from '../types'
 
 /** Parametry planowania z założeń Z6 i Z8 (pola PlanningSettings z sekcji 5). */
 export const NIGHT_SETTINGS: NightSettings = { darknessThresholdDeg: -18, autoLowerThreshold: true, detailStepMin: 1 }
@@ -36,6 +37,8 @@ interface PlannerState {
   tab: Tab
   /** Obiekt na wykresie nocy (uid z katalogu); null = obiekt domyślny. */
   objectUid: string | null
+  /** Parametry planowania (IndexedDB); przed wczytaniem bazy – wartości domyślne. ZAŚLEPKA: jeszcze nieużywane. */
+  planningSettings: PlanningSettings
 }
 
 interface PlannerActions {
@@ -93,6 +96,7 @@ export const usePlannerStore = create<PlannerStore>()(
         redMode: false,
         tab: 'night',
         objectUid: null,
+        planningSettings: DEFAULT_PLANNING_SETTINGS,
 
         async loadLocations() {
           let locations: ObserverLocation[]

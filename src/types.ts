@@ -121,3 +121,44 @@ export interface EquipmentProfile {
     angleDeg: number // 0° = nad górną krawędzią matrycy, rośnie zgodnie z ruchem wskazówek zegara w układzie matrycy [Z20]
   } | null
 }
+
+export interface PlanningSettings {
+  darknessThresholdDeg: -18 | -15 | -12 // [Z6]
+  autoLowerThreshold: boolean // [Z6]
+  minAltitudeDeg: number // [Z7]
+  minEffectiveHours: number // [Z7]
+  catalogStepMin: number // [Z8]
+  detailStepMin: number // [Z8]
+  seeingArcsec: number // [Z9]
+  fitRange: [number, number] // [Z21], części całości krótszego boku kadru (domyślnie 0,25 i 0,8)
+  moonRules: MoonRuleThresholds // [Z12], sekcja 7A
+}
+
+// Progi rekomendacji filtrów z tabeli w 7A [Z12].
+// illum = oświetlenie Księżyca (0–1) w środku okna efektywnego; sep = minimalna topocentryczna separacja w oknie [°].
+// Porównania: pola *Max* są wyłączne (illum < max), pola *Min* włączne (wartość ≥ min).
+// Wartości domyślne (stała DEFAULT_MOON_RULES) podano w komentarzach.
+export interface MoonRuleThresholds {
+  moonDownMinFraction: number // 0.8: Księżyc pod horyzontem przez ≥ tę część okna → wszystkie filtry zielone
+  broadband: {
+    // L, R, G, B, OSC; obiekty inne niż mgławice refleksyjne i ciemne
+    greenMaxIllum: number // 0.15
+    yellowMaxIllum: number // 0.5
+    yellowMinSepDeg: number // 90
+  }
+  broadbandFaintNebula: {
+    // L, R, G, B, OSC dla mgławic refleksyjnych i ciemnych; bez stanu żółtego
+    greenMaxIllum: number // 0.15
+  }
+  hydrogenSulfur: {
+    // Ha, SII
+    greenMinSepDeg: number // 50
+    yellowMinSepDeg: number // 25
+  }
+  oxygen: {
+    // OIII, DualBand
+    greenMinSepDeg: number // 70
+    greenMaxIllum: number // 0.75
+    yellowMinSepDeg: number // 40
+  }
+}

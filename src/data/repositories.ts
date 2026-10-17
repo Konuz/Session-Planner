@@ -1,7 +1,7 @@
 // Repozytoria danych użytkownika: własny sprzęt widoczny razem z wbudowanym (6.5), warstwa katalogu z importu (6.3)
 // i lokalizacje z horyzontem (7C).
 import type { EntityTable } from 'dexie'
-import type { DsoObject, ObserverLocation } from '../types'
+import type { DsoObject, ObserverLocation, PlanningSettings } from '../types'
 import type { PlannerDb } from './db'
 import { BUILTIN_CAMERAS, BUILTIN_TELESCOPES } from './equipmentCatalog'
 
@@ -57,5 +57,20 @@ export const locationRepository = {
   },
   async remove(db: PlannerDb, id: string): Promise<void> {
     await db.locations.delete(id)
+  },
+}
+
+// ZAŚLEPKA funkcji „parametry-planowania”: obie metody zgłaszają NotImplementedError.
+export const planningSettingsRepository = {
+  /** Zapisane parametry planowania albo wartości domyślne (nic nie zapisano albo wpis jest uszkodzony). */
+  load(db: PlannerDb): Promise<PlanningSettings> {
+    void db
+    return Promise.reject(new Error('NotImplementedError: planningSettingsRepository.load'))
+  },
+  /** Zapis parametrów; parametry z błędem są odrzucane, a w bazie zostają poprzednie wartości. */
+  save(db: PlannerDb, settings: PlanningSettings): Promise<void> {
+    void db
+    void settings
+    return Promise.reject(new Error('NotImplementedError: planningSettingsRepository.save'))
   },
 }
