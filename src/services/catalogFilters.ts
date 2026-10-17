@@ -1,5 +1,5 @@
-// Filtry katalogu (7A): katalog, typ, gwiazdozbiór, jasność, rozmiar, „Widoczne w wybraną noc”, „Pasuje do kadru” [Z7, Z21].
-// ZAŚLEPKA funkcji „polecane-na-miesiac”: referenceNightDate i filtr „Polecane na miesiąc” zgłaszają NotImplementedError.
+// Filtry katalogu (7A): katalog, typ, gwiazdozbiór, jasność, rozmiar, „Widoczne w wybraną noc”, „Pasuje do kadru”,
+// „Polecane na miesiąc” [Z7, Z21, Z22].
 import type { CatalogId, DsoObject, DsoType, EquipmentProfile, PlanningSettings } from '../types'
 import { computeOptics } from './astroMath'
 import type { ObjectNightSummary } from './catalogNight'
@@ -63,18 +63,20 @@ export interface CatalogFilterContext {
 
 type Predicate = (object: DsoObject) => boolean
 
-function notImplemented(name: string): never {
-  throw new Error(`NotImplementedError: ${name}`)
-}
-
 /** Noc odniesienia „Polecane na miesiąc” [Z22]: 'RRRR-MM-15' z miesiąca daty wieczoru nocy D ('RRRR-MM-DD'). */
 export function referenceNightDate(nightDate: string): string {
-  void nightDate
-  return notImplemented('referenceNightDate')
+  return `${nightDate.slice(0, 8)}15`
 }
 
 const inRange = (value: number | null, range: NumberRange): boolean =>
   value !== null && value >= range.min && value <= range.max
+
+/** Czas efektywny ≥ `minEffectiveHours` w wynikach `results` (po uid); null = wynik się liczy, nic nie przechodzi. */
+function visibleIn(results: readonly ObjectNightSummary[] | null | undefined, minEffectiveHours: number): Predicate {
+  const minutes = new Map((results ?? []).map((s) => [s.uid, s.effectiveMinutes]))
+  const range = { min: minEffectiveHours * 60, max: Infinity }
+  return (o) => inRange(minutes.get(o.uid) ?? null, range)
+}
 
 /** Zakres „Pasuje do kadru” [′]: części `fitRange` krótszego boku kadru z `computeOptics` [Z21]. */
 function frameRange(profile: EquipmentProfile, fitRange: readonly [number, number]): NumberRange {
@@ -105,15 +107,16 @@ export function filterCatalog(
   if (constellation !== null) checks.push((o) => o.constellation === constellation)
   if (magnitude !== null) checks.push((o) => (o.magV === null ? filters.showWithoutMagnitude : inRange(o.magV, magnitude)))
   if (size !== null) checks.push((o) => inRange(o.sizeMajorArcmin, size))
-  if (filters.visibleTonight) {
-    const minutes = new Map((context.results ?? []).map((s) => [s.uid, s.effectiveMinutes]))
-    const minimum = context.settings.minEffectiveHours * 60
-    checks.push((o) => inRange(minutes.get(o.uid) ?? null, { min: minimum, max: Infinity }))
-  }
+  const { minEffectiveHours } = context.settings
+  if (filters.visibleTonight) checks.push(visibleIn(context.results, minEffectiveHours))
   if (filters.fitsFrame) {
     const frame = frameRange(context.profile, context.settings.fitRange)
     checks.push((o) => inRange(o.sizeMajorArcmin, frame))
   }
-  if (filters.recommendedThisMonth) notImplemented('filterCatalog: „Polecane na miesiąc”')
+  if (filters.recommendedThisMonth) {
+    const { nightDate } = context
+    const isReference = nightDate !== undefined && referenceNightDate(nightDate) === nightDate
+    checks.push(visibleIn(isReference ? context.results : context.referenceResults, minEffectiveHours))
+  }
   return objects.filter((object) => checks.every((check) => check(object)))
 }
