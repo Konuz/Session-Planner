@@ -1,8 +1,20 @@
 // Widoczność całego katalogu w noc D (7A): noc przygotowana raz, potem tanie podsumowanie każdego obiektu.
-// ZAŚLEPKA funkcji „widocznosc-katalogu”: każde wywołanie zgłasza NotImplementedError.
 import type { DsoObject, HorizonPoint, Mount, ObserverLocation, PlanningSettings } from '../types'
-import type { GeoPosition, PrecessionMatrix } from './astroMath'
-import type { Darkness, SampleGrid, TimedAltitude, TimeRange } from './visibility'
+import { precessionMatrix, toEquatorOfDate, type GeoPosition, type PrecessionMatrix } from './astroMath'
+import {
+  darknessWindow,
+  effectiveMinutes,
+  highestPoint,
+  meridianFlipMs as flipAfterTransitMs,
+  nightRange,
+  nightSun,
+  sampleGrid,
+  transitMs,
+  type Darkness,
+  type SampleGrid,
+  type TimedAltitude,
+  type TimeRange,
+} from './visibility'
 
 /** Położenie, strefa czasowa i horyzont lokalizacji; nazwa lokalizacji nie wpływa na wynik. */
 export type CatalogNightLocation = Pick<ObserverLocation, 'latDeg' | 'lonDegEast' | 'elevationM' | 'timezone' | 'horizon'>
@@ -57,33 +69,45 @@ export interface CatalogNightResult {
   objects: ObjectNightSummary[]
 }
 
-function notImplemented(name: string): never {
-  throw new Error(`NotImplementedError: ${name}`)
-}
-
 /** Przygotowanie nocy raz: okno ciemności, oś nocy, siatka co krok katalogowy i macierz precesji. */
-export function prepareCatalogNight(params: CatalogNightParams): PreparedCatalogNight {
-  void params
-  return notImplemented('prepareCatalogNight')
+export function prepareCatalogNight({ location, nightDate, settings }: CatalogNightParams): PreparedCatalogNight {
+  const site: GeoPosition = { latDeg: location.latDeg, lonDegEast: location.lonDegEast, elevationM: location.elevationM }
+  const night = nightRange(nightDate, location.timezone)
+  const { axis } = nightSun(site, night)
+  const darkness = darknessWindow(site, night, settings.darknessThresholdDeg, settings.autoLowerThreshold)
+  return {
+    site,
+    horizon: location.horizon,
+    minAltitudeDeg: settings.minAltitudeDeg,
+    axis,
+    darkness,
+    grid: darkness.kind === 'window' ? sampleGrid(darkness.window, settings.catalogStepMin, site.lonDegEast) : null,
+    precession: precessionMatrix((axis.startMs + axis.endMs) / 2),
+  }
 }
 
 /** Podsumowanie jednego obiektu w przygotowanej nocy. */
 export function summarizeObject(night: PreparedCatalogNight, target: CatalogTarget): ObjectNightSummary {
-  void night
-  void target
-  return notImplemented('summarizeObject')
+  const ofDate = toEquatorOfDate(target, night.precession)
+  // t₀ = zachód − 1 h; górowanie po końcu osi nocy wypada w dzień.
+  const transit = transitMs(ofDate.raDeg, night.site.lonDegEast, night.axis.startMs)
+  const { darkness, grid } = night
+  return {
+    uid: target.uid,
+    darkness,
+    effectiveMinutes: grid ? effectiveMinutes(ofDate, night.site, grid, night.minAltitudeDeg, night.horizon) : null,
+    transitMs: transit <= night.axis.endMs ? transit : null,
+    highest: darkness.kind === 'window' ? highestPoint(ofDate, night.site, darkness.window, transit) : null,
+  }
 }
 
 /** Widoczność całego katalogu w noc D; wyniki w kolejności obiektów, z uid. */
 export function computeCatalogNight(params: CatalogNightParams, targets: readonly CatalogTarget[]): CatalogNightResult {
-  void params
-  void targets
-  return notImplemented('computeCatalogNight')
+  const night = prepareCatalogNight(params)
+  return { darkness: night.darkness, objects: targets.map((target) => summarizeObject(night, target)) }
 }
 
 /** Przerzut przez południk z górowania i montażu [Z10]: tylko GEM i tylko, gdy obiekt góruje w nocy. */
 export function meridianFlipMs(transitMs: number | null, mount: Mount): number | null {
-  void transitMs
-  void mount
-  return notImplemented('meridianFlipMs')
+  return transitMs === null ? null : flipAfterTransitMs(transitMs, mount)
 }
