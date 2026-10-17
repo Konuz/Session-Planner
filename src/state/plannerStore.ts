@@ -1,21 +1,16 @@
-// Stan globalny (7.0): lokalizacje, noc D, aktywny zestaw, kursor czasu, Red Mode i zakładka.
-// W localStorage zostają tylko drobne preferencje interfejsu (sekcja 3); lokalizacje są w IndexedDB.
+// Stan globalny (7.0): lokalizacje, parametry planowania, noc D, aktywny zestaw, kursor czasu, Red Mode i zakładka.
+// W localStorage zostają tylko drobne preferencje interfejsu (sekcja 3); lokalizacje i parametry są w IndexedDB.
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { appDb } from '../data/appDb'
 import { DEFAULT_PROFILE_ID, DEMO_PROFILES } from '../data/demo'
 import { DEFAULT_LOCATIONS, DEFAULT_LOCATION_ID } from '../data/locations'
-import { locationRepository } from '../data/repositories'
-import { defaultCursorMs, type NightSettings } from '../services/nightChart'
+import { locationRepository, planningSettingsRepository } from '../data/repositories'
+import { defaultCursorMs } from '../services/nightChart'
 import { DEFAULT_PLANNING_SETTINGS } from '../services/planningSettings'
 import { currentNightDate } from '../services/time'
 import { darknessWindow, nightRange } from '../services/visibility'
 import type { EquipmentProfile, ObserverLocation, PlanningSettings } from '../types'
-
-/** Parametry planowania z założeń Z6 i Z8 (pola PlanningSettings z sekcji 5). */
-export const NIGHT_SETTINGS: NightSettings = { darknessThresholdDeg: -18, autoLowerThreshold: true, detailStepMin: 1 }
-/** h_min [Z7]. */
-export const MIN_ALTITUDE_DEG = 30
 
 /** Profile sprzętu z 6.4; dodawanie i edycję profili obejmuje moduł 7F. */
 export const PROFILES: readonly EquipmentProfile[] = DEMO_PROFILES
@@ -37,7 +32,7 @@ interface PlannerState {
   tab: Tab
   /** Obiekt na wykresie nocy (uid z katalogu); null = obiekt domyślny. */
   objectUid: string | null
-  /** Parametry planowania (IndexedDB); przed wczytaniem bazy – wartości domyślne. ZAŚLEPKA: jeszcze nieużywane. */
+  /** Parametry planowania (IndexedDB); przed wczytaniem bazy albo bez bazy – wartości domyślne. */
   planningSettings: PlanningSettings
 }
 
@@ -45,6 +40,8 @@ interface PlannerActions {
   loadLocations: () => Promise<void>
   saveLocation: (location: ObserverLocation) => Promise<void>
   removeLocation: (id: string) => Promise<void>
+  /** Zapis parametrów planowania; parametry z błędem są odrzucane (wyjątek), stan zostaje bez zmian. */
+  savePlanningSettings: (settings: PlanningSettings) => Promise<void>
   selectLocation: (id: string) => void
   selectProfile: (id: string) => void
   setNightDate: (nightDate: string) => void
@@ -70,11 +67,17 @@ export function activeProfileOf(state: Pick<PlannerState, 'activeProfileId'>): E
   )
 }
 
-/** Noc D i kursor: w trybie „Teraz” bieżąca noc i zegar, inaczej kursor domyślny dla nocy (7.0). */
-function nightAndCursor(location: ObserverLocation, nightDate: string, followNow: boolean, nowMs: number) {
+/** Noc D i kursor: w trybie „Teraz” bieżąca noc i zegar, inaczej kursor domyślny dla nocy z progu ciemności (7.0). */
+function nightAndCursor(
+  location: ObserverLocation,
+  settings: PlanningSettings,
+  nightDate: string,
+  followNow: boolean,
+  nowMs: number,
+) {
   if (followNow) return { nightDate: currentNightDate(nowMs, location.timezone), cursorMs: nowMs }
   const night = nightRange(nightDate, location.timezone)
-  const darkness = darknessWindow(location, night, NIGHT_SETTINGS.darknessThresholdDeg, NIGHT_SETTINGS.autoLowerThreshold)
+  const darkness = darknessWindow(location, night, settings.darknessThresholdDeg, settings.autoLowerThreshold)
   return { nightDate, cursorMs: defaultCursorMs({ darkness, nightDate, timeZone: location.timezone }) }
 }
 
@@ -107,14 +110,16 @@ export const usePlannerStore = create<PlannerStore>()(
             locations = [...DEFAULT_LOCATIONS]
             storageError = `Baza danych przeglądarki jest niedostępna, więc zmian lokalizacji nie da się zapisać (${errorText(error)}).`
           }
+          const planningSettings = await planningSettingsRepository.load(appDb).catch(() => DEFAULT_PLANNING_SETTINGS)
           set((state) => {
             const location = activeLocationOf({ locations, activeLocationId: state.activeLocationId })
             return {
               locations,
               locationsReady: true,
               storageError,
+              planningSettings,
               activeLocationId: location.id,
-              ...nightAndCursor(location, state.nightDate, state.followNow, Date.now()),
+              ...nightAndCursor(location, planningSettings, state.nightDate, state.followNow, Date.now()),
             }
           })
         },
@@ -125,7 +130,7 @@ export const usePlannerStore = create<PlannerStore>()(
           set((state) => ({
             locations,
             activeLocationId: location.id,
-            ...(state.followNow ? nightAndCursor(location, state.nightDate, true, Date.now()) : {}),
+            ...(state.followNow ? nightAndCursor(location, state.planningSettings, state.nightDate, true, Date.now()) : {}),
           }))
         },
 
@@ -138,15 +143,23 @@ export const usePlannerStore = create<PlannerStore>()(
             return {
               locations,
               activeLocationId: location.id,
-              ...nightAndCursor(location, state.nightDate, state.followNow, Date.now()),
+              ...nightAndCursor(location, state.planningSettings, state.nightDate, state.followNow, Date.now()),
             }
           })
+        },
+
+        async savePlanningSettings(planningSettings) {
+          await planningSettingsRepository.save(appDb, planningSettings)
+          set({ planningSettings })
         },
 
         selectLocation(id) {
           set((state) => {
             const location = activeLocationOf({ locations: state.locations, activeLocationId: id })
-            return { activeLocationId: location.id, ...nightAndCursor(location, state.nightDate, state.followNow, Date.now()) }
+            return {
+              activeLocationId: location.id,
+              ...nightAndCursor(location, state.planningSettings, state.nightDate, state.followNow, Date.now()),
+            }
           })
         },
 
@@ -156,7 +169,10 @@ export const usePlannerStore = create<PlannerStore>()(
 
         setNightDate(nightDate) {
           if (!/^\d{4}-\d{2}-\d{2}$/.test(nightDate)) return
-          set((state) => ({ followNow: false, ...nightAndCursor(activeLocationOf(state), nightDate, false, Date.now()) }))
+          set((state) => ({
+            followNow: false,
+            ...nightAndCursor(activeLocationOf(state), state.planningSettings, nightDate, false, Date.now()),
+          }))
         },
 
         setCursor(timeMs) {
@@ -164,7 +180,10 @@ export const usePlannerStore = create<PlannerStore>()(
         },
 
         goNow(nowMs) {
-          set((state) => ({ followNow: true, ...nightAndCursor(activeLocationOf(state), state.nightDate, true, nowMs) }))
+          set((state) => ({
+            followNow: true,
+            ...nightAndCursor(activeLocationOf(state), state.planningSettings, state.nightDate, true, nowMs),
+          }))
         },
 
         toggleRedMode() {

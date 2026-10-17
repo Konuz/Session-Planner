@@ -15,7 +15,7 @@ import {
   type TwilightBand,
 } from '../../services/nightChart'
 import { formatDuration, formatLocalTime } from '../../services/time'
-import { MIN_ALTITUDE_DEG, NIGHT_SETTINGS, useActiveLocation, useActiveProfile, usePlannerStore } from '../../state/plannerStore'
+import { useActiveLocation, useActiveProfile, usePlannerStore } from '../../state/plannerStore'
 import type { DsoObject, Mount } from '../../types'
 import { useSvgId } from '../../ui/useSvgId'
 import { BAND_OPACITY } from './chartGeometry'
@@ -48,6 +48,7 @@ export function NightTab() {
   const nightDate = usePlannerStore((state) => state.nightDate)
   const cursorMs = usePlannerStore((state) => state.cursorMs)
   const objectUid = usePlannerStore((state) => state.objectUid)
+  const settings = usePlannerStore((state) => state.planningSettings)
   const setCursor = usePlannerStore((state) => state.setCursor)
   const selectObject = usePlannerStore((state) => state.selectObject)
   const { featured, retry } = useFeaturedObjects()
@@ -56,18 +57,16 @@ export function NightTab() {
 
   const objects = featured.status === 'ready' ? featured.objects : []
   const object = selectFeatured(objects, objectUid)
+  const { minAltitudeDeg } = settings
   const frame = useMemo(
-    () => buildNightFrame(location, location.timezone, nightDate, NIGHT_SETTINGS),
-    [location, nightDate],
+    () => buildNightFrame(location, location.timezone, nightDate, settings),
+    [location, nightDate, settings],
   )
   const track = useMemo(
-    () =>
-      object
-        ? buildObjectTrack(frame, object, { horizon: location.horizon, minAltitudeDeg: MIN_ALTITUDE_DEG, mount: profile.mount })
-        : null,
-    [frame, object, location.horizon, profile.mount],
+    () => (object ? buildObjectTrack(frame, object, { horizon: location.horizon, minAltitudeDeg, mount: profile.mount }) : null),
+    [frame, object, location.horizon, minAltitudeDeg, profile.mount],
   )
-  const readout = cursorReadout(frame, object, location.horizon, MIN_ALTITUDE_DEG, cursorMs)
+  const readout = cursorReadout(frame, object, location.horizon, minAltitudeDeg, cursorMs)
   const label = object ? objectName(object) : null
 
   return (
@@ -103,14 +102,14 @@ export function NightTab() {
               <p className="flex min-h-11 items-center text-sm text-muted">Wczytywanie katalogu…</p>
             )}
           </div>
-          <EffectiveTime frame={frame} track={track} />
+          <EffectiveTime frame={frame} track={track} minAltitudeDeg={minAltitudeDeg} />
         </div>
 
         <NightChart
           frame={frame}
           track={track}
           objectLabel={label}
-          minAltitudeDeg={MIN_ALTITUDE_DEG}
+          minAltitudeDeg={minAltitudeDeg}
           cursorMs={cursorMs}
           onCursorChange={setCursor}
           patternIds={patternIds}
@@ -146,14 +145,14 @@ function ChartPatterns({ ids }: { ids: { hatch: string; dots: string } }) {
   )
 }
 
-function EffectiveTime({ frame, track }: { frame: NightFrame; track: ObjectTrack | null }) {
+function EffectiveTime({ frame, track, minAltitudeDeg }: { frame: NightFrame; track: ObjectTrack | null; minAltitudeDeg: number }) {
   const minutes = track?.effectiveMinutes ?? null
   return (
     <div className="text-right">
       <p className="text-xs text-muted">Czas efektywny</p>
       <p className="text-3xl leading-tight font-semibold text-accent">{minutes === null ? '—' : formatDuration(minutes)}</p>
       <p className="text-xs text-muted">
-        próg {formatDeg(frame.darkness.thresholdDeg, 0)}, h_min {formatDeg(MIN_ALTITUDE_DEG, 0)}
+        próg {formatDeg(frame.darkness.thresholdDeg, 0)}, h_min {formatDeg(minAltitudeDeg, 0)}
       </p>
     </div>
   )

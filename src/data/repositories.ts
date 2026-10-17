@@ -1,6 +1,7 @@
-// Repozytoria danych użytkownika: własny sprzęt widoczny razem z wbudowanym (6.5), warstwa katalogu z importu (6.3)
-// i lokalizacje z horyzontem (7C).
+// Repozytoria danych użytkownika: własny sprzęt widoczny razem z wbudowanym (6.5), warstwa katalogu z importu (6.3),
+// lokalizacje z horyzontem (7C) i parametry planowania (sekcja 5).
 import type { EntityTable } from 'dexie'
+import { DEFAULT_PLANNING_SETTINGS, isPlanningSettings, validatePlanningSettings } from '../services/planningSettings'
 import type { DsoObject, ObserverLocation, PlanningSettings } from '../types'
 import type { PlannerDb } from './db'
 import { BUILTIN_CAMERAS, BUILTIN_TELESCOPES } from './equipmentCatalog'
@@ -60,17 +61,18 @@ export const locationRepository = {
   },
 }
 
-// ZAŚLEPKA funkcji „parametry-planowania”: obie metody zgłaszają NotImplementedError.
+const PLANNING_KEY = 'planning'
+
 export const planningSettingsRepository = {
   /** Zapisane parametry planowania albo wartości domyślne (nic nie zapisano albo wpis jest uszkodzony). */
-  load(db: PlannerDb): Promise<PlanningSettings> {
-    void db
-    return Promise.reject(new Error('NotImplementedError: planningSettingsRepository.load'))
+  async load(db: PlannerDb): Promise<PlanningSettings> {
+    const saved = (await db.settings.get(PLANNING_KEY))?.value
+    return isPlanningSettings(saved) ? saved : DEFAULT_PLANNING_SETTINGS
   },
   /** Zapis parametrów; parametry z błędem są odrzucane, a w bazie zostają poprzednie wartości. */
-  save(db: PlannerDb, settings: PlanningSettings): Promise<void> {
-    void db
-    void settings
-    return Promise.reject(new Error('NotImplementedError: planningSettingsRepository.save'))
+  async save(db: PlannerDb, settings: PlanningSettings): Promise<void> {
+    const problems = validatePlanningSettings(settings)
+    if (problems.length > 0) throw new Error(problems.map((problem) => problem.message).join('; '))
+    await db.settings.put({ id: PLANNING_KEY, value: settings })
   },
 }
