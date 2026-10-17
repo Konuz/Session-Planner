@@ -1,4 +1,5 @@
 // Filtry katalogu (7A): katalog, typ, gwiazdozbiór, jasność, rozmiar, „Widoczne w wybraną noc”, „Pasuje do kadru” [Z7, Z21].
+// ZAŚLEPKA funkcji „polecane-na-miesiac”: referenceNightDate i filtr „Polecane na miesiąc” zgłaszają NotImplementedError.
 import type { CatalogId, DsoObject, DsoType, EquipmentProfile, PlanningSettings } from '../types'
 import { computeOptics } from './astroMath'
 import type { ObjectNightSummary } from './catalogNight'
@@ -27,6 +28,11 @@ export interface CatalogFilterState {
   visibleTonight: boolean
   /** „Pasuje do kadru” aktywnego zestawu: wielka oś w zakresie `fitRange` krótszego boku kadru [Z21]. */
   fitsFrame: boolean
+  /**
+   * „Polecane na miesiąc” [Z22]: czas efektywny ≥ `minEffectiveHours` w nocy odniesienia (`referenceNightDate`),
+   * czyli w nocy z 15. dnia miesiąca nocy D. Brak albo false = filtr wyłączony.
+   */
+  recommendedThisMonth?: boolean
 }
 
 /** Stan domyślny: żaden filtr nie jest włączony, „pokaż obiekty bez jasności” zaznaczone. */
@@ -49,9 +55,23 @@ export interface CatalogFilterContext {
   settings: Pick<PlanningSettings, 'minEffectiveHours' | 'fitRange'>
   /** Aktywny zestaw; kadr z `computeOptics` (krótszy bok FOV). */
   profile: EquipmentProfile
+  /** Noc D jako 'RRRR-MM-DD' (data wieczoru). Gdy noc D jest nocą odniesienia, „Polecane na miesiąc” bierze `results`. */
+  nightDate?: string
+  /** Podsumowania obiektów w nocy odniesienia (dopasowanie po uid); null albo brak = wynik jeszcze się liczy. */
+  referenceResults?: readonly ObjectNightSummary[] | null
 }
 
 type Predicate = (object: DsoObject) => boolean
+
+function notImplemented(name: string): never {
+  throw new Error(`NotImplementedError: ${name}`)
+}
+
+/** Noc odniesienia „Polecane na miesiąc” [Z22]: 'RRRR-MM-15' z miesiąca daty wieczoru nocy D ('RRRR-MM-DD'). */
+export function referenceNightDate(nightDate: string): string {
+  void nightDate
+  return notImplemented('referenceNightDate')
+}
 
 const inRange = (value: number | null, range: NumberRange): boolean =>
   value !== null && value >= range.min && value <= range.max
@@ -94,5 +114,6 @@ export function filterCatalog(
     const frame = frameRange(context.profile, context.settings.fitRange)
     checks.push((o) => inRange(o.sizeMajorArcmin, frame))
   }
+  if (filters.recommendedThisMonth) notImplemented('filterCatalog: „Polecane na miesiąc”')
   return objects.filter((object) => checks.every((check) => check(object)))
 }
