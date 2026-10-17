@@ -1,13 +1,21 @@
 {
-  "test_cmd": "\"C:/Users/micha/AppData/Local/Programs/Python/Python312/python.exe\" -m pytest -q -p no:cacheprovider tests/features/{feature} --junitxml={junit}",
-  "regression_cmd": "\"C:/Users/micha/AppData/Local/Programs/Python/Python312/python.exe\" -m pytest -q -p no:cacheprovider tests --ignore=tests/features/{feature} --junitxml={junit}",
+  "test_cmd": "npx vitest run tests/features/{feature}/ --reporter=default --reporter=junit --outputFile.junit={junit}",
+  "regression_cmd": "npx tsc --noEmit && npx vite build --logLevel error && npx eslint . --max-warnings 0 && npx vitest run --exclude \"tests/features/{feature}/**\" --reporter=default --reporter=junit --outputFile.junit={junit}",
   "protected": [
     "tests/*",
-    "conftest.py",
-    "*/conftest.py",
-    "pytest.ini"
+    "src/*.test.ts",
+    "src/*.test.tsx",
+    "src/test/*",
+    "vite.config.ts",
+    "vitest.config.*",
+    "tsconfig.json",
+    "eslint.config.js",
+    "package.json",
+    "package-lock.json",
+    "public/catalog/*",
+    "src/data/*.json"
   ],
-  "timeout_sec": 300,
+  "timeout_sec": 600,
   "max_attempts": 20,
   "stuck_after": 8
 }
