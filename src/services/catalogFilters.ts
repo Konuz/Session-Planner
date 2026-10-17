@@ -1,6 +1,6 @@
 // Filtry katalogu (7A): katalog, typ, gwiazdozbiór, jasność, rozmiar, „Widoczne w wybraną noc”, „Pasuje do kadru” [Z7, Z21].
-// ZAŚLEPKA funkcji „filtry-katalogu”: filterCatalog zgłasza NotImplementedError.
 import type { CatalogId, DsoObject, DsoType, EquipmentProfile, PlanningSettings } from '../types'
+import { computeOptics } from './astroMath'
 import type { ObjectNightSummary } from './catalogNight'
 
 /** Zakres wartości; obie granice włącznie. */
@@ -51,8 +51,25 @@ export interface CatalogFilterContext {
   profile: EquipmentProfile
 }
 
-function notImplemented(name: string): never {
-  throw new Error(`NotImplementedError: ${name}`)
+type Predicate = (object: DsoObject) => boolean
+
+const inRange = (value: number | null, range: NumberRange): boolean =>
+  value !== null && value >= range.min && value <= range.max
+
+/** Zakres „Pasuje do kadru” [′]: części `fitRange` krótszego boku kadru z `computeOptics` [Z21]. */
+function frameRange(profile: EquipmentProfile, fitRange: readonly [number, number]): NumberRange {
+  const { telescope, camera } = profile
+  const optics = computeOptics({
+    apertureMm: telescope.apertureMm,
+    focalLengthMm: telescope.focalLengthMm,
+    reducerFactor: profile.reducerFactor,
+    resolutionXPx: camera.resolutionXPx,
+    resolutionYPx: camera.resolutionYPx,
+    pixelSizeUm: camera.pixelSizeUm,
+    binning: camera.binning,
+  })
+  const side = Math.min(optics.fovWidthDeg, optics.fovHeightDeg) * 60
+  return { min: side * fitRange[0], max: side * fitRange[1] }
 }
 
 /** Obiekty, które przechodzą wszystkie włączone filtry, w kolejności wejścia; wejście się nie zmienia. */
@@ -61,8 +78,21 @@ export function filterCatalog(
   filters: CatalogFilterState,
   context: CatalogFilterContext,
 ): DsoObject[] {
-  void objects
-  void filters
-  void context
-  return notImplemented('filterCatalog')
+  const checks: Predicate[] = []
+  const { catalogs, types, constellation, magnitude, size } = filters
+  if (catalogs.length > 0) checks.push((o) => o.designations.some((d) => catalogs.includes(d.catalog)))
+  if (types.length > 0) checks.push((o) => types.includes(o.type))
+  if (constellation !== null) checks.push((o) => o.constellation === constellation)
+  if (magnitude !== null) checks.push((o) => (o.magV === null ? filters.showWithoutMagnitude : inRange(o.magV, magnitude)))
+  if (size !== null) checks.push((o) => inRange(o.sizeMajorArcmin, size))
+  if (filters.visibleTonight) {
+    const minutes = new Map((context.results ?? []).map((s) => [s.uid, s.effectiveMinutes]))
+    const minimum = context.settings.minEffectiveHours * 60
+    checks.push((o) => inRange(minutes.get(o.uid) ?? null, { min: minimum, max: Infinity }))
+  }
+  if (filters.fitsFrame) {
+    const frame = frameRange(context.profile, context.settings.fitRange)
+    checks.push((o) => inRange(o.sizeMajorArcmin, frame))
+  }
+  return objects.filter((object) => checks.every((check) => check(object)))
 }
