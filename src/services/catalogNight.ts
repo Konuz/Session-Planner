@@ -1,6 +1,7 @@
 // Widoczność całego katalogu w noc D (7A): noc przygotowana raz, potem tanie podsumowanie każdego obiektu.
 import type { DsoObject, HorizonPoint, Mount, ObserverLocation, PlanningSettings } from '../types'
 import { precessionMatrix, toEquatorOfDate, type GeoPosition, type PrecessionMatrix } from './astroMath'
+import type { MoonConditions } from './filterAdvice'
 import {
   darknessWindow,
   effectiveMinutes,
@@ -61,6 +62,12 @@ export interface ObjectNightSummary {
   transitMs: number | null
   /** Najwyższe położenie w oknie ciemności; null przy „brak okna”. */
   highest: TimedAltitude | null
+  /**
+   * Dane Księżyca w oknie efektywnym obiektu (`moonConditions` z `filterAdvice.ts`, Księżyc liczony raz na krok siatki);
+   * null, gdy obiekt nie ma czasu efektywnego albo noc nie ma okna. Pole opcjonalne, bo podsumowania podane wprost
+   * (np. w testach innych funkcji) mogą go nie mieć; `summarizeObject` ma je zawsze wypełniać.
+   */
+  moon?: MoonConditions | null
 }
 
 /** Wynik dla całego katalogu: stan nocy i podsumowania w kolejności obiektów wejścia. */
