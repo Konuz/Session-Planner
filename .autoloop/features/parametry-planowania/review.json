@@ -1,0 +1,9 @@
+{
+  "verdict": "approve",
+  "issues": [
+    "(uwaga, nie blokuje) spec „Styk z resztą”: akcja zapisu w plannerStore nie ma nazwy w spec ani w zaślepce i nie ma testu; to samo dotyczy powrotu do wartości domyślnych przy niedostępnej bazie (żaden przykład P tego nie wymaga) -> nazwać akcję w spec/zaślepce (edytor-parametrow będzie jej używał) i dodać przykład P.",
+    "(uwaga, nie blokuje) przekazanie h_min i kroku wykresu z NightTab do buildObjectTrack/cursorReadout nie jest sprawdzane, bo zakładka bez obiektu nie pokazuje tych liczb, a spec świadomie ogranicza testy zakładki do podpisu i komunikatu, a P15 do modelu (bez wczytywania obiektu w zakładce). Próg i obniżanie są sprawdzone w zakładce (P12-P14). Ryzyko: stała 30° albo 1 min wewnątrz samej zakładki przy poprawnym podpisie przeszłaby testy -> do ręcznej kontroli przy implementacji.",
+    "(uwaga, nie blokuje) validation.test.ts P4: dla kroku wykresu nocy, seeingu i zakresu kadru poza 0–100% sprawdzana jest tylko liczba problemów (1), bo spec nie podaje tych komunikatów."
+  ],
+  "tests_digest": "f487432aa82b7ecb75e5e30f32edb55a15aa30ef469643f84fb894b36ada3e9d"
+}
