@@ -140,6 +140,18 @@ export function sampleGrid(window: TimeRange, stepMin: number, lonDegEast: numbe
   return grid
 }
 
+/** ok(tᵢ) z sekcji 4: przy czasie gwiazdowym lstDeg obiekt ma h > max(h_min, horyzont(az)). */
+export function visibleAt(
+  target: EquatorialDeg,
+  site: GeoPosition,
+  lstDeg: number,
+  minAltDeg: number,
+  horizon: readonly HorizonPoint[],
+): boolean {
+  const { altDeg, azDeg } = horizontalFromHourAngle(hourAngleDeg(lstDeg, target.raDeg), target.decDeg, site.latDeg)
+  return altDeg > Math.max(minAltDeg, horizonAltitudeDeg(horizon, azDeg))
+}
+
 /** Czas efektywny [min]: suma przedziałów z h > max(h_min, horyzont(az)), zaokrąglona do pełnych minut. */
 export function effectiveMinutes(
   target: EquatorialDeg,
@@ -150,8 +162,7 @@ export function effectiveMinutes(
 ): number {
   let totalMs = 0
   grid.lstDeg.forEach((lstDeg, i) => {
-    const { altDeg, azDeg } = horizontalFromHourAngle(hourAngleDeg(lstDeg, target.raDeg), target.decDeg, site.latDeg)
-    if (altDeg > Math.max(minAltDeg, horizonAltitudeDeg(horizon, azDeg))) totalMs += grid.durationsMs[i]
+    if (visibleAt(target, site, lstDeg, minAltDeg, horizon)) totalMs += grid.durationsMs[i]
   })
   return Math.round(totalMs / MINUTE_MS)
 }

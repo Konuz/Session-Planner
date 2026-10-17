@@ -1,7 +1,17 @@
 // Widoczność całego katalogu w noc D (7A): noc przygotowana raz, potem tanie podsumowanie każdego obiektu.
 import type { DsoObject, HorizonPoint, Mount, ObserverLocation, PlanningSettings } from '../types'
-import { precessionMatrix, toEquatorOfDate, type GeoPosition, type PrecessionMatrix } from './astroMath'
-import type { MoonConditions } from './filterAdvice'
+import {
+  angularSeparationDeg,
+  bodyPosition,
+  moonIlluminatedFraction,
+  precessionMatrix,
+  toEquatorOfDate,
+  type EquatorialDeg,
+  type GeoPosition,
+  type HorizontalDeg,
+  type PrecessionMatrix,
+} from './astroMath'
+import { moonConditions, type MoonConditions } from './filterAdvice'
 import {
   darknessWindow,
   effectiveMinutes,
@@ -11,6 +21,7 @@ import {
   nightSun,
   sampleGrid,
   transitMs,
+  visibleAt,
   type Darkness,
   type SampleGrid,
   type TimedAltitude,
@@ -47,9 +58,14 @@ export interface PreparedCatalogNight {
   darkness: Darkness
   /** Siatka okna ciemności co krok katalogowy (`sampleGrid`); null przy „brak okna”. */
   grid: SampleGrid | null
+  /** Księżyc w każdej próbce siatki (`bodyPosition` topocentrycznie, `moonIlluminatedFraction`); pusta przy „brak okna”. */
+  moon: MoonStep[]
   /** Macierz precesji liczona raz na noc (`precessionMatrix`). */
   precession: PrecessionMatrix
 }
+
+/** Księżyc w jednej próbce siatki: pozycja daty, wysokość geometryczna i oświetlenie. */
+export type MoonStep = EquatorialDeg & HorizontalDeg & { illumination: number }
 
 /** Podsumowanie obiektu w noc D. */
 export interface ObjectNightSummary {
@@ -82,15 +98,34 @@ export function prepareCatalogNight({ location, nightDate, settings }: CatalogNi
   const night = nightRange(nightDate, location.timezone)
   const { axis } = nightSun(site, night)
   const darkness = darknessWindow(site, night, settings.darknessThresholdDeg, settings.autoLowerThreshold)
+  const grid = darkness.kind === 'window' ? sampleGrid(darkness.window, settings.catalogStepMin, site.lonDegEast) : null
   return {
     site,
     horizon: location.horizon,
     minAltitudeDeg: settings.minAltitudeDeg,
     axis,
     darkness,
-    grid: darkness.kind === 'window' ? sampleGrid(darkness.window, settings.catalogStepMin, site.lonDegEast) : null,
+    grid,
+    moon: (grid?.timesMs ?? []).map((timeMs) => ({
+      ...bodyPosition('moon', site, timeMs),
+      illumination: moonIlluminatedFraction(timeMs),
+    })),
     precession: precessionMatrix((axis.startMs + axis.endMs) / 2),
   }
+}
+
+/** Dane Księżyca obiektu z próbek całej siatki (środek okna efektywnego może wypaść w próbce niewidocznej). */
+function moonOf(night: PreparedCatalogNight, grid: SampleGrid, ofDate: EquatorialDeg): MoonConditions | null {
+  return moonConditions(
+    night.moon.map((moon, i) => ({
+      timeMs: grid.timesMs[i],
+      durationMs: grid.durationsMs[i],
+      objectVisible: visibleAt(ofDate, night.site, grid.lstDeg[i], night.minAltitudeDeg, night.horizon),
+      moonAltDeg: moon.altDeg,
+      moonIllumination: moon.illumination,
+      moonSeparationDeg: angularSeparationDeg(ofDate, moon),
+    })),
+  )
 }
 
 /** Podsumowanie jednego obiektu w przygotowanej nocy. */
@@ -99,12 +134,15 @@ export function summarizeObject(night: PreparedCatalogNight, target: CatalogTarg
   // t₀ = zachód − 1 h; górowanie po końcu osi nocy wypada w dzień.
   const transit = transitMs(ofDate.raDeg, night.site.lonDegEast, night.axis.startMs)
   const { darkness, grid } = night
+  const minutes = grid ? effectiveMinutes(ofDate, night.site, grid, night.minAltitudeDeg, night.horizon) : null
   return {
     uid: target.uid,
     darkness,
-    effectiveMinutes: grid ? effectiveMinutes(ofDate, night.site, grid, night.minAltitudeDeg, night.horizon) : null,
+    effectiveMinutes: minutes,
     transitMs: transit <= night.axis.endMs ? transit : null,
     highest: darkness.kind === 'window' ? highestPoint(ofDate, night.site, darkness.window, transit) : null,
+    // Bez czasu efektywnego (także gdy widoczne próbki dają po zaokrągleniu 0 min) nie ma danych Księżyca.
+    moon: grid && minutes ? moonOf(night, grid, ofDate) : null,
   }
 }
 
