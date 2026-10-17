@@ -25,3 +25,10 @@ dist-ssr
 
 # Pobrane źródła katalogów (scripts/build-catalog.ts)
 scripts/.cache
+.autoloop/state.json
+.autoloop/results.tsv
+.autoloop/runs/
+.autoloop/*.tmp
+.claude/settings.local.json
+__pycache__/
+.pytest_cache/

@@ -13,6 +13,7 @@
     "build:catalog": "node scripts/build-catalog.ts"
   },
   "dependencies": {
+    "@tanstack/react-virtual": "3.14.13",
     "astronomy-engine": "2.1.19",
     "d3-scale": "^4.0.2",
     "date-fns": "^4.4.0",

@@ -1,0 +1,13 @@
+{
+  "test_cmd": "\"C:/Users/micha/AppData/Local/Programs/Python/Python312/python.exe\" -m pytest -q -p no:cacheprovider tests/features/{feature} --junitxml={junit}",
+  "regression_cmd": "\"C:/Users/micha/AppData/Local/Programs/Python/Python312/python.exe\" -m pytest -q -p no:cacheprovider tests --ignore=tests/features/{feature} --junitxml={junit}",
+  "protected": [
+    "tests/*",
+    "conftest.py",
+    "*/conftest.py",
+    "pytest.ini"
+  ],
+  "timeout_sec": 300,
+  "max_attempts": 20,
+  "stuck_after": 8
+}
