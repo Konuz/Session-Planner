@@ -36,6 +36,9 @@ export type GeoPosition = Pick<ObserverLocation, 'latDeg' | 'lonDegEast' | 'elev
 /** Macierz J2000 → prawdziwy równik i równonoc daty (precesja i nutacja). */
 export type PrecessionMatrix = RotationMatrix
 
+/** Wektor jednostkowy kierunku [x, y, z]: x ku RA 0h, y ku RA 6h, z ku biegunowi północnemu. */
+export type Vector3 = readonly [number, number, number]
+
 /** Kąt sprowadzony do [0, 360). */
 export function normalizeDeg(angleDeg: number): number {
   return ((angleDeg % 360) + 360) % 360
@@ -77,6 +80,23 @@ export function horizontalFromHourAngle(haDeg: number, decDeg: number, latDeg: n
     Math.sin(dec) * Math.cos(lat) - Math.cos(dec) * Math.sin(lat) * Math.cos(ha),
   )
   return { altDeg: Math.asin(Math.min(1, Math.max(-1, sinAlt))) / DEG, azDeg: normalizeDeg(az / DEG) }
+}
+
+/** Wektor jednostkowy kierunku (RA, Dec); iloczyn skalarny dwóch takich wektorów to cos ich odległości kątowej. */
+export function unitVector({ raDeg, decDeg }: EquatorialDeg): Vector3 {
+  const ra = raDeg * DEG
+  const dec = decDeg * DEG
+  return [Math.cos(dec) * Math.cos(ra), Math.cos(dec) * Math.sin(ra), Math.sin(dec)]
+}
+
+/** Zenit przy czasie gwiazdowym lstDeg i szerokości latDeg; iloczyn skalarny z wektorem obiektu (współrzędne daty) to sin wysokości. */
+export function zenithVector(lstDeg: number, latDeg: number): Vector3 {
+  return unitVector({ raDeg: lstDeg, decDeg: latDeg })
+}
+
+/** sin wysokości [°] sprowadzonej do [−90°, 90°], do porównań z sin wysokości z `zenithVector`. */
+export function sinAltitude(altDeg: number): number {
+  return Math.sin(Math.max(-90, Math.min(90, altDeg)) * DEG)
 }
 
 /** Szybki wzór Alt/Az dla współrzędnych daty w chwili timeMs [T8]. */
