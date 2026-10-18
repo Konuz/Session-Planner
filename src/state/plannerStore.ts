@@ -56,6 +56,11 @@ interface PlannerActions {
   toggleRedMode: () => void
   setTab: (tab: Tab) => void
   selectObject: (uid: string) => void
+  /**
+   * Otwarcie obiektu z katalogu na wykresie nocy: uid trafia do `objectUid`, zakładka zmienia się na 'night';
+   * noc D, lokalizacja i kursor czasu (z trybem „Teraz”) zostają bez zmian.
+   */
+  openObject: (uid: string) => void
   setCatalogFilters: (filters: CatalogFilterState) => void
   setCatalogSort: (sort: CatalogSortKey) => void
 }
@@ -87,6 +92,11 @@ function nightAndCursor(
   const night = nightRange(nightDate, location.timezone)
   const darkness = darknessWindow(location, night, settings.darknessThresholdDeg, settings.autoLowerThreshold)
   return { nightDate, cursorMs: defaultCursorMs({ darkness, nightDate, timeZone: location.timezone }) }
+}
+
+// ZAŚLEPKA funkcji „wybor-obiektu”: openObject zgłasza NotImplementedError.
+function notImplemented(name: string): never {
+  throw new Error(`NotImplementedError: ${name}`)
 }
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error))
@@ -206,6 +216,11 @@ export const usePlannerStore = create<PlannerStore>()(
 
         selectObject(uid) {
           set({ objectUid: uid })
+        },
+
+        openObject(uid) {
+          void uid
+          notImplemented('openObject')
         },
 
         setCatalogFilters(catalogFilters) {

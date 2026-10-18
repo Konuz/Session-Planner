@@ -37,7 +37,17 @@ function tokenColor(token: ColorToken): CSSProperties {
   return { color: `var(${tokenVariable(token)})`, borderColor: `var(${tokenVariable(token)})` }
 }
 
-export function ObjectCard({ card }: { card: ObjectCardModel }) {
+export interface ObjectCardProps {
+  card: ObjectCardModel
+  /**
+   * Przycisk „Pokaż na wykresie nocy” (ikona, tekst, co najmniej 44 px wysokości), element <button> bezpośrednio w
+   * karcie; kliknięcie wywołuje tę funkcję. CatalogList podaje tu otwarcie obiektu karty (`openObject(uid)` ze stanu).
+   * ZAŚLEPKA funkcji „wybor-obiektu”: karta jeszcze nie ma przycisku.
+   */
+  onShowOnNight?: () => void
+}
+
+export function ObjectCard({ card }: ObjectCardProps) {
   const TypeIcon = TYPE_ICONS[card.type]
   return (
     <article className="card flex flex-col gap-2 p-3 text-sm text-foreground">

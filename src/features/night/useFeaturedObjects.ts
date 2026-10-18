@@ -5,7 +5,13 @@ import type { DsoObject } from '../../types'
 export type FeaturedObjects =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; objects: DsoObject[] }
+  | {
+      status: 'ready'
+      /** Lista „Klasyki” (`featuredObjects`). */
+      objects: DsoObject[]
+      /** Cały katalog (`loadCatalog`) do wyboru obiektu w zakładce Noc. ZAŚLEPKA funkcji „wybor-obiektu”: hak jeszcze go nie podaje. */
+      catalog?: DsoObject[]
+    }
 
 /** Obiekty z listy „Klasyki” po wczytaniu katalogu; `retry` ponawia pobranie po błędzie. */
 export function useFeaturedObjects(): { featured: FeaturedObjects; retry: () => void } {

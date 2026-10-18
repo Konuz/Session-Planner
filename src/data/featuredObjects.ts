@@ -19,6 +19,21 @@ export function selectFeatured(objects: readonly DsoObject[], uid: string | null
   return objects.find((object) => object.uid === uid) ?? objects.find(isDefault) ?? objects[0] ?? null
 }
 
+function notImplemented(name: string): never {
+  throw new Error(`NotImplementedError: ${name}`)
+}
+
+/**
+ * Opcje wyboru obiektu w zakładce Noc (czysta funkcja): lista „Klasyki” w dotychczasowej kolejności, a gdy bieżący
+ * obiekt jest spoza tej listy – on jako dodatkowa, pierwsza pozycja. `current` = null: sama lista „Klasyki”.
+ * ZAŚLEPKA funkcji „wybor-obiektu”: zgłasza NotImplementedError.
+ */
+export function nightObjectOptions(featured: readonly DsoObject[], current: DsoObject | null): DsoObject[] {
+  void featured
+  void current
+  return notImplemented('nightObjectOptions')
+}
+
 let catalogRequest: Promise<DsoObject[]> | null = null
 
 /** Katalog z public/catalog (6.1), pobierany raz; plik nie trafia do paczki JS. */
