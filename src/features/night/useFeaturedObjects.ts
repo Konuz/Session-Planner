@@ -9,11 +9,11 @@ export type FeaturedObjects =
       status: 'ready'
       /** Lista „Klasyki” (`featuredObjects`). */
       objects: DsoObject[]
-      /** Cały katalog (`loadCatalog`) do wyboru obiektu w zakładce Noc. ZAŚLEPKA funkcji „wybor-obiektu”: hak jeszcze go nie podaje. */
-      catalog?: DsoObject[]
+      /** Cały katalog (`loadCatalog`) do wyboru obiektu w zakładce Noc. */
+      catalog: DsoObject[]
     }
 
-/** Obiekty z listy „Klasyki” po wczytaniu katalogu; `retry` ponawia pobranie po błędzie. */
+/** Obiekty z listy „Klasyki” i cały katalog po wczytaniu; `retry` ponawia pobranie po błędzie. */
 export function useFeaturedObjects(): { featured: FeaturedObjects; retry: () => void } {
   const [attempt, setAttempt] = useState(0)
   const [featured, setFeatured] = useState<FeaturedObjects>({ status: 'loading' })
@@ -22,7 +22,7 @@ export function useFeaturedObjects(): { featured: FeaturedObjects; retry: () => 
     let active = true
     loadCatalog().then(
       (catalog) => {
-        if (active) setFeatured({ status: 'ready', objects: featuredObjects(catalog) })
+        if (active) setFeatured({ status: 'ready', objects: featuredObjects(catalog), catalog })
       },
       (error: unknown) => {
         if (active) setFeatured({ status: 'error', message: error instanceof Error ? error.message : String(error) })

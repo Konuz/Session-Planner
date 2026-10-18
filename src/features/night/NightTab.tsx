@@ -1,7 +1,7 @@
-// Zakładka Noc (sekcja 9): wykres nocy (7C) dla obiektu z listy „Klasyki” i podsumowanie nocy.
+// Zakładka Noc (sekcja 9): wykres nocy (7C) dla obiektu z katalogu i podsumowanie nocy.
 import { RotateCcw, TriangleAlert } from 'lucide-react'
 import { useMemo, type ReactNode } from 'react'
-import { selectFeatured } from '../../data/featuredObjects'
+import { nightObjectOptions, selectFeatured } from '../../data/featuredObjects'
 import { formatDesignation } from '../../services/catalog/records'
 import { formatDeg, formatPercent } from '../../services/format'
 import {
@@ -55,8 +55,7 @@ export function NightTab() {
   const patternPrefix = useSvgId('night-pattern')
   const patternIds = { hatch: `${patternPrefix}-hatch`, dots: `${patternPrefix}-dots` }
 
-  const objects = featured.status === 'ready' ? featured.objects : []
-  const object = selectFeatured(objects, objectUid)
+  const object = selectFeatured(featured.status === 'ready' ? featured.catalog : [], objectUid)
   const { minAltitudeDeg } = settings
   const frame = useMemo(
     () => buildNightFrame(location, location.timezone, nightDate, settings),
@@ -76,7 +75,7 @@ export function NightTab() {
         <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
           <div className="flex min-w-60 flex-1 flex-col gap-1">
             <h2 id="night-chart-title" className="text-xs text-muted">
-              Obiekt z listy „Klasyki”
+              Obiekt
             </h2>
             {featured.status === 'ready' && object ? (
               <select
@@ -85,7 +84,7 @@ export function NightTab() {
                 value={object.uid}
                 onChange={(event) => selectObject(event.target.value)}
               >
-                {objects.map((option) => (
+                {nightObjectOptions(featured.objects, object).map((option) => (
                   <option key={option.uid} value={option.uid}>
                     {objectName(option)}
                   </option>

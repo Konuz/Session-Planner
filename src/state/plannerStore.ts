@@ -94,11 +94,6 @@ function nightAndCursor(
   return { nightDate, cursorMs: defaultCursorMs({ darkness, nightDate, timeZone: location.timezone }) }
 }
 
-// ZAŚLEPKA funkcji „wybor-obiektu”: openObject zgłasza NotImplementedError.
-function notImplemented(name: string): never {
-  throw new Error(`NotImplementedError: ${name}`)
-}
-
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error))
 
 export const usePlannerStore = create<PlannerStore>()(
@@ -219,8 +214,7 @@ export const usePlannerStore = create<PlannerStore>()(
         },
 
         openObject(uid) {
-          void uid
-          notImplemented('openObject')
+          set({ objectUid: uid, tab: 'night' })
         },
 
         setCatalogFilters(catalogFilters) {

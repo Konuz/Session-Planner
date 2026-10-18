@@ -1,10 +1,11 @@
 // Lista katalogu (7A): przewijana lista kart obiektów, wirtualizowana przez @tanstack/react-virtual.
-// Komponent prezentacyjny: obiekty, wyniki nocy D i kontekst kart dostaje przez właściwości.
+// Obiekty, wyniki nocy D i kontekst kart dostaje przez właściwości; przycisk karty otwiera obiekt na wykresie nocy.
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useMemo, useRef } from 'react'
 import { formatDesignation } from '../../services/catalog/records'
 import type { ObjectNightSummary } from '../../services/catalogNight'
 import { filterAdvice } from '../../services/filterAdvice'
+import { usePlannerStore } from '../../state/plannerStore'
 import type { DsoObject, EquipmentProfile, MoonRuleThresholds } from '../../types'
 import { ObjectCard } from './ObjectCard'
 import { DSO_TYPES, objectCardModel, type CardContext } from './objectCardModel'
@@ -40,6 +41,7 @@ function PendingCard({ object }: { object: DsoObject }) {
 
 export function CatalogList({ objects, results, context, profile, moonRules, initialRect }: CatalogListProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const openObject = usePlannerStore((state) => state.openObject)
   const summaries = useMemo(() => new Map((results ?? []).map((summary) => [summary.uid, summary])), [results])
   // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
@@ -72,6 +74,7 @@ export function CatalogList({ objects, results, context, profile, moonRules, ini
                     filterAdvice(summary.moon ?? null, object.type, moonRules, profile.filters),
                     context,
                   )}
+                  onShowOnNight={() => openObject(object.uid)}
                 />
               ) : (
                 <PendingCard object={object} />

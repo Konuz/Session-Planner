@@ -1,6 +1,7 @@
 // Karta obiektu w katalogu (7A): komponent prezentacyjny modelu karty; ikony z Lucide, kolory tylko z tokenów.
 import {
   Blend,
+  ChartSpline,
   CircleDot,
   CircleQuestionMark,
   Cloud,
@@ -42,12 +43,12 @@ export interface ObjectCardProps {
   /**
    * Przycisk „Pokaż na wykresie nocy” (ikona, tekst, co najmniej 44 px wysokości), element <button> bezpośrednio w
    * karcie; kliknięcie wywołuje tę funkcję. CatalogList podaje tu otwarcie obiektu karty (`openObject(uid)` ze stanu).
-   * ZAŚLEPKA funkcji „wybor-obiektu”: karta jeszcze nie ma przycisku.
+   * Bez tej funkcji karta nie ma przycisku.
    */
   onShowOnNight?: () => void
 }
 
-export function ObjectCard({ card }: ObjectCardProps) {
+export function ObjectCard({ card, onShowOnNight }: ObjectCardProps) {
   const TypeIcon = TYPE_ICONS[card.type]
   return (
     <article className="card flex flex-col gap-2 p-3 text-sm text-foreground">
@@ -93,6 +94,12 @@ export function ObjectCard({ card }: ObjectCardProps) {
             </li>
           ))}
         </ul>
+      )}
+      {onShowOnNight && (
+        <button type="button" className="button self-start" onClick={onShowOnNight}>
+          <ChartSpline aria-hidden size={16} />
+          Pokaż na wykresie nocy
+        </button>
       )}
     </article>
   )
