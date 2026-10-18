@@ -165,7 +165,10 @@ export function defaultCursorMs({ darkness, nightDate, timeZone }: Pick<NightFra
 const formatDeg = (value: number) => `${value}°`.replace('-', '−')
 
 /** Komunikat o obniżonym progu albo o braku okna ciemności [T6]; null, gdy okno jest przy wybranym progu. */
-export function darknessNote({ darkness, requestedThresholdDeg }: NightFrame): string | null {
+export function darknessNote({
+  darkness,
+  requestedThresholdDeg,
+}: Pick<NightFrame, 'darkness' | 'requestedThresholdDeg'>): string | null {
   if (darkness.kind === 'window') {
     if (!darkness.lowered) return null
     return `Brak okna przy progu ${formatDeg(requestedThresholdDeg)}; użyto progu ${formatDeg(darkness.thresholdDeg)}.`

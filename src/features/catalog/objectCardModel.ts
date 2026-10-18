@@ -79,8 +79,8 @@ export interface ObjectCardModel {
   badges: ObjectCardBadge[]
 }
 
-/** Etykieta i token koloru typu (P10, P11). */
-const TYPES: Record<DsoType, { label: string; color: ColorToken }> = {
+/** Etykieta i token koloru typu (P10, P11); kolejność typów także w panelu filtrów. */
+export const DSO_TYPES: Record<DsoType, { label: string; color: ColorToken }> = {
   galaxy: { label: 'galaktyka', color: 'galaxy' },
   galaxy_group: { label: 'grupa galaktyk', color: 'galaxy' },
   emission_nebula: { label: 'mgławica emisyjna', color: 'emissionNebula' },
@@ -127,8 +127,8 @@ export function objectCardModel(
     otherDesignations: others.length > 0 ? others.map(formatDesignation).join(', ') : null,
     name: object.commonNames[0] ?? null,
     type: object.type,
-    typeLabel: TYPES[object.type].label,
-    typeColor: TYPES[object.type].color,
+    typeLabel: DSO_TYPES[object.type].label,
+    typeColor: DSO_TYPES[object.type].color,
     position: `wysokość ${formatDeg(altDeg)}, azymut ${formatDeg(azDeg)}`,
     moonSeparation: formatDeg(angularSeparationDeg(ofDate, context.moonAtCursor)),
     culmination:

@@ -2,6 +2,7 @@ import { TriangleAlert } from 'lucide-react'
 import { useEffect } from 'react'
 import { NavBar } from './app/NavBar'
 import { TopBar } from './app/TopBar'
+import { CatalogTab } from './features/catalog/CatalogTab'
 import { NightTab } from './features/night/NightTab'
 import { SettingsTab } from './features/settings/SettingsTab'
 import { usePlannerStore } from './state/plannerStore'
@@ -41,6 +42,8 @@ export default function App() {
           )}
           {!locationsReady ? (
             <p className="text-sm text-muted">Wczytywanie lokalizacji…</p>
+          ) : tab === 'catalog' ? (
+            <CatalogTab />
           ) : tab === 'night' ? (
             <NightTab />
           ) : (

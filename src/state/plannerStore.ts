@@ -1,6 +1,5 @@
 // Stan globalny (7.0): lokalizacje, parametry planowania, noc D, aktywny zestaw, kursor czasu, Red Mode i zakładka.
 // W localStorage zostają tylko drobne preferencje interfejsu (sekcja 3); lokalizacje i parametry są w IndexedDB.
-// ZAŚLEPKA funkcji „zakladka-katalog”: setCatalogFilters i setCatalogSort zgłaszają NotImplementedError.
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { appDb } from '../data/appDb'
@@ -90,10 +89,6 @@ function nightAndCursor(
   return { nightDate, cursorMs: defaultCursorMs({ darkness, nightDate, timeZone: location.timezone }) }
 }
 
-function notImplemented(name: string): never {
-  throw new Error(`NotImplementedError: ${name}`)
-}
-
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error))
 
 export const usePlannerStore = create<PlannerStore>()(
@@ -110,7 +105,7 @@ export const usePlannerStore = create<PlannerStore>()(
         cursorMs: startMs,
         followNow: true,
         redMode: false,
-        tab: 'night',
+        tab: 'catalog',
         objectUid: null,
         planningSettings: DEFAULT_PLANNING_SETTINGS,
         catalogFilters: DEFAULT_CATALOG_FILTERS,
@@ -214,13 +209,11 @@ export const usePlannerStore = create<PlannerStore>()(
         },
 
         setCatalogFilters(catalogFilters) {
-          void catalogFilters
-          notImplemented('setCatalogFilters')
+          set({ catalogFilters })
         },
 
         setCatalogSort(catalogSort) {
-          void catalogSort
-          notImplemented('setCatalogSort')
+          set({ catalogSort })
         },
       }
     },

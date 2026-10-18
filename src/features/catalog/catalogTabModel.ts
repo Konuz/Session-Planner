@@ -1,11 +1,11 @@
 // Model widoku zakładki „Katalog” (7A): czyste funkcje: lista po filtrach i sortowaniu, liczba wyników, komunikaty,
 // stan liczenia i żądania do wysłania do Workera.
-// ZAŚLEPKA funkcji „zakladka-katalog”: catalogView i requestsToSend zgłaszają NotImplementedError.
-import type { CatalogFilterState } from '../../services/catalogFilters'
+import { filterCatalog, referenceNightDate, type CatalogFilterState } from '../../services/catalogFilters'
 import type { CatalogNightParams, ObjectNightSummary } from '../../services/catalogNight'
-import type { CatalogSortKey } from '../../services/catalogSort'
+import { sortCatalog, type CatalogSortKey } from '../../services/catalogSort'
+import { darknessNote } from '../../services/nightChart'
 import type { DsoObject, EquipmentProfile, ObserverLocation, PlanningSettings } from '../../types'
-import type { ErrorResponse, ResultResponse } from '../../workers/catalogMessages'
+import { buildCatalogRequest, type ErrorResponse, type ResultResponse } from '../../workers/catalogMessages'
 
 /** Katalog z `loadCatalog` w kontenerze zakładki: wczytywanie, błąd z przyczyną albo obiekty. */
 export type CatalogLoad =
@@ -74,14 +74,49 @@ export interface CatalogTabState {
   sort: CatalogSortKey
 }
 
-function notImplemented(name: string): never {
-  throw new Error(`NotImplementedError: ${name}`)
+const COUNT_FORMAT = new Intl.NumberFormat('pl-PL')
+
+function statusOf(catalog: CatalogLoad, tonight: NightResponse | null): string | null {
+  if (catalog.status === 'loading') return 'Wczytywanie katalogu…'
+  if (catalog.status === 'error') return `Nie udało się wczytać katalogu: ${catalog.message}`
+  if (tonight === null) return 'Liczenie widoczności…'
+  if (tonight.type === 'error') return `Nie udało się policzyć widoczności: ${tonight.message}`
+  return null
 }
 
 /** Model widoku zakładki: lista, liczba wyników, stan i komunikaty. */
 export function catalogView(input: CatalogViewInput): CatalogView {
-  void input
-  return notImplemented('catalogView')
+  const { catalog, filters, sort, nightDate, settings, profile, tonight, reference } = input
+  const all = catalog.status === 'ready' ? catalog.objects : []
+  const results = tonight?.type === 'result' ? tonight.objects : null
+  const referenceResults = reference?.type === 'result' ? reference.objects : null
+  const filtered = filterCatalog(all, filters, { results, settings, profile, nightDate, referenceResults })
+  const objects = sortCatalog(filtered, sort, { results, settings, profile })
+  const ready = catalog.status === 'ready'
+  return {
+    objects,
+    results,
+    count: ready ? `${COUNT_FORMAT.format(objects.length)} z ${COUNT_FORMAT.format(all.length)} obiektów` : null,
+    status: statusOf(catalog, tonight),
+    retry: catalog.status === 'error',
+    darknessNote:
+      tonight?.type === 'result'
+        ? darknessNote({ darkness: tonight.darkness, requestedThresholdDeg: settings.darknessThresholdDeg })
+        : null,
+    emptyNote: ready && objects.length === 0 ? 'Żaden obiekt nie spełnia filtrów.' : null,
+  }
+}
+
+/** Klucz żądania „licz”: równe parametry dają ten sam klucz (kolejność pól z `buildCatalogRequest`). */
+export function requestKey(params: CatalogNightParams): string {
+  return JSON.stringify(params)
+}
+
+/** Żądania potrzebne w stanie `state`: noc D i przy włączonym „Polecane na miesiąc” noc odniesienia, jeśli jest inna. */
+function requestsOf({ location, nightDate, settings, filters }: CatalogTabState): CatalogNightParams[] {
+  const reference = referenceNightDate(nightDate)
+  const nights = filters.recommendedThisMonth && reference !== nightDate ? [nightDate, reference] : [nightDate]
+  return nights.map((night) => buildCatalogRequest({ location, nightDate: night, settings }))
 }
 
 /**
@@ -90,7 +125,6 @@ export function catalogView(input: CatalogViewInput): CatalogView {
  * Wysyła się tylko żądania, których w stanie `previous` nie było.
  */
 export function requestsToSend(previous: CatalogTabState | null, next: CatalogTabState): CatalogNightParams[] {
-  void previous
-  void next
-  return notImplemented('requestsToSend')
+  const sent = new Set((previous ? requestsOf(previous) : []).map(requestKey))
+  return requestsOf(next).filter((params) => !sent.has(requestKey(params)))
 }
