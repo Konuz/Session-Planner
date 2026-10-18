@@ -13,6 +13,10 @@ export const colorTokens = [
   'galaxy',
   'planetaryNebula',
   'cluster',
+  // Odznaki rekomendacji filtrów (karta obiektu): dobre, średnie i złe warunki.
+  'badgeGood',
+  'badgeFair',
+  'badgePoor',
 ] as const
 
 export type ColorToken = (typeof colorTokens)[number]
@@ -31,6 +35,9 @@ export const darkCosmos: Palette = {
   galaxy: '#A78BFA',
   planetaryNebula: '#2DD4BF', // [Z15]
   cluster: '#FACC15', // [Z15]
+  badgeGood: '#22C55E',
+  badgeFair: '#EAB308',
+  badgePoor: '#EF4444',
 }
 
 export const redMode: Palette = {
@@ -46,6 +53,9 @@ export const redMode: Palette = {
   galaxy: '#CC0000',
   planetaryNebula: '#CC0000',
   cluster: '#CC0000',
+  badgeGood: '#FF0000',
+  badgeFair: '#CC0000',
+  badgePoor: '#800000',
 }
 
 /** Rozmycie tła karty: w Red Mode karta jest nieprzezroczysta i bez rozmycia. */
