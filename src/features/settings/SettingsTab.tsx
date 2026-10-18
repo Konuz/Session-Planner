@@ -1,10 +1,13 @@
-// Zakładka Ustawienia (sekcja 9): lokalizacje i edytor horyzontu; zapis w IndexedDB przez repozytorium lokalizacji.
+// Zakładka Ustawienia (sekcja 9): lokalizacje i edytor horyzontu, pod nimi parametry planowania; zapis w IndexedDB.
 import { MapPin, Plus, Save, Trash2, Undo2 } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 import { locationToForm, readLocationForm, type LocationField, type LocationForm } from '../../services/location'
 import { useActiveLocation, usePlannerStore } from '../../state/plannerStore'
-import type { HorizonPoint, ObserverLocation } from '../../types'
+import type { HorizonPoint, ObserverLocation, PlanningSettings } from '../../types'
+import { Field } from './Field'
 import { HorizonEditor } from './HorizonEditor'
+import { PlanningSettingsEditor } from './PlanningSettingsEditor'
+import { planningSettingsToForm, submitPlanningSettingsForm, type PlanningSaveMessage } from './planningSettingsForm'
 
 const TIME_ZONES = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : []
 
@@ -12,12 +15,54 @@ const errorText = (error: unknown) => (error instanceof Error ? error.message : 
 
 export function SettingsTab() {
   const location = useActiveLocation()
+  const planningSettings = usePlannerStore((state) => state.planningSettings)
+  // Komunikat zapisu parametrów jest tutaj, bo udany zapis zmienia klucz sekcji poniżej.
+  const [planningMessage, setPlanningMessage] = useState<PlanningSaveMessage | null>(null)
   return (
     <div className="flex flex-col gap-4">
       <LocationList />
       {/* Klucz resetuje formularz po wyborze innej lokalizacji. */}
       <LocationEditor key={location.id} location={location} />
+      {/* Klucz ustawia formularz na nowo, gdy zmienią się zapisane parametry (wczytanie z bazy po starcie, zapis). */}
+      <PlanningSettingsSection
+        key={JSON.stringify(planningSettings)}
+        saved={planningSettings}
+        message={planningMessage}
+        onMessage={setPlanningMessage}
+      />
     </div>
+  )
+}
+
+function PlanningSettingsSection({
+  saved,
+  message,
+  onMessage,
+}: {
+  saved: PlanningSettings
+  message: PlanningSaveMessage | null
+  onMessage: (message: PlanningSaveMessage | null) => void
+}) {
+  const savePlanningSettings = usePlannerStore((state) => state.savePlanningSettings)
+  const [form, setForm] = useState(() => planningSettingsToForm(saved))
+
+  const save = async () => {
+    const result = await submitPlanningSettingsForm(form, savePlanningSettings)
+    setForm(result.form)
+    onMessage(result.message)
+  }
+
+  return (
+    <PlanningSettingsEditor
+      saved={saved}
+      form={form}
+      message={message}
+      onFormChange={(next) => {
+        setForm(next)
+        onMessage(null)
+      }}
+      onSave={() => void save()}
+    />
   )
 }
 
@@ -77,16 +122,6 @@ function sameHorizon(a: readonly HorizonPoint[], b: readonly HorizonPoint[]): bo
 
 function sameForm(a: LocationForm, b: LocationForm): boolean {
   return (Object.keys(a) as (keyof LocationForm)[]).every((key) => a[key] === b[key])
-}
-
-function Field({ label, error, hint, children }: { label: string; error?: string; hint?: string; children: ReactNode }) {
-  return (
-    <label className="flex flex-col gap-1 text-xs text-muted">
-      {label}
-      {children}
-      {error ? <span className="text-accent">{error}</span> : hint && <span>{hint}</span>}
-    </label>
-  )
 }
 
 function LocationEditor({ location }: { location: ObserverLocation }) {

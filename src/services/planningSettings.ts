@@ -37,6 +37,7 @@ interface RangeRule {
   integer?: boolean
 }
 
+const FIT_LABEL = 'Pasuje do kadru'
 const ILLUMINATION = { min: 0, max: 1, range: '0–100%' }
 const SEPARATION = { min: 0, max: 180, range: '0–180°' }
 
@@ -86,11 +87,17 @@ function problemsOf(raw: unknown): PlanningSettingsProblem[] {
   const low = read('fitRange.0')
   const high = read('fitRange.1')
   if (!inRange(low, 0, 1) || !inRange(high, 0, 1)) {
-    problems.push({ field: 'fitRange', message: 'Pasuje do kadru: dozwolony zakres 0–100%' })
+    problems.push({ field: 'fitRange', message: `${FIT_LABEL}: dozwolony zakres 0–100%` })
   } else if (low >= high) {
-    problems.push({ field: 'fitRange', message: 'Pasuje do kadru: dolna granica musi być mniejsza od górnej' })
+    problems.push({ field: 'fitRange', message: `${FIT_LABEL}: dolna granica musi być mniejsza od górnej` })
   }
   return problems
+}
+
+/** Etykieta pola w komunikatach (np. „h_min”, „Pasuje do kadru”); `field` jak w `PlanningSettingsProblem`. */
+export function planningSettingLabel(field: string): string {
+  if (field === 'fitRange') return FIT_LABEL
+  return RANGE_RULES.find((rule) => rule.field === field)?.label ?? field
 }
 
 /** Lista problemów (pole i komunikat); pusta, gdy parametry są poprawne. */
