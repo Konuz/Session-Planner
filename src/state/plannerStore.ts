@@ -1,11 +1,14 @@
 // Stan globalny (7.0): lokalizacje, parametry planowania, noc D, aktywny zestaw, kursor czasu, Red Mode i zakładka.
 // W localStorage zostają tylko drobne preferencje interfejsu (sekcja 3); lokalizacje i parametry są w IndexedDB.
+// ZAŚLEPKA funkcji „zakladka-katalog”: setCatalogFilters i setCatalogSort zgłaszają NotImplementedError.
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { appDb } from '../data/appDb'
 import { DEFAULT_PROFILE_ID, DEMO_PROFILES } from '../data/demo'
 import { DEFAULT_LOCATIONS, DEFAULT_LOCATION_ID } from '../data/locations'
 import { locationRepository, planningSettingsRepository } from '../data/repositories'
+import { DEFAULT_CATALOG_FILTERS, type CatalogFilterState } from '../services/catalogFilters'
+import { DEFAULT_CATALOG_SORT, type CatalogSortKey } from '../services/catalogSort'
 import { defaultCursorMs } from '../services/nightChart'
 import { DEFAULT_PLANNING_SETTINGS } from '../services/planningSettings'
 import { currentNightDate } from '../services/time'
@@ -15,7 +18,7 @@ import type { EquipmentProfile, ObserverLocation, PlanningSettings } from '../ty
 /** Profile sprzętu z 6.4; dodawanie i edycję profili obejmuje moduł 7F. */
 export const PROFILES: readonly EquipmentProfile[] = DEMO_PROFILES
 
-export type Tab = 'night' | 'settings'
+export type Tab = 'catalog' | 'night' | 'settings'
 
 interface PlannerState {
   locations: ObserverLocation[]
@@ -34,6 +37,10 @@ interface PlannerState {
   objectUid: string | null
   /** Parametry planowania (IndexedDB); przed wczytaniem bazy albo bez bazy – wartości domyślne. */
   planningSettings: PlanningSettings
+  /** Filtry zakładki Katalog; bez zapisu między sesjami. */
+  catalogFilters: CatalogFilterState
+  /** Sortowanie zakładki Katalog; bez zapisu między sesjami. */
+  catalogSort: CatalogSortKey
 }
 
 interface PlannerActions {
@@ -50,6 +57,8 @@ interface PlannerActions {
   toggleRedMode: () => void
   setTab: (tab: Tab) => void
   selectObject: (uid: string) => void
+  setCatalogFilters: (filters: CatalogFilterState) => void
+  setCatalogSort: (sort: CatalogSortKey) => void
 }
 
 export type PlannerStore = PlannerState & PlannerActions
@@ -81,6 +90,10 @@ function nightAndCursor(
   return { nightDate, cursorMs: defaultCursorMs({ darkness, nightDate, timeZone: location.timezone }) }
 }
 
+function notImplemented(name: string): never {
+  throw new Error(`NotImplementedError: ${name}`)
+}
+
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error))
 
 export const usePlannerStore = create<PlannerStore>()(
@@ -100,6 +113,8 @@ export const usePlannerStore = create<PlannerStore>()(
         tab: 'night',
         objectUid: null,
         planningSettings: DEFAULT_PLANNING_SETTINGS,
+        catalogFilters: DEFAULT_CATALOG_FILTERS,
+        catalogSort: DEFAULT_CATALOG_SORT,
 
         async loadLocations() {
           let locations: ObserverLocation[]
@@ -196,6 +211,16 @@ export const usePlannerStore = create<PlannerStore>()(
 
         selectObject(uid) {
           set({ objectUid: uid })
+        },
+
+        setCatalogFilters(catalogFilters) {
+          void catalogFilters
+          notImplemented('setCatalogFilters')
+        },
+
+        setCatalogSort(catalogSort) {
+          void catalogSort
+          notImplemented('setCatalogSort')
         },
       }
     },
