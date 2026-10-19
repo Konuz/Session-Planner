@@ -1,5 +1,7 @@
 {
-  "test_cmd": "npx vitest run tests/features/{feature}/ --reporter=default --reporter=junit --outputFile.junit={junit}",
+  "test_cmd": "npx vitest run tests/features/{feature}/ --exclude \"tests/features/{feature}/hidden/**\" --reporter=default --reporter=junit --outputFile.junit={junit}",
+  "hidden_cmd": "npx vitest run tests/features/{feature}/hidden/ --reporter=default --reporter=junit --outputFile.junit={junit}",
+  "hidden_dir": "tests/features/{feature}/hidden",
   "regression_cmd": "npx tsc --noEmit && npx vite build --logLevel error && npx eslint . --max-warnings 0 && npx vitest run --exclude \"tests/features/{feature}/**\" --reporter=default --reporter=junit --outputFile.junit={junit}",
   "protected": [
     "tests/*",
