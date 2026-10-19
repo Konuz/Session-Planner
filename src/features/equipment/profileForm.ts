@@ -13,6 +13,7 @@ import {
   type EquipmentField,
 } from '../../services/equipment'
 import type { CameraSpec, EquipmentProfile, FilterId, Mount, TelescopeSpec } from '../../types'
+import { equipmentLabel } from './userEquipment'
 
 /** Stan formularza: pola liczbowe jako tekst (przecinek albo kropka dziesiętna), reszta jako wybór. */
 export interface ProfileForm {
@@ -145,7 +146,7 @@ function fixed(value: number, digits: number, minDigits = digits): string {
   }).format(value)
 }
 
-const specLabel = (spec: { brand: string; model: string }) => `${spec.brand} ${spec.model}`
+const specLabel = equipmentLabel
 
 /** Profil → tekst pól. Pola OAG są puste, gdy `oag: null`. */
 export function profileToForm(profile: EquipmentProfile): ProfileForm {
