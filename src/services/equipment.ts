@@ -120,3 +120,64 @@ export function changedTelescopeFields(
 export function changedCameraFields(camera: EquipmentProfile['camera'], spec: CameraSpec): (typeof CAMERA_FIELDS)[number][] {
   return CAMERA_FIELDS.filter((field) => camera[field] !== spec[field])
 }
+
+// ---------- Profile sprzętu (7F): walidacja zapisu, odczyt z bazy, nazwy nowych profili ----------
+
+const FILTER_IDS: readonly string[] = ['L', 'R', 'G', 'B', 'Ha', 'OIII', 'SII', 'OSC', 'DualBand']
+
+/** Wartości pól profilu sprawdzane przez `validateEquipment`. */
+export function profileValues(profile: EquipmentProfile): EquipmentValues {
+  const { telescope, camera, reducerFactor } = profile
+  return {
+    apertureMm: telescope.apertureMm,
+    focalLengthMm: telescope.focalLengthMm,
+    reducerFactor,
+    resolutionXPx: camera.resolutionXPx,
+    resolutionYPx: camera.resolutionYPx,
+    pixelSizeUm: camera.pixelSizeUm,
+  }
+}
+
+/** Komunikaty błędów blokujących zapis profilu (pusta nazwa i błędy z `validateEquipment`). */
+export function profileErrors(profile: EquipmentProfile): string[] {
+  const nameError = profile.name.trim() === '' ? ['Nazwa: wpisz nazwę'] : []
+  const issues = validateEquipment(profileValues(profile)).filter((issue) => issue.severity === 'error')
+  return [...nameError, ...issues.map((issue) => issue.message)]
+}
+
+const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
+const isNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
+const isString = (value: unknown): value is string => typeof value === 'string'
+const isSpecId = (value: unknown) => value === null || isString(value)
+
+/** Czy zapisany wpis jest kompletnym, poprawnym profilem (uszkodzone wpisy są pomijane przy wczytaniu). */
+export function isEquipmentProfile(raw: unknown): raw is EquipmentProfile {
+  if (!isObject(raw) || !isString(raw.id) || !isString(raw.name) || !isNumber(raw.reducerFactor)) return false
+  const { telescope: t, camera: c, mount: m, oag: o, filters } = raw
+  const valid =
+    isObject(t) && isSpecId(t.specId) && isString(t.label) && isNumber(t.apertureMm) && isNumber(t.focalLengthMm) &&
+    isObject(c) && isSpecId(c.specId) && isString(c.label) && (c.sensor === 'mono' || c.sensor === 'osc') &&
+    isNumber(c.resolutionXPx) && isNumber(c.resolutionYPx) && isNumber(c.pixelSizeUm) &&
+    [1, 2, 3, 4].includes(c.binning as number) &&
+    isObject(m) && ['gem', 'fork', 'altaz'].includes(m.type as string) && isNumber(m.flipMinutesAfterMeridian) &&
+    Array.isArray(filters) && filters.every((filter) => FILTER_IDS.includes(filter as string)) &&
+    (o === null ||
+      (isObject(o) && isNumber(o.prismWidthMm) && isNumber(o.prismHeightMm) && isNumber(o.offsetFromCenterMm) && isNumber(o.angleDeg)))
+  return valid && profileErrors(raw as unknown as EquipmentProfile).length === 0
+}
+
+/** Pierwsza wolna nazwa: `first`, potem `numbered(2)`, `numbered(3)`… (np. „Nowy zestaw 2”, „… (kopia 2)”). */
+export function uniqueName(taken: readonly string[], first: string, numbered: (n: number) => string): string {
+  if (!taken.includes(first)) return first
+  let n = 2
+  while (taken.includes(numbered(n))) n++
+  return numbered(n)
+}
+
+/** Nowe id profilu, różne od wszystkich istniejących. */
+export function newProfileId(taken: readonly string[]): string {
+  let id: string
+  do id = `profil-${crypto.randomUUID()}`
+  while (taken.includes(id))
+  return id
+}

@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import { formatNightLabel } from '../services/format'
 import { formatLocalTime } from '../services/time'
 import { nightRange } from '../services/visibility'
-import { PROFILES, useActiveLocation, useActiveProfile, usePlannerStore } from '../state/plannerStore'
+import { useActiveLocation, useActiveProfile, usePlannerStore } from '../state/plannerStore'
 
 const MINUTE_MS = 60_000
 
@@ -12,6 +12,7 @@ export function TopBar() {
   const locations = usePlannerStore((state) => state.locations)
   const location = useActiveLocation()
   const profile = useActiveProfile()
+  const profiles = usePlannerStore((state) => state.profiles)
   const nightDate = usePlannerStore((state) => state.nightDate)
   const cursorMs = usePlannerStore((state) => state.cursorMs)
   const followNow = usePlannerStore((state) => state.followNow)
@@ -60,7 +61,7 @@ export function TopBar() {
               <Telescope aria-hidden size={14} /> Zestaw
             </span>
             <select className="control text-sm" value={profile.id} onChange={(event) => selectProfile(event.target.value)}>
-              {PROFILES.map((option) => (
+              {profiles.map((option) => (
                 <option key={option.id} value={option.id}>
                   {option.name}
                 </option>

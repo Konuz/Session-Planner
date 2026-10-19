@@ -1,8 +1,9 @@
 // Repozytoria danych użytkownika: własny sprzęt widoczny razem z wbudowanym (6.5), warstwa katalogu z importu (6.3),
-// lokalizacje z horyzontem (7C) i parametry planowania (sekcja 5).
+// lokalizacje z horyzontem (7C), parametry planowania (sekcja 5) i profile sprzętu (7F).
 import type { EntityTable } from 'dexie'
+import { isEquipmentProfile } from '../services/equipment'
 import { DEFAULT_PLANNING_SETTINGS, isPlanningSettings, validatePlanningSettings } from '../services/planningSettings'
-import type { DsoObject, ObserverLocation, PlanningSettings } from '../types'
+import type { DsoObject, EquipmentProfile, ObserverLocation, PlanningSettings } from '../types'
 import type { PlannerDb } from './db'
 import { BUILTIN_CAMERAS, BUILTIN_TELESCOPES } from './equipmentCatalog'
 
@@ -74,5 +75,27 @@ export const planningSettingsRepository = {
     const problems = validatePlanningSettings(settings)
     if (problems.length > 0) throw new Error(problems.map((problem) => problem.message).join('; '))
     await db.settings.put({ id: PLANNING_KEY, value: settings })
+  },
+}
+
+const PROFILES_KEY = 'profiles'
+
+export const profileRepository = {
+  /**
+   * Profile w zapisanej kolejności. Bez wpisu zapisuje i zwraca profile startowe; z uszkodzonego wpisu bierze tylko
+   * poprawne profile (gdy nie ma żadnego – startowe) i niczego nie zapisuje.
+   */
+  async load(db: PlannerDb, defaults: readonly EquipmentProfile[]): Promise<EquipmentProfile[]> {
+    const entry = await db.settings.get(PROFILES_KEY)
+    if (entry === undefined) {
+      await profileRepository.save(db, defaults)
+      return [...defaults]
+    }
+    const valid = Array.isArray(entry.value) ? entry.value.filter(isEquipmentProfile) : []
+    return valid.length > 0 ? valid : [...defaults]
+  },
+  /** Zapis całej listy (kolejność listy = kolejność w aplikacji). */
+  async save(db: PlannerDb, profiles: readonly EquipmentProfile[]): Promise<void> {
+    await db.settings.put({ id: PROFILES_KEY, value: [...profiles] })
   },
 }

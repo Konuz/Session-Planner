@@ -5,17 +5,15 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 import { appDb } from '../data/appDb'
 import { DEFAULT_PROFILE_ID, DEMO_PROFILES } from '../data/demo'
 import { DEFAULT_LOCATIONS, DEFAULT_LOCATION_ID } from '../data/locations'
-import { locationRepository, planningSettingsRepository } from '../data/repositories'
+import { locationRepository, planningSettingsRepository, profileRepository } from '../data/repositories'
 import { DEFAULT_CATALOG_FILTERS, type CatalogFilterState } from '../services/catalogFilters'
 import { DEFAULT_CATALOG_SORT, type CatalogSortKey } from '../services/catalogSort'
 import { defaultCursorMs } from '../services/nightChart'
+import { newProfileId, profileErrors, uniqueName } from '../services/equipment'
 import { DEFAULT_PLANNING_SETTINGS } from '../services/planningSettings'
 import { currentNightDate } from '../services/time'
 import { darknessWindow, nightRange } from '../services/visibility'
 import type { EquipmentProfile, ObserverLocation, PlanningSettings } from '../types'
-
-/** Profile sprzętu z 6.4; dodawanie i edycję profili obejmuje moduł 7F. */
-export const PROFILES: readonly EquipmentProfile[] = DEMO_PROFILES
 
 export type Tab = 'catalog' | 'night' | 'settings'
 
@@ -82,14 +80,21 @@ export function activeLocationOf(state: Pick<PlannerState, 'locations' | 'active
   return state.locations.find((location) => location.id === state.activeLocationId) ?? state.locations[0] ?? DEFAULT_LOCATIONS[0]
 }
 
+/** Aktywny profil z listy w stanie (bez niej – z 6.4); nieznane id → „Mój zestaw”, a bez niego pierwszy profil. */
 export function activeProfileOf(
   state: Pick<PlannerState, 'activeProfileId'> & { profiles?: readonly EquipmentProfile[] },
 ): EquipmentProfile {
+  const profiles = state.profiles !== undefined && state.profiles.length > 0 ? state.profiles : DEMO_PROFILES
   return (
-    PROFILES.find((profile) => profile.id === state.activeProfileId) ??
-    PROFILES.find((profile) => profile.id === DEFAULT_PROFILE_ID) ??
-    PROFILES[0]
+    profiles.find((profile) => profile.id === state.activeProfileId) ??
+    profiles.find((profile) => profile.id === DEFAULT_PROFILE_ID) ??
+    profiles[0]
   )
+}
+
+/** Kopia profilu pod nową nazwą i nowym id (wartości niezależne od oryginału). */
+function copyProfile(source: EquipmentProfile, profiles: readonly EquipmentProfile[], name: string): EquipmentProfile {
+  return { ...structuredClone(source), id: newProfileId(profiles.map((profile) => profile.id)), name }
 }
 
 /** Noc D i kursor: w trybie „Teraz” bieżąca noc i zegar, inaczej kursor domyślny dla nocy z progu ciemności (7.0). */
@@ -108,10 +113,17 @@ function nightAndCursor(
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error))
 
+const DEFAULT_PROFILE = DEMO_PROFILES.find((profile) => profile.id === DEFAULT_PROFILE_ID) ?? DEMO_PROFILES[0]
+
 export const usePlannerStore = create<PlannerStore>()(
   persist(
     (set, get) => {
       const startMs = Date.now()
+      /** Zapis listy profili do bazy, a dopiero potem do stanu (błąd bazy zostawia stan bez zmian). */
+      const commitProfiles = async (profiles: EquipmentProfile[]) => {
+        await profileRepository.save(appDb, profiles)
+        set({ profiles })
+      }
       return {
         locations: [],
         locationsReady: false,
@@ -139,6 +151,7 @@ export const usePlannerStore = create<PlannerStore>()(
             storageError = `Baza danych przeglądarki jest niedostępna, więc zmian lokalizacji nie da się zapisać (${errorText(error)}).`
           }
           const planningSettings = await planningSettingsRepository.load(appDb).catch(() => DEFAULT_PLANNING_SETTINGS)
+          const profiles = await profileRepository.load(appDb, DEMO_PROFILES).catch(() => [...DEMO_PROFILES])
           set((state) => {
             const location = activeLocationOf({ locations, activeLocationId: state.activeLocationId })
             return {
@@ -146,6 +159,8 @@ export const usePlannerStore = create<PlannerStore>()(
               locationsReady: true,
               storageError,
               planningSettings,
+              profiles,
+              activeProfileId: activeProfileOf({ profiles, activeProfileId: state.activeProfileId }).id,
               activeLocationId: location.id,
               ...nightAndCursor(location, planningSettings, state.nightDate, state.followNow, Date.now()),
             }
@@ -181,20 +196,37 @@ export const usePlannerStore = create<PlannerStore>()(
           set({ planningSettings })
         },
 
-        addProfile() {
-          return Promise.reject(new Error('NotImplementedError: addProfile'))
+        async addProfile() {
+          const { profiles } = get()
+          const names = profiles.map((profile) => profile.name)
+          const name = uniqueName(names, 'Nowy zestaw', (n) => `Nowy zestaw ${n}`)
+          await commitProfiles([...profiles, copyProfile(DEFAULT_PROFILE, profiles, name)])
         },
 
-        duplicateProfile() {
-          return Promise.reject(new Error('NotImplementedError: duplicateProfile'))
+        async duplicateProfile(id) {
+          const { profiles } = get()
+          const source = profiles.find((profile) => profile.id === id)
+          if (source === undefined) throw new Error(`Nie ma profilu ${id}`)
+          const names = profiles.map((profile) => profile.name)
+          const name = uniqueName(names, `${source.name} (kopia)`, (n) => `${source.name} (kopia ${n})`)
+          await commitProfiles([...profiles, copyProfile(source, profiles, name)])
         },
 
-        saveProfile() {
-          return Promise.reject(new Error('NotImplementedError: saveProfile'))
+        async saveProfile(profile) {
+          const errors = profileErrors(profile)
+          if (errors.length > 0) throw new Error(errors.join('; '))
+          const saved = structuredClone({ ...profile, name: profile.name.trim() })
+          const { profiles } = get()
+          const exists = profiles.some((entry) => entry.id === saved.id)
+          await commitProfiles(exists ? profiles.map((entry) => (entry.id === saved.id ? saved : entry)) : [...profiles, saved])
         },
 
-        removeProfile() {
-          return Promise.reject(new Error('NotImplementedError: removeProfile'))
+        async removeProfile(id) {
+          const { profiles } = get()
+          if (profiles.length <= 1) return
+          const rest = profiles.filter((profile) => profile.id !== id)
+          await profileRepository.save(appDb, rest)
+          set((state) => ({ profiles: rest, activeProfileId: activeProfileOf({ ...state, profiles: rest }).id }))
         },
 
         selectLocation(id) {
