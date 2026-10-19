@@ -25,6 +25,8 @@ interface PlannerState {
   storageError: string | null
   activeLocationId: string
   activeProfileId: string
+  /** Profile sprzętu (IndexedDB, tabela `settings`, wpis `profiles`); bez bazy – profile z 6.4. */
+  profiles: EquipmentProfile[]
   /** Noc D, 'RRRR-MM-DD'. */
   nightDate: string
   cursorMs: number
@@ -48,6 +50,14 @@ interface PlannerActions {
   removeLocation: (id: string) => Promise<void>
   /** Zapis parametrów planowania; parametry z błędem są odrzucane (wyjątek), stan zostaje bez zmian. */
   savePlanningSettings: (settings: PlanningSettings) => Promise<void>
+  /** Dodaj: na końcu listy profil „Nowy zestaw” (wartości „Mój zestaw” z 6.4); aktywny bez zmian. */
+  addProfile: () => Promise<void>
+  /** Duplikuj: na końcu listy kopia profilu `id` („… (kopia)”); aktywny bez zmian. */
+  duplicateProfile: (id: string) => Promise<void>
+  /** Zapis profilu (po id albo na końcu listy); błędy z `validateEquipment` i pusta nazwa → wyjątek, stan bez zmian. */
+  saveProfile: (profile: EquipmentProfile) => Promise<void>
+  /** Usunięcie profilu; ostatniego profilu nie da się usunąć. */
+  removeProfile: (id: string) => Promise<void>
   selectLocation: (id: string) => void
   selectProfile: (id: string) => void
   setNightDate: (nightDate: string) => void
@@ -72,7 +82,9 @@ export function activeLocationOf(state: Pick<PlannerState, 'locations' | 'active
   return state.locations.find((location) => location.id === state.activeLocationId) ?? state.locations[0] ?? DEFAULT_LOCATIONS[0]
 }
 
-export function activeProfileOf(state: Pick<PlannerState, 'activeProfileId'>): EquipmentProfile {
+export function activeProfileOf(
+  state: Pick<PlannerState, 'activeProfileId'> & { profiles?: readonly EquipmentProfile[] },
+): EquipmentProfile {
   return (
     PROFILES.find((profile) => profile.id === state.activeProfileId) ??
     PROFILES.find((profile) => profile.id === DEFAULT_PROFILE_ID) ??
@@ -106,6 +118,7 @@ export const usePlannerStore = create<PlannerStore>()(
         storageError: null,
         activeLocationId: DEFAULT_LOCATION_ID,
         activeProfileId: DEFAULT_PROFILE_ID,
+        profiles: [...DEMO_PROFILES],
         nightDate: currentNightDate(startMs, DEFAULT_LOCATIONS[0].timezone),
         cursorMs: startMs,
         followNow: true,
@@ -166,6 +179,22 @@ export const usePlannerStore = create<PlannerStore>()(
         async savePlanningSettings(planningSettings) {
           await planningSettingsRepository.save(appDb, planningSettings)
           set({ planningSettings })
+        },
+
+        addProfile() {
+          return Promise.reject(new Error('NotImplementedError: addProfile'))
+        },
+
+        duplicateProfile() {
+          return Promise.reject(new Error('NotImplementedError: duplicateProfile'))
+        },
+
+        saveProfile() {
+          return Promise.reject(new Error('NotImplementedError: saveProfile'))
+        },
+
+        removeProfile() {
+          return Promise.reject(new Error('NotImplementedError: removeProfile'))
         },
 
         selectLocation(id) {
