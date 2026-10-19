@@ -122,6 +122,14 @@ export interface EquipmentProfile {
   } | null
 }
 
+// Ustawienia kadru (sekcja 5); overlapPct = 20 oznacza 20%.
+export interface Framing {
+  centerRaDeg: number // J2000
+  centerDecDeg: number // J2000
+  paDeg: number // konwencja z sekcji 4
+  mosaic: { cols: number; rows: number; overlapPct: number } // 1×1 = pojedynczy kadr
+}
+
 export interface PlanningSettings {
   darknessThresholdDeg: -18 | -15 | -12 // [Z6]
   autoLowerThreshold: boolean // [Z6]
