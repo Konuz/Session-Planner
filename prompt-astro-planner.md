@@ -44,6 +44,11 @@ Zbuduj kompletną, działającą aplikację webową PWA do planowania sesji astr
 | Z24 | Zawartość wbudowanego katalogu sprzętu i lista mnożników do szybkiego wyboru (sekcja 6.5) | Dodaj lub usuń modele |
 | Z25 | Zakresy walidacji wartości wpisywanych ręcznie (sekcja 7F) | Zmień zakresy |
 | Z26 | Profil przechowuje kopię wartości teleskopu i kamery; późniejsza zmiana wpisu w katalogu nie zmienia istniejących profili | Wiąż profil z wpisem katalogu na stałe |
+| Z27 | Podgląd nieba to własny widok kadru (SVG, rzut gnomoniczny) z tłem ze statycznych wycinków zdjęć; Aladin Lite nie wchodzi do pierwszej wersji, bo jego serwery bywają przeciążone (sekcja 7B) | Dodaj Aladin Lite jako opcjonalny tryb interaktywny |
+| Z28 | Kolejność źródeł zdjęć i limit czasu: hips2fits (alaskybis, potem alasky) → NASA SkyView → STScI DSS, po 10 s na źródło | Zmień kolejność lub limit |
+| Z29 | Mapa zastępcza bez zdjęcia pokazuje tylko obiekty z katalogu (bez gwiazd): wielokąty ze Stellarium linią ciągłą, kształty z rozmiaru linią przerywaną | Dodaj jasne gwiazdy (np. katalog BSC) |
+| Z30 | Narzędzie zarysów uzupełniających (6.6, etap 8) jest w Pythonie 3.12 we własnym środowisku `scripts/outlines/.venv` (astropy, scipy, scikit-image, matplotlib, gradio_client), poza paczką aplikacji i poza `npm test` | Przepisz narzędzie na TypeScript (Node) |
+| Z31 | Segmentacja w narzędziu (metoda B w 6.6): oficjalny model SAM 3 `facebook/sam3` (licencja SAM, dostęp po akceptacji na Hugging Face) przez Space `prithivMLmods/SAM3-Demo` z tokenem użytkownika ze zmiennej `HF_TOKEN`. Bez tokenu narzędzie liczy tylko progi (metoda A) | Uruchom SAM 3 lokalnie albo na własnej kopii Space |
 
 ---
 
@@ -60,7 +65,8 @@ Zbuduj kompletną, działającą aplikację webową PWA do planowania sesji astr
 ## 2. Zakres
 
 - **Pierwsza wersja:** moduły A–F z sekcji 7, kontekst globalny, Red Mode, praca offline.
-- **Faza 2:** zapisywanie kafli podglądu nieba do pracy offline.
+- **Etap 8 (na samym końcu):** zarysy uzupełniające wyznaczane ze zdjęć przeglądów narzędziem uruchamianym przy budowie katalogu (6.6).
+- **Faza 2:** interaktywny podgląd z kafli HiPS, np. Aladin Lite [Z27].
 - **Poza zakresem:** eksport do ASIAIR [Z1], sterowanie sprzętem, plate solving, prognoza pogody.
 
 ## 3. Stos technologiczny (decyzje, bez alternatyw)
@@ -68,7 +74,7 @@ Zbuduj kompletną, działającą aplikację webową PWA do planowania sesji astr
 - React + TypeScript (`strict`, bez `any`) + Vite; ESLint.
 - Tailwind CSS z kolorami zdefiniowanymi jako tokeny w zmiennych CSS (sekcja 8); ikony Lucide React.
 - `astronomy-engine` 2.x (sprawdzone na 2.1.19) — Słońce, Księżyc, zmierzchy, precesja i nutacja, gwiazdozbiory.
-- `aladin-lite` 3.x — podgląd nieba. Przypnij dokładną wersję. Ładuj dynamicznie (`import()`) dopiero w zakładce Kadr. Licencja GPL-3.0.
+- Podgląd nieba: własny widok kadru w SVG z tłem ze statycznych wycinków zdjęć i mapą zastępczą z zarysów obiektów (7B); bez Aladin Lite w pierwszej wersji [Z27].
 - Wykresy: własne komponenty SVG + `d3-scale` [Z16].
 - Stan aplikacji: Zustand. Dane użytkownika: IndexedDB przez Dexie. `localStorage` tylko na drobne preferencje interfejsu [Z16].
 - Czas: obliczenia w UTC (milisekundy). Prezentacja przez `Intl.DateTimeFormat` z `timeZone` lokalizacji. Przeliczenie „lokalne południe → UTC” przez `date-fns-tz` [Z16].
@@ -418,6 +424,45 @@ Tabele teleskopów i kamer są w załączniku B.
 - 1,0× — spłaszczacz lub korektor komy bez zmiany ogniskowej;
 - 2,0× — soczewka Barlowa.
 
+### 6.6 Zarysy uzupełniające ze zdjęć przeglądów [Z30, Z31]
+
+W `outlines.dat` ze Stellarium brakuje wielu słabych obiektów (np. Sh2-129, vdB 141 = Sh2-136, LDN 1235). Zarysy uzupełniające wyznacza narzędzie `scripts/outlines/` uruchamiane ręcznie przy budowie katalogu; aplikacja go nie wywołuje.
+
+**Zasady:**
+- Zarysu nie wolno zmyślać ani wyprowadzać z kształtu innego obiektu. Każdy pochodzi ze zdjęcia przeglądu i przed użyciem przechodzi ręczny przegląd.
+- Wymagana dokładność: kilka minut kątowych (do kadrowania).
+- Obiekt, który ma zarys w `outlines.dat`, jest pomijany; zarys ze Stellarium ma pierwszeństwo.
+
+**Wejście:** lista obiektów `scripts/outlines/targets.json` (uid oraz pole widzenia w stopniach). Domyślne pole to 1,5–2× największy rozmiar z katalogu, co najmniej 0,5°. Pole poprawia się ręcznie, bo rozmiary z katalogów bywają zaniżone (LDN 1235: 13′ w katalogu, widoczny obłok ok. 50′).
+
+**Dane:**
+- FITS DSS2 red i DSS2 blue z NASA SkyView (`Return=FITS`, 600 px);
+- Hα Finkbeiner i AKARI FIS WideL (140 µm) z hips2fits, małe wycinki (ok. 150 px), bo duże FITS z hips2fits bywają bardzo wolne;
+- WCS zawsze z nagłówka FITS. Obraz dla SAM jest renderowany z tego samego FITS (rozciągnięcie asinh), a nie pobierany jako JPG z HiPS, bo w HiPS DSS bywają szwy płyt przez środek obiektu;
+- pobrane pliki w `scripts/outlines/.cache`; ten katalog i `scripts/outlines/.venv` są w `.gitignore`.
+
+**Kandydaci** (dla każdego obiektu kilka, bez automatycznego wyboru):
+- **A, progi jasności:** stłumienie gwiazd filtrem medianowym, wygładzenie, tło i σ z odrzucaniem wartości odstających, kontur na progu tło + k·σ dla k = 1, 2, 3. Warstwa według typu:
+  - emisyjna: DSS2 red; Finkbeiner tylko tam, gdzie obiekt nie leży na szwie mozaiki VTSS/WHAM;
+  - refleksyjna: DSS2 blue;
+  - ciemna: AKARI 140 µm, próg „jaśniej niż tło”. Próg „ciemniej niż tło” na DSS zawodzi, bo obłok bywa w DSS jaśniejszy od tła, a szwy płyt dają fałszywe obszary.
+- **B, segmentacja SAM 3** [Z31]: zapytania „nebula” i „dark cloud”, progi pewności 0,45 i 0,2. Maski pokrywające ponad 50% kadru są odrzucane.
+- Dla obu metod: obszar zawierający środek katalogowy (gdy go brak — najbliższy duży), dziury wypełnione, wyspy odrzucone, wielokąt uproszczony z tolerancją 0,5′, przeliczenie na RA/Dec przez WCS.
+
+**Przegląd:**
+- Dla każdego obiektu powstaje arkusz PNG: kandydaci na zdjęciu, osie RA/Dec, skala, legenda, środek i rozmiar z katalogu.
+- Decyzję zapisuje się w `scripts/outlines/review.json`: uid → wybrany kandydat albo „brak”. Obiekt bez decyzji nie trafia do wyniku.
+
+**Wynik:** `src/data/outlines.extra.dat` w formacie `outlines.dat` (7B), commitowany do repozytorium.
+- Przed każdym zarysem linia komentarza `#` ze źródłem danych, metodą, kandydatem i datą.
+- Oznaczenia w stylu Stellarium (`SH 2-129`, `VDB 141`, `LDN 1235`).
+
+**Uzasadnienie** (próba wykonalności z 19.10.2026 na Sh2-129, vdB 141 i LDN 1235):
+- SAM 3 dał dobry zarys dla wszystkich trzech obiektów;
+- progi dały dobry zarys tylko dla LDN 1235 i tylko na AKARI;
+- zarysy obu metod dla LDN 1235 pokrywają się w 70% (IoU 0,70);
+- każdy obiekt wymagał ręcznego wyboru progu, zapytania albo maski.
+
 ## 7. Moduły
 
 ### 7.0 Kontekst globalny (górny pasek)
@@ -490,17 +535,42 @@ Progi to pola typu `MoonRuleThresholds` (sekcja 5) i są edytowalne w ustawienia
 
 Dla kamer OSC dodaj informację, że efektywna rozdzielczość jest niższa, niż wynika ze skali.
 
-**Podgląd (Aladin Lite v3):**
-- **Warstwy HiPS:**
-  - `CDS/P/DSS2/color` (domyślna);
-  - `CDS/P/DSS2/red`;
-  - `CDS/P/Finkbeiner` (Hα) — z opisem „rozdzielczość ok. 6′, przydatna tylko w szerokich polach”. W polu 0,65° daje ok. 6 elementów rozdzielczości na bok kadru.
-- **Ramka:** stała w środku widoku; przesuwanie nieba zmienia środek kadru [Z11]. Kąt ustawiasz suwakiem 0–360° (krok 0,5°) albo polem liczbowym.
-- **Mozaika:**
-  - kolumny × wiersze 1–5, zakładka 10–30% (domyślnie 20%);
-  - ramki paneli rysuj jako wielokąty we współrzędnych nieba przez API nakładek graficznych Aladin Lite, nie na osobnym Canvasie (nazwy funkcji sprawdź w dokumentacji przypiętej wersji).
+**Podgląd nieba** [Z27]. Serwery CDS, z których korzysta Aladin Lite, bywają przeciążone i wtedy nie pokazują żadnego obrazu. Dlatego podgląd to własny widok kadru w SVG, w rzucie gnomonicznym (TAN) wokół środka kadru, z trzema warstwami:
+1. **Tło ze zdjęcia:** statyczny wycinek JPG/GIF pobrany dla środka i pola widzenia (z zapasem 1,5–2× względem kadru lub mozaiki, żeby dało się przesuwać). Po przesunięciu poza zapas pobierz nowy wycinek.
+2. **Mapa zastępcza** (zawsze dostępna, także offline; pod zdjęciem albo zamiast niego): zarysy obiektów z katalogu w polu widzenia, z etykietą „oznaczenie + nazwa zwyczajowa” (jak w Stellarium):
+   - wielokąty z pliku `outlines.dat` ze Stellarium — linia ciągła;
+   - elipsy z rozmiaru i kąta osi wielkiej (OpenNGC `MajAx`/`MinAx`/`PosAng`) — linia przerywana;
+   - okręgi z samej średnicy — linia przerywana;
+   - bez gwiazd [Z29].
+3. **Ramka kadru, panele mozaiki i pryzmat OAG** — jedna implementacja dla obu teł, według geometrii poniżej.
+
+**Źródła zdjęć** (kolejność i limit czasu [Z28]; zasady i adresy jak w N.I.N.A., sprawdzone w jego kodzie źródłowym 19.10.2026):
+
+| Kolejność | Źródło | Adres (parametry w stopniach dziesiętnych) | Uwagi |
+|---|---|---|---|
+| 1 | CDS hips2fits, serwer `alaskybis` | `https://alaskybis.cds.unistra.fr/hips-image-services/hips2fits?hips={hips}&width={px}&height={px}&fov={deg}&ra={ra}&dec={dec}&projection=TAN&format=jpg` | `hips`: `CDS/P/DSS2/color` (domyślnie), `CDS/P/DSS2/red` albo `CDS/P/Finkbeiner` (Hα, rozdzielczość ok. 6′, tylko szerokie pola). `fov` dotyczy dłuższego boku; `width × height` ≤ 50 mln pikseli |
+| 2 | CDS hips2fits, serwer `alasky` | jak wyżej, z hostem `alasky.cds.unistra.fr` | niezależny serwer tej samej usługi |
+| 3 | NASA SkyView | `https://skyview.gsfc.nasa.gov/current/cgi/runquery.pl?Survey=dss2r&Position={ra},{dec}&Size={deg}&Pixels={px}&Return=JPG` | niezależny od CDS; DSS2 czerwony, w skali szarości |
+| 4 | STScI DSS | `https://archive.stsci.edu/cgi-bin/dss_search?format=GIF&r={ra}&d={dec}&e=J2000&w={arcmin}&h={arcmin}&v=1` | niezależny od CDS; orientacja zbliżona do „N u góry”; limit rozmiaru sprawdź w dokumentacji STScI |
+
+- Źródła ESO i SDSS SkyServer z N.I.N.A. pomiń: N.I.N.A. używa dla nich adresów `http://`, które przeglądarka zablokuje na stronie `https`, a SDSS nie obejmuje całego nieba.
+- Obrazy wyświetlaj jako `<img>` (nie wymaga CORS); filtr Red Mode z sekcji 8 działa na nich tak samo.
+- Każde źródło ma limit czasu; po błędzie albo przekroczeniu limitu próbuj następnego. Gdy wszystkie zawiodą, zostaje sama mapa zastępcza z komunikatem „Brak zdjęcia — pokazuję zarysy obiektów” i przyciskiem „Spróbuj ponownie”.
+- Pokazuj, z którego źródła pochodzi obraz. Pozwól wybrać źródło ręcznie i zapamiętaj ostatnie działające.
+- **Pamięć podręczna:** każdy pobrany wycinek zapisz w Cache Storage z kluczem (źródło, warstwa, ra, dec, fov, rozmiar). Przy ponownym otwarciu użyj zapisanego wycinka bez sieci. W projekcie jest przycisk „Zapisz podgląd do pracy offline”.
+- **Rzutowanie na wycinek:** wycinki hips2fits i SkyView są w rzucie TAN z N u góry i E po lewej, a skala w środku wynosi `fov / szerokość` [°/px]. Punkt (ξ, η) ma pozycję `x = cx − ξ / skala_rad`, `y = cy − η / skala_rad` [T24].
+
+**Zarysy ze Stellarium** (`src/data/outlines.dat`, kopia pliku `nebulae/default/outlines.dat` z repozytorium Stellarium):
+- Format linii: `RA[h] Dec[°] polecenie [oznaczenie]`, współrzędne J2000. Polecenia: `start` (z oznaczeniem obiektu), `vertex`, `end`. Inne linie pomiń.
+- Plik ma 100 zarysów (odcinków `start`…`end`) dla ok. 90 obiektów, m.in. M 42, M 43, NGC 1977, NGC 7000, IC 1396, NGC 6960, NGC 6992. Oznaczenia mapuj na `uid` z katalogu (np. `SH 2-275` → Sh2-275, `VDB 23` → vdB 23).
+- Licencja GPL-2.0; uwzględnij ją na ekranie „Źródła i licencje”.
+- Od etapu 8 ten sam parser czyta też `src/data/outlines.extra.dat` (6.6), a wielokąty z obu plików rysuje się tak samo. Obiekt z zarysem w obu plikach używa zarysu ze Stellarium [T25].
+
+**Ramka i sterowanie:**
+- Ramka jest stała w środku widoku; przesuwanie tła zmienia środek kadru [Z11]. Kąt ustawiasz suwakiem 0–360° (krok 0,5°) albo polem liczbowym.
+- **Mozaika:** kolumny × wiersze 1–5, zakładka 10–30% (domyślnie 20%).
 - **OAG:** prostokąt pryzmatu według pól `oag`, obracany razem z kadrem.
-- **Offline:** w miejscu podglądu pokaż komunikat; obliczenia FOV działają dalej.
+- Obliczenia FOV działają zawsze, także bez sieci.
 
 **Geometria mozaiki:**
 
@@ -519,7 +589,7 @@ lokalny PA panelu = kąt pozycyjny (od N przez E) odcinka od (ξ, η) do (ξ, η
 
 Przesuwanie środków paneli przez dodawanie przesunięć do RA/Dec jest błędne i psuje się przy wysokich deklinacjach [T12].
 
-**Kryteria akceptacji:** [T1], [T2], [T12], [T16], a także zgodność kierunku obrotu z konwencją z sekcji 4.
+**Kryteria akceptacji:** [T1], [T2], [T12], [T16], [T21], [T22], [T23], [T24], a także zgodność kierunku obrotu z konwencją z sekcji 4.
 
 ### 7C. Własny horyzont i wykres nocy
 
@@ -690,15 +760,17 @@ Inspiracja: SkySafari, czyli ciemny, czytelny interfejs z dolnym paskiem zakład
 
 ## 10. Wymagania niefunkcjonalne
 
-- **Offline:** aplikacja i katalog są zapisane wstępnie w pamięci podręcznej; wszystkie obliczenia działają bez sieci, podgląd HiPS wymaga sieci. Wywołaj `navigator.storage.persist()`. Eksport i import kopii wszystkich danych użytkownika w JSON.
+- **Offline:** aplikacja i katalog są zapisane wstępnie w pamięci podręcznej; wszystkie obliczenia i mapa zastępcza z zarysami działają bez sieci; zdjęcie w podglądzie wymaga sieci albo zapisanego wycinka. Wywołaj `navigator.storage.persist()`. Eksport i import kopii wszystkich danych użytkownika w JSON.
 - **Język:** interfejs po polsku, formaty pl-PL, zegar 24 h [Z4].
 - **Dostępność:** informacja nigdy nie jest przekazywana wyłącznie kolorem; obsługa klawiatury na komputerze.
 - **Licencje** (ekran „Źródła i licencje”):
   - OpenNGC: CC BY-SA 4.0 (uznanie autorstwa, dane pochodne na tej samej licencji);
   - katalogi VizieR: cytowanie autorów;
-  - Aladin Lite: GPL-3.0;
+  - zarysy obiektów (`outlines.dat` ze Stellarium): GPL-2.0;
+  - zdjęcia: warunki użycia i cytowania CDS (hips2fits), NASA SkyView i STScI DSS;
   - astronomy-engine: MIT;
-  - HiPS Finkbeiner: ODbL.
+  - HiPS Finkbeiner: ODbL;
+  - zarysy uzupełniające (`outlines.extra.dat`, 6.6): dane pochodne od DSS (STScI), AKARI (JAXA) i mapy Finkbeinera oraz wyniki modelu SAM 3 (licencja SAM). Warunki potwierdź przed wydaniem etapu 8.
 
 ## 11. Struktura kodu
 
@@ -709,6 +781,8 @@ src/
                                // rzut gnomoniczny, interpolacja horyzontu, FOV i skala
   services/visibility.ts       // okna ciemności, obniżanie progu, czas efektywny, górowanie, przerzut
   services/framing.ts          // mozaika, lokalny PA paneli, OAG
+  services/skyImage/           // adresy źródeł zdjęć, kolejność prób z limitem czasu, Cache Storage
+  services/outlines.ts         // parser outlines.dat (i outlines.extra.dat od etapu 8), mapowanie oznaczeń na uid
   services/equipment.ts        // walidacja wartości sprzętu, porównanie z wpisem katalogu
   services/horizonFile.ts      // parser i eksport pliku horyzontu
   services/export/ninaCsv.ts   // eksport CSV dla N.I.N.A.
@@ -720,6 +794,8 @@ src/
   features/{catalog,night,framing,projects,equipment,settings}/
   theme/tokens.ts
 scripts/build-catalog.ts
+scripts/outlines/              // etap 8, Python [Z30]: pobieranie FITS, kandydaci A i B, arkusze przeglądu,
+                               // review.json, zapis src/data/outlines.extra.dat; testy pytest
 public/catalog/
 ```
 
@@ -735,12 +811,13 @@ public/catalog/
 | 2 | Skrypt katalogu, dane, parsery, repozytoria; katalog sprzętu (6.5) i `services/equipment.ts` | testy parserów (przykładowe wiersze z każdego źródła, łączenie aliasów), T19, T20 |
 | 3 | Kontekst globalny, horyzont, wykres nocy (7.0, 7C) | T9–T11 |
 | 4 | Katalog, Web Worker, filtry, rekomendacje (7A) | kryteria 7A |
-| 5 | Kadr, Aladin, mozaika, OAG (7B); edytor sprzętu (7F) | T12, T17, T18 i kryteria 7B, 7F |
+| 5 | Kadr: własny widok, źródła zdjęć z kolejnością prób, mapa zastępcza z zarysami, mozaika, OAG (7B); edytor sprzętu (7F) | T12, T17, T18, T21–T24 i kryteria 7B, 7F |
 | 6 | Widok sfery (7D) | T16 |
 | 7 | Projekty, eksport, PWA, dopracowanie Red Mode (7E, 8, 10) | T14, test offline (tryb samolotowy), ręczny import do N.I.N.A. |
+| 8 (na samym końcu) | Zarysy uzupełniające ze zdjęć przeglądów: narzędzie `scripts/outlines/` [Z30, Z31], plik `src/data/outlines.extra.dat`, odczyt w aplikacji i licencje (6.6, 7B, 10) | T25, T26; arkusze przeglądu i decyzje w `review.json` zatwierdzone przez użytkownika co najmniej dla Sh2-129, vdB 141 i LDN 1235 |
 
 **Po każdym etapie:**
-- przechodzą `npm test`, `tsc --noEmit`, linter i `npm run build`;
+- przechodzą `npm test`, `tsc --noEmit`, linter i `npm run build`; w etapie 8 także `pytest` w `scripts/outlines`;
 - w kodzie nie ma `TODO` ani zaślepek.
 
 ---
@@ -771,6 +848,12 @@ Dane z 16.10.2026, policzone skryptem z astronomy-engine 2.1.19. Wysokości obie
 | T18 | Sky-Watcher Esprit 100ED + ZWO ASI6200MM Pro wybrane z katalogu | wynik jak w T1 (3,750° × 2,502°, 1,410″/px). Zmiana ogniskowej w profilu pokazuje „zmienione względem katalogu” i nie zmienia wpisu katalogu. Edycja ani usunięcie własnego wpisu katalogu nie zmienia profili, które z niego powstały; po usunięciu profil pokazuje teleskop lub kamerę jako wpis ręczny [Z26] |
 | T19 | Walidacja pól (7F) | apertura 0 → błąd; rozmiar piksela 0,5 µm → błąd; mnożnik 4 → błąd; rozdzielczość 1000,5 px → błąd; ogniskowa 400 mm przy aperturze 500 mm (f/0,8) → ostrzeżenie, zapis możliwy; „3,76” i „3.76” dają 3,76 µm |
 | T20 | Katalog sprzętu (6.5) | identyfikatory unikalne; wszystkie wartości w zakresach z 7F; wyliczone f/ i wymiary matrycy zgadzają się z tabelami w załączniku B po zaokrągleniu do 0,01 |
+| T21 | Adresy źródeł zdjęć dla M 42 (ra 83.8221, dec −5.3911), pole 1°, 800 px | hips2fits: `https://alaskybis.cds.unistra.fr/hips-image-services/hips2fits?hips=CDS%2FP%2FDSS2%2Fcolor&width=800&height=800&fov=1&ra=83.8221&dec=-5.3911&projection=TAN&format=jpg` (drugi serwer: ten sam adres z hostem `alasky.cds.unistra.fr`) · SkyView: `https://skyview.gsfc.nasa.gov/current/cgi/runquery.pl?Survey=dss2r&Position=83.8221,-5.3911&Size=1&Pixels=800&Return=JPG` · STScI: `https://archive.stsci.edu/cgi-bin/dss_search?format=GIF&r=83.8221&d=-5.3911&e=J2000&w=60&h=60&v=1`. Liczby zawsze z kropką dziesiętną |
+| T22 | Kolejność prób (źródła zastąpione atrapami w teście) | pierwsze źródło przekracza limit czasu, drugie zwraca błąd 503, trzecie działa → widać obraz i podpis „NASA SkyView”. Wszystkie zawodzą → sama mapa zastępcza z komunikatem i przyciskiem „Spróbuj ponownie”. Ponowne otwarcie z tymi samymi parametrami bierze wycinek z Cache Storage bez zapytań sieciowych |
+| T23 | Parser `outlines.dat` | pierwszy zarys należy do LBN 933 i zaczyna się w RA 05,66984 h (85,0476°), Dec +2,76126°; plik daje 100 zarysów, każdy z co najmniej 3 punktami; `SH 2-275` → Sh2-275, `VDB 23` → vdB 23 |
+| T24 | Widok kadru | wycinek 1000 × 1000 px, pole 2°, TAN, środek w środku kadru, PA 0°, Newton 150/600 + Ares-M Pro: ramka zajmuje x i y od ok. 230 do 770 px (±1 px). Mapa zastępcza w polu 2° wokół M 42 rysuje wielokąty M 42, M 43 i NGC 1977 linią ciągłą, a pozostałe obiekty katalogu w polu (np. NGC 1973, NGC 1975, NGC 1980) jako elipsy lub okręgi linią przerywaną, z etykietami |
+| T25 | Zarysy uzupełniające w aplikacji (etap 8) | `outlines.extra.dat` z zarysami `SH 2-129`, `VDB 141` i `LDN 1235` oraz liniami `#` → parser z T23 daje 3 zarysy przypisane do uid Sh2-129, Sh2-136 (przez oznaczenie VdB 141) i LDN1235; linie `#` pominięte. Zarys obiektu obecnego w obu plikach pochodzi z `outlines.dat`. Mapa zastępcza w polu 4° wokół Sh2-129 rysuje jego wielokąt linią ciągłą zamiast okręgu 140′ |
+| T26 | Narzędzie `scripts/outlines/` (pytest, bez sieci, na syntetycznych FITS) | Obraz 600 × 600 px w TAN, pole 1°, tło 100 ± 5 (szum gaussowski), dysk o promieniu 100 px i jasności +20 w środku → kandydat A dla k = 2 ma średnicę równoważną 20′ ± 1′ i środek ciężkości ≤ 0,5′ od środka obrazu. Obraz dla SAM ma tę samą siatkę co FITS (wiersz 0 = północ). Zapis i odczyt `.dat` zmienia współrzędne o ≤ 0,5″. Maska zajmująca ponad 50% kadru jest odrzucana. Obiekt bez decyzji w `review.json` nie trafia do `outlines.extra.dat` |
 
 ## Załącznik B. Katalog sprzętu
 
