@@ -1,6 +1,7 @@
-// Zakładka Ustawienia (sekcja 9): lokalizacje i edytor horyzontu, pod nimi parametry planowania; zapis w IndexedDB.
+// Zakładka Ustawienia (sekcja 9): lokalizacje i edytor horyzontu, sekcja „Sprzęt”, pod nimi parametry planowania; zapis w IndexedDB.
 import { MapPin, Plus, Save, Trash2, Undo2 } from 'lucide-react'
 import { useState } from 'react'
+import { EquipmentSection } from '../equipment/EquipmentSection'
 import { locationToForm, readLocationForm, type LocationField, type LocationForm } from '../../services/location'
 import { useActiveLocation, usePlannerStore } from '../../state/plannerStore'
 import type { HorizonPoint, ObserverLocation, PlanningSettings } from '../../types'
@@ -23,6 +24,7 @@ export function SettingsTab() {
       <LocationList />
       {/* Klucz resetuje formularz po wyborze innej lokalizacji. */}
       <LocationEditor key={location.id} location={location} />
+      <EquipmentSection />
       {/* Klucz ustawia formularz na nowo, gdy zmienią się zapisane parametry (wczytanie z bazy po starcie, zapis). */}
       <PlanningSettingsSection
         key={JSON.stringify(planningSettings)}
