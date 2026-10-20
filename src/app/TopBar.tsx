@@ -17,6 +17,7 @@ export function TopBar() {
   const cursorMs = usePlannerStore((state) => state.cursorMs)
   const followNow = usePlannerStore((state) => state.followNow)
   const redMode = usePlannerStore((state) => state.redMode)
+  const tab = usePlannerStore((state) => state.tab)
   const selectLocation = usePlannerStore((state) => state.selectLocation)
   const selectProfile = usePlannerStore((state) => state.selectProfile)
   const setNightDate = usePlannerStore((state) => state.setNightDate)
@@ -72,23 +73,26 @@ export function TopBar() {
             <Eye aria-hidden size={18} /> Red Mode
           </button>
         </div>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <input
-            type="range"
-            aria-label="Kursor czasu"
-            aria-valuetext={cursorText}
-            min={night.startMs}
-            max={night.endMs}
-            step={MINUTE_MS}
-            value={Math.min(night.endMs, Math.max(night.startMs, cursorMs))}
-            onChange={(event) => setCursor(Number(event.target.value))}
-            className="h-11 min-w-0 basis-full sm:basis-0 sm:flex-1"
-          />
-          <output className="ml-auto w-24 shrink-0 text-right text-sm sm:ml-0">{cursorText}</output>
-          <button type="button" className="button shrink-0" aria-pressed={followNow} onClick={() => goNow(Date.now())}>
-            <LocateFixed aria-hidden size={18} /> Teraz
-          </button>
-        </div>
+        {/* Kadr nie zależy od czasu, więc w zakładce Kadr nie ma wiersza kursora; tryb „Teraz” działa dalej w tle. */}
+        {tab !== 'framing' && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <input
+              type="range"
+              aria-label="Kursor czasu"
+              aria-valuetext={cursorText}
+              min={night.startMs}
+              max={night.endMs}
+              step={MINUTE_MS}
+              value={Math.min(night.endMs, Math.max(night.startMs, cursorMs))}
+              onChange={(event) => setCursor(Number(event.target.value))}
+              className="h-11 min-w-0 basis-full sm:basis-0 sm:flex-1"
+            />
+            <output className="ml-auto w-24 shrink-0 text-right text-sm sm:ml-0">{cursorText}</output>
+            <button type="button" className="button shrink-0" aria-pressed={followNow} onClick={() => goNow(Date.now())}>
+              <LocateFixed aria-hidden size={18} /> Teraz
+            </button>
+          </div>
+        )}
       </div>
     </header>
   )
