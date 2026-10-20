@@ -1,0 +1,1 @@
+- 2026-10-20: 1 próba, 1 keep (5e0263e), wynik PASS 31/31 (19 widocznych + 12 ukrytych); nieudanych prób nie było, review testów bez uwag; incydent: implementer uruchomił `npx prettier`, który przeformatował cały `src/app/TopBar.tsx`, i przywrócił plik ręcznie przez `git show` przed commitem.
