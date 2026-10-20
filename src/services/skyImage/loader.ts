@@ -1,6 +1,5 @@
 // Pobieranie zdjęć nieba (pobieranie-zdjec): kolejność prób, limit 10 s, pamięć podręczna (Cache Storage),
 // ostatnie działające źródło, ręczny wybór źródła i zapis do pracy offline.
-// ZAŚLEPKA: `createSkyImageLoader` rzuca NotImplementedError; implementację dopisuje implementer.
 //
 // Nazwy, których spec nie podaje (wybrane przez test-author):
 // - `createSkyImageLoader(deps)` – obiekt pobierający (`SkyImageLoader`) ze wstrzykniętymi zależnościami:
@@ -15,14 +14,24 @@
 // - Powody prób: 'limit czasu', 'błąd <kod HTTP>' (np. 'błąd 503'), 'błąd obrazu', 'błąd sieci'.
 // - `SKY_SOURCE_STORAGE_KEY` – klucz `localStorage` z identyfikatorem ostatniego działającego źródła
 //   (`SkyImageSourceId`, np. 'stsci').
-// - Klucze pamięci to `skyImageCacheKey` z `sources.ts`; nazwę pamięci i sposób zapisu nazwy źródła razem
-//   z obrazem (np. nagłówek zapisanej odpowiedzi) wybiera implementer.
-import type { SkyImageRequest, SkyImageSourceId } from './sources'
+// - Klucze pamięci to `skyImageCacheKey` z `sources.ts`. Pamięć nazywa się `SKY_IMAGE_CACHE_NAME`, a nazwa
+//   maszyny, która dała obraz, jest zapisana w nagłówku `SKY_SOURCE_HEADER` zapisanej odpowiedzi.
+import {
+  skyImageCacheKey,
+  skyImageSources,
+  skyImageUrl,
+  type SkyImageRequest,
+  type SkyImageSourceId,
+} from './sources'
 
 /** Klucz `localStorage` z ostatnim działającym źródłem. */
 export const SKY_SOURCE_STORAGE_KEY = 'astrophotography-planner-sky-source'
 /** Limit czasu jednej próby sieciowej [ms]. */
 export const SKY_IMAGE_TIMEOUT_MS = 10_000
+/** Nazwa pamięci w Cache Storage. */
+export const SKY_IMAGE_CACHE_NAME = 'sky-images-v1'
+/** Nagłówek zapisanej odpowiedzi z identyfikatorem źródła, które dało obraz. */
+export const SKY_SOURCE_HEADER = 'x-sky-image-source'
 
 export interface SkyImageClock {
   setTimeout(callback: () => void, ms: number): unknown
@@ -97,12 +106,230 @@ export interface SkyImageLoader {
   saveOffline(): Promise<'saved' | 'failed'>
 }
 
-function notImplemented(name: string, ...args: unknown[]): never {
-  const error = new Error(`${name}: not implemented (${args.length})`)
-  error.name = 'NotImplementedError'
-  throw error
+const SOURCES = skyImageSources()
+const SOURCE_IDS = SOURCES.map((source) => source.id)
+
+function sourceName(id: SkyImageSourceId): string {
+  return SOURCES.find((source) => source.id === id)?.name ?? id
 }
 
+function isOffline(id: SkyImageSourceId): boolean {
+  return SOURCES.find((source) => source.id === id)?.offline ?? false
+}
+
+function isSourceId(value: unknown): value is SkyImageSourceId {
+  return SOURCE_IDS.includes(value as SkyImageSourceId)
+}
+
+/** Wynik jednej próby sieciowej: dane obrazu (Blob albo wynik `loadImage`) albo powód porażki. */
+type NetResult = { ok: true; data: unknown } | { ok: false; reason: string } | { ok: false; superseded: true }
+
+const SUPERSEDED = { kind: 'superseded' } as const
+
 export function createSkyImageLoader(deps: SkyImageLoaderDeps): SkyImageLoader {
-  return notImplemented('createSkyImageLoader', deps)
+  let view: SkyImageView | null = null
+  let shownRequest: SkyImageRequest | null = null
+  let active: AbortController | null = null
+
+  function remembered(): SkyImageSourceId | null {
+    try {
+      const value = deps.storage.getItem(SKY_SOURCE_STORAGE_KEY)
+      return isSourceId(value) ? value : null
+    } catch {
+      return null
+    }
+  }
+
+  function remember(id: SkyImageSourceId): void {
+    try {
+      deps.storage.setItem(SKY_SOURCE_STORAGE_KEY, id)
+    } catch {
+      // brak localStorage – pomijamy
+    }
+  }
+
+  /** Kolejność trybu automatycznego: zapamiętane źródło, potem reszta w kolejności Z28. */
+  function autoOrder(): SkyImageSourceId[] {
+    const first = remembered()
+    return first ? [first, ...SOURCE_IDS.filter((id) => id !== first)] : [...SOURCE_IDS]
+  }
+
+  async function openCache(): Promise<SkyImageCache | null> {
+    if (!deps.caches) return null
+    try {
+      return await deps.caches.open(SKY_IMAGE_CACHE_NAME)
+    } catch {
+      return null
+    }
+  }
+
+  /** Odczyt z pamięci pod kluczem źródła `id`; null, gdy brak. */
+  async function readCache(id: SkyImageSourceId, request: SkyImageRequest): Promise<SkyImageShown | null> {
+    const key = skyImageCacheKey(id, request)
+    if (!key) return null
+    const cache = await openCache()
+    if (!cache) return null
+    try {
+      const response = await cache.match(key)
+      if (!response) return null
+      const stored = response.headers.get(SKY_SOURCE_HEADER)
+      const sourceId = isSourceId(stored) ? stored : id
+      const data = await response.blob()
+      return { kind: 'image', sourceId, sourceName: sourceName(sourceId), data, fromCache: true, saved: true }
+    } catch {
+      return null
+    }
+  }
+
+  /** Zapis obrazu do pamięci z nazwą źródła w nagłówku; true, gdy się udał. */
+  async function writeCache(id: SkyImageSourceId, request: SkyImageRequest, data: unknown): Promise<boolean> {
+    const key = skyImageCacheKey(id, request)
+    if (!key || !(data instanceof Blob)) return false
+    const cache = await openCache()
+    if (!cache) return false
+    try {
+      const headers: Record<string, string> = { [SKY_SOURCE_HEADER]: id }
+      if (data.type) headers['content-type'] = data.type
+      await cache.put(key, new Response(data, { status: 200, headers }))
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /** Jedna próba sieciowa z limitem 10 s; przerwanie `outer` kończy ją jako „superseded”. */
+  function tryNetwork(id: SkyImageSourceId, request: SkyImageRequest, outer: AbortSignal): Promise<NetResult> {
+    if (outer.aborted) return Promise.resolve({ ok: false, superseded: true })
+    const controller = new AbortController()
+    const url = skyImageUrl(id, request)
+    return new Promise<NetResult>((resolve) => {
+      let done = false
+      const finish = (result: NetResult): void => {
+        if (done) return
+        done = true
+        deps.clock.clearTimeout(timer)
+        outer.removeEventListener('abort', onOuterAbort)
+        resolve(result)
+      }
+      const onOuterAbort = (): void => {
+        controller.abort()
+        finish({ ok: false, superseded: true })
+      }
+      const timer = deps.clock.setTimeout(() => {
+        controller.abort()
+        finish({ ok: false, reason: 'limit czasu' })
+      }, SKY_IMAGE_TIMEOUT_MS)
+      outer.addEventListener('abort', onOuterAbort, { once: true })
+
+      if (id === 'skyview') {
+        deps.loadImage(url, controller.signal).then(
+          (data) => finish({ ok: true, data }),
+          () => finish({ ok: false, reason: 'błąd obrazu' }),
+        )
+        return
+      }
+      deps
+        .fetch(url, { signal: controller.signal })
+        .then(async (response): Promise<NetResult> => {
+          const type = response.headers.get('content-type') ?? ''
+          if (response.status < 200 || response.status > 299 || !type.toLowerCase().startsWith('image/')) {
+            return { ok: false, reason: `błąd ${response.status}` }
+          }
+          return { ok: true, data: await response.blob() }
+        })
+        .then(finish, () => finish({ ok: false, reason: 'błąd sieci' }))
+    })
+  }
+
+  /** Udane pobranie z sieci: zapis do pamięci (gdy źródło na to pozwala) i zapamiętanie źródła. */
+  async function fromNetwork(id: SkyImageSourceId, request: SkyImageRequest, data: unknown): Promise<SkyImageShown> {
+    const saved = isOffline(id) ? await writeCache(id, request, data) : false
+    remember(id)
+    return { kind: 'image', sourceId: id, sourceName: sourceName(id), data, fromCache: false, saved }
+  }
+
+  async function run(request: SkyImageRequest, manual: SkyImageSourceId | null, signal: AbortSignal): Promise<SkyImageLoadResult> {
+    const attempts: SkyImageAttempt[] = []
+    const checkedKeys = new Set<string>()
+
+    async function cacheStep(ids: SkyImageSourceId[]): Promise<SkyImageShown | null> {
+      for (const id of ids) {
+        const key = skyImageCacheKey(id, request)
+        if (!key || checkedKeys.has(key)) continue
+        checkedKeys.add(key)
+        const hit = await readCache(id, request)
+        if (signal.aborted) return null
+        if (hit) return hit
+      }
+      return null
+    }
+
+    async function networkStep(ids: SkyImageSourceId[]): Promise<SkyImageShown | 'superseded' | null> {
+      for (const id of ids) {
+        const result = await tryNetwork(id, request, signal)
+        if (signal.aborted || 'superseded' in result) return 'superseded'
+        if (result.ok) {
+          const shown = await fromNetwork(id, request, result.data)
+          return signal.aborted ? 'superseded' : shown
+        }
+        attempts.push({ sourceId: id, reason: result.reason })
+      }
+      return null
+    }
+
+    const order = autoOrder().filter((id) => id !== manual)
+    const steps: Array<{ cache: SkyImageSourceId[]; network: SkyImageSourceId[] }> = manual
+      ? [
+          { cache: [manual], network: [manual] },
+          { cache: order, network: order },
+        ]
+      : [{ cache: order, network: order }]
+
+    for (const step of steps) {
+      const hit = await cacheStep(step.cache)
+      if (signal.aborted) return SUPERSEDED
+      if (hit) return hit
+      const shown = await networkStep(step.network)
+      if (shown === 'superseded') return SUPERSEDED
+      if (shown) return shown
+    }
+    return { kind: 'none', attempts }
+  }
+
+  return {
+    async load(request, options = {}) {
+      active?.abort()
+      const controller = new AbortController()
+      active = controller
+      const result = await run(request, options.sourceId ?? null, controller.signal)
+      if (controller.signal.aborted || result.kind === 'superseded') return SUPERSEDED
+      view = result
+      shownRequest = request
+      return result
+    },
+
+    current() {
+      return view
+    },
+
+    async saveOffline() {
+      const shown = view
+      const request = shownRequest
+      if (!shown || shown.kind !== 'image' || !request) return 'failed'
+      if (shown.saved) return 'saved'
+      if (!deps.caches) return 'failed'
+      const signal = active?.signal ?? new AbortController().signal
+      const order = SOURCE_IDS.filter(isOffline)
+      for (const id of order) {
+        const result = await tryNetwork(id, request, signal)
+        if (signal.aborted || view !== shown) return 'failed'
+        if (!result.ok) continue
+        if (!(await writeCache(id, request, result.data))) return 'failed'
+        remember(id)
+        view = { kind: 'image', sourceId: id, sourceName: sourceName(id), data: result.data, fromCache: false, saved: true }
+        return 'saved'
+      }
+      return 'failed'
+    },
+  }
 }
