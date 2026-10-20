@@ -1,0 +1,1 @@
+- 2026-10-20: prób 2, keep 1, wynik PASS (47/47: 33 widoczne + 14 ukrytych); próba 1 z tym samym pomysłem przeszła 47/47, ale odrzuciła ją regresja, bo niezwiązany test tests/features/wybor-obiektu/list.test.ts P1 przekroczył limit 5 s przy pełnym zestawie równoległym (sam przechodzi; niestabilny czas, nie błąd kodu); implementera przerwał limit API i został wznowiony.
