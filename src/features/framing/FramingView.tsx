@@ -9,7 +9,7 @@
 // - Tło (tlo-mapy): siatka RA/Dec `<g data-role="grid">` i gwiazdy `<g data-role="stars">` z `mapBackground` leżą pod
 //   zdjęciem; zależą tylko od wycinka widoku i gwiazd. Opis linii stoi przy punkcie wejścia, przesunięty do wnętrza.
 // - Kolory tylko z klas tokenów.
-import type { ReactElement } from 'react'
+import { useMemo, type ReactElement } from 'react'
 import { mosaicPanels, oagPrisms, skyToCutout, type CutoutPoint } from '../../services/framing'
 import type { Star } from '../../services/stars'
 import type { EquipmentProfile, Framing } from '../../types'
@@ -66,7 +66,12 @@ function labelPosition(line: GridLine, size: number): CutoutPoint | null {
 
 export function FramingView({ fovDeg, profile, framing, mapObjects, photo = null, stars = null }: FramingViewProps): ReactElement {
   const cutout = viewCutout(framing, fovDeg)
-  const background = mapBackground(stars ?? [], cutout)
+  const { centerRaDeg, centerDecDeg } = framing
+  const background = useMemo(
+    () =>
+      mapBackground(stars ?? [], { center: { raDeg: centerRaDeg, decDeg: centerDecDeg }, fovDeg, widthPx: VIEW_SIZE, heightPx: VIEW_SIZE }),
+    [stars, centerRaDeg, centerDecDeg, fovDeg],
+  )
   const gridLabelSize = VIEW_SIZE * 0.022
   const project = (quad: readonly { raDeg: number; decDeg: number }[]) => quad.map((corner) => skyToCutout(cutout, corner))
   const panels = mosaicPanels(profile, framing).map((panel) => project(panel.corners))
