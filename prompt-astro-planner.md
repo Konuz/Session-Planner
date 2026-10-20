@@ -558,13 +558,14 @@ Dla kamer OSC dodaj informację, że efektywna rozdzielczość jest niższa, ni�
 |---|---|---|---|
 | 1 | CDS hips2fits, serwer `alaskybis` | `https://alaskybis.cds.unistra.fr/hips-image-services/hips2fits?hips={hips}&width={px}&height={px}&fov={deg}&ra={ra}&dec={dec}&projection=TAN&format=jpg` | `hips`: `CDS/P/DSS2/color` (domyślnie), `CDS/P/DSS2/red` albo `CDS/P/Finkbeiner` (Hα, rozdzielczość ok. 6′, tylko szerokie pola). `fov` dotyczy dłuższego boku; `width × height` ≤ 50 mln pikseli |
 | 2 | CDS hips2fits, serwer `alasky` | jak wyżej, z hostem `alasky.cds.unistra.fr` | niezależny serwer tej samej usługi |
-| 3 | NASA SkyView | `https://skyview.gsfc.nasa.gov/current/cgi/runquery.pl?Survey=dss2r&Position={ra},{dec}&Size={deg}&Pixels={px}&Return=JPG` | niezależny od CDS; DSS2 czerwony, w skali szarości |
+| 3 | NASA SkyView | `https://skyview.gsfc.nasa.gov/current/cgi/runquery.pl?Survey={survey}&Position={ra},{dec}&Size={deg}&Pixels={px}&Return=JPG` | niezależny od CDS; w skali szarości. `survey`: `dss2r` (DSS2 czerwony; także dla warstwy DSS2 kolor, której SkyView nie ma) albo `H-Alpha%20Comp` (Hα, mapa Finkbeinera; sprawdzone 20.10.2026: odpowiedź ok. 2 s) |
 | 4 | STScI DSS | `https://archive.stsci.edu/cgi-bin/dss_search?format=GIF&r={ra}&d={dec}&e=J2000&w={arcmin}&h={arcmin}&v=1` | niezależny od CDS; orientacja zbliżona do „N u góry”; limit rozmiaru sprawdź w dokumentacji STScI |
 
 - Źródła ESO i SDSS SkyServer z N.I.N.A. pomiń: N.I.N.A. używa dla nich adresów `http://`, które przeglądarka zablokuje na stronie `https`, a SDSS nie obejmuje całego nieba.
 - Obrazy wyświetlaj jako `<img>` (nie wymaga CORS); filtr Red Mode z sekcji 8 działa na nich tak samo.
 - Każde źródło ma limit czasu [Z28]; po błędzie albo przekroczeniu limitu próbuj następnego. Gdy wszystkie zawiodą, zostaje sama mapa zastępcza z komunikatem „Brak zdjęcia — pokazuję zarysy obiektów” i przyciskiem „Spróbuj ponownie”.
 - Pokazuj, z którego źródła pochodzi obraz. Pozwól wybrać źródło ręcznie i zapamiętaj ostatnie działające.
+- **Warstwa ma pierwszeństwo przed zastępstwem** (20.10.2026): dla warstwy DSS2 czerwony albo Hα aplikacja próbuje kolejno alaskybis, alasky i SkyView w tej samej warstwie (najpierw ich pamięć podręczna, potem sieć), zanim pokaże zdjęcie innej warstwy albo innego źródła. Gdy żadne z nich nie da wybranej warstwy, podpis mówi to wprost, np. „Warstwa Hα (Finkbeiner) niedostępna — pokazuję STScI DSS”. Źródło wybrane ręcznie nadal ma pierwszeństwo.
 - **Pamięć podręczna:** każdy pobrany wycinek zapisz w Cache Storage z kluczem (źródło, warstwa, ra, dec, fov, rozmiar). Przy ponownym otwarciu użyj zapisanego wycinka bez sieci. W projekcie jest przycisk „Zapisz podgląd do pracy offline”.
 - **Rzutowanie na wycinek:** wycinki hips2fits i SkyView są w rzucie TAN z N u góry i E po lewej, a skala w środku wynosi `fov / szerokość` [°/px]. Punkt (ξ, η) ma pozycję `x = cx − ξ / skala_rad`, `y = cy − η / skala_rad` [T24].
 
