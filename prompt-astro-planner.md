@@ -45,8 +45,8 @@ Zbuduj kompletną, działającą aplikację webową PWA do planowania sesji astr
 | Z25 | Zakresy walidacji wartości wpisywanych ręcznie (sekcja 7F) | Zmień zakresy |
 | Z26 | Profil przechowuje kopię wartości teleskopu i kamery; późniejsza zmiana wpisu w katalogu nie zmienia istniejących profili | Wiąż profil z wpisem katalogu na stałe |
 | Z27 | Podgląd nieba to własny widok kadru (SVG, rzut gnomoniczny) z tłem ze statycznych wycinków zdjęć; Aladin Lite nie wchodzi do pierwszej wersji, bo jego serwery bywają przeciążone (sekcja 7B) | Dodaj Aladin Lite jako opcjonalny tryb interaktywny |
-| Z28 | Kolejność źródeł zdjęć i limit czasu: hips2fits (alaskybis, potem alasky) → NASA SkyView → STScI DSS, po 10 s na źródło | Zmień kolejność lub limit |
-| Z29 | Mapa zastępcza bez zdjęcia pokazuje tylko obiekty z katalogu (bez gwiazd): wielokąty ze Stellarium linią ciągłą, kształty z rozmiaru linią przerywaną | Dodaj jasne gwiazdy (np. katalog BSC) |
+| Z28 | Kolejność źródeł zdjęć i limit czasu: hips2fits (alaskybis, potem alasky) → NASA SkyView → STScI DSS. Limit: 30 s na każdy serwer hips2fits, 10 s na SkyView i STScI (zmienione 20.10.2026: hips2fits odpowiadał 9–21 s na wycinek 1000 px, więc limit 10 s odcinał warstwy DSS2 czerwony i Hα) | Zmień kolejność lub limity |
+| Z29 | Mapa zastępcza pokazuje obiekty z katalogu (wielokąty ze Stellarium linią ciągłą, kształty z rozmiaru linią przerywaną), a pod nimi tło: gwiazdy z Tycho-2 do V ≤ 10 i siatkę RA/Dec (zmienione 20.10.2026; wcześniej bez gwiazd) | Zmień granicę jasności gwiazd albo wyłącz siatkę |
 | Z30 | Narzędzie zarysów uzupełniających (6.6, etap 8) jest w Pythonie 3.12 we własnym środowisku `scripts/outlines/.venv` (astropy, scipy, scikit-image, matplotlib, gradio_client), poza paczką aplikacji i poza `npm test` | Przepisz narzędzie na TypeScript (Node) |
 | Z31 | Segmentacja w narzędziu (metoda B w 6.6): oficjalny model SAM 3 `facebook/sam3` (licencja SAM, dostęp po akceptacji na Hugging Face) przez Space `prithivMLmods/SAM3-Demo` z tokenem użytkownika ze zmiennej `HF_TOKEN`. Bez tokenu narzędzie liczy tylko progi (metoda A) | Uruchom SAM 3 lokalnie albo na własnej kopii Space |
 
@@ -463,12 +463,20 @@ W `outlines.dat` ze Stellarium brakuje wielu słabych obiektów (np. Sh2-129, vd
 - zarysy obu metod dla LDN 1235 pokrywają się w 70% (IoU 0,70);
 - każdy obiekt wymagał ręcznego wyboru progu, zapytania albo maski.
 
+### 6.7 Katalog gwiazd do tła mapy [Z29]
+
+- Źródło: Tycho-2 z VizieR (I/259): tabela główna `I/259/tyc2` oraz suplement 1 `I/259/suppl_1`, który uzupełnia najjaśniejsze gwiazdy (Hipparcos) brakujące w tabeli głównej.
+- Jasność V z jasności Tycho: `V = VT − 0,090·(BT − VT)`; gdy brakuje BT, `V = VT`; gdy brakuje VT, `V = BT`. Do pliku trafiają gwiazdy z `V ≤ 10`. Policzone 20.10.2026 przez TAP VizieR: 355 360 gwiazd z tabeli głównej i 1 787 z suplementu 1 [T27].
+- Skrypt `scripts/build-stars.ts` (Node, jak `build-catalog.ts`) pobiera dane przez TAP VizieR (z ograniczeniem jasności w zapytaniu), zapisuje je w zwartym pliku `public/catalog/stars.v1.bin` (współrzędne J2000 i jasność, ok. 3 MB) i opis w `public/catalog/meta.json`. Plik jest commitowany; aplikacja nie pobiera gwiazd w czasie działania.
+- Aplikacja wczytuje plik dopiero w zakładce Kadr i wybiera gwiazdy w polu widoku bez przeglądania całego pliku przy każdej klatce przesuwania.
+- Licencja: Tycho-2 (Høg i in. 2000, ESA/CDS) — cytowanie na ekranie „Źródła i licencje”.
+
 ## 7. Moduły
 
 ### 7.0 Kontekst globalny (górny pasek)
 
 - Pasek zawiera: lokalizację, noc (datę D), aktywny zestaw, kursor czasu (suwak + przycisk „Teraz”) i przełącznik Red Mode.
-- Jeden globalny kursor czasu steruje kartami katalogu, wykresem nocy i widokiem sfery.
+- Jeden globalny kursor czasu steruje kartami katalogu, wykresem nocy i widokiem sfery. W zakładce Kadr kursora czasu (suwaka i „Teraz”) nie ma, bo kadr nie zależy od czasu; reszta paska zostaje (20.10.2026).
 - Tryb „Teraz”:
   - kursor podąża za zegarem i odświeża się co 60 s;
   - noc to bieżąca noc D (przed lokalnym południem jest to noc z poprzedniej daty).
@@ -541,7 +549,7 @@ Dla kamer OSC dodaj informację, że efektywna rozdzielczość jest niższa, ni�
    - wielokąty z pliku `outlines.dat` ze Stellarium — linia ciągła;
    - elipsy z rozmiaru i kąta osi wielkiej (OpenNGC `MajAx`/`MinAx`/`PosAng`) — linia przerywana;
    - okręgi z samej średnicy — linia przerywana;
-   - bez gwiazd [Z29].
+   - tło pod zarysami [Z29]: gwiazdy z katalogu gwiazd (6.7) jako kropki, których wielkość rośnie z jasnością (Stellarium robi tak samo), oraz siatka RA/Dec z opisanymi liniami. Gwiazdy i siatka leżą też pod zdjęciem, więc widać je tam, gdzie zdjęcie nie sięga (np. wokół kwadratu STScI) albo gdy zdjęcia nie ma.
 3. **Ramka kadru, panele mozaiki i pryzmat OAG** — jedna implementacja dla obu teł, według geometrii poniżej.
 
 **Źródła zdjęć** (kolejność i limit czasu [Z28]; zasady i adresy jak w N.I.N.A., sprawdzone w jego kodzie źródłowym 19.10.2026):
@@ -555,7 +563,7 @@ Dla kamer OSC dodaj informację, że efektywna rozdzielczość jest niższa, ni�
 
 - Źródła ESO i SDSS SkyServer z N.I.N.A. pomiń: N.I.N.A. używa dla nich adresów `http://`, które przeglądarka zablokuje na stronie `https`, a SDSS nie obejmuje całego nieba.
 - Obrazy wyświetlaj jako `<img>` (nie wymaga CORS); filtr Red Mode z sekcji 8 działa na nich tak samo.
-- Każde źródło ma limit czasu; po błędzie albo przekroczeniu limitu próbuj następnego. Gdy wszystkie zawiodą, zostaje sama mapa zastępcza z komunikatem „Brak zdjęcia — pokazuję zarysy obiektów” i przyciskiem „Spróbuj ponownie”.
+- Każde źródło ma limit czasu [Z28]; po błędzie albo przekroczeniu limitu próbuj następnego. Gdy wszystkie zawiodą, zostaje sama mapa zastępcza z komunikatem „Brak zdjęcia — pokazuję zarysy obiektów” i przyciskiem „Spróbuj ponownie”.
 - Pokazuj, z którego źródła pochodzi obraz. Pozwól wybrać źródło ręcznie i zapamiętaj ostatnie działające.
 - **Pamięć podręczna:** każdy pobrany wycinek zapisz w Cache Storage z kluczem (źródło, warstwa, ra, dec, fov, rozmiar). Przy ponownym otwarciu użyj zapisanego wycinka bez sieci. W projekcie jest przycisk „Zapisz podgląd do pracy offline”.
 - **Rzutowanie na wycinek:** wycinki hips2fits i SkyView są w rzucie TAN z N u góry i E po lewej, a skala w środku wynosi `fov / szerokość` [°/px]. Punkt (ξ, η) ma pozycję `x = cx − ξ / skala_rad`, `y = cy − η / skala_rad` [T24].
@@ -570,6 +578,7 @@ Dla kamer OSC dodaj informację, że efektywna rozdzielczość jest niższa, ni�
 - Ramka jest stała w środku widoku; przesuwanie tła zmienia środek kadru [Z11]. Kąt ustawiasz suwakiem 0–360° (krok 0,5°) albo polem liczbowym.
 - **Mozaika:** kolumny × wiersze 1–5, zakładka 10–30% (domyślnie 20%).
 - **OAG:** prostokąt pryzmatu według pól `oag`, obracany razem z kadrem.
+- **Przybliżanie (zoom):** przyciski „+” i „−” (krok ×1,5 pola widoku), „Dopasuj” (powrót do pola domyślnego: 2× przekątnej kadru lub mozaiki), kółko myszy nad widokiem i gest szczypania dwoma palcami. Zoom działa tylko w oknie kadru (nie przewija strony). Pole widoku mieści się między ok. 1,2× przekątnej kadru a 60°. Po zmianie pola pobierany jest nowy wycinek według zasad „nowy wycinek”, żeby zdjęcie było ostre i pokrywało widok (20.10.2026).
 - Obliczenia FOV działają zawsze, także bez sieci.
 
 **Geometria mozaiki:**
@@ -770,6 +779,7 @@ Inspiracja: SkySafari, czyli ciemny, czytelny interfejs z dolnym paskiem zakład
   - zdjęcia: warunki użycia i cytowania CDS (hips2fits), NASA SkyView i STScI DSS;
   - astronomy-engine: MIT;
   - HiPS Finkbeiner: ODbL;
+  - katalog gwiazd Tycho-2 (6.7): cytowanie Høg i in. 2000 (ESA, CDS);
   - zarysy uzupełniające (`outlines.extra.dat`, 6.6): dane pochodne od DSS (STScI), AKARI (JAXA) i mapy Finkbeinera oraz wyniki modelu SAM 3 (licencja SAM). Warunki potwierdź przed wydaniem etapu 8.
 
 ## 11. Struktura kodu
@@ -854,6 +864,7 @@ Dane z 16.10.2026, policzone skryptem z astronomy-engine 2.1.19. Wysokości obie
 | T24 | Widok kadru | wycinek 1000 × 1000 px, pole 2°, TAN, środek w środku kadru, PA 0°, Newton 150/600 + Ares-M Pro: ramka zajmuje x i y od ok. 230 do 770 px (±1 px). Mapa zastępcza w polu 2° wokół M 42 rysuje wielokąty M 42, M 43 i NGC 1977 linią ciągłą, a pozostałe obiekty katalogu w polu (np. NGC 1973, NGC 1975, NGC 1980) jako elipsy lub okręgi linią przerywaną, z etykietami |
 | T25 | Zarysy uzupełniające w aplikacji (etap 8) | `outlines.extra.dat` z zarysami `SH 2-129`, `VDB 141` i `LDN 1235` oraz liniami `#` → parser z T23 daje 3 zarysy przypisane do uid Sh2-129, Sh2-136 (przez oznaczenie VdB 141) i LDN1235; linie `#` pominięte. Zarys obiektu obecnego w obu plikach pochodzi z `outlines.dat`. Mapa zastępcza w polu 4° wokół Sh2-129 rysuje jego wielokąt linią ciągłą zamiast okręgu 140′ |
 | T26 | Narzędzie `scripts/outlines/` (pytest, bez sieci, na syntetycznych FITS) | Obraz 600 × 600 px w TAN, pole 1°, tło 100 ± 5 (szum gaussowski), dysk o promieniu 100 px i jasności +20 w środku → kandydat A dla k = 2 ma średnicę równoważną 20′ ± 1′ i środek ciężkości ≤ 0,5′ od środka obrazu. Obraz dla SAM ma tę samą siatkę co FITS (wiersz 0 = północ). Zapis i odczyt `.dat` zmienia współrzędne o ≤ 0,5″. Maska zajmująca ponad 50% kadru jest odrzucana. Obiekt bez decyzji w `review.json` nie trafia do `outlines.extra.dat` |
+| T27 | Katalog gwiazd (6.7) | plik `stars.v1.bin` ma 357 147 gwiazd (355 360 z `I/259/tyc2` i 1 787 z `I/259/suppl_1`), wszystkie z V ≤ 10, współrzędne zgodne z VizieR co do 0,5″; w polu 2° wokół M 42 są gwiazdy θ¹ Ori (Trapez) i ι Ori |
 
 ## Załącznik B. Katalog sprzętu
 
