@@ -1,0 +1,1 @@
+- 2026-10-20 katalog-gwiazd: 1 próba, 1 keep, PASS 64/64 (46 widocznych + 18 ukrytych); nieudanych prób nie było; review testów zgłosiło 2 nieblokujące uwagi o testach wykraczających poza spec (odcięcie V 14,41 w zapytaniu tyc2, pusta Dec jako pominięty wiersz). Prawdziwy stars.v1.bin (P21) jeszcze niezbudowany.
