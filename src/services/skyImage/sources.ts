@@ -121,7 +121,17 @@ export function cutoutFovDeg(size: MosaicSize): number {
   return Math.min(MAX_CUTOUT_FOV_DEG, fov)
 }
 
-export function planCutout(frameCenter: EquatorialDeg, size: MosaicSize, layerId: SkyImageLayerId): SkyImageRequest {
+/**
+ * zoom-kadru (ZAŚLEPKA: nowy parametr jest jeszcze ignorowany): `plannedFovDeg` – pole widoku po zoomie; gdy podane,
+ * jest polem wycinka bez zaokrąglania do 0,01° (adres i klucz i tak mają najwyżej 4 miejsca). Bez niego jak dotąd.
+ */
+export function planCutout(
+  frameCenter: EquatorialDeg,
+  size: MosaicSize,
+  layerId: SkyImageLayerId,
+  plannedFovDeg?: number,
+): SkyImageRequest {
+  void plannedFovDeg
   return {
     center: { raDeg: roundRa(frameCenter.raDeg), decDeg: round4(frameCenter.decDeg) },
     fovDeg: cutoutFovDeg(size),
@@ -183,7 +193,13 @@ export function stsciScaleArcsecPerPx(fovDeg: number, naturalWidthPx: number): n
   return (stsciCoveredFovDeg(fovDeg) * 3600) / naturalWidthPx
 }
 
-export function needsNewCutout(cutout: CutoutState, frame: FrameState): boolean {
+/**
+ * zoom-kadru (ZAŚLEPKA: nowy parametr jest jeszcze ignorowany): `plannedFovDeg` – pole planowane (pole widoku po
+ * zoomie) zamiast `cutoutFovDeg(frame.size)`; reguły (większe, mniej niż połowa, przesunięcie > ¼ pola wycinka) bez
+ * zmian. Bez niego jak dotąd.
+ */
+export function needsNewCutout(cutout: CutoutState, frame: FrameState, plannedFovDeg?: number): boolean {
+  void plannedFovDeg
   const planned = cutoutFovDeg(frame.size)
   if (planned > cutout.fovDeg + EPS_DEG) return true
   if (planned < cutout.fovDeg / 2 - EPS_DEG) return true

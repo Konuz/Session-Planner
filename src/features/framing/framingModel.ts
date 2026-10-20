@@ -16,6 +16,105 @@ import type { DsoObject, EquipmentProfile, Framing } from '../../types'
 /** Rozmiar widoku w jednostkach `viewBox` (kwadrat). */
 export const VIEW_SIZE = 1000
 
+// ---------- Zoom widoku (zoom-kadru) ----------
+// ZAŚLEPKA: funkcje zoomu rzucają NotImplementedError; implementację dopisuje implementer.
+//
+// Nazwy, których spec nie podaje (wybrane przez test-author):
+// - `ZOOM_STEP` = 1,5 – krok „+”/„−” i jednego ząbka kółka.
+// - `MAX_VIEW_FOV_DEG` = 60 – największe pole widoku.
+// - `ZoomBounds` / `zoomBounds(profile, framing)` – granice zoomu dla profilu i kadru:
+//   `fitDeg` = pole „Dopasuj” = `cutoutFovDeg(mosaicSizeDeg(profile, framing))` (jak dotąd, np. 3,05° przy 1×1
+//   i 4,45° przy 2×1 dla „Mój zestaw”), `minDeg` = 1,2 × przekątna JEDNEGO kadru (`Math.hypot` z `mosaicSizeDeg`
+//   dla mozaiki 1×1 tego profilu, ok. 1,833° dla „Mój zestaw”, także przy mozaice), `maxDeg` = `MAX_VIEW_FOV_DEG`.
+// - `zoomIn(fovDeg, bounds)` / `zoomOut(fovDeg, bounds)` – „+” (pole / 1,5) i „−” (pole × 1,5), przycięte do
+//   [minDeg, maxDeg].
+// - `canZoomIn(fovDeg, bounds)` / `canZoomOut(fovDeg, bounds)` – czy „+” / „−” jest aktywny: false, gdy pole leży
+//   na granicy, inaczej true (testy sprawdzają pole równe granicy i pola co najmniej 0,01° od niej; tolerancję
+//   porównania wybiera implementer).
+// - `wheelZoom(fovDeg, deltaY, deltaMode, bounds)` – kółko myszy (`WheelEvent.deltaY`, `deltaMode`: 0 = piksele,
+//   1 = linie): 100 px albo 3 linie = jeden krok ×1,5; deltaY < 0 (od siebie) przybliża, > 0 oddala; ułamek ząbka
+//   (np. gładzik, −50 px) = ułamek kroku w skali logarytmicznej (pole × 1,5^(deltaY/100)). Wynik przycięty jak wyżej.
+//   Tryb stron (`deltaMode` = 2) spec nie opisuje i testy go nie sprawdzają.
+// - `pinchZoom(startFovDeg, startDistancePx, distancePx, bounds)` – szczypanie: pole z chwili dotknięcia drugim
+//   palcem × odległość początkowa / bieżąca, przycięte jak wyżej.
+// - `fovReadout(fovDeg)` – odczyt „Pole widoku: 3,05°” (pl-PL, przecinek, 2 miejsca po przecinku).
+//
+// Zakładka (FramingTab, nazwy wybrane przez test-author):
+// - przyciski zoomu rozpoznawane po tekście, `aria-label` albo `title` równym „+”, „−” (albo „-”) i „Dopasuj”;
+//   nieaktywny przycisk ma `disabled`;
+// - odczyt „Pole widoku: …” gdzieś w tekście zakładki;
+// - kółko: nasłuch `wheel` dodany przez `addEventListener(..., { passive: false })` na elemencie widoku (svg widoku
+//   albo jego przodku, który nie obejmuje list wyboru zakładki), z `preventDefault()`;
+// - szczypanie i przeciąganie: obsługa `onPointerDown` / `onPointerMove` / `onPointerUp` (jak dotąd) na svg widoku
+//   albo jego przodku;
+// - hak `useSkyImage` dostaje pole widoku w `fovDeg` (zob. useSkyImage.ts).
+
+/** Krok zoomu przyciskami i jednym ząbkiem kółka. */
+export const ZOOM_STEP = 1.5
+/** Największe pole widoku [°]. */
+export const MAX_VIEW_FOV_DEG = 60
+
+/** Granice zoomu widoku [°]. */
+export interface ZoomBounds {
+  /** Pole „Dopasuj” (pole wycinka kadru albo mozaiki). */
+  fitDeg: number
+  /** 1,2 × przekątna jednego kadru. */
+  minDeg: number
+  /** 60°. */
+  maxDeg: number
+}
+
+export function zoomBounds(profile: EquipmentProfile, framing: Framing): ZoomBounds {
+  void profile
+  void framing
+  throw new Error('NotImplementedError: zoomBounds')
+}
+
+export function zoomIn(fovDeg: number, bounds: ZoomBounds): number {
+  void fovDeg
+  void bounds
+  throw new Error('NotImplementedError: zoomIn')
+}
+
+export function zoomOut(fovDeg: number, bounds: ZoomBounds): number {
+  void fovDeg
+  void bounds
+  throw new Error('NotImplementedError: zoomOut')
+}
+
+export function canZoomIn(fovDeg: number, bounds: ZoomBounds): boolean {
+  void fovDeg
+  void bounds
+  throw new Error('NotImplementedError: canZoomIn')
+}
+
+export function canZoomOut(fovDeg: number, bounds: ZoomBounds): boolean {
+  void fovDeg
+  void bounds
+  throw new Error('NotImplementedError: canZoomOut')
+}
+
+export function wheelZoom(fovDeg: number, deltaY: number, deltaMode: number, bounds: ZoomBounds): number {
+  void fovDeg
+  void deltaY
+  void deltaMode
+  void bounds
+  throw new Error('NotImplementedError: wheelZoom')
+}
+
+export function pinchZoom(startFovDeg: number, startDistancePx: number, distancePx: number, bounds: ZoomBounds): number {
+  void startFovDeg
+  void startDistancePx
+  void distancePx
+  void bounds
+  throw new Error('NotImplementedError: pinchZoom')
+}
+
+export function fovReadout(fovDeg: number): string {
+  void fovDeg
+  throw new Error('NotImplementedError: fovReadout')
+}
+
 /** Punkt na ekranie [px] (np. `clientX`, `clientY` zdarzenia wskaźnika). */
 export interface ScreenPoint {
   x: number

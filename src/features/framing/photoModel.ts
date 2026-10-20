@@ -85,10 +85,20 @@ export interface ViewRect {
   height: number
 }
 
-/** Kadr dla warstwy zdjęcia: środek kadru i rozmiar kadru lub mozaiki. */
+/**
+ * Kadr dla warstwy zdjęcia: środek kadru i rozmiar kadru lub mozaiki.
+ *
+ * zoom-kadru (ZAŚLEPKA: pole jest jeszcze ignorowane; nazwy wybrał test-author): `fovDeg` – pole widoku po zoomie.
+ * Gdy podane, zastępuje `cutoutFovDeg(size)` w liście warstw i progu Hα (`frameFov()`), w `nextPhotoRequest`
+ * (pole planowane, `planCutout`/`needsNewCutout` z polem planowanym) i w `reload` (`chooseSource`/`chooseLayer`).
+ * `setFrame(frame, dragging)` z `dragging` = false i `fovDeg` różnym od pola bieżącego wycinka (≥ 1e-6°) → jedno
+ * pobranie wycinka o polu `fovDeg` wokół środka kadru. Z `dragging` = true (przeciąganie, szczypanie, kółko przed
+ * 300 ms ciszy) nic się nie pobiera. Bez `fovDeg` wszystko działa jak dotąd.
+ */
 export interface PhotoFrame {
   center: EquatorialDeg
   size: MosaicSize
+  fovDeg?: number
 }
 
 /** Stan widoku warstwy zdjęcia. */

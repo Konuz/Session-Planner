@@ -17,10 +17,15 @@ import type { MosaicSize } from '../../services/framing'
 import { createSkyImageLoader, SKY_IMAGE_APP_TIMEOUTS_MS, type SkyImageLoaderDeps } from '../../services/skyImage/loader'
 import { createPhotoLayer, type PhotoLayer, type PhotoLayerView } from './photoModel'
 
+/**
+ * zoom-kadru (ZAŚLEPKA: `fovDeg` jest jeszcze ignorowane; nazwę wybrał test-author): `fovDeg` – bieżące pole widoku
+ * zakładki (po zoomie albo „Dopasuj”), przekazywane do `PhotoFrame.fovDeg`. Bez niego jak dotąd.
+ */
 export interface SkyImageHookInput {
   center: EquatorialDeg
   size: MosaicSize
   dragging: boolean
+  fovDeg?: number
 }
 
 export interface SkyImageHookResult {
