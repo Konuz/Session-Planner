@@ -1,0 +1,1 @@
+- 2026-10-20: próby 1, keep 1, wynik PASS (91/91, 57 widocznych + 34 ukryte) w 1. próbie; nieudanych prób nie było; incydenty poboczne: dwa razy pusty plik `element.tag` w katalogu głównym (review testów i przebieg implementer), a przeciąganie wskaźnikiem i wydajność `fallbackMap` na każdą klatkę zostają do sprawdzenia w przeglądarce.
