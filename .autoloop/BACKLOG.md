@@ -18,6 +18,25 @@ Etap 5 specyfikacji `prompt-astro-planner.md` (sekcja 12, wiersz 5): Kadr — w�
 | zakladka-kadr | Zakładka „Kadr” (nawigacja: Katalog, Noc, Kadr, Ustawienia): obiekt jak w zakładce Noc, widok SVG z mapą zastępczą, ramką, panelami i OAG; ramka stała w środku, przesuwanie tła zmienia środek kadru; suwak i pole PA; mozaika; dane kadru (FOV, skala, próbkowanie) także bez sieci; Red Mode | `features/framing/`, `app/NavBar.tsx`, `App.tsx`, `state/plannerStore.ts` | gotowa |
 | zdjecie-w-kadrze | Zdjęcie w tle widoku kadru: podpis źródła, ręczny wybór źródła, „Brak zdjęcia — pokazuję zarysy obiektów” z „Spróbuj ponownie”, przycisk „Zapisz podgląd do pracy offline”, nowy wycinek po przesunięciu poza zapas, podpisy licencji (zdjęcia, Stellarium GPL-2.0) | `features/framing/` | gotowa |
 
+
+### Poprawki po przeglądzie w przeglądarce (20.10.2026)
+
+Użytkownik sprawdził zakładkę Kadr i poprosił o zmiany; specyfikacja zmieniona commitem 8fa8bf6 (Z28, Z29, 6.7, 7.0, 7B, T27).
+
+| id | funkcja (po ludzku) | czego dotyka | status |
+|----|---------------------|--------------|--------|
+| limit-hips2fits | Limit czasu ustawiany osobno dla każdego źródła; aplikacja daje 30 s każdemu serwerowi hips2fits, 10 s SkyView i STScI [Z28]. Domyślne 10 s w `createSkyImageLoader` zostaje (zamrożone testy `pobieranie-zdjec` liczą na nie) | `services/skyImage/loader.ts`, `features/framing/useSkyImage.ts` | do zrobienia |
+| pasek-czasu-kadr | W zakładce Kadr górny pasek nie pokazuje kursora czasu (suwak, godzina, „Teraz”); lokalizacja, noc, zestaw i Red Mode zostają. W innych zakładkach bez zmian (7.0) | `app/TopBar.tsx` | do zrobienia |
+| katalog-gwiazd | Katalog gwiazd Tycho-2 do V ≤ 10 (6.7): skrypt `scripts/build-stars.ts` (zapytanie TAP, jasność V, zapis zwartego pliku binarnego), odczyt pliku w aplikacji i szybki wybór gwiazd w polu widoku. Testy na danych przykładowych, bez sieci; prawdziwy plik `public/catalog/stars.v1.bin` buduje orkiestrator po PASS (katalog `public/catalog/*` jest chroniony) | `scripts/build-stars.ts`, `services/stars.ts` | do zrobienia |
+| zoom-kadru | Przybliżanie w oknie kadru: „+”, „−” (×1,5), „Dopasuj”, kółko myszy i szczypanie tylko nad widokiem; pole widoku od ok. 1,2× przekątnej kadru do 60°; po zmianie pola nowy wycinek zdjęcia według zasad „nowy wycinek” (7B) | `features/framing/` (model, zakładka, warstwa zdjęcia) | do zrobienia |
+| tlo-mapy | Tło okna kadru [Z29]: gwiazdy z `katalog-gwiazd` jako kropki (większe dla jaśniejszych) i siatka RA/Dec z opisami; pod zarysami i pod zdjęciem, więc widoczne tam, gdzie zdjęcia nie ma; Red Mode | `features/framing/` (model tła, `FramingView.tsx`) | do zrobienia |
+
+Wskazówki do poprawek:
+- Zamrożone testy etapów 1–5 (2103) są w regresji. Zmiany tylko dodające: nowe parametry opcjonalne z dotychczasowym zachowaniem domyślnym (np. limit czasu, pole widoku = pole wycinka z `zrodla-zdjec`, gdy zoom = „Dopasuj”).
+- Pomiary 20.10.2026: hips2fits 9–21 s na wycinek 3,05°/1000 px (`curl`), SkyView 1–4 s, STScI ok. 1,4 s (z przeglądarki Comet). W panelu przeglądarki Claude STScI jest zablokowane.
+- Tycho-2 (TAP VizieR, 20.10.2026): `I/259/tyc2` z V ≤ 10 → 355 360 gwiazd; `I/259/suppl_1` → 1 787; razem 357 147 [T27]. Adres TAP: `https://tapvizier.cds.unistra.fr/TAPVizieR/tap/sync` (REQUEST=doQuery, LANG=ADQL, FORMAT=csv; działa z `curl` z własnym User-Agent).
+- `TopBar` renderują helpery testów `profile-zestawow` i `zakladka-sprzet` — zmiana ma ich nie popsuć.
+
 ## Kryteria akceptacji → funkcje (każde musi być przykładem P…)
 1. [T12] mozaika 2×1 RedCat, odległość środków 4,305°, różnica RA i lokalny PA przy Dec 0°, 60°, 85° → `geometria-kadru`.
 2. [T17] zestaw wpisany ręcznie (80/480, 0,8×, 4144 × 2822, 4,63 µm, binning 1 i 2) → `formularz-profilu`.
