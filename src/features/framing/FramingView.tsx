@@ -12,12 +12,24 @@ import { mosaicPanels, oagPrisms, skyToCutout, type CutoutPoint } from '../../se
 import type { EquipmentProfile, Framing } from '../../types'
 import type { FallbackMapObject } from './fallbackMap'
 import { VIEW_SIZE, viewCutout } from './framingModel'
+import type { ViewRect } from './photoModel'
+
+/**
+ * Zdjęcie nieba pod mapą zastępczą i ramką (zdjecie-w-kadrze). ZAŚLEPKA: prop jeszcze nie jest rysowany.
+ * Ma dać `<image data-role="photo" href={href} x y width height preserveAspectRatio="none">` (prostokąt `rect`
+ * w jednostkach widoku, bez `transform`) przed obiektami mapy i panelami; bez `photo` (null) – brak `<image>`.
+ */
+export interface FramingPhoto {
+  href: string
+  rect: ViewRect
+}
 
 export interface FramingViewProps {
   fovDeg: number
   profile: EquipmentProfile
   framing: Framing
   mapObjects: readonly FallbackMapObject[]
+  photo?: FramingPhoto | null
 }
 
 const round = (value: number) => Math.round(value * 100) / 100
