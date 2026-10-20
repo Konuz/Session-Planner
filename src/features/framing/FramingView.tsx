@@ -6,6 +6,8 @@
 // - Jeden `<svg viewBox="0 0 1000 1000">`; punkty wpisane wprost w jednostkach widoku, bez `transform`.
 // - Panel = `<g data-panel="N">` z wielokątem (LG, PG, PD, LD) i numerem; pryzmat OAG = `<polygon data-role="oag">`;
 //   obiekt mapy = `<g data-map-uid>` (linia przerywana: `stroke-dasharray` na grupie). Mapa leży przed panelami (pod nimi).
+// - Tło (tlo-mapy): siatka RA/Dec `<g data-role="grid">` i gwiazdy `<g data-role="stars">` z `mapBackground` leżą pod
+//   zdjęciem; zależą tylko od wycinka widoku i gwiazd. Opis linii stoi przy punkcie wejścia, przesunięty do wnętrza.
 // - Kolory tylko z klas tokenów.
 import type { ReactElement } from 'react'
 import { mosaicPanels, oagPrisms, skyToCutout, type CutoutPoint } from '../../services/framing'
@@ -13,6 +15,7 @@ import type { Star } from '../../services/stars'
 import type { EquipmentProfile, Framing } from '../../types'
 import type { FallbackMapObject } from './fallbackMap'
 import { VIEW_SIZE, viewCutout } from './framingModel'
+import { mapBackground, type GridLine } from './mapBackground'
 import type { ViewRect } from './photoModel'
 
 /**
@@ -50,8 +53,21 @@ function centroid(points: readonly CutoutPoint[]): CutoutPoint {
 
 const LINE = { vectorEffect: 'non-scaling-stroke', fill: 'none' } as const
 
-export function FramingView({ fovDeg, profile, framing, mapObjects, photo = null }: FramingViewProps): ReactElement {
+/** Miejsce opisu linii: punkt wejścia (albo pierwszy punkt w widoku) przesunięty do wnętrza widoku. */
+function labelPosition(line: GridLine, size: number): CutoutPoint | null {
+  const anchor =
+    line.labelAnchor ?? line.points.find((p) => p.x >= 0 && p.x <= VIEW_SIZE && p.y >= 0 && p.y <= VIEW_SIZE) ?? null
+  if (!anchor) return null
+  return {
+    x: Math.min(VIEW_SIZE - size * 4, Math.max(size * 0.3, anchor.x + size * 0.3)),
+    y: Math.min(VIEW_SIZE - size * 0.4, Math.max(size * 1.2, anchor.y - size * 0.4)),
+  }
+}
+
+export function FramingView({ fovDeg, profile, framing, mapObjects, photo = null, stars = null }: FramingViewProps): ReactElement {
   const cutout = viewCutout(framing, fovDeg)
+  const background = mapBackground(stars ?? [], cutout)
+  const gridLabelSize = VIEW_SIZE * 0.022
   const project = (quad: readonly { raDeg: number; decDeg: number }[]) => quad.map((corner) => skyToCutout(cutout, corner))
   const panels = mosaicPanels(profile, framing).map((panel) => project(panel.corners))
   const prisms = oagPrisms(profile, framing).map(project)
@@ -66,6 +82,34 @@ export function FramingView({ fovDeg, profile, framing, mapObjects, photo = null
       aria-label="Kadr na niebie: północ u góry, wschód po lewej"
     >
       <rect x={0} y={0} width={VIEW_SIZE} height={VIEW_SIZE} className="fill-background" />
+
+      <g data-role="grid">
+        {background.grid.map((line) => (
+          <polyline key={`${line.kind}${line.valueDeg}`} points={pointsText(line.points)} className="stroke-border" strokeWidth={1} {...LINE} />
+        ))}
+        {background.grid.map((line) => {
+          const position = labelPosition(line, gridLabelSize)
+          return (
+            position && (
+              <text
+                key={`${line.kind}${line.valueDeg}`}
+                x={round(position.x)}
+                y={round(position.y)}
+                fontSize={gridLabelSize}
+                className="fill-muted stroke-none"
+              >
+                {line.label}
+              </text>
+            )
+          )
+        })}
+      </g>
+
+      <g data-role="stars" className="fill-foreground stroke-none">
+        {background.stars.map((dot, i) => (
+          <circle key={i} cx={round(dot.x)} cy={round(dot.y)} r={round(dot.radius)} />
+        ))}
+      </g>
 
       {photo && (
         <image

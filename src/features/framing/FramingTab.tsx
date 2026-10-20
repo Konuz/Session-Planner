@@ -12,6 +12,7 @@
 // - Zoom (zoom-kadru): pole widoku tylko w pamięci komponentu; „+”, „−”, „Dopasuj”, kółko (nasłuch niepasywny,
 //   `preventDefault`) i szczypanie dwoma palcami, zawsze wokół środka. Zmiana profilu albo mozaiki wraca do „Dopasuj”.
 //   W trakcie szczypania i do 300 ms po ostatnim ząbku kółka warstwa zdjęcia dostaje „gest trwa” (bez pobierania).
+// - Tło mapy (tlo-mapy): gwiazdy z `useBackgroundStars` (katalog wczytywany w efekcie) i siatka RA/Dec w widoku.
 import { Crosshair, RotateCcw } from 'lucide-react'
 import { useEffect, useEffectEvent, useId, useRef, useState, type PointerEvent, type ReactNode } from 'react'
 import { selectFeatured, nightObjectOptions } from '../../data/featuredObjects'
@@ -47,6 +48,7 @@ import { FramingView } from './FramingView'
 import { viewMapObjects } from './mapData'
 import { PhotoPanel } from './PhotoPanel'
 import { photoRect } from './photoModel'
+import { useBackgroundStars } from './useBackgroundStars'
 import { useSkyImage } from './useSkyImage'
 
 const MOSAIC_COUNTS = [1, 2, 3, 4, 5] as const
@@ -216,7 +218,9 @@ function FramingCanvas({
   const fovDeg = zoom?.key === zoomKey ? zoom.fovDeg : bounds.fitDeg
   const mapObjects = viewMapObjects(catalog, viewCutout(frame, fovDeg))
   const center = { raDeg: frame.centerRaDeg, decDeg: frame.centerDecDeg }
-  const sky = useSkyImage({ center, size, dragging: dragging || pinching || wheeling, fovDeg })
+  const gesture = dragging || pinching || wheeling
+  const sky = useSkyImage({ center, size, dragging: gesture, fovDeg })
+  const stars = useBackgroundStars(center, fovDeg, gesture)
   const shown = sky.view.photo
   const photo = shown && sky.photoHref ? { href: sky.photoHref, rect: photoRect(shown, center, fovDeg) } : null
 
@@ -356,7 +360,7 @@ function FramingCanvas({
         onPointerCancel={endPointer}
         onLostPointerCapture={endPointer}
       >
-        <FramingView fovDeg={fovDeg} profile={profile} framing={frame} mapObjects={mapObjects} photo={photo} />
+        <FramingView fovDeg={fovDeg} profile={profile} framing={frame} mapObjects={mapObjects} photo={photo} stars={stars} />
       </div>
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <button
