@@ -160,10 +160,11 @@ const SAVING_LABEL = 'Zapisuję…'
 const SAVED_TEXT = 'Zapisano podgląd do pracy offline'
 const SAVE_FAILED_TEXT = 'Nie udało się zapisać podglądu do pracy offline'
 const OUTLINES_LICENSE = 'Licencja: zarysy obiektów — Stellarium (GPL-2.0)'
-const PHOTO_LICENSE: Record<'hips2fits' | 'hips2fits-halpha' | 'skyview' | 'stsci', string> = {
+const PHOTO_LICENSE: Record<'hips2fits' | 'hips2fits-halpha' | 'skyview' | 'skyview-halpha' | 'stsci', string> = {
   hips2fits: 'Licencja: zdjęcie — CDS Strasbourg (hips2fits), dane DSS © STScI/AURA',
   'hips2fits-halpha': 'Licencja: zdjęcie — CDS Strasbourg (hips2fits), mapa Hα: Finkbeiner (ODbL)',
   skyview: 'Licencja: zdjęcie — NASA/GSFC SkyView, dane DSS © STScI/AURA',
+  'skyview-halpha': 'Licencja: zdjęcie — NASA/GSFC SkyView, mapa Hα: Finkbeiner (ODbL)',
   stsci: 'Licencja: zdjęcie — Digitized Sky Survey © STScI/AURA',
 }
 /** Najmniejsza zmiana pola widoku, po której zoom pobiera nowy wycinek [°]. */
@@ -195,14 +196,17 @@ export function layerChoices(fovDeg: number): Choice<SkyImageLayerId>[] {
 }
 
 export function loadOptions(source: SourceChoice, layerId: SkyImageLayerId): SkyImageLoadOptions {
-  if (source !== 'auto') return { sourceId: source }
-  return { sourceId: layerId === 'dss2-color' ? null : 'alaskybis' }
+  if (layerId === 'dss2-color') return { sourceId: source === 'auto' ? null : source }
+  return { sourceId: source === 'auto' ? 'alaskybis' : source, layerFirst: true }
 }
 
 export function photoCaption(photo: ShownPhoto): string {
-  const { sourceId, fromCache } = photo.image
-  const layer = isHips2fits(sourceId) ? `, ${LAYER_NAMES[requestLayer(photo.request)]}` : ''
-  return `Zdjęcie: ${sourceName(sourceId)}${layer}${fromCache ? ', z pamięci' : ''}`
+  const { sourceId, fromCache, layerRole } = photo.image
+  const layerName = LAYER_NAMES[requestLayer(photo.request)]
+  const cache = fromCache ? ', z pamięci' : ''
+  if (layerRole === 'fallback') return `Warstwa ${layerName} niedostępna — pokazuję ${sourceName(sourceId)}${cache}`
+  const layer = isHips2fits(sourceId) || (layerRole === 'layer' && sourceId === 'skyview') ? `, ${layerName}` : ''
+  return `Zdjęcie: ${sourceName(sourceId)}${layer}${cache}`
 }
 
 export function attemptLines(attempts: readonly SkyImageAttempt[]): string[] {
@@ -212,7 +216,10 @@ export function attemptLines(attempts: readonly SkyImageAttempt[]): string[] {
 export function licenseLines(photo: ShownPhoto | null): string[] {
   if (!photo) return [OUTLINES_LICENSE]
   const { sourceId } = photo.image
-  const kind = isHips2fits(sourceId) ? (requestLayer(photo.request) === 'halpha' ? 'hips2fits-halpha' : 'hips2fits') : sourceId
+  const halpha = requestLayer(photo.request) === 'halpha'
+  const kind = isHips2fits(sourceId)
+    ? halpha ? 'hips2fits-halpha' : 'hips2fits'
+    : sourceId === 'skyview' && photo.image.layerRole === 'layer' && halpha ? 'skyview-halpha' : sourceId
   return [OUTLINES_LICENSE, PHOTO_LICENSE[kind]]
 }
 

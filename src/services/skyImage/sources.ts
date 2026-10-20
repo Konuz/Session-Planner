@@ -174,8 +174,8 @@ export function skyImageUrl(sourceId: SkyImageSourceId, request: SkyImageRequest
  * Pozostałe części adresu jak w `skyImageUrl`. `skyImageUrl` i `skyImageCacheKey` się nie zmieniają.
  */
 export function skyviewLayerUrl(request: SkyImageRequest): string {
-  void request
-  throw new Error('NotImplementedError: skyviewLayerUrl')
+  const url = skyImageUrl('skyview', request)
+  return effectiveLayer(request.layerId, request.fovDeg) === 'halpha' ? url.replace('Survey=dss2r', 'Survey=H-Alpha%20Comp') : url
 }
 
 export function skyImageCacheKey(sourceId: SkyImageSourceId, request: SkyImageRequest): string | null {

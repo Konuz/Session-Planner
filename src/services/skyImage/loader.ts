@@ -20,6 +20,7 @@ import {
   skyImageCacheKey,
   skyImageSources,
   skyImageUrl,
+  skyviewLayerUrl,
   type SkyImageRequest,
   type SkyImageSourceId,
 } from './sources'
@@ -48,6 +49,10 @@ export const SKY_IMAGE_APP_TIMEOUTS_MS: SkyImageTimeouts = {
 export const SKY_IMAGE_CACHE_NAME = 'sky-images-v1'
 /** Nagłówek zapisanej odpowiedzi z identyfikatorem źródła, które dało obraz. */
 export const SKY_SOURCE_HEADER = 'x-sky-image-source'
+/** Limit SkyView w grupie warstwy (warstwy-skyview) [ms]. */
+const SKYVIEW_LAYER_TIMEOUT_MS = 30_000
+/** Grupa warstwy (warstwy-skyview) w kolejności prób. */
+const LAYER_GROUP: SkyImageSourceId[] = ['alaskybis', 'alasky', 'skyview']
 
 export interface SkyImageClock {
   setTimeout(callback: () => void, ms: number): unknown
@@ -227,11 +232,16 @@ export function createSkyImageLoader(deps: SkyImageLoaderDeps, timeouts?: SkyIma
     }
   }
 
-  /** Jedna próba sieciowa z limitem źródła (domyślnie 10 s); przerwanie `outer` kończy ją jako „superseded”. */
-  function tryNetwork(id: SkyImageSourceId, request: SkyImageRequest, outer: AbortSignal): Promise<NetResult> {
+  /**
+   * Jedna próba sieciowa z limitem źródła (domyślnie 10 s); przerwanie `outer` kończy ją jako „superseded”.
+   * `layerFirst`: SkyView z adresem warstwy i limitem 30 s.
+   */
+  function tryNetwork(id: SkyImageSourceId, request: SkyImageRequest, outer: AbortSignal, layerFirst = false): Promise<NetResult> {
     if (outer.aborted) return Promise.resolve({ ok: false, superseded: true })
     const controller = new AbortController()
-    const url = skyImageUrl(id, request)
+    const inLayer = layerFirst && id === 'skyview'
+    const url = inLayer ? skyviewLayerUrl(request) : skyImageUrl(id, request)
+    const limit = inLayer ? SKYVIEW_LAYER_TIMEOUT_MS : (timeouts?.[id] ?? SKY_IMAGE_TIMEOUT_MS)
     return new Promise<NetResult>((resolve) => {
       let done = false
       const finish = (result: NetResult): void => {
@@ -248,7 +258,7 @@ export function createSkyImageLoader(deps: SkyImageLoaderDeps, timeouts?: SkyIma
       const timer = deps.clock.setTimeout(() => {
         controller.abort()
         finish({ ok: false, reason: 'limit czasu' })
-      }, timeouts?.[id] ?? SKY_IMAGE_TIMEOUT_MS)
+      }, limit)
       outer.addEventListener('abort', onOuterAbort, { once: true })
 
       if (id === 'skyview') {
@@ -271,14 +281,19 @@ export function createSkyImageLoader(deps: SkyImageLoaderDeps, timeouts?: SkyIma
     })
   }
 
-  /** Udane pobranie z sieci: zapis do pamięci (gdy źródło na to pozwala) i zapamiętanie źródła. */
-  async function fromNetwork(id: SkyImageSourceId, request: SkyImageRequest, data: unknown): Promise<SkyImageShown> {
+  /** Udane pobranie z sieci: zapis do pamięci (gdy źródło na to pozwala) i zapamiętanie źródła (bez `layerFirst`). */
+  async function fromNetwork(id: SkyImageSourceId, request: SkyImageRequest, data: unknown, layerFirst = false): Promise<SkyImageShown> {
     const saved = isOffline(id) ? await writeCache(id, request, data) : false
-    remember(id)
+    if (!layerFirst) remember(id)
     return { kind: 'image', sourceId: id, sourceName: sourceName(id), data, fromCache: false, saved }
   }
 
-  async function run(request: SkyImageRequest, manual: SkyImageSourceId | null, signal: AbortSignal): Promise<SkyImageLoadResult> {
+  async function run(
+    request: SkyImageRequest,
+    manual: SkyImageSourceId | null,
+    layerFirst: boolean,
+    signal: AbortSignal,
+  ): Promise<SkyImageLoadResult> {
     const attempts: SkyImageAttempt[] = []
     const checkedKeys = new Set<string>()
 
@@ -296,10 +311,10 @@ export function createSkyImageLoader(deps: SkyImageLoaderDeps, timeouts?: SkyIma
 
     async function networkStep(ids: SkyImageSourceId[]): Promise<SkyImageShown | 'superseded' | null> {
       for (const id of ids) {
-        const result = await tryNetwork(id, request, signal)
+        const result = await tryNetwork(id, request, signal, layerFirst)
         if (signal.aborted || 'superseded' in result) return 'superseded'
         if (result.ok) {
-          const shown = await fromNetwork(id, request, result.data)
+          const shown = await fromNetwork(id, request, result.data, layerFirst)
           return signal.aborted ? 'superseded' : shown
         }
         attempts.push({ sourceId: id, reason: result.reason })
@@ -307,21 +322,21 @@ export function createSkyImageLoader(deps: SkyImageLoaderDeps, timeouts?: SkyIma
       return null
     }
 
-    const order = autoOrder().filter((id) => id !== manual)
-    const steps: Array<{ cache: SkyImageSourceId[]; network: SkyImageSourceId[] }> = manual
-      ? [
-          { cache: [manual], network: [manual] },
-          { cache: order, network: order },
-        ]
-      : [{ cache: order, network: order }]
+    // Bez `layerFirst`: zapamiętane źródło, potem Z28. Z nim: grupa warstwy, potem STScI (zastępstwo).
+    const groups = layerFirst ? [LAYER_GROUP, ['stsci' as const]] : [autoOrder()]
+    const steps = [...(manual ? [[manual]] : []), ...groups.map((ids) => ids.filter((id) => id !== manual))]
+    const withRole = (shown: SkyImageShown): SkyImageShown => {
+      if (!layerFirst || (shown.sourceId === 'stsci' && manual === 'stsci')) return shown
+      return { ...shown, layerRole: shown.sourceId === 'stsci' ? 'fallback' : 'layer' }
+    }
 
-    for (const step of steps) {
-      const hit = await cacheStep(step.cache)
+    for (const ids of steps) {
+      const hit = await cacheStep(ids)
       if (signal.aborted) return SUPERSEDED
-      if (hit) return hit
-      const shown = await networkStep(step.network)
+      if (hit) return withRole(hit)
+      const shown = await networkStep(ids)
       if (shown === 'superseded') return SUPERSEDED
-      if (shown) return shown
+      if (shown) return withRole(shown)
     }
     return { kind: 'none', attempts }
   }
@@ -331,7 +346,7 @@ export function createSkyImageLoader(deps: SkyImageLoaderDeps, timeouts?: SkyIma
       active?.abort()
       const controller = new AbortController()
       active = controller
-      const result = await run(request, options.sourceId ?? null, controller.signal)
+      const result = await run(request, options.sourceId ?? null, options.layerFirst ?? false, controller.signal)
       if (controller.signal.aborted || result.kind === 'superseded') return SUPERSEDED
       view = result
       shownRequest = request
