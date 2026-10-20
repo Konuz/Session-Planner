@@ -24,10 +24,21 @@ import {
   type SkyImageSourceId,
 } from './sources'
 
+// Limity dla poszczególnych źródeł (limit-hips2fits; nazwy wybrane przez test-author):
+// - `SkyImageTimeouts` – tabela `{ [id źródła]: limit w ms }`; źródło bez wpisu dostaje `SKY_IMAGE_TIMEOUT_MS`.
+// - `createSkyImageLoader(deps, timeouts?)` – drugi, opcjonalny argument; bez niego każde źródło ma 10 s.
+// - `SKY_IMAGE_APP_TIMEOUTS_MS` – tabela limitów aplikacji, którą `useSkyImage` przekazuje do pobierania.
+
 /** Klucz `localStorage` z ostatnim działającym źródłem. */
 export const SKY_SOURCE_STORAGE_KEY = 'astrophotography-planner-sky-source'
 /** Limit czasu jednej próby sieciowej [ms]. */
 export const SKY_IMAGE_TIMEOUT_MS = 10_000
+
+/** Limity czasu jednej próby sieciowej dla poszczególnych źródeł [ms]; brak wpisu = `SKY_IMAGE_TIMEOUT_MS`. */
+export type SkyImageTimeouts = Partial<Record<SkyImageSourceId, number>>
+
+/** Limity aplikacji (zakładka Kadr). ZAŚLEPKA limit-hips2fits: do uzupełnienia przez implementer. */
+export const SKY_IMAGE_APP_TIMEOUTS_MS: SkyImageTimeouts = {}
 /** Nazwa pamięci w Cache Storage. */
 export const SKY_IMAGE_CACHE_NAME = 'sky-images-v1'
 /** Nagłówek zapisanej odpowiedzi z identyfikatorem źródła, które dało obraz. */
@@ -126,7 +137,9 @@ type NetResult = { ok: true; data: unknown } | { ok: false; reason: string } | {
 
 const SUPERSEDED = { kind: 'superseded' } as const
 
-export function createSkyImageLoader(deps: SkyImageLoaderDeps): SkyImageLoader {
+export function createSkyImageLoader(deps: SkyImageLoaderDeps, timeouts?: SkyImageTimeouts): SkyImageLoader {
+  // ZAŚLEPKA limit-hips2fits: limity dla poszczególnych źródeł nie są jeszcze używane.
+  void timeouts
   let view: SkyImageView | null = null
   let shownRequest: SkyImageRequest | null = null
   let active: AbortController | null = null
