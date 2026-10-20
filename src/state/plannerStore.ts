@@ -117,12 +117,6 @@ function nightAndCursor(
   return { nightDate, cursorMs: defaultCursorMs({ darkness, nightDate, timeZone: location.timezone }) }
 }
 
-function notImplemented(name: string, ...args: unknown[]): never {
-  const error = new Error(`${name}: not implemented (${args.length})`)
-  error.name = 'NotImplementedError'
-  throw error
-}
-
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error))
 
 const DEFAULT_PROFILE = DEMO_PROFILES.find((profile) => profile.id === DEFAULT_PROFILE_ID) ?? DEMO_PROFILES[0]
@@ -301,7 +295,7 @@ export const usePlannerStore = create<PlannerStore>()(
         },
 
         updateFraming(objectUid, framing) {
-          notImplemented('updateFraming', objectUid, framing)
+          set({ framing, framingObjectUid: objectUid })
         },
       }
     },

@@ -16,11 +16,12 @@ import {
 } from '../../services/nightChart'
 import { formatDuration, formatLocalTime } from '../../services/time'
 import { useActiveLocation, useActiveProfile, usePlannerStore } from '../../state/plannerStore'
-import type { DsoObject, Mount } from '../../types'
+import type { Mount } from '../../types'
 import { useSvgId } from '../../ui/useSvgId'
 import { BAND_OPACITY } from './chartGeometry'
 import { MoonPhaseIcon } from './MoonPhaseIcon'
 import { NightChart } from './NightChart'
+import { objectName } from './objectName'
 import { useFeaturedObjects } from './useFeaturedObjects'
 
 const BAND_LABELS: Record<TwilightBand, string> = {
@@ -35,11 +36,6 @@ const STATE_LABELS: Record<NonNullable<CursorReadout['object']>['state'], string
   visible: 'widoczny',
   obstructed: 'za przeszkodą',
   low: 'za nisko',
-}
-
-function objectName(object: DsoObject): string {
-  const name = formatDesignation(object.primary)
-  return object.commonNames.length > 0 ? `${name} (${object.commonNames[0]})` : name
 }
 
 export function NightTab() {
