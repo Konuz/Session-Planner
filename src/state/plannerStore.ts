@@ -13,9 +13,9 @@ import { newProfileId, profileErrors, uniqueName } from '../services/equipment'
 import { DEFAULT_PLANNING_SETTINGS } from '../services/planningSettings'
 import { currentNightDate } from '../services/time'
 import { darknessWindow, nightRange } from '../services/visibility'
-import type { EquipmentProfile, ObserverLocation, PlanningSettings } from '../types'
+import type { EquipmentProfile, Framing, ObserverLocation, PlanningSettings } from '../types'
 
-export type Tab = 'catalog' | 'night' | 'settings'
+export type Tab = 'catalog' | 'night' | 'framing' | 'settings'
 
 interface PlannerState {
   locations: ObserverLocation[]
@@ -40,6 +40,10 @@ interface PlannerState {
   catalogFilters: CatalogFilterState
   /** Sortowanie zakładki Katalog; bez zapisu między sesjami. */
   catalogSort: CatalogSortKey
+  /** Kadr zakładki Kadr (środek, PA, mozaika); null = jeszcze nie ustawiony. Tylko w pamięci, bez zapisu. */
+  framing: Framing | null
+  /** uid obiektu, na którym wyśrodkowano `framing`; inny pokazywany obiekt przenosi środek na siebie. */
+  framingObjectUid: string | null
 }
 
 interface PlannerActions {
@@ -71,6 +75,8 @@ interface PlannerActions {
   openObject: (uid: string) => void
   setCatalogFilters: (filters: CatalogFilterState) => void
   setCatalogSort: (sort: CatalogSortKey) => void
+  /** Zapis kadru zakładki Kadr razem z uid obiektu, przy którym go ustawiono. */
+  updateFraming: (objectUid: string, framing: Framing) => void
 }
 
 export type PlannerStore = PlannerState & PlannerActions
@@ -111,6 +117,12 @@ function nightAndCursor(
   return { nightDate, cursorMs: defaultCursorMs({ darkness, nightDate, timeZone: location.timezone }) }
 }
 
+function notImplemented(name: string, ...args: unknown[]): never {
+  const error = new Error(`${name}: not implemented (${args.length})`)
+  error.name = 'NotImplementedError'
+  throw error
+}
+
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error))
 
 const DEFAULT_PROFILE = DEMO_PROFILES.find((profile) => profile.id === DEFAULT_PROFILE_ID) ?? DEMO_PROFILES[0]
@@ -140,6 +152,8 @@ export const usePlannerStore = create<PlannerStore>()(
         planningSettings: DEFAULT_PLANNING_SETTINGS,
         catalogFilters: DEFAULT_CATALOG_FILTERS,
         catalogSort: DEFAULT_CATALOG_SORT,
+        framing: null,
+        framingObjectUid: null,
 
         async loadLocations() {
           let locations: ObserverLocation[]
@@ -284,6 +298,10 @@ export const usePlannerStore = create<PlannerStore>()(
 
         setCatalogSort(catalogSort) {
           set({ catalogSort })
+        },
+
+        updateFraming(objectUid, framing) {
+          notImplemented('updateFraming', objectUid, framing)
         },
       }
     },

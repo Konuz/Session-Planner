@@ -1,10 +1,11 @@
 // Nawigacja (sekcja 9): dolny pasek zakładek poniżej 768 px, boczny pasek od 768 px (sekcja 8).
-import { MoonStar, Settings, Telescope, type LucideIcon } from 'lucide-react'
+import { Frame, MoonStar, Settings, Telescope, type LucideIcon } from 'lucide-react'
 import { usePlannerStore, type Tab } from '../state/plannerStore'
 
 const TABS: readonly { id: Tab; label: string; icon: LucideIcon }[] = [
   { id: 'catalog', label: 'Katalog', icon: Telescope },
   { id: 'night', label: 'Noc', icon: MoonStar },
+  { id: 'framing', label: 'Kadr', icon: Frame },
   { id: 'settings', label: 'Ustawienia', icon: Settings },
 ]
 
