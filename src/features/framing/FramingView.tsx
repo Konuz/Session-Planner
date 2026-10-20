@@ -9,6 +9,7 @@
 // - Kolory tylko z klas tokenów.
 import type { ReactElement } from 'react'
 import { mosaicPanels, oagPrisms, skyToCutout, type CutoutPoint } from '../../services/framing'
+import type { Star } from '../../services/stars'
 import type { EquipmentProfile, Framing } from '../../types'
 import type { FallbackMapObject } from './fallbackMap'
 import { VIEW_SIZE, viewCutout } from './framingModel'
@@ -29,6 +30,12 @@ export interface FramingViewProps {
   framing: Framing
   mapObjects: readonly FallbackMapObject[]
   photo?: FramingPhoto | null
+  /**
+   * Gwiazdy tła (tlo-mapy, nazwa wybrana przez test-author): brak / null / [] → sama siatka, bez komunikatu.
+   * Tło w svg widoku: `<g data-role="grid">` (linie i opisy siatki RA/Dec, `<text>` z opisem linii), potem
+   * `<g data-role="stars">` (kropki jako `<circle cx cy r>`), oba przed zdjęciem; bez `transform`, kolory z klas tokenów.
+   */
+  stars?: readonly Star[] | null
 }
 
 const round = (value: number) => Math.round(value * 100) / 100
