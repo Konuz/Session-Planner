@@ -14,7 +14,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { EquatorialDeg } from '../../services/astroMath'
 import type { MosaicSize } from '../../services/framing'
-import { createSkyImageLoader, type SkyImageLoaderDeps } from '../../services/skyImage/loader'
+import { createSkyImageLoader, SKY_IMAGE_APP_TIMEOUTS_MS, type SkyImageLoaderDeps } from '../../services/skyImage/loader'
 import { createPhotoLayer, type PhotoLayer, type PhotoLayerView } from './photoModel'
 
 export interface SkyImageHookInput {
@@ -96,7 +96,7 @@ function photoHrefStore(layer: PhotoLayer) {
 }
 
 function createState() {
-  const layer = createPhotoLayer(createSkyImageLoader(browserDeps()))
+  const layer = createPhotoLayer(createSkyImageLoader(browserDeps(), SKY_IMAGE_APP_TIMEOUTS_MS))
   return { layer, href: photoHrefStore(layer) }
 }
 

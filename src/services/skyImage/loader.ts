@@ -37,8 +37,13 @@ export const SKY_IMAGE_TIMEOUT_MS = 10_000
 /** Limity czasu jednej próby sieciowej dla poszczególnych źródeł [ms]; brak wpisu = `SKY_IMAGE_TIMEOUT_MS`. */
 export type SkyImageTimeouts = Partial<Record<SkyImageSourceId, number>>
 
-/** Limity aplikacji (zakładka Kadr). ZAŚLEPKA limit-hips2fits: do uzupełnienia przez implementer. */
-export const SKY_IMAGE_APP_TIMEOUTS_MS: SkyImageTimeouts = {}
+/** Limity aplikacji (zakładka Kadr): hips2fits liczy niektóre warstwy 9–21 s, więc dostaje 30 s. */
+export const SKY_IMAGE_APP_TIMEOUTS_MS: SkyImageTimeouts = {
+  alaskybis: 30_000,
+  alasky: 30_000,
+  skyview: 10_000,
+  stsci: 10_000,
+}
 /** Nazwa pamięci w Cache Storage. */
 export const SKY_IMAGE_CACHE_NAME = 'sky-images-v1'
 /** Nagłówek zapisanej odpowiedzi z identyfikatorem źródła, które dało obraz. */
@@ -138,8 +143,6 @@ type NetResult = { ok: true; data: unknown } | { ok: false; reason: string } | {
 const SUPERSEDED = { kind: 'superseded' } as const
 
 export function createSkyImageLoader(deps: SkyImageLoaderDeps, timeouts?: SkyImageTimeouts): SkyImageLoader {
-  // ZAŚLEPKA limit-hips2fits: limity dla poszczególnych źródeł nie są jeszcze używane.
-  void timeouts
   let view: SkyImageView | null = null
   let shownRequest: SkyImageRequest | null = null
   let active: AbortController | null = null
@@ -210,7 +213,7 @@ export function createSkyImageLoader(deps: SkyImageLoaderDeps, timeouts?: SkyIma
     }
   }
 
-  /** Jedna próba sieciowa z limitem 10 s; przerwanie `outer` kończy ją jako „superseded”. */
+  /** Jedna próba sieciowa z limitem źródła (domyślnie 10 s); przerwanie `outer` kończy ją jako „superseded”. */
   function tryNetwork(id: SkyImageSourceId, request: SkyImageRequest, outer: AbortSignal): Promise<NetResult> {
     if (outer.aborted) return Promise.resolve({ ok: false, superseded: true })
     const controller = new AbortController()
@@ -231,7 +234,7 @@ export function createSkyImageLoader(deps: SkyImageLoaderDeps, timeouts?: SkyIma
       const timer = deps.clock.setTimeout(() => {
         controller.abort()
         finish({ ok: false, reason: 'limit czasu' })
-      }, SKY_IMAGE_TIMEOUT_MS)
+      }, timeouts?.[id] ?? SKY_IMAGE_TIMEOUT_MS)
       outer.addEventListener('abort', onOuterAbort, { once: true })
 
       if (id === 'skyview') {
