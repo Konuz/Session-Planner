@@ -1,6 +1,5 @@
 // Model warstwy zdjęcia w zakładce Kadr (zdjecie-w-kadrze): podpisy, komunikaty, listy wyboru, tryb wywołania
 // pobierania, przycisk offline, decyzja o nowym pobraniu i prostokąt zdjęcia w jednostkach widoku.
-// ZAŚLEPKA: funkcje rzucają NotImplementedError; implementację dopisuje implementer.
 //
 // Nazwy, których spec nie podaje (wybrane przez test-author):
 // - `SourceChoice` – wybór źródła: 'auto' („Automatycznie”) albo id źródła z `zrodla-zdjec`.
@@ -41,7 +40,7 @@
 //   - `subscribe(listener)` – powiadomienie o każdej zmianie widoku; zwraca funkcję wypisania.
 //   Wynik `superseded` z `load` nie zmienia widoku.
 import type { EquatorialDeg } from '../../services/astroMath'
-import type { MosaicSize } from '../../services/framing'
+import { skyToCutout, type MosaicSize } from '../../services/framing'
 import type {
   SkyImageAttempt,
   SkyImageLoadOptions,
@@ -49,7 +48,19 @@ import type {
   SkyImageShown,
   SkyImageView,
 } from '../../services/skyImage/loader'
-import type { SkyImageLayerId, SkyImageRequest, SkyImageSourceId } from '../../services/skyImage/sources'
+import {
+  cutoutFovDeg,
+  effectiveLayer,
+  layersForFov,
+  needsNewCutout,
+  planCutout,
+  skyImageSources,
+  stsciCoveredFovDeg,
+  type SkyImageLayerId,
+  type SkyImageRequest,
+  type SkyImageSourceId,
+} from '../../services/skyImage/sources'
+import { VIEW_SIZE } from './framingModel'
 
 /** Wybór źródła: „Automatycznie” albo konkretne źródło. */
 export type SourceChoice = 'auto' | SkyImageSourceId
@@ -121,38 +132,74 @@ export interface PhotoLayer {
   saveOffline(): Promise<void>
 }
 
-function notImplemented(name: string, ...args: unknown[]): never {
-  const error = new Error(`${name}: not implemented (${args.length})`)
-  error.name = 'NotImplementedError'
-  throw error
+const LOADING_TEXT = 'Pobieram zdjęcie…'
+const MISSING_TEXT = 'Brak zdjęcia — pokazuję zarysy obiektów'
+const OFFLINE_LABEL = 'Zapisz podgląd do pracy offline'
+const SAVING_LABEL = 'Zapisuję…'
+const SAVED_TEXT = 'Zapisano podgląd do pracy offline'
+const SAVE_FAILED_TEXT = 'Nie udało się zapisać podglądu do pracy offline'
+const OUTLINES_LICENSE = 'Licencja: zarysy obiektów — Stellarium (GPL-2.0)'
+const PHOTO_LICENSE: Record<'hips2fits' | 'hips2fits-halpha' | 'skyview' | 'stsci', string> = {
+  hips2fits: 'Licencja: zdjęcie — CDS Strasbourg (hips2fits), dane DSS © STScI/AURA',
+  'hips2fits-halpha': 'Licencja: zdjęcie — CDS Strasbourg (hips2fits), mapa Hα: Finkbeiner (ODbL)',
+  skyview: 'Licencja: zdjęcie — NASA/GSFC SkyView, dane DSS © STScI/AURA',
+  stsci: 'Licencja: zdjęcie — Digitized Sky Survey © STScI/AURA',
+}
+/** Pole wycinka, gdy kadr nie jest jeszcze znany (wszystkie warstwy dostępne). */
+const UNKNOWN_FOV_DEG = 60
+
+const SOURCES = skyImageSources()
+const LAYER_NAMES = Object.fromEntries(layersForFov(UNKNOWN_FOV_DEG).map((layer) => [layer.id, layer.name])) as Record<
+  SkyImageLayerId,
+  string
+>
+
+function sourceName(id: SkyImageSourceId): string {
+  return SOURCES.find((source) => source.id === id)?.name ?? id
 }
 
+const isHips2fits = (id: SkyImageSourceId) => id === 'alaskybis' || id === 'alasky'
+
+/** Warstwa naprawdę użyta dla wycinka. */
+const requestLayer = (request: SkyImageRequest) => effectiveLayer(request.layerId, request.fovDeg)
+
 export function sourceChoices(): Choice<SourceChoice>[] {
-  return notImplemented('sourceChoices')
+  return [{ value: 'auto', label: 'Automatycznie' }, ...SOURCES.map((source) => ({ value: source.id, label: source.name }))]
 }
 
 export function layerChoices(fovDeg: number): Choice<SkyImageLayerId>[] {
-  return notImplemented('layerChoices', fovDeg)
+  return layersForFov(fovDeg).map((layer) => ({ value: layer.id, label: layer.name }))
 }
 
 export function loadOptions(source: SourceChoice, layerId: SkyImageLayerId): SkyImageLoadOptions {
-  return notImplemented('loadOptions', source, layerId)
+  if (source !== 'auto') return { sourceId: source }
+  return { sourceId: layerId === 'dss2-color' ? null : 'alaskybis' }
 }
 
 export function photoCaption(photo: ShownPhoto): string {
-  return notImplemented('photoCaption', photo)
+  const { sourceId, fromCache } = photo.image
+  const layer = isHips2fits(sourceId) ? `, ${LAYER_NAMES[requestLayer(photo.request)]}` : ''
+  return `Zdjęcie: ${sourceName(sourceId)}${layer}${fromCache ? ', z pamięci' : ''}`
 }
 
 export function attemptLines(attempts: readonly SkyImageAttempt[]): string[] {
-  return notImplemented('attemptLines', attempts)
+  return attempts.map((attempt) => `${sourceName(attempt.sourceId)}: ${attempt.reason}`)
 }
 
 export function licenseLines(photo: ShownPhoto | null): string[] {
-  return notImplemented('licenseLines', photo)
+  if (!photo) return [OUTLINES_LICENSE]
+  const { sourceId } = photo.image
+  const kind = isHips2fits(sourceId) ? (requestLayer(photo.request) === 'halpha' ? 'hips2fits-halpha' : 'hips2fits') : sourceId
+  return [OUTLINES_LICENSE, PHOTO_LICENSE[kind]]
 }
 
 export function photoRect(photo: ShownPhoto, frameCenter: EquatorialDeg, viewFovDeg: number): ViewRect {
-  return notImplemented('photoRect', photo, frameCenter, viewFovDeg)
+  const { request } = photo
+  const covered = photo.image.sourceId === 'stsci' ? stsciCoveredFovDeg(request.fovDeg) : request.fovDeg
+  const halfTan = (fovDeg: number) => Math.tan((fovDeg * Math.PI) / 360)
+  const side = (VIEW_SIZE * halfTan(covered)) / halfTan(viewFovDeg)
+  const center = skyToCutout({ center: frameCenter, fovDeg: viewFovDeg, widthPx: VIEW_SIZE, heightPx: VIEW_SIZE }, request.center)
+  return { x: center.x - side / 2, y: center.y - side / 2, width: side, height: side }
 }
 
 export function nextPhotoRequest(
@@ -161,9 +208,132 @@ export function nextPhotoRequest(
   layerId: SkyImageLayerId,
   dragging: boolean,
 ): SkyImageRequest | null {
-  return notImplemented('nextPhotoRequest', previous, frame, layerId, dragging)
+  if (dragging) return null
+  const layer = effectiveLayer(layerId, cutoutFovDeg(frame.size))
+  const stale =
+    previous === null ||
+    requestLayer(previous) !== layer ||
+    needsNewCutout({ center: previous.center, fovDeg: previous.fovDeg }, frame)
+  return stale ? planCutout(frame.center, frame.size, layer) : null
 }
 
 export function createPhotoLayer(loader: PhotoLoaderPort): PhotoLayer {
-  return notImplemented('createPhotoLayer', loader)
+  let source: SourceChoice = 'auto'
+  let chosenLayer: SkyImageLayerId = 'dss2-color'
+  let frame: PhotoFrame | null = null
+  let lastRequest: SkyImageRequest | null = null
+  let lastOptions: SkyImageLoadOptions = {}
+  let loadSeq = 0
+  let loading = false
+  let photo: ShownPhoto | null = null
+  let attempts: string[] | null = null
+  let saving = false
+  let saveMessage: string | null = null
+  let cached: PhotoLayerView | null = null
+  const listeners = new Set<() => void>()
+
+  const frameFov = () => (frame ? cutoutFovDeg(frame.size) : UNKNOWN_FOV_DEG)
+  const currentLayer = () => effectiveLayer(chosenLayer, frameFov())
+
+  function changed(): void {
+    cached = null
+    for (const listener of [...listeners]) listener()
+  }
+
+  function load(request: SkyImageRequest, options: SkyImageLoadOptions): void {
+    loadSeq += 1
+    const seq = loadSeq
+    lastRequest = request
+    lastOptions = options
+    loading = true
+    saveMessage = null
+    changed()
+    void loader.load(request, options).then((result) => {
+      if (result.kind === 'superseded' || seq !== loadSeq) return
+      loading = false
+      if (result.kind === 'image') {
+        photo = { image: result, request }
+        attempts = null
+      } else {
+        photo = null
+        attempts = attemptLines(result.attempts)
+      }
+      changed()
+    })
+  }
+
+  /** Nowe pobranie dla bieżącego kadru po zmianie wyboru źródła lub warstwy. */
+  function reload(): void {
+    if (!frame) {
+      changed()
+      return
+    }
+    const layer = currentLayer()
+    load(planCutout(frame.center, frame.size, layer), loadOptions(source, layer))
+  }
+
+  function buildView(): PhotoLayerView {
+    const offline = photo && !loading ? { label: saving ? SAVING_LABEL : OFFLINE_LABEL, disabled: saving } : null
+    return {
+      source,
+      sourceOptions: sourceChoices(),
+      layer: currentLayer(),
+      layerOptions: layerChoices(frameFov()),
+      photo,
+      caption: photo ? photoCaption(photo) : null,
+      loadingText: loading ? LOADING_TEXT : null,
+      missing: !loading && attempts ? { message: MISSING_TEXT, attempts } : null,
+      offline,
+      saveMessage,
+      licenses: licenseLines(photo),
+    }
+  }
+
+  return {
+    view() {
+      cached ??= buildView()
+      return cached
+    },
+    subscribe(listener) {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
+    },
+    setFrame(next, dragging) {
+      const before = frameFov()
+      frame = { center: { ...next.center }, size: { ...next.size } }
+      const layer = currentLayer()
+      const request = nextPhotoRequest(lastRequest, frame, layer, dragging)
+      if (request) load(request, loadOptions(source, layer))
+      else if (frameFov() !== before) changed()
+    },
+    chooseSource(next) {
+      source = next
+      reload()
+    },
+    chooseLayer(layerId) {
+      chosenLayer = layerId
+      reload()
+    },
+    retry() {
+      if (lastRequest) load(lastRequest, lastOptions)
+    },
+    async saveOffline() {
+      if (saving || !photo || loading) return
+      saving = true
+      saveMessage = null
+      changed()
+      const result = await loader.saveOffline()
+      saving = false
+      if (result === 'saved') {
+        const current = loader.current()
+        if (photo && !loading && current?.kind === 'image') photo = { image: current, request: photo.request }
+        saveMessage = SAVED_TEXT
+      } else {
+        saveMessage = SAVE_FAILED_TEXT
+      }
+      changed()
+    },
+  }
 }

@@ -15,8 +15,7 @@ import { VIEW_SIZE, viewCutout } from './framingModel'
 import type { ViewRect } from './photoModel'
 
 /**
- * Zdjęcie nieba pod mapą zastępczą i ramką (zdjecie-w-kadrze). ZAŚLEPKA: prop jeszcze nie jest rysowany.
- * Ma dać `<image data-role="photo" href={href} x y width height preserveAspectRatio="none">` (prostokąt `rect`
+ * Zdjęcie nieba pod mapą zastępczą i ramką (zdjecie-w-kadrze): `<image data-role="photo" href={href} x y width height preserveAspectRatio="none">` (prostokąt `rect`
  * w jednostkach widoku, bez `transform`) przed obiektami mapy i panelami; bez `photo` (null) – brak `<image>`.
  */
 export interface FramingPhoto {
@@ -44,7 +43,7 @@ function centroid(points: readonly CutoutPoint[]): CutoutPoint {
 
 const LINE = { vectorEffect: 'non-scaling-stroke', fill: 'none' } as const
 
-export function FramingView({ fovDeg, profile, framing, mapObjects }: FramingViewProps): ReactElement {
+export function FramingView({ fovDeg, profile, framing, mapObjects, photo = null }: FramingViewProps): ReactElement {
   const cutout = viewCutout(framing, fovDeg)
   const project = (quad: readonly { raDeg: number; decDeg: number }[]) => quad.map((corner) => skyToCutout(cutout, corner))
   const panels = mosaicPanels(profile, framing).map((panel) => project(panel.corners))
@@ -60,6 +59,18 @@ export function FramingView({ fovDeg, profile, framing, mapObjects }: FramingVie
       aria-label="Kadr na niebie: północ u góry, wschód po lewej"
     >
       <rect x={0} y={0} width={VIEW_SIZE} height={VIEW_SIZE} className="fill-background" />
+
+      {photo && (
+        <image
+          data-role="photo"
+          href={photo.href}
+          x={round(photo.rect.x)}
+          y={round(photo.rect.y)}
+          width={round(photo.rect.width)}
+          height={round(photo.rect.height)}
+          preserveAspectRatio="none"
+        />
+      )}
 
       {mapObjects.map((object) => (
         <g

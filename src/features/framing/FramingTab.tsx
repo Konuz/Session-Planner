@@ -7,6 +7,8 @@
 // - Przeciąganie: przesunięcie liczone zawsze od chwili wciśnięcia wskaźnika (P11), a piksele ekranu przeliczane na
 //   jednostki widoku z szerokości widoku na ekranie (P12).
 // - Red Mode: kontener widoku ma `filter: url(#red-only)`; filtr z sekcji 8 jest na stronie.
+// - Zdjęcie nieba (zdjecie-w-kadrze): hak `useSkyImage` dostaje środek kadru, rozmiar kadru lub mozaiki i „przeciąganie
+//   trwa”; zdjęcie leży w widoku pod mapą i ramką (`photoRect`), a pod widokiem jest `PhotoPanel`.
 import { Crosshair, RotateCcw } from 'lucide-react'
 import { useId, useRef, useState, type PointerEvent, type ReactNode } from 'react'
 import { selectFeatured, nightObjectOptions } from '../../data/featuredObjects'
@@ -32,6 +34,9 @@ import {
 } from './framingModel'
 import { FramingView } from './FramingView'
 import { viewMapObjects } from './mapData'
+import { PhotoPanel } from './PhotoPanel'
+import { photoRect } from './photoModel'
+import { useSkyImage } from './useSkyImage'
 
 const MOSAIC_COUNTS = [1, 2, 3, 4, 5] as const
 const RED_ONLY_MATRIX = '0.2126 0.7152 0.0722 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0'
@@ -168,8 +173,14 @@ function FramingCanvas({
   const drag = useRef<DragState | null>(null)
   const pending = useRef<{ x: number; y: number } | null>(null)
   const frameRequest = useRef<number | null>(null)
-  const fovDeg = cutoutFovDeg(mosaicSizeDeg(profile, frame))
+  const [dragging, setDragging] = useState(false)
+  const size = mosaicSizeDeg(profile, frame)
+  const fovDeg = cutoutFovDeg(size)
   const mapObjects = viewMapObjects(catalog, viewCutout(frame, fovDeg))
+  const center = { raDeg: frame.centerRaDeg, decDeg: frame.centerDecDeg }
+  const sky = useSkyImage({ center, size, dragging })
+  const shown = sky.view.photo
+  const photo = shown && sky.photoHref ? { href: sky.photoHref, rect: photoRect(shown, center, fovDeg) } : null
 
   const applyPending = () => {
     frameRequest.current = null
@@ -188,6 +199,7 @@ function FramingCanvas({
       fovDeg,
       widthPx: event.currentTarget.getBoundingClientRect().width,
     }
+    setDragging(true)
   }
 
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
@@ -204,6 +216,7 @@ function FramingCanvas({
     }
     drag.current = null
     pending.current = null
+    setDragging(false)
   }
 
   return (
@@ -227,9 +240,16 @@ function FramingCanvas({
         onPointerCancel={endDrag}
         onLostPointerCapture={endDrag}
       >
-        <FramingView fovDeg={fovDeg} profile={profile} framing={frame} mapObjects={mapObjects} />
+        <FramingView fovDeg={fovDeg} profile={profile} framing={frame} mapObjects={mapObjects} photo={photo} />
       </div>
       <p className="text-xs text-muted">Przeciągnij tło, żeby przesunąć kadr. Północ u góry, wschód po lewej.</p>
+      <PhotoPanel
+        view={sky.view}
+        onChooseSource={(source) => sky.layer.chooseSource(source)}
+        onChooseLayer={(layerId) => sky.layer.chooseLayer(layerId)}
+        onRetry={() => sky.layer.retry()}
+        onSaveOffline={() => void sky.layer.saveOffline()}
+      />
     </div>
   )
 }
