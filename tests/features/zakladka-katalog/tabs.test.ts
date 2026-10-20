@@ -1,4 +1,4 @@
-// P1: zakładki Katalog, Noc, Ustawienia; nowy użytkownik zaczyna na Katalogu, zapamiętana zakładka zostaje („Pytania”).
+// P1: zakładki Katalog, Noc, Ustawienia (od etapu 5 także Kadr, zakladka-kadr P1); nowy użytkownik zaczyna na Katalogu, zapamiętana zakładka zostaje („Pytania”).
 // App wyświetla zakładkę Katalog („Styk z resztą”). Filtry i sortowanie nie są zapamiętywane między sesjami („Pytania”).
 // Każde „uruchomienie aplikacji” to świeży moduł stanu nad tym samym localStorage (atrapa w pamięci).
 import { createElement, type ReactElement } from 'react'
@@ -46,9 +46,9 @@ afterEach(() => {
 })
 
 describe('nawigacja', () => {
-  it('P1: nawigacja ma zakładki w kolejności Katalog, Noc, Ustawienia', async () => {
+  it('P1: nawigacja ma zakładki w kolejności Katalog, Noc, Kadr, Ustawienia', async () => {
     const app = await startApp(new MemoryStorage())
-    expect(navigation(app.render(app.navBar())).labels).toEqual(['Katalog', 'Noc', 'Ustawienia'])
+    expect(navigation(app.render(app.navBar())).labels).toEqual(['Katalog', 'Noc', 'Kadr', 'Ustawienia'])
   })
 })
 
