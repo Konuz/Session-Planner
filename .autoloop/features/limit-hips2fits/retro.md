@@ -1,0 +1,1 @@
+- 2026-10-20: 1 próba, 1 keep (4bbe381), wynik PASS 26/26 (20 widocznych + 6 ukrytych); nieudanych prób nie było, review testów bez uwag.
