@@ -10,6 +10,7 @@ import { formatDeg } from '../../services/format'
 import { normalizeDeg } from '../../services/astroMath'
 import { parseDecimal } from '../../services/equipment'
 import { cutoutToSky, mosaicSizeDeg, type SkyCutout } from '../../services/framing'
+import { cutoutFovDeg } from '../../services/skyImage/sources'
 import { profilePreview, profileToForm } from '../equipment/profileForm'
 import type { DsoObject, EquipmentProfile, Framing } from '../../types'
 
@@ -17,8 +18,6 @@ import type { DsoObject, EquipmentProfile, Framing } from '../../types'
 export const VIEW_SIZE = 1000
 
 // ---------- Zoom widoku (zoom-kadru) ----------
-// ZAŚLEPKA: funkcje zoomu rzucają NotImplementedError; implementację dopisuje implementer.
-//
 // Nazwy, których spec nie podaje (wybrane przez test-author):
 // - `ZOOM_STEP` = 1,5 – krok „+”/„−” i jednego ząbka kółka.
 // - `MAX_VIEW_FOV_DEG` = 60 – największe pole widoku.
@@ -65,55 +64,55 @@ export interface ZoomBounds {
 }
 
 export function zoomBounds(profile: EquipmentProfile, framing: Framing): ZoomBounds {
-  void profile
-  void framing
-  throw new Error('NotImplementedError: zoomBounds')
+  const single = mosaicSizeDeg(profile, { ...framing, mosaic: { ...framing.mosaic, cols: 1, rows: 1 } })
+  return {
+    fitDeg: cutoutFovDeg(mosaicSizeDeg(profile, framing)),
+    minDeg: 1.2 * Math.hypot(single.widthDeg, single.heightDeg),
+    maxDeg: MAX_VIEW_FOV_DEG,
+  }
 }
 
+/** Tolerancja porównania pola z granicą [°]. */
+const BOUND_EPS_DEG = 1e-6
+
+const clampFov = (fovDeg: number, bounds: ZoomBounds) => Math.min(bounds.maxDeg, Math.max(bounds.minDeg, fovDeg))
+
 export function zoomIn(fovDeg: number, bounds: ZoomBounds): number {
-  void fovDeg
-  void bounds
-  throw new Error('NotImplementedError: zoomIn')
+  return clampFov(fovDeg / ZOOM_STEP, bounds)
 }
 
 export function zoomOut(fovDeg: number, bounds: ZoomBounds): number {
-  void fovDeg
-  void bounds
-  throw new Error('NotImplementedError: zoomOut')
+  return clampFov(fovDeg * ZOOM_STEP, bounds)
 }
 
 export function canZoomIn(fovDeg: number, bounds: ZoomBounds): boolean {
-  void fovDeg
-  void bounds
-  throw new Error('NotImplementedError: canZoomIn')
+  return fovDeg > bounds.minDeg + BOUND_EPS_DEG
 }
 
 export function canZoomOut(fovDeg: number, bounds: ZoomBounds): boolean {
-  void fovDeg
-  void bounds
-  throw new Error('NotImplementedError: canZoomOut')
+  return fovDeg < bounds.maxDeg - BOUND_EPS_DEG
 }
 
+/** Jeden ząbek kółka: 100 px (`deltaMode` 0), 3 linie (1) albo 1 strona (2). */
+const WHEEL_TICK = [100, 3, 1]
+
 export function wheelZoom(fovDeg: number, deltaY: number, deltaMode: number, bounds: ZoomBounds): number {
-  void fovDeg
-  void deltaY
-  void deltaMode
-  void bounds
-  throw new Error('NotImplementedError: wheelZoom')
+  const ticks = deltaY / (WHEEL_TICK[deltaMode] ?? WHEEL_TICK[0])
+  if (!Number.isFinite(ticks)) return clampFov(fovDeg, bounds)
+  return clampFov(fovDeg * ZOOM_STEP ** ticks, bounds)
 }
 
 export function pinchZoom(startFovDeg: number, startDistancePx: number, distancePx: number, bounds: ZoomBounds): number {
-  void startFovDeg
-  void startDistancePx
-  void distancePx
-  void bounds
-  throw new Error('NotImplementedError: pinchZoom')
+  if (!(startDistancePx > 0) || !(distancePx > 0)) return clampFov(startFovDeg, bounds)
+  return clampFov((startFovDeg * startDistancePx) / distancePx, bounds)
 }
 
 export function fovReadout(fovDeg: number): string {
-  void fovDeg
-  throw new Error('NotImplementedError: fovReadout')
+  return `Pole widoku: ${fixed2(fovDeg)}°`
 }
+
+const fixed2 = (value: number) =>
+  new Intl.NumberFormat('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: false }).format(value)
 
 /** Punkt na ekranie [px] (np. `clientX`, `clientY` zdarzenia wskaźnika). */
 export interface ScreenPoint {

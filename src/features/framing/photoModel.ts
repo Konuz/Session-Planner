@@ -88,12 +88,13 @@ export interface ViewRect {
 /**
  * Kadr dla warstwy zdjęcia: środek kadru i rozmiar kadru lub mozaiki.
  *
- * zoom-kadru (ZAŚLEPKA: pole jest jeszcze ignorowane; nazwy wybrał test-author): `fovDeg` – pole widoku po zoomie.
+ * zoom-kadru (nazwy wybrał test-author): `fovDeg` – pole widoku po zoomie.
  * Gdy podane, zastępuje `cutoutFovDeg(size)` w liście warstw i progu Hα (`frameFov()`), w `nextPhotoRequest`
  * (pole planowane, `planCutout`/`needsNewCutout` z polem planowanym) i w `reload` (`chooseSource`/`chooseLayer`).
  * `setFrame(frame, dragging)` z `dragging` = false i `fovDeg` różnym od pola bieżącego wycinka (≥ 1e-6°) → jedno
  * pobranie wycinka o polu `fovDeg` wokół środka kadru. Z `dragging` = true (przeciąganie, szczypanie, kółko przed
- * 300 ms ciszy) nic się nie pobiera. Bez `fovDeg` wszystko działa jak dotąd.
+ * 300 ms ciszy) nic się nie pobiera. Bez `fovDeg` wszystko działa jak dotąd. Gdy zmienił się rozmiar kadru (mozaika,
+ * profil), a nie pole widoku, decyduje dawna reguła (`needsNewCutout` z polem planowanym), jak przy „Dopasuj”.
  */
 export interface PhotoFrame {
   center: EquatorialDeg
@@ -155,6 +156,8 @@ const PHOTO_LICENSE: Record<'hips2fits' | 'hips2fits-halpha' | 'skyview' | 'stsc
   skyview: 'Licencja: zdjęcie — NASA/GSFC SkyView, dane DSS © STScI/AURA',
   stsci: 'Licencja: zdjęcie — Digitized Sky Survey © STScI/AURA',
 }
+/** Najmniejsza zmiana pola widoku, po której zoom pobiera nowy wycinek [°]. */
+const FOV_CHANGE_EPS_DEG = 1e-6
 /** Pole wycinka, gdy kadr nie jest jeszcze znany (wszystkie warstwy dostępne). */
 const UNKNOWN_FOV_DEG = 60
 
@@ -212,19 +215,31 @@ export function photoRect(photo: ShownPhoto, frameCenter: EquatorialDeg, viewFov
   return { x: center.x - side / 2, y: center.y - side / 2, width: side, height: side }
 }
 
+/** Pole widoku kadru: po zoomie `fovDeg`, inaczej pole wycinka kadru. */
+const viewFov = (frame: PhotoFrame) => frame.fovDeg ?? cutoutFovDeg(frame.size)
+
+const sameSize = (a: MosaicSize, b: MosaicSize) => a.widthDeg === b.widthDeg && a.heightDeg === b.heightDeg
+
+/**
+ * `zoomed` – pole widoku zmieniono zoomem (domyślnie tak); wtedy każda różnica pola widoku i pola `previous` daje nowy
+ * wycinek. Bez zoomu (np. zmiana mozaiki albo profilu) decyduje `needsNewCutout` z polem planowanym, jak dotąd.
+ */
 export function nextPhotoRequest(
   previous: SkyImageRequest | null,
   frame: PhotoFrame,
   layerId: SkyImageLayerId,
   dragging: boolean,
+  zoomed = true,
 ): SkyImageRequest | null {
   if (dragging) return null
-  const layer = effectiveLayer(layerId, cutoutFovDeg(frame.size))
+  const fovDeg = viewFov(frame)
+  const layer = effectiveLayer(layerId, fovDeg)
   const stale =
     previous === null ||
     requestLayer(previous) !== layer ||
-    needsNewCutout({ center: previous.center, fovDeg: previous.fovDeg }, frame)
-  return stale ? planCutout(frame.center, frame.size, layer) : null
+    (zoomed && frame.fovDeg !== undefined && Math.abs(fovDeg - previous.fovDeg) >= FOV_CHANGE_EPS_DEG) ||
+    needsNewCutout({ center: previous.center, fovDeg: previous.fovDeg }, frame, frame.fovDeg)
+  return stale ? planCutout(frame.center, frame.size, layer, frame.fovDeg) : null
 }
 
 export function createPhotoLayer(loader: PhotoLoaderPort): PhotoLayer {
@@ -232,6 +247,8 @@ export function createPhotoLayer(loader: PhotoLoaderPort): PhotoLayer {
   let chosenLayer: SkyImageLayerId = 'dss2-color'
   let frame: PhotoFrame | null = null
   let lastRequest: SkyImageRequest | null = null
+  /** Pole widoku zmieniono zoomem od ostatniego sprawdzenia po zakończonym geście. */
+  let zoomPending = false
   let lastOptions: SkyImageLoadOptions = {}
   let loadSeq = 0
   let loading = false
@@ -242,7 +259,7 @@ export function createPhotoLayer(loader: PhotoLoaderPort): PhotoLayer {
   let cached: PhotoLayerView | null = null
   const listeners = new Set<() => void>()
 
-  const frameFov = () => (frame ? cutoutFovDeg(frame.size) : UNKNOWN_FOV_DEG)
+  const frameFov = () => (frame ? viewFov(frame) : UNKNOWN_FOV_DEG)
   const currentLayer = () => effectiveLayer(chosenLayer, frameFov())
 
   function changed(): void {
@@ -279,7 +296,7 @@ export function createPhotoLayer(loader: PhotoLoaderPort): PhotoLayer {
       return
     }
     const layer = currentLayer()
-    load(planCutout(frame.center, frame.size, layer), loadOptions(source, layer))
+    load(planCutout(frame.center, frame.size, layer, frame.fovDeg), loadOptions(source, layer))
   }
 
   function buildView(): PhotoLayerView {
@@ -312,9 +329,13 @@ export function createPhotoLayer(loader: PhotoLoaderPort): PhotoLayer {
     },
     setFrame(next, dragging) {
       const before = frameFov()
-      frame = { center: { ...next.center }, size: { ...next.size } }
+      const previousFrame = frame
+      frame = { center: { ...next.center }, size: { ...next.size }, ...(next.fovDeg === undefined ? {} : { fovDeg: next.fovDeg }) }
       const layer = currentLayer()
-      const request = nextPhotoRequest(lastRequest, frame, layer, dragging)
+      if (previousFrame && !sameSize(previousFrame.size, frame.size)) zoomPending = false
+      else if (previousFrame && viewFov(previousFrame) !== viewFov(frame)) zoomPending = true
+      const request = nextPhotoRequest(lastRequest, frame, layer, dragging, zoomPending)
+      if (!dragging) zoomPending = false
       if (request) load(request, loadOptions(source, layer))
       else if (frameFov() !== before) changed()
     },

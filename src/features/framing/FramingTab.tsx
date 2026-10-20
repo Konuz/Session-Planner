@@ -9,11 +9,13 @@
 // - Red Mode: kontener widoku ma `filter: url(#red-only)`; filtr z sekcji 8 jest na stronie.
 // - Zdjęcie nieba (zdjecie-w-kadrze): hak `useSkyImage` dostaje środek kadru, rozmiar kadru lub mozaiki i „przeciąganie
 //   trwa”; zdjęcie leży w widoku pod mapą i ramką (`photoRect`), a pod widokiem jest `PhotoPanel`.
+// - Zoom (zoom-kadru): pole widoku tylko w pamięci komponentu; „+”, „−”, „Dopasuj”, kółko (nasłuch niepasywny,
+//   `preventDefault`) i szczypanie dwoma palcami, zawsze wokół środka. Zmiana profilu albo mozaiki wraca do „Dopasuj”.
+//   W trakcie szczypania i do 300 ms po ostatnim ząbku kółka warstwa zdjęcia dostaje „gest trwa” (bez pobierania).
 import { Crosshair, RotateCcw } from 'lucide-react'
-import { useId, useRef, useState, type PointerEvent, type ReactNode } from 'react'
+import { useEffect, useEffectEvent, useId, useRef, useState, type PointerEvent, type ReactNode } from 'react'
 import { selectFeatured, nightObjectOptions } from '../../data/featuredObjects'
 import { mosaicSizeDeg } from '../../services/framing'
-import { cutoutFovDeg } from '../../services/skyImage/sources'
 import { useActiveProfile, usePlannerStore } from '../../state/plannerStore'
 import type { DsoObject, Framing } from '../../types'
 import { MessageField } from '../equipment/MessageField'
@@ -21,16 +23,25 @@ import { objectName } from '../night/objectName'
 import { useFeaturedObjects } from '../night/useFeaturedObjects'
 import {
   DEFAULT_MOSAIC,
+  canZoomIn,
+  canZoomOut,
   centerReadout,
   centeredOn,
   dragFraming,
   effectiveFraming,
   fieldText,
+  fovReadout,
   framingFacts,
+  pinchZoom,
   readOverlapInput,
   readPaInput,
   viewCutout,
+  wheelZoom,
+  zoomBounds,
+  zoomIn,
+  zoomOut,
   type DragStart,
+  type ScreenPoint,
 } from './framingModel'
 import { FramingView } from './FramingView'
 import { viewMapObjects } from './mapData'
@@ -155,7 +166,23 @@ interface DragState {
   widthPx: number
 }
 
-/** Widok kadru z przesuwaniem tła wskaźnikiem (mysz, dotyk, pióro) i przyciskiem „Wyśrodkuj na obiekcie”. */
+/** Szczypanie: dwa wskaźniki, odległość i pole widoku z chwili dotknięcia drugim palcem. */
+interface PinchState {
+  ids: [number, number]
+  startDistance: number
+  startFovDeg: number
+}
+
+/** Pole widoku po zoomie; `key` = profil i mozaika, dla których je ustawiono (inne → „Dopasuj”). */
+interface ZoomState {
+  key: string
+  fovDeg: number
+}
+
+/** Cisza po ostatnim ząbku kółka, po której zmiana pola się kończy [ms]. */
+const WHEEL_IDLE_MS = 300
+
+/** Widok kadru z przesuwaniem tła wskaźnikiem (mysz, dotyk, pióro), zoomem i przyciskiem „Wyśrodkuj na obiekcie”. */
 function FramingCanvas({
   object,
   frame,
@@ -173,14 +200,65 @@ function FramingCanvas({
   const drag = useRef<DragState | null>(null)
   const pending = useRef<{ x: number; y: number } | null>(null)
   const frameRequest = useRef<number | null>(null)
+  const pointers = useRef(new Map<number, ScreenPoint>())
+  const pinch = useRef<PinchState | null>(null)
+  /** Po szczypaniu nic się nie przesuwa, dopóki wszystkie palce nie odejdą od widoku. */
+  const blocked = useRef(false)
+  const wheelTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const viewRef = useRef<HTMLDivElement>(null)
   const [dragging, setDragging] = useState(false)
+  const [pinching, setPinching] = useState(false)
+  const [wheeling, setWheeling] = useState(false)
+  const [zoom, setZoom] = useState<ZoomState | null>(null)
   const size = mosaicSizeDeg(profile, frame)
-  const fovDeg = cutoutFovDeg(size)
+  const bounds = zoomBounds(profile, frame)
+  const zoomKey = JSON.stringify([profile, frame.mosaic])
+  const fovDeg = zoom?.key === zoomKey ? zoom.fovDeg : bounds.fitDeg
   const mapObjects = viewMapObjects(catalog, viewCutout(frame, fovDeg))
   const center = { raDeg: frame.centerRaDeg, decDeg: frame.centerDecDeg }
-  const sky = useSkyImage({ center, size, dragging })
+  const sky = useSkyImage({ center, size, dragging: dragging || pinching || wheeling, fovDeg })
   const shown = sky.view.photo
   const photo = shown && sky.photoHref ? { href: sky.photoHref, rect: photoRect(shown, center, fovDeg) } : null
+
+  /** Nowe pole liczone od bieżącego (funkcja, żeby kilka zdarzeń przed przerysowaniem się sumowało). */
+  const changeFov = (change: (current: number) => number) =>
+    setZoom((previous) => ({ key: zoomKey, fovDeg: change(previous?.key === zoomKey ? previous.fovDeg : bounds.fitDeg) }))
+
+  const endWheel = () => {
+    if (wheelTimer.current !== null) clearTimeout(wheelTimer.current)
+    wheelTimer.current = null
+    setWheeling(false)
+  }
+
+  /** Przycisk kończy zmianę pola od razu (także trwającą zmianę kółkiem). */
+  const clickZoom = (change: (current: number) => number) => {
+    endWheel()
+    changeFov(change)
+  }
+
+  const onWheel = useEffectEvent((event: WheelEvent) => {
+    event.preventDefault()
+    changeFov((current) => wheelZoom(current, event.deltaY, event.deltaMode, bounds))
+    setWheeling(true)
+    if (wheelTimer.current !== null) clearTimeout(wheelTimer.current)
+    wheelTimer.current = setTimeout(() => {
+      wheelTimer.current = null
+      setWheeling(false)
+    }, WHEEL_IDLE_MS)
+  })
+
+  // Nasłuch niepasywny: `onWheel` z Reacta jest pasywny, więc jego `preventDefault` nie zatrzyma przewijania strony.
+  useEffect(() => {
+    const element = viewRef.current
+    if (!element) return
+    const listener = (event: WheelEvent) => onWheel(event)
+    element.addEventListener('wheel', listener, { passive: false })
+    return () => {
+      element.removeEventListener('wheel', listener)
+      if (wheelTimer.current !== null) clearTimeout(wheelTimer.current)
+      wheelTimer.current = null
+    }
+  }, [])
 
   const applyPending = () => {
     frameRequest.current = null
@@ -190,9 +268,35 @@ function FramingCanvas({
     onChange(dragFraming(state.start, pointer, state.fovDeg, state.widthPx))
   }
 
+  const stopDrag = () => {
+    if (frameRequest.current !== null) {
+      cancelAnimationFrame(frameRequest.current)
+      applyPending()
+    }
+    drag.current = null
+    pending.current = null
+    setDragging(false)
+  }
+
+  const distance = ([a, b]: [number, number]) => {
+    const first = pointers.current.get(a)
+    const second = pointers.current.get(b)
+    return first && second ? Math.hypot(first.x - second.x, first.y - second.y) : 0
+  }
+
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || drag.current) return
+    if (event.button !== 0 || pointers.current.has(event.pointerId)) return
     event.currentTarget.setPointerCapture(event.pointerId)
+    pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+    if (pinch.current) return
+    if (pointers.current.size === 2) {
+      stopDrag()
+      const ids = [...pointers.current.keys()] as [number, number]
+      pinch.current = { ids, startDistance: distance(ids), startFovDeg: fovDeg }
+      setPinching(true)
+      return
+    }
+    if (pointers.current.size !== 1 || blocked.current) return
     drag.current = {
       pointerId: event.pointerId,
       start: { framing: frame, pointer: { x: event.clientX, y: event.clientY } },
@@ -203,20 +307,31 @@ function FramingCanvas({
   }
 
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (!pointers.current.has(event.pointerId)) return
+    pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+    const gesture = pinch.current
+    if (gesture) {
+      if (!gesture.ids.includes(event.pointerId)) return
+      setZoom({ key: zoomKey, fovDeg: pinchZoom(gesture.startFovDeg, gesture.startDistance, distance(gesture.ids), bounds) })
+      return
+    }
     if (drag.current?.pointerId !== event.pointerId) return
     pending.current = { x: event.clientX, y: event.clientY }
     frameRequest.current ??= requestAnimationFrame(applyPending)
   }
 
-  const endDrag = (event: PointerEvent<HTMLDivElement>) => {
-    if (drag.current?.pointerId !== event.pointerId) return
-    if (frameRequest.current !== null) {
-      cancelAnimationFrame(frameRequest.current)
-      applyPending()
+  const endPointer = (event: PointerEvent<HTMLDivElement>) => {
+    if (!pointers.current.delete(event.pointerId)) return
+    if (pinch.current) {
+      if (pinch.current.ids.includes(event.pointerId)) {
+        pinch.current = null
+        blocked.current = true
+        setPinching(false)
+      }
+    } else if (drag.current?.pointerId === event.pointerId) {
+      stopDrag()
     }
-    drag.current = null
-    pending.current = null
-    setDragging(false)
+    if (pointers.current.size === 0) blocked.current = false
   }
 
   return (
@@ -232,17 +347,45 @@ function FramingCanvas({
         </button>
       </div>
       <div
+        ref={viewRef}
         className="mx-auto w-full max-w-[min(100%,75dvh)] cursor-grab touch-none overflow-hidden rounded-md border border-border select-none active:cursor-grabbing"
         style={redMode ? { filter: 'url(#red-only)' } : undefined}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
-        onLostPointerCapture={endDrag}
+        onPointerUp={endPointer}
+        onPointerCancel={endPointer}
+        onLostPointerCapture={endPointer}
       >
         <FramingView fovDeg={fovDeg} profile={profile} framing={frame} mapObjects={mapObjects} photo={photo} />
       </div>
-      <p className="text-xs text-muted">Przeciągnij tło, żeby przesunąć kadr. Północ u góry, wschód po lewej.</p>
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <button
+          type="button"
+          className="button min-w-11 justify-center"
+          aria-label="Przybliż"
+          disabled={!canZoomIn(fovDeg, bounds)}
+          onClick={() => clickZoom((current) => zoomIn(current, bounds))}
+        >
+          +
+        </button>
+        <button
+          type="button"
+          className="button min-w-11 justify-center"
+          aria-label="Oddal"
+          disabled={!canZoomOut(fovDeg, bounds)}
+          onClick={() => clickZoom((current) => zoomOut(current, bounds))}
+        >
+          −
+        </button>
+        <button type="button" className="button" onClick={() => clickZoom(() => bounds.fitDeg)}>
+          Dopasuj
+        </button>
+        <p className="tabular-nums">{fovReadout(fovDeg)}</p>
+      </div>
+      <p className="text-xs text-muted">
+        Przeciągnij tło, żeby przesunąć kadr; kółko myszy albo dwa palce zmieniają pole widoku. Północ u góry, wschód po
+        lewej.
+      </p>
       <PhotoPanel
         view={sky.view}
         onChooseSource={(source) => sky.layer.chooseSource(source)}

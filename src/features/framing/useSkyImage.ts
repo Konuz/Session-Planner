@@ -18,7 +18,7 @@ import { createSkyImageLoader, SKY_IMAGE_APP_TIMEOUTS_MS, type SkyImageLoaderDep
 import { createPhotoLayer, type PhotoLayer, type PhotoLayerView } from './photoModel'
 
 /**
- * zoom-kadru (ZAŚLEPKA: `fovDeg` jest jeszcze ignorowane; nazwę wybrał test-author): `fovDeg` – bieżące pole widoku
+ * zoom-kadru (nazwę wybrał test-author): `fovDeg` – bieżące pole widoku
  * zakładki (po zoomie albo „Dopasuj”), przekazywane do `PhotoFrame.fovDeg`. Bez niego jak dotąd.
  */
 export interface SkyImageHookInput {
@@ -115,11 +115,12 @@ export function useSkyImage(input: SkyImageHookInput): SkyImageHookResult {
   const photoHref = useSyncExternalStore(href.subscribe, href.snapshot, href.snapshot)
   const { raDeg, decDeg } = input.center
   const { widthDeg, heightDeg } = input.size
-  const { dragging } = input
+  const { dragging, fovDeg } = input
 
   useEffect(() => {
-    layer.setFrame({ center: { raDeg, decDeg }, size: { widthDeg, heightDeg } }, dragging)
-  }, [layer, raDeg, decDeg, widthDeg, heightDeg, dragging])
+    const size = { widthDeg, heightDeg }
+    layer.setFrame(fovDeg === undefined ? { center: { raDeg, decDeg }, size } : { center: { raDeg, decDeg }, size, fovDeg }, dragging)
+  }, [layer, raDeg, decDeg, widthDeg, heightDeg, dragging, fovDeg])
 
   return { view, photoHref, layer }
 }
