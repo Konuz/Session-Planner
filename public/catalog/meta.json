@@ -93,5 +93,26 @@
     }
   ],
   "aliases": 11,
-  "skippedLinks": 8
+  "skippedLinks": 8,
+  "stars": {
+    "count": 357147,
+    "builtAt": "2026-10-20T15:46:22.923Z",
+    "citation": "Høg i in. 2000 (ESA, CDS)",
+    "tables": [
+      {
+        "table": "I/259/tyc2",
+        "query": "SELECT RAmdeg AS \"ra\", DEmdeg AS \"dec\", \"RA(ICRS)\" AS \"ra_obs\", \"DE(ICRS)\" AS \"dec_obs\", BTmag AS \"bt\", VTmag AS \"vt\" FROM \"I/259/tyc2\" WHERE (VTmag - 0.09 * (BTmag - VTmag) <= 10.1) OR (BTmag IS NULL AND VTmag <= 10.1) OR (VTmag IS NULL AND BTmag <= 10.1)",
+        "rows": 392195,
+        "stars": 355360,
+        "skipped": 0
+      },
+      {
+        "table": "I/259/suppl_1",
+        "query": "SELECT \"RA(ICRS)\" AS \"ra\", \"DE(ICRS)\" AS \"dec\", BTmag AS \"bt\", VTmag AS \"vt\" FROM \"I/259/suppl_1\" WHERE (VTmag - 0.09 * (BTmag - VTmag) <= 10.1) OR (BTmag IS NULL AND VTmag <= 10.1) OR (VTmag IS NULL AND BTmag <= 10.1)",
+        "rows": 2143,
+        "stars": 1787,
+        "skipped": 0
+      }
+    ]
+  }
 }
