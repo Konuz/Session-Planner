@@ -168,6 +168,16 @@ export function skyImageUrl(sourceId: SkyImageSourceId, request: SkyImageRequest
   }
 }
 
+/**
+ * warstwy-skyview (nazwa wybrana przez test-author): adres SkyView dla wycinka w grupie warstwy (alaskybis, alasky,
+ * SkyView). Hα → `Survey=H-Alpha%20Comp`, DSS2 czerwony → `Survey=dss2r` (taki sam adres jak `skyImageUrl('skyview', …)`).
+ * Pozostałe części adresu jak w `skyImageUrl`. `skyImageUrl` i `skyImageCacheKey` się nie zmieniają.
+ */
+export function skyviewLayerUrl(request: SkyImageRequest): string {
+  void request
+  throw new Error('NotImplementedError: skyviewLayerUrl')
+}
+
 export function skyImageCacheKey(sourceId: SkyImageSourceId, request: SkyImageRequest): string | null {
   const ra = num(roundRa(request.center.raDeg))
   const dec = num(request.center.decDeg)

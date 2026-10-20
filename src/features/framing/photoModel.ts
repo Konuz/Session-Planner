@@ -39,6 +39,16 @@
 //   - `view()` – bieżący stan widoku (`PhotoLayerView`; ten sam obiekt, dopóki nic się nie zmieniło);
 //   - `subscribe(listener)` – powiadomienie o każdej zmianie widoku; zwraca funkcję wypisania.
 //   Wynik `superseded` z `load` nie zmienia widoku.
+//
+// warstwy-skyview (nazwy wybrane przez test-author):
+// - `loadOptions(source, layerId)` dla warstwy naprawdę używanej DSS2 czerwony albo Hα dodaje `layerFirst: true`
+//   (przy „Automatycznie” `sourceId` = 'alaskybis', jak wymagają zamrożone testy P12/P13 `zdjecie-w-kadrze`; ręczny
+//   wybór → `sourceId` = to źródło). Dla DSS2
+//   kolor dokładnie jak dotąd (`{ sourceId: null }` albo `{ sourceId: id }`, bez innych pól).
+// - `photoCaption` / `licenseLines` według `photo.image.layerRole`: 'fallback' → „Warstwa <nazwa warstwy> niedostępna —
+//   pokazuję STScI DSS” (+ „, z pamięci”), licencja STScI; 'layer' z SkyView → „Zdjęcie: NASA SkyView, <nazwa warstwy>”,
+//   licencja SkyView (dla Hα: „Licencja: zdjęcie — NASA/GSFC SkyView, mapa Hα: Finkbeiner (ODbL)”). Bez `layerRole`
+//   podpis i licencja jak dotąd.
 import type { EquatorialDeg } from '../../services/astroMath'
 import { skyToCutout, type MosaicSize } from '../../services/framing'
 import type {

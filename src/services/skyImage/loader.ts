@@ -91,6 +91,12 @@ export interface SkyImageShown {
   fromCache: boolean
   /** Obraz jest w pamięci podręcznej („zapisany”). */
   saved: boolean
+  /**
+   * warstwy-skyview: tylko przy pobieraniu z `layerFirst`. 'layer' = „w warstwie” (obraz z grupy warstwy: pamięć
+   * warstwy, alaskybis, alasky, SkyView); 'fallback' = „zastępstwo” (STScI, gdy nie wybrano go ręcznie). Brak pola =
+   * obraz bez tej informacji (pobieranie bez opcji albo ręcznie wybrane STScI).
+   */
+  layerRole?: 'layer' | 'fallback'
 }
 
 export interface SkyImageAttempt {
@@ -114,6 +120,14 @@ export type SkyImageLoadResult = SkyImageView | SkyImageSuperseded
 export interface SkyImageLoadOptions {
   /** Ręcznie wybrane źródło; brak albo null = „automatycznie”. */
   sourceId?: SkyImageSourceId | null
+  /**
+   * warstwy-skyview (nazwa wybrana przez test-author): „warstwa ma pierwszeństwo”. Kolejność: najpierw grupa warstwy
+   * (pamięć warstwy, alaskybis, alasky, SkyView z adresem `skyviewLayerUrl`; ręcznie wybrane źródło z grupy na początku
+   * grupy), potem STScI (pamięć, sieć); ręcznie wybrane STScI albo SkyView idzie na sam początek. Zapamiętane źródło nie
+   * zmienia kolejności i nie jest zmieniane. SkyView w grupie warstwy ma limit 30 s. Obraz dostaje `layerRole`.
+   * Brak albo false = dotychczasowe pobieranie.
+   */
+  layerFirst?: boolean
 }
 
 export interface SkyImageLoader {
