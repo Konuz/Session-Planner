@@ -76,7 +76,7 @@ export function NightTab() {
       <ChartPatterns ids={patternIds} />
       <section className="card p-4 md:p-6" aria-labelledby="night-chart-title">
         <div className="mb-5 flex flex-wrap items-start gap-5">
-          {featured.status === 'ready' && object && <ObjectThumbnail key={object.uid} object={object} sizePx={136} />}
+          {featured.status === 'ready' && object && <ObjectThumbnail key={object.uid} object={object} sizePx={136} layer="dss2-red" />}
           <div className="flex min-w-60 flex-1 flex-col gap-1">
             <h2 id="night-chart-title" className="text-xs text-muted">
               Obiekt
@@ -129,7 +129,7 @@ export function NightTab() {
           thresholdDeg={frame.darkness.thresholdDeg}
         />
         {featured.status === 'ready' && object && (
-          <p className="mt-3 text-xs text-muted">Zdjęcie: DSS2 kolor przez CDS hips2fits (Strasbourg), DSS © STScI/AURA.</p>
+          <p className="mt-3 text-xs text-muted">Zdjęcie: DSS2 czerwony przez CDS hips2fits (Strasbourg), DSS © STScI/AURA.</p>
         )}
       </section>
 

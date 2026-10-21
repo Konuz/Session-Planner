@@ -1,5 +1,5 @@
 // Miniatury obiektów (katalog, nagłówek zakładki Noc): mały wycinek DSS2 z CDS hips2fits wokół obiektu.
-// Katalog bierze DSS2 czerwony (mono), na którym lepiej widać słabe i ciemne obiekty; nagłówek Noc DSS2 kolor.
+// Katalog i nagłówek zakładki Noc biorą DSS2 czerwony (mono), na którym lepiej widać słabe i ciemne obiekty.
 // Czysta funkcja adresu, bez sieci; pobiera przeglądarka (element <img>), a pamięć podręczną trzyma jej cache HTTP.
 import type { DsoObject } from '../../types'
 import { skyImageUrl, type SkyImageLayerId } from './sources'
