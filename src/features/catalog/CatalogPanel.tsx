@@ -52,7 +52,7 @@ const toggled = <T,>(values: readonly T[], value: T): T[] =>
 
 function Check({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
   return (
-    <label className="inline-flex min-h-11 items-center gap-2">
+    <label className="chip min-h-11">
       <input type="checkbox" checked={checked} onChange={(event) => onChange(event.currentTarget.checked)} />
       {label}
     </label>
@@ -62,8 +62,8 @@ function Check({ label, checked, onChange }: { label: string; checked: boolean; 
 function Group({ legend, children }: { legend: string; children: ReactNode }) {
   return (
     <fieldset className="flex flex-col">
-      <legend className="text-xs text-muted">{legend}</legend>
-      <div className="flex flex-wrap gap-x-3">{children}</div>
+      <legend className="mb-2 text-xs text-muted">{legend}</legend>
+      <div className="flex flex-wrap gap-1.5">{children}</div>
     </fieldset>
   )
 }
@@ -77,7 +77,7 @@ function Range({ label, range, initial, step, onChange }: {
 }) {
   const bound = (key: keyof NumberRange, text: string) =>
     range && (
-      <label className="flex flex-1 items-center gap-2">
+      <label className="flex flex-1 items-center gap-2 text-muted">
         {text}
         <input
           type="number"
@@ -95,7 +95,7 @@ function Range({ label, range, initial, step, onChange }: {
     <>
       <Check label={label} checked={range !== null} onChange={(on) => onChange(on ? initial : null)} />
       {range && (
-        <div className="flex w-full gap-2">
+        <div className="flex w-full gap-3 pt-1">
           {bound('min', 'od')}
           {bound('max', 'do')}
         </div>
@@ -108,7 +108,7 @@ export function CatalogPanel({ catalog, filters, sort, onFiltersChange, onSortCh
   const constellations = useMemo(() => [...new Set(catalog.map((object) => object.constellation))].sort(), [catalog])
   const change = (patch: Partial<CatalogFilterState>) => onFiltersChange({ ...filters, ...patch })
   return (
-    <section aria-label="Filtry i sortowanie" className="card flex flex-col gap-4 p-3 text-sm">
+    <section aria-label="Filtry i sortowanie" className="card flex flex-col gap-5 p-4 text-sm">
       <label className="flex flex-col gap-1">
         <span className="text-xs text-muted">Sortowanie</span>
         <select className="control" value={sort} onChange={(event) => onSortChange(event.currentTarget.value as CatalogSortKey)}>

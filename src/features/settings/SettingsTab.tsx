@@ -110,7 +110,7 @@ function LocationList() {
         </li>
       </ul>
       {error && (
-        <p role="alert" className="mt-2 text-sm text-accent">
+        <p role="alert" className="mt-2 text-sm text-alert">
           {error}
         </p>
       )}
@@ -237,7 +237,7 @@ function LocationEditor({ location }: { location: ObserverLocation }) {
           locationName={form.name.trim() || location.name}
         />
         {issueFor('horizon') && (
-          <p role="alert" className="text-sm text-accent">
+          <p role="alert" className="text-sm text-alert">
             {issueFor('horizon')}
           </p>
         )}
@@ -252,7 +252,7 @@ function LocationEditor({ location }: { location: ObserverLocation }) {
         </button>
         {dirty && <span className="text-sm text-muted">Niezapisane zmiany</span>}
         {message && (
-          <span role="status" className={`text-sm ${message.kind === 'error' ? 'text-accent' : 'text-muted'}`}>
+          <span role="status" className={`text-sm ${message.kind === 'error' ? 'text-alert' : 'text-muted'}`}>
             {message.text}
           </span>
         )}

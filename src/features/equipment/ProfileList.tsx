@@ -66,7 +66,7 @@ export function ProfileList(props: ProfileListProps): ReactNode {
         )}
       </div>
       {error && (
-        <p role="alert" className="text-sm text-accent">
+        <p role="alert" className="text-sm text-alert">
           {error}
         </p>
       )}

@@ -310,7 +310,7 @@ export function HorizonEditor({ points, onChange, locationName }: HorizonEditorP
           <Plus aria-hidden size={18} /> Dodaj punkt
         </button>
         {newPointError && (
-          <p role="alert" className="basis-full text-sm text-accent">
+          <p role="alert" className="basis-full text-sm text-alert">
             {newPointError}
           </p>
         )}
@@ -351,7 +351,7 @@ export function HorizonEditor({ points, onChange, locationName }: HorizonEditorP
             Plik „{preview.fileName}”: {formatCount(preview.result.points.length, POINT_FORMS)}
             {preview.result.rejected.length > 0 && `, odrzucono ${formatCount(preview.result.rejected.length, LINE_FORMS)}`}.
           </p>
-          {preview.result.error && <p className="text-accent">{preview.result.error}.</p>}
+          {preview.result.error && <p className="text-alert">{preview.result.error}.</p>}
           {preview.result.rejected.length > 0 && (
             <ul className="list-disc pl-5 text-muted">
               {preview.result.rejected.slice(0, 8).map((line) => (

@@ -5,13 +5,13 @@ import { localTimeParts } from '../../services/time'
 
 export const CHART_MARGIN = { top: 34, right: 12, bottom: 40, left: 34 }
 
-/** Krycie koloru akcentu dla pasów tła: im jaśniejsze niebo, tym mocniejszy odcień (tylko tokeny, więc działa w Red Mode). */
-export const BAND_OPACITY: Record<TwilightBand, number> = {
-  day: 0.34,
-  civil: 0.24,
-  nautical: 0.15,
-  astronomical: 0.07,
-  night: 0,
+/** Wypełnienie pasów tła tokenami rampy zmierzchu (tylko tokeny, więc działa w Red Mode); noc ma kolor tła. */
+export const BAND_FILL: Record<TwilightBand, string> = {
+  day: 'fill-sky-day',
+  civil: 'fill-sky-civil',
+  nautical: 'fill-sky-nautical',
+  astronomical: 'fill-sky-astronomical',
+  night: 'fill-background',
 }
 
 /** Poniżej tego odstępu między pełnymi godzinami etykieta osi to samo „HH”. */

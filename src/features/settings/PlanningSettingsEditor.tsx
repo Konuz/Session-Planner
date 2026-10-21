@@ -106,7 +106,7 @@ export function PlanningSettingsEditor({ saved, form, message, onFormChange, onS
               {input('fitMaxPercent', fitError)}
             </label>
           </div>
-          {fitError && <span className="text-accent">{fitError}</span>}
+          {fitError && <span className="text-alert">{fitError}</span>}
         </div>
       </div>
 
@@ -154,7 +154,7 @@ export function PlanningSettingsEditor({ saved, form, message, onFormChange, onS
         </button>
         {dirty && <span className="text-sm text-muted">Niezapisane zmiany</span>}
         {message && (
-          <span role="status" className={`text-sm ${message.kind === 'error' ? 'text-accent' : 'text-muted'}`}>
+          <span role="status" className={`text-sm ${message.kind === 'error' ? 'text-alert' : 'text-muted'}`}>
             {message.text}
           </span>
         )}

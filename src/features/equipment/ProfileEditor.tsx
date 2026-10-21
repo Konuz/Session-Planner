@@ -292,7 +292,7 @@ export function ProfileEditor(props: ProfileEditorProps): ReactNode {
         </button>
         {dirty && <span className="text-sm text-muted">Niezapisane zmiany</span>}
         {message && (
-          <span role="status" className={`text-sm ${message.kind === 'error' ? 'text-accent' : 'text-muted'}`}>
+          <span role="status" className={`text-sm ${message.kind === 'error' ? 'text-alert' : 'text-muted'}`}>
             {message.text}
           </span>
         )}

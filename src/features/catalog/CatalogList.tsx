@@ -31,9 +31,9 @@ const CARD_HEIGHT_PX = 180
 /** Karta przed odpowiedzią Workera: oznaczenia, nazwa i typ, bez danych nocy. */
 function PendingCard({ object }: { object: DsoObject }) {
   return (
-    <article className="card flex flex-col gap-1 p-3 text-sm text-foreground">
-      <h3 className="font-semibold">{formatDesignation(object.primary)}</h3>
-      {object.commonNames.length > 0 && <p>{object.commonNames[0]}</p>}
+    <article className="card flex flex-col gap-0.5 p-4 text-sm text-foreground">
+      <h3 className="text-xl font-semibold tracking-tight text-accent">{formatDesignation(object.primary)}</h3>
+      {object.commonNames.length > 0 && <p className="text-base">{object.commonNames[0]}</p>}
       <p className="text-xs text-muted">{DSO_TYPES[object.type].label}</p>
     </article>
   )

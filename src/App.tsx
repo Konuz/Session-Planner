@@ -37,7 +37,7 @@ export default function App() {
         <main className="mx-auto max-w-6xl px-4 py-4">
           {storageError && (
             <p role="alert" className="card mb-4 flex items-start gap-2 p-3 text-sm">
-              <TriangleAlert aria-hidden size={18} className="mt-0.5 shrink-0 text-accent" />
+              <TriangleAlert aria-hidden size={18} className="mt-0.5 shrink-0 text-alert" />
               {storageError}
             </p>
           )}

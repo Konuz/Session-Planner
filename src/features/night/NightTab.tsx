@@ -18,7 +18,7 @@ import { formatDuration, formatLocalTime } from '../../services/time'
 import { useActiveLocation, useActiveProfile, usePlannerStore } from '../../state/plannerStore'
 import type { Mount } from '../../types'
 import { useSvgId } from '../../ui/useSvgId'
-import { BAND_OPACITY } from './chartGeometry'
+import { BAND_FILL } from './chartGeometry'
 import { MoonPhaseIcon } from './MoonPhaseIcon'
 import { NightChart } from './NightChart'
 import { objectName } from './objectName'
@@ -145,7 +145,7 @@ function EffectiveTime({ frame, track, minAltitudeDeg }: { frame: NightFrame; tr
   return (
     <div className="text-right">
       <p className="text-xs text-muted">Czas efektywny</p>
-      <p className="text-3xl leading-tight font-semibold text-accent">{minutes === null ? '—' : formatDuration(minutes)}</p>
+      <p className="text-4xl font-light tracking-tight text-accent">{minutes === null ? '—' : formatDuration(minutes)}</p>
       <p className="text-xs text-muted">
         próg {formatDeg(frame.darkness.thresholdDeg, 0)}, h_min {formatDeg(minAltitudeDeg, 0)}
       </p>
@@ -218,8 +218,7 @@ function Legend({
         {(Object.keys(BAND_LABELS) as TwilightBand[]).map((band) => (
           <li key={band} className="flex items-center gap-1.5">
             <Swatch>
-              <rect x={0.5} y={0.5} width={21} height={11} className="fill-background stroke-border" />
-              <rect x={0.5} y={0.5} width={21} height={11} className="fill-accent" fillOpacity={BAND_OPACITY[band]} />
+              <rect x={0.5} y={0.5} width={21} height={11} rx={2} className={`${BAND_FILL[band]} stroke-border`} />
             </Swatch>
             {BAND_LABELS[band]}
           </li>
@@ -258,7 +257,7 @@ function NightSummary({ frame, track, mount }: { frame: NightFrame; track: Objec
         Podsumowanie nocy
       </h2>
       {note && (
-        <p role="status" className="mt-3 flex items-start gap-2 text-sm text-accent">
+        <p role="status" className="mt-3 flex items-start gap-2 text-sm text-alert">
           <TriangleAlert aria-hidden size={18} className="mt-0.5 shrink-0" />
           {note}
         </p>

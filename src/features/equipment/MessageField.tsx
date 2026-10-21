@@ -13,7 +13,7 @@ export function MessageField({ label, issues, children }: { label: string; issue
       {label}
       {children}
       {issues.map((issue) => (
-        <span key={issue.message} className={issue.severity === 'error' ? 'text-accent' : undefined}>
+        <span key={issue.message} className={issue.severity === 'error' ? 'text-alert' : undefined}>
           {issue.message}
         </span>
       ))}

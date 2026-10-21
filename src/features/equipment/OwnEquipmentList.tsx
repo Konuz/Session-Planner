@@ -176,7 +176,7 @@ export function OwnEquipmentList(props: OwnEquipmentListProps): ReactNode {
         </div>
       )}
       {message && (
-        <p role="alert" className="text-sm text-accent">
+        <p role="alert" className="text-sm text-alert">
           {message}
         </p>
       )}

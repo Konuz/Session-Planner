@@ -33,9 +33,9 @@ const TYPE_ICONS: Record<DsoType, LucideIcon> = {
   other: CircleQuestionMark,
 }
 
-/** Kolor z tokenu przez zmienną CSS, więc Red Mode przełącza go razem z paletą. */
+/** Kolor z tokenu przez zmienną CSS, więc Red Mode przełącza go razem z paletą (tło odznaki liczy się z `color`). */
 function tokenColor(token: ColorToken): CSSProperties {
-  return { color: `var(${tokenVariable(token)})`, borderColor: `var(${tokenVariable(token)})` }
+  return { color: `var(${tokenVariable(token)})` }
 }
 
 export interface ObjectCardProps {
@@ -51,55 +51,56 @@ export interface ObjectCardProps {
 export function ObjectCard({ card, onShowOnNight }: ObjectCardProps) {
   const TypeIcon = TYPE_ICONS[card.type]
   return (
-    <article className="card flex flex-col gap-2 p-3 text-sm text-foreground">
-      <header className="flex items-start justify-between gap-2">
+    <article className="card flex flex-col gap-3 p-4 text-sm text-foreground">
+      <header className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="font-semibold">{card.primary}</h3>
-          {card.name !== null && <p>{card.name}</p>}
+          <h3 className="text-xl font-semibold tracking-tight text-accent">{card.primary}</h3>
+          {card.name !== null && <p className="mt-0.5 text-base">{card.name}</p>}
           {card.otherDesignations !== null && <p className="text-xs text-muted">{card.otherDesignations}</p>}
         </div>
-        <span className="flex shrink-0 items-center gap-1 text-xs" style={tokenColor(card.typeColor)}>
+        <span className="flex shrink-0 items-center gap-1.5 pt-1 text-xs font-semibold" style={tokenColor(card.typeColor)}>
           <TypeIcon aria-hidden size={16} />
           {card.typeLabel}
         </span>
       </header>
-      <ul className="flex flex-col gap-0.5 text-xs">
-        <li>{card.position}</li>
-        <li>{card.culmination}</li>
-        {card.flip !== null && <li>{card.flip}</li>}
-        <li>
-          <span className="text-muted">Czas efektywny </span>
-          {card.effectiveTime}
-        </li>
-        <li>
-          <span className="text-muted">Księżyc w kursorze </span>
-          {card.moonSeparation}
-          <span className="text-muted">, najbliżej w oknie </span>
-          {card.minMoonSeparation}
-        </li>
-      </ul>
-      {card.badges.length > 0 && (
-        <ul className="flex flex-wrap gap-1" aria-label="Rekomendacje filtrów">
-          {card.badges.map((badge) => (
-            <li
-              key={badge.filter}
-              title={badge.description}
-              className="rounded border px-1.5 text-xs"
-              style={tokenColor(badge.colorToken)}
-            >
-              <span aria-hidden="true">
-                {badge.mark} {badge.filter}
-              </span>
-              <span className="sr-only">{badge.description}</span>
-            </li>
-          ))}
+      <div className="grid gap-x-6 gap-y-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+        <p className="flex flex-col">
+          <span className="text-xs text-muted">Czas efektywny</span>
+          <span className="text-lg font-semibold text-accent">{card.effectiveTime}</span>
+        </p>
+        <ul className="flex flex-col gap-0.5">
+          <li>{card.position}</li>
+          <li>{card.culmination}</li>
+          {card.flip !== null && <li>{card.flip}</li>}
+          <li>
+            <span className="text-muted">Księżyc w kursorze </span>
+            {card.moonSeparation}
+            <span className="text-muted">, najbliżej w oknie </span>
+            {card.minMoonSeparation}
+          </li>
         </ul>
-      )}
-      {onShowOnNight && (
-        <button type="button" className="button self-start" onClick={onShowOnNight}>
-          <ChartSpline aria-hidden size={16} />
-          Pokaż na wykresie nocy
-        </button>
+      </div>
+      {(card.badges.length > 0 || onShowOnNight) && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {card.badges.length > 0 && (
+            <ul className="flex flex-wrap gap-0.5" aria-label="Rekomendacje filtrów">
+              {card.badges.map((badge) => (
+                <li key={badge.filter} title={badge.description} className="filter-cell" style={tokenColor(badge.colorToken)}>
+                  <span aria-hidden="true">
+                    {badge.mark} {badge.filter}
+                  </span>
+                  <span className="sr-only">{badge.description}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {onShowOnNight && (
+            <button type="button" className="button ml-auto" onClick={onShowOnNight}>
+              <ChartSpline aria-hidden size={16} />
+              Pokaż na wykresie nocy
+            </button>
+          )}
+        </div>
       )}
     </article>
   )

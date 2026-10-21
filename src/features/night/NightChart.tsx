@@ -6,7 +6,7 @@ import type { NightFrame, ObjectTrack } from '../../services/nightChart'
 import { formatLocalTime } from '../../services/time'
 import { useElementWidth } from '../../ui/useElementWidth'
 import { useSvgId } from '../../ui/useSvgId'
-import { BAND_OPACITY, chartGeometry } from './chartGeometry'
+import { BAND_FILL, chartGeometry } from './chartGeometry'
 import { MoonPhaseGlyph } from './MoonPhaseIcon'
 
 const MINUTE_MS = 60_000
@@ -103,19 +103,16 @@ export function NightChart({ frame, track, objectLabel, minAltitudeDeg, cursorMs
           </defs>
 
           <g clipPath={`url(#${clipId})`}>
-            {/* Pasy są zagnieżdżone: każdy najpierw zakrywa tło, więc odcienie się nie sumują. */}
+            {/* Pasy są zagnieżdżone i nieprzezroczyste: każdy kolejny (ciemniejszy) zakrywa poprzedni. */}
             {geometry.bands.map(({ band, x, width: bandWidth }) => (
-              <g key={band}>
-                <rect x={x} y={geometry.plot.top} width={bandWidth} height={geometry.plot.bottom - geometry.plot.top} className="fill-background" />
-                <rect
-                  x={x}
-                  y={geometry.plot.top}
-                  width={bandWidth}
-                  height={geometry.plot.bottom - geometry.plot.top}
-                  className="fill-accent"
-                  fillOpacity={BAND_OPACITY[band]}
-                />
-              </g>
+              <rect
+                key={band}
+                x={x}
+                y={geometry.plot.top}
+                width={bandWidth}
+                height={geometry.plot.bottom - geometry.plot.top}
+                className={BAND_FILL[band]}
+              />
             ))}
             {ALTITUDE_GRID_DEG.map((altDeg) => (
               <line
