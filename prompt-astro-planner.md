@@ -787,6 +787,7 @@ Inspiracja: SkySafari, czyli ciemny, czytelny interfejs z dolnym paskiem zakład
   - zarysy obiektów (`outlines.dat` ze Stellarium): GPL-2.0;
   - zdjęcia: warunki użycia i cytowania CDS (hips2fits), NASA SkyView i STScI DSS;
   - astronomy-engine: MIT;
+  - krój Atkinson Hyperlegible Next (`src/assets/fonts`): SIL OFL 1.1;
   - HiPS Finkbeiner: ODbL;
   - katalog gwiazd Tycho-2 (6.7): cytowanie Høg i in. 2000 (ESA, CDS);
   - zarysy uzupełniające (`outlines.extra.dat`, 6.6): dane pochodne od DSS (STScI), AKARI (JAXA) i mapy Finkbeinera oraz wyniki modelu SAM 3 (licencja SAM). Warunki potwierdź przed wydaniem etapu 8.

@@ -257,8 +257,8 @@ export function HorizonEditor({ points, onChange, locationName }: HorizonEditorP
                 cx={position.x}
                 cy={position.y}
                 r={selected === i ? 7 : 5}
-                className={`${selected === i ? 'fill-accent' : 'fill-foreground'} stroke-background`}
-                strokeWidth={2}
+                className={selected === i ? 'fill-background stroke-accent' : 'fill-foreground stroke-background'}
+                strokeWidth={selected === i ? 2.5 : 2}
                 tabIndex={0}
                 role="button"
                 aria-label={`Punkt horyzontu: azymut ${formatDeg(points[i].azDeg, 0)}, wysokość ${formatDeg(points[i].altDeg, 0)}`}

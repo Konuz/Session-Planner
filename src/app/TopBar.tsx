@@ -70,7 +70,7 @@ export function TopBar() {
             </select>
           </label>
           <button type="button" className="button col-start-3 row-start-1 ml-auto" aria-pressed={redMode} onClick={toggleRedMode}>
-            <Eye aria-hidden size={18} /> <span className="max-sm:sr-only">Red Mode</span>
+            <Eye aria-hidden size={18} /> Red Mode
           </button>
         </div>
         {/* Kadr nie zależy od czasu, więc w zakładce Kadr nie ma wiersza kursora; tryb „Teraz” działa dalej w tle. */}
