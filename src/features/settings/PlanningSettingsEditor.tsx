@@ -60,7 +60,7 @@ export function PlanningSettingsEditor({ saved, form, message, onFormChange, onS
 
   return (
     <section className="card flex flex-col gap-5 p-4" aria-labelledby="planning-settings-title">
-      <h2 id="planning-settings-title" className="text-base font-semibold">
+      <h2 id="planning-settings-title" className="font-serif text-xl font-medium text-parchment">
         Parametry planowania
       </h2>
 

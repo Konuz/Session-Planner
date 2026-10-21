@@ -124,7 +124,7 @@ export function FramingTab() {
         <div className="flex flex-col gap-4">
           {object && frame && <FramingControls frame={frame} onChange={(next) => updateFraming(object.uid, next)} />}
           <section className="card p-4" aria-label="Dane kadru">
-            <h2 className="text-base font-semibold">Dane kadru</h2>
+            <h2 className="font-serif text-xl font-medium text-parchment">Dane kadru</h2>
             <dl className="mt-2 divide-y divide-border text-sm">
               <Row term="Pole widzenia">{facts.fov}</Row>
               <Row term="Skala">{facts.scale}</Row>
@@ -439,7 +439,7 @@ function FramingControls({ frame, onChange }: { frame: Framing; onChange: (next:
   return (
     <section className="card flex flex-col gap-4 p-4" aria-label="Ustawienia kadru">
       <div className="flex flex-col gap-2">
-        <h2 className="text-base font-semibold">Kąt PA</h2>
+        <h2 className="font-serif text-xl font-medium text-parchment">Kąt PA</h2>
         <label htmlFor={sliderId} className="sr-only">
           Suwak kąta PA
         </label>
@@ -474,7 +474,7 @@ function FramingControls({ frame, onChange }: { frame: Framing; onChange: (next:
       </div>
 
       <div className="flex flex-col gap-2">
-        <h2 className="text-base font-semibold">Mozaika</h2>
+        <h2 className="font-serif text-xl font-medium text-parchment">Mozaika</h2>
         <div className="grid grid-cols-3 gap-2">
           <MosaicCount label="Kolumny" value={mosaic.cols} onChange={(cols) => setMosaic({ cols })} />
           <MosaicCount label="Wiersze" value={mosaic.rows} onChange={(rows) => setMosaic({ rows })} />

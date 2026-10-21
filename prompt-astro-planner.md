@@ -719,24 +719,27 @@ Pola liczbowe przyjmują przecinek i kropkę dziesiętną („3,76” = „3.76�
 
 Inspiracja: SkySafari, czyli ciemny, czytelny interfejs z dolnym paskiem zakładek na telefonie. Nie kopiuj elementów graficznych ani nazw.
 
-**Zasady wyglądu** (21.10.2026):
-- Kolor należy do nieba: interfejs jest achromatyczny (światło gwiazd na nocnym granacie), a barwy niosą tylko dane: typy obiektów, warunki filtrów i rampę zmierzchu.
-- Najjaśniejsze są tekst i linie, nigdy duże wypełnienia (stan włączony to przyciemnione wypełnienie, nie odwrócenie kolorów). Powierzchnie różnią się jasnością jak niebo o zmierzchu, a nie obramowaniem.
-- Krój: Atkinson Hyperlegible Next (zmienna grubość 200–800, cyfry tabelaryczne), pliki w `src/assets/fonts` (SIL OFL 1.1), więc działa offline.
-- Element charakterystyczny: kursor czasu na górnym pasku to „pas nocy”: suwak leży na pasach zmierzchu nocy D, z oknem ciemności (kreska u góry i podpis) i obecnością Księżyca (kreska u dołu).
+**Zasady wyglądu** (22.10.2026; aplikacja jest używana głównie na komputerze, wzory: Skyshot i Telescopius):
+- Najpierw obraz nieba: każda karta katalogu i nagłówek zakładki Noc mają miniaturę obiektu (DSS2 kolor z CDS hips2fits, ładowaną dopiero, gdy miniatura jest widoczna na ekranie przez 400 ms; bez sieci ikona typu). Karta ma też mini-wykres wysokości na pasach zmierzchu.
+- Granat nocnego nieba z poświatą zenitu i rzadkimi gwiazdami w tle (w Red Mode samo czarne tło), panele jak przyciemnione szkło, bursztyn lampy sodowej oznacza akcje i wybór, pergamin nazwy obiektów i duże liczby.
+- Kroje (pliki w `src/assets/fonts`, SIL OFL 1.1, działa offline): Atkinson Hyperlegible Next dla interfejsu i danych, EB Garamond dla nazw obiektów, tytułów i dużych liczb (cyfry nautyczne o stałej szerokości).
+- Kursor czasu na górnym pasku to „pas nocy”: suwak leży na pasach zmierzchu nocy D, z oknem ciemności i obecnością Księżyca. W zakładce Noc go nie ma, bo kursorem jest tam wykres nocy.
+- W Red Mode pełne wypełnienia przycisków stają się przyciemnione, a zdjęcia przechodzą przez filtr luminancja → kanał R.
 
 **Tokeny** (`src/theme/tokens.ts`, z nich generowane są zmienne CSS i z nich korzystają testy):
 
 | Token | Dark Cosmos | Red Mode |
 |---|---|---|
-| tło | `#05070D` | `#000000` |
-| karta | `#0B0F1A` (token rozmycia 12 px zostaje) | `#140000`, bez przezroczystości i rozmycia |
-| obramowanie | `#1C2436` | `#4D0000` |
-| tekst | `#D9D3C3` | `#CC0000` |
-| tekst wyróżniony / akcent | `#F6F1E4` (światło gwiazd) | `#FF0000` |
-| tekst pomocniczy | `#8890A4` | `#800000` |
-| ostrzeżenie, błąd pola (`alert`) | `#F5A65B` (lampa sodowa) | `#FF0000` |
-| zmierzch: dzień / cywilny / żeglarski / astronomiczny (`skyDay` … `skyAstronomical`); noc = tło | `#3D5D8F` / `#2B4470` / `#1B2A4A` / `#101930` | `#4D0000` / `#360000` / `#220000` / `#120000` |
+| tło | `#050816` | `#000000` |
+| karta | `rgba(12,18,48,0.72)` + rozmycie tła 12 px | `#140000`, bez przezroczystości i rozmycia |
+| obramowanie | `#1E2850` | `#4D0000` |
+| tekst | `#D6DCEA` | `#CC0000` |
+| tekst wyróżniony / akcent | `#F2B35B` (lampa sodowa) | `#FF0000` |
+| tekst pomocniczy | `#8F9ABB` | `#800000` |
+| ostrzeżenie, błąd pola (`alert`) | `#EF7B6E` | `#FF0000` |
+| pergamin: nazwy obiektów, duże liczby (`parchment`) | `#E8D5AD` | `#CC0000` |
+| lampka Red Mode (`lamp`) | `#E5484D` | `#FF0000` |
+| zmierzch: dzień / cywilny / żeglarski / astronomiczny (`skyDay` … `skyAstronomical`); noc = tło | `#33498A` / `#263A70` / `#1A2754` / `#101938` | `#4D0000` / `#360000` / `#220000` / `#120000` |
 | mgławica refleksyjna | `#60A5FA` (błękit) | `#FF0000` |
 | mgławica emisyjna, SNR | `#F43F5E` (szkarłat) | `#FF0000` |
 | mgławica ciemna | `#F59E0B` (bursztyn) | `#CC0000` |
@@ -787,7 +790,8 @@ Inspiracja: SkySafari, czyli ciemny, czytelny interfejs z dolnym paskiem zakład
   - zarysy obiektów (`outlines.dat` ze Stellarium): GPL-2.0;
   - zdjęcia: warunki użycia i cytowania CDS (hips2fits), NASA SkyView i STScI DSS;
   - astronomy-engine: MIT;
-  - krój Atkinson Hyperlegible Next (`src/assets/fonts`): SIL OFL 1.1;
+  - kroje Atkinson Hyperlegible Next i EB Garamond (`src/assets/fonts`): SIL OFL 1.1;
+  - miniatury obiektów w katalogu i w zakładce Noc: DSS2 przez CDS hips2fits (Strasbourg), DSS © STScI/AURA;
   - HiPS Finkbeiner: ODbL;
   - katalog gwiazd Tycho-2 (6.7): cytowanie Høg i in. 2000 (ESA, CDS);
   - zarysy uzupełniające (`outlines.extra.dat`, 6.6): dane pochodne od DSS (STScI), AKARI (JAXA) i mapy Finkbeinera oraz wyniki modelu SAM 3 (licencja SAM). Warunki potwierdź przed wydaniem etapu 8.

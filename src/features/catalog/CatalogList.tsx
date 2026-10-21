@@ -1,7 +1,7 @@
 // Lista katalogu (7A): przewijana lista kart obiektów, wirtualizowana przez @tanstack/react-virtual.
 // Obiekty, wyniki nocy D i kontekst kart dostaje przez właściwości; przycisk karty otwiera obiekt na wykresie nocy.
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { useMemo, useRef } from 'react'
+import { useMemo, useRef, type ReactNode } from 'react'
 import { formatDesignation } from '../../services/catalog/records'
 import type { ObjectNightSummary } from '../../services/catalogNight'
 import { filterAdvice } from '../../services/filterAdvice'
@@ -23,23 +23,39 @@ export interface CatalogListProps {
   moonRules: MoonRuleThresholds
   /** Wymiary obszaru listy przed pierwszym pomiarem (`initialRect` wirtualizatora) [px]; pierwszy ekran także w Node. */
   initialRect?: { width: number; height: number }
+  /** Miniatura obiektu w karcie (opcjonalna; bez niej karty są bez zdjęć). */
+  renderImage?: (object: DsoObject) => ReactNode
+  /** Mini-wykres wysokości obiektu w karcie (opcjonalny). */
+  renderAltitude?: (object: DsoObject) => ReactNode
 }
 
 /** Szacowana wysokość karty z odstępem [px], zanim wirtualizator ją zmierzy. */
 const CARD_HEIGHT_PX = 180
 
 /** Karta przed odpowiedzią Workera: oznaczenia, nazwa i typ, bez danych nocy. */
-function PendingCard({ object }: { object: DsoObject }) {
+function PendingCard({ object, image }: { object: DsoObject; image?: ReactNode }) {
   return (
-    <article className="card flex flex-col gap-0.5 p-4 text-sm text-foreground">
-      <h3 className="text-xl font-semibold tracking-tight text-accent">{formatDesignation(object.primary)}</h3>
-      {object.commonNames.length > 0 && <p className="text-base">{object.commonNames[0]}</p>}
-      <p className="text-xs text-muted">{DSO_TYPES[object.type].label}</p>
+    <article className="card flex gap-4 p-4 text-sm text-foreground md:gap-5">
+      {image}
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <h3 className="font-serif text-2xl leading-tight font-medium text-parchment">{formatDesignation(object.primary)}</h3>
+        {object.commonNames.length > 0 && <p className="font-serif text-lg italic">{object.commonNames[0]}</p>}
+        <p className="text-xs text-muted">{DSO_TYPES[object.type].label}</p>
+      </div>
     </article>
   )
 }
 
-export function CatalogList({ objects, results, context, profile, moonRules, initialRect }: CatalogListProps) {
+export function CatalogList({
+  objects,
+  results,
+  context,
+  profile,
+  moonRules,
+  initialRect,
+  renderImage,
+  renderAltitude,
+}: CatalogListProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const openObject = usePlannerStore((state) => state.openObject)
   const summaries = useMemo(() => new Map((results ?? []).map((summary) => [summary.uid, summary])), [results])
@@ -75,9 +91,11 @@ export function CatalogList({ objects, results, context, profile, moonRules, ini
                     context,
                   )}
                   onShowOnNight={() => openObject(object.uid)}
+                  image={renderImage?.(object)}
+                  altitude={renderAltitude?.(object)}
                 />
               ) : (
-                <PendingCard object={object} />
+                <PendingCard object={object} image={renderImage?.(object)} />
               )}
             </div>
           )

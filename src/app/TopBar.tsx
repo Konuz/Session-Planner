@@ -1,7 +1,7 @@
 // Górny pasek (7.0): lokalizacja, noc D, aktywny zestaw, kursor czasu z trybem „Teraz” i przełącznik Red Mode.
 // Kursor czasu to „pas nocy”: suwak leży na rysunku pasów zmierzchu nocy D, okna ciemności i obecności Księżyca.
-import { Eye, LocateFixed, MapPin, MoonStar, Telescope } from 'lucide-react'
-import { useMemo } from 'react'
+import { ChevronDown, Eye, LocateFixed, MapPin, MoonStar, Telescope } from 'lucide-react'
+import { useMemo, type KeyboardEvent, type MouseEvent } from 'react'
 import { BAND_FILL } from '../features/night/chartGeometry'
 import { MoonPhaseIcon } from '../features/night/MoonPhaseIcon'
 import { formatNightLabel } from '../services/format'
@@ -11,6 +11,17 @@ import { nightRange, type TimeRange } from '../services/visibility'
 import { useActiveLocation, useActiveProfile, usePlannerStore } from '../state/plannerStore'
 
 const MINUTE_MS = 60_000
+
+/** Natywny wybór daty pod niewidocznym polem; bez aktywacji użytkownika przeglądarka może odmówić (wyjątek). */
+function openPicker(event: MouseEvent<HTMLInputElement> | KeyboardEvent<HTMLInputElement>): void {
+  const input = event.currentTarget
+  if (!('showPicker' in input)) return
+  try {
+    input.showPicker()
+  } catch {
+    // Pole zostaje edytowalne z klawiatury.
+  }
+}
 /** Szerokość rysunku w jednostkach viewBox; rysunek rozciąga się na całą szerokość suwaka. */
 const RIBBON_UNITS = 1000
 
@@ -30,8 +41,8 @@ export function TopBar() {
   const options = locations.length > 0 ? locations : [location]
 
   return (
-    <header className="z-10 border-b border-border bg-background px-4 pt-2 pb-3 md:sticky md:top-0">
-      <div className="mx-auto flex max-w-6xl flex-col gap-2">
+    <header className="z-10 border-b border-border bg-background/75 px-4 pt-2 pb-3 backdrop-blur-md md:sticky md:top-0 md:px-8">
+      <div className="mx-auto flex max-w-[90rem] flex-col gap-2">
         {/* Telefon: siatka (lokalizacja i Red Mode w pierwszym wierszu, noc i zestaw w drugim); od 640 px jeden wiersz. */}
         <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-end gap-x-4 gap-y-1 sm:flex sm:flex-wrap sm:gap-x-6">
           <label className="col-span-2 flex min-w-0 flex-col text-xs text-muted">
@@ -46,15 +57,20 @@ export function TopBar() {
               ))}
             </select>
           </label>
-          <label className="row-start-2 flex min-w-0 flex-col text-xs text-muted">
-            <span className="flex items-center gap-1.5 px-1">
-              <MoonStar aria-hidden size={13} /> Noc {formatNightLabel(nightDate)}
-            </span>
+          {/* Noc pokazana raz, jako podpis „Noc D/D+1”; natywne pole daty leży nad nim niewidoczne i otwiera kalendarz. */}
+          <label className="date-overlay relative row-start-2 flex min-h-11 min-w-0 cursor-pointer items-center gap-2 self-end px-1 text-base font-semibold text-parchment">
+            <MoonStar aria-hidden size={16} className="text-muted" />
+            <span className="whitespace-nowrap">Noc {formatNightLabel(nightDate)}</span>
+            <ChevronDown aria-hidden size={16} className="text-muted" />
             <input
               type="date"
-              className="control control-quiet text-base"
+              className="control absolute inset-0 size-full cursor-pointer opacity-0"
               value={nightDate}
               onChange={(event) => setNightDate(event.target.value)}
+              onClick={openPicker}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') openPicker(event)
+              }}
             />
           </label>
           <label className="col-span-2 row-start-2 flex min-w-0 flex-col text-xs text-muted">
@@ -70,6 +86,7 @@ export function TopBar() {
             </select>
           </label>
           <button type="button" className="button col-start-3 row-start-1 ml-auto" aria-pressed={redMode} onClick={toggleRedMode}>
+            <span aria-hidden className="size-2 rounded-full bg-lamp" style={{ boxShadow: '0 0 8px 1px var(--token-lamp)' }} />
             <Eye aria-hidden size={18} /> Red Mode
           </button>
         </div>
@@ -100,7 +117,7 @@ function CursorRow() {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
       <output className="flex items-baseline gap-1.5 sm:w-32">
-        <span className="text-3xl font-light tracking-tight text-accent">{clock.time}</span>
+        <span className="figures text-4xl text-parchment">{clock.time}</span>
         <span className="text-xs text-muted">{clock.zone}</span>
       </output>
       <div className="order-last min-w-0 basis-full sm:order-none sm:flex-1 sm:basis-0">

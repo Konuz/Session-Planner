@@ -5,13 +5,17 @@ import { loadCatalog } from '../../data/featuredObjects'
 import { bodyPosition } from '../../services/astroMath'
 import { referenceNightDate } from '../../services/catalogFilters'
 import { prepareCatalogNight, type CatalogNightParams, type ObjectNightSummary } from '../../services/catalogNight'
+import { buildNightFrame } from '../../services/nightChart'
 import { useActiveLocation, useActiveProfile, usePlannerStore } from '../../state/plannerStore'
 import type { DsoObject } from '../../types'
 import { createCatalogClient } from '../../workers/catalogClient'
 import { buildCatalogRequest } from '../../workers/catalogMessages'
+import { AltitudeSpark } from '../night/AltitudeSpark'
+import { cachedTrack } from '../night/trackCache'
 import { CatalogList } from './CatalogList'
 import { CatalogMessages } from './CatalogMessages'
 import { CatalogPanel } from './CatalogPanel'
+import { ObjectThumbnail } from './ObjectThumbnail'
 import {
   catalogView,
   requestKey,
@@ -101,7 +105,10 @@ function useNightAnswers(objects: readonly DsoObject[] | null, state: CatalogTab
   return answers
 }
 
-/** Lista z kontekstem kart: noc D, aktywny zestaw i kursor czasu. */
+/** Bok miniatury obiektu w karcie [px]. */
+const THUMBNAIL_PX = 112
+
+/** Lista z kontekstem kart: noc D, aktywny zestaw i kursor czasu; karty z miniaturą i mini-wykresem wysokości. */
 function NightList({ objects, results }: { objects: readonly DsoObject[]; results: readonly ObjectNightSummary[] | null }) {
   const location = useActiveLocation()
   const profile = useActiveProfile()
@@ -123,7 +130,30 @@ function NightList({ objects, results }: { objects: readonly DsoObject[]; result
     }),
     [night, location.timezone, profile, cursorMs],
   )
-  return <CatalogList objects={objects} results={results} context={context} profile={profile} moonRules={settings.moonRules} />
+  // Model nocy jak na wykresie nocy (7C): z niego mini-wykresy, a tory obiektów są zapamiętane na noc (trackCache).
+  const frame = useMemo(() => buildNightFrame(location, location.timezone, nightDate, settings), [location, nightDate, settings])
+  const trackOptions = { horizon: location.horizon, minAltitudeDeg: settings.minAltitudeDeg, mount: profile.mount }
+  return (
+    <>
+      <CatalogList
+        objects={objects}
+        results={results}
+        context={context}
+        profile={profile}
+        moonRules={settings.moonRules}
+        renderImage={(object) => <ObjectThumbnail key={object.uid} object={object} sizePx={THUMBNAIL_PX} />}
+        renderAltitude={(object) => (
+          <AltitudeSpark
+            frame={frame}
+            track={cachedTrack(frame, object, trackOptions)}
+            minAltitudeDeg={settings.minAltitudeDeg}
+            cursorMs={cursorMs}
+          />
+        )}
+      />
+      <p className="text-xs text-muted">Zdjęcia: DSS2 kolor przez CDS hips2fits (Strasbourg), DSS © STScI/AURA.</p>
+    </>
+  )
 }
 
 export function CatalogTab() {

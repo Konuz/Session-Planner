@@ -17,8 +17,12 @@ export const colorTokens = [
   'badgeGood',
   'badgeFair',
   'badgePoor',
-  // Ostrzeżenia i błędy formularzy: akcent jest achromatyczny, więc ostrzeżenie ma własny kolor.
+  // Ostrzeżenia i błędy formularzy (akcent jest kolorem akcji, więc ostrzeżenie ma własny kolor).
   'alert',
+  // Pergamin: nazwy obiektów i duże liczby pisane szeryfem.
+  'parchment',
+  // Lampka przełącznika Red Mode.
+  'lamp',
   // Rampa zmierzchu (pas nocy na górnym pasku i wykres nocy): od dnia do zmierzchu astronomicznego; noc to tło.
   'skyDay',
   'skyCivil',
@@ -29,15 +33,15 @@ export const colorTokens = [
 export type ColorToken = (typeof colorTokens)[number]
 export type Palette = Record<ColorToken, string>
 
-// Interfejs jest achromatyczny (światło gwiazd na nocnym niebie); barwy niosą tylko dane: typy obiektów, warunki
-// filtrów i rampa zmierzchu.
+// Granat nocnego nieba z poświatą zenitu, panele jak przyciemnione szkło; bursztyn lampy sodowej oznacza akcje,
+// pergamin nazwy obiektów i duże liczby.
 export const darkCosmos: Palette = {
-  background: '#05070D',
-  card: '#0B0F1A',
-  border: '#1C2436',
-  foreground: '#D9D3C3',
-  accent: '#F6F1E4',
-  muted: '#8890A4',
+  background: '#050816',
+  card: 'rgba(12,18,48,0.72)',
+  border: '#1E2850',
+  foreground: '#D6DCEA',
+  accent: '#F2B35B',
+  muted: '#8F9ABB',
   reflectionNebula: '#60A5FA',
   emissionNebula: '#F43F5E', // także SNR
   darkNebula: '#F59E0B',
@@ -47,11 +51,13 @@ export const darkCosmos: Palette = {
   badgeGood: '#5CD69B',
   badgeFair: '#E8C35A',
   badgePoor: '#F2706B',
-  alert: '#F5A65B', // lampa sodowa
-  skyDay: '#3D5D8F',
-  skyCivil: '#2B4470',
-  skyNautical: '#1B2A4A',
-  skyAstronomical: '#101930',
+  alert: '#EF7B6E',
+  parchment: '#E8D5AD',
+  lamp: '#E5484D',
+  skyDay: '#33498A',
+  skyCivil: '#263A70',
+  skyNautical: '#1A2754',
+  skyAstronomical: '#101938',
 }
 
 export const redMode: Palette = {
@@ -71,6 +77,8 @@ export const redMode: Palette = {
   badgeFair: '#CC0000',
   badgePoor: '#800000',
   alert: '#FF0000',
+  parchment: '#CC0000',
+  lamp: '#FF0000',
   skyDay: '#4D0000',
   skyCivil: '#360000',
   skyNautical: '#220000',

@@ -1,5 +1,6 @@
-// Zakładka Noc (sekcja 9): wykres nocy (7C) dla obiektu z katalogu i podsumowanie nocy.
-import { RotateCcw, TriangleAlert } from 'lucide-react'
+// Zakładka Noc (sekcja 9): wykres nocy (7C) dla obiektu z katalogu i podsumowanie nocy. Kursorem czasu jest tu sam
+// wykres (górny pasek nie ma w tej zakładce wiersza kursora), a „Teraz” stoi w nagłówku obok czasu efektywnego.
+import { LocateFixed, RotateCcw, TriangleAlert } from 'lucide-react'
 import { useMemo, type ReactNode } from 'react'
 import { nightObjectOptions, selectFeatured } from '../../data/featuredObjects'
 import { formatDesignation } from '../../services/catalog/records'
@@ -16,8 +17,12 @@ import {
 } from '../../services/nightChart'
 import { formatDuration, formatLocalTime } from '../../services/time'
 import { useActiveLocation, useActiveProfile, usePlannerStore } from '../../state/plannerStore'
-import type { Mount } from '../../types'
+import { tokenVariable } from '../../theme/tokens'
+import type { DsoObject, Mount } from '../../types'
 import { useSvgId } from '../../ui/useSvgId'
+import { DSO_TYPES } from '../catalog/objectCardModel'
+import { ObjectThumbnail } from '../catalog/ObjectThumbnail'
+import { TYPE_ICONS } from '../catalog/typeIcons'
 import { BAND_FILL } from './chartGeometry'
 import { MoonPhaseIcon } from './MoonPhaseIcon'
 import { NightChart } from './NightChart'
@@ -47,6 +52,8 @@ export function NightTab() {
   const settings = usePlannerStore((state) => state.planningSettings)
   const setCursor = usePlannerStore((state) => state.setCursor)
   const selectObject = usePlannerStore((state) => state.selectObject)
+  const followNow = usePlannerStore((state) => state.followNow)
+  const goNow = usePlannerStore((state) => state.goNow)
   const { featured, retry } = useFeaturedObjects()
   const patternPrefix = useSvgId('night-pattern')
   const patternIds = { hatch: `${patternPrefix}-hatch`, dots: `${patternPrefix}-dots` }
@@ -67,8 +74,9 @@ export function NightTab() {
   return (
     <div className="flex flex-col gap-4">
       <ChartPatterns ids={patternIds} />
-      <section className="card p-3 md:p-4" aria-labelledby="night-chart-title">
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+      <section className="card p-4 md:p-6" aria-labelledby="night-chart-title">
+        <div className="mb-5 flex flex-wrap items-start gap-5">
+          {featured.status === 'ready' && object && <ObjectThumbnail key={object.uid} object={object} sizePx={136} />}
           <div className="flex min-w-60 flex-1 flex-col gap-1">
             <h2 id="night-chart-title" className="text-xs text-muted">
               Obiekt
@@ -76,7 +84,7 @@ export function NightTab() {
             {featured.status === 'ready' && object ? (
               <select
                 aria-labelledby="night-chart-title"
-                className="control max-w-md text-sm"
+                className="control control-quiet -ml-1 self-start font-serif text-3xl font-medium"
                 value={object.uid}
                 onChange={(event) => selectObject(event.target.value)}
               >
@@ -96,8 +104,14 @@ export function NightTab() {
             ) : (
               <p className="flex min-h-11 items-center text-sm text-muted">Wczytywanie katalogu…</p>
             )}
+            {featured.status === 'ready' && object && <ObjectFacts object={object} />}
           </div>
-          <EffectiveTime frame={frame} track={track} minAltitudeDeg={minAltitudeDeg} />
+          <div className="flex flex-col items-end gap-3">
+            <EffectiveTime frame={frame} track={track} minAltitudeDeg={minAltitudeDeg} />
+            <button type="button" className="button" aria-pressed={followNow} onClick={() => goNow(Date.now())}>
+              <LocateFixed aria-hidden size={18} /> Teraz
+            </button>
+          </div>
         </div>
 
         <NightChart
@@ -140,12 +154,38 @@ function ChartPatterns({ ids }: { ids: { hatch: string; dots: string } }) {
   )
 }
 
+const SIZE_FORMAT = new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 1 })
+
+/** Typ (ikona i etykieta w kolorze typu), pozostałe oznaczenia, gwiazdozbiór, rozmiar i jasność obiektu. */
+function ObjectFacts({ object }: { object: DsoObject }) {
+  const type = DSO_TYPES[object.type]
+  const TypeIcon = TYPE_ICONS[object.type]
+  const primary = formatDesignation(object.primary)
+  const others = object.designations.map(formatDesignation).filter((text) => text !== primary)
+  const size =
+    object.sizeMajorArcmin === null
+      ? null
+      : `${SIZE_FORMAT.format(object.sizeMajorArcmin)}′${object.sizeMinorArcmin === null ? '' : ` × ${SIZE_FORMAT.format(object.sizeMinorArcmin)}′`}`
+  return (
+    <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+      <span className="flex items-center gap-1.5 font-semibold" style={{ color: `var(${tokenVariable(type.color)})` }}>
+        <TypeIcon aria-hidden size={16} />
+        {type.label}
+      </span>
+      {others.length > 0 && <span className="text-muted">{others.slice(0, 4).join(', ')}</span>}
+      <span className="text-muted">gwiazdozbiór {object.constellation}</span>
+      {size && <span className="text-muted">rozmiar {size}</span>}
+      {object.magV !== null && <span className="text-muted">jasność {SIZE_FORMAT.format(object.magV)} mag</span>}
+    </p>
+  )
+}
+
 function EffectiveTime({ frame, track, minAltitudeDeg }: { frame: NightFrame; track: ObjectTrack | null; minAltitudeDeg: number }) {
   const minutes = track?.effectiveMinutes ?? null
   return (
     <div className="text-right">
       <p className="text-xs text-muted">Czas efektywny</p>
-      <p className="text-4xl font-light tracking-tight text-accent">{minutes === null ? '—' : formatDuration(minutes)}</p>
+      <p className="figures text-5xl text-accent">{minutes === null ? '—' : formatDuration(minutes)}</p>
       <p className="text-xs text-muted">
         próg {formatDeg(frame.darkness.thresholdDeg, 0)}, h_min {formatDeg(minAltitudeDeg, 0)}
       </p>
@@ -253,7 +293,7 @@ function NightSummary({ frame, track, mount }: { frame: NightFrame; track: Objec
   const note = darknessNote(frame)
   return (
     <section className="card p-4" aria-labelledby="night-summary-title">
-      <h2 id="night-summary-title" className="text-base font-semibold">
+      <h2 id="night-summary-title" className="font-serif text-xl font-medium text-parchment">
         Podsumowanie nocy
       </h2>
       {note && (
@@ -322,7 +362,7 @@ function CursorPanel({
   const { object, moon } = readout
   return (
     <section className="card p-4" aria-labelledby="night-cursor-title">
-      <h2 id="night-cursor-title" className="text-base font-semibold">
+      <h2 id="night-cursor-title" className="font-serif text-xl font-medium text-parchment">
         Kursor {formatLocalTime(cursorMs, frame.timeZone)}
       </h2>
       {!inAxis && <p className="mt-1 text-sm text-muted">Kursor jest poza osią wykresu (dzień).</p>}

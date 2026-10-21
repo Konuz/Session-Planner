@@ -86,7 +86,7 @@ function LocationList() {
 
   return (
     <section className="card p-4" aria-labelledby="locations-title">
-      <h2 id="locations-title" className="text-base font-semibold">
+      <h2 id="locations-title" className="font-serif text-xl font-medium text-parchment">
         Lokalizacje
       </h2>
       <p className="mt-1 text-sm text-muted">Wybrana lokalizacja jest aktywna w całej aplikacji; formularz poniżej ją edytuje.</p>
@@ -183,7 +183,7 @@ function LocationEditor({ location }: { location: ObserverLocation }) {
 
   return (
     <section className="card flex flex-col gap-5 p-4" aria-labelledby="location-editor-title">
-      <h2 id="location-editor-title" className="text-base font-semibold">
+      <h2 id="location-editor-title" className="font-serif text-xl font-medium text-parchment">
         Edycja: {location.name}
       </h2>
 

@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import { NavBar } from './app/NavBar'
 import { TopBar } from './app/TopBar'
 import { CatalogTab } from './features/catalog/CatalogTab'
+import { RedOnlyPhotoFilter } from './features/catalog/ObjectThumbnail'
 import { FramingTab } from './features/framing/FramingTab'
 import { NightTab } from './features/night/NightTab'
 import { SettingsTab } from './features/settings/SettingsTab'
@@ -31,10 +32,11 @@ export default function App() {
 
   return (
     <div className="min-h-dvh md:flex">
+      <RedOnlyPhotoFilter />
       <NavBar />
       <div className="min-w-0 flex-1 pb-24 md:pb-0">
         <TopBar />
-        <main className="mx-auto max-w-6xl px-4 py-4">
+        <main className="mx-auto max-w-[90rem] px-4 py-5 md:px-8 md:py-6">
           {storageError && (
             <p role="alert" className="card mb-4 flex items-start gap-2 p-3 text-sm">
               <TriangleAlert aria-hidden size={18} className="mt-0.5 shrink-0 text-alert" />
