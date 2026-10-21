@@ -1,5 +1,6 @@
 // Zakładka „Katalog” (7A): kontener, który wczytuje katalog, wysyła żądania do Workera i łączy panel, komunikaty i listę.
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { ChevronDown, SlidersHorizontal } from 'lucide-react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { loadCatalog } from '../../data/featuredObjects'
 import { bodyPosition } from '../../services/astroMath'
 import { referenceNightDate } from '../../services/catalogFilters'
@@ -137,6 +138,9 @@ export function CatalogTab() {
   const { catalog, retry } = useCatalog()
   const objects = catalog.status === 'ready' ? catalog.objects : null
   const answers = useNightAnswers(objects, { location, nightDate, settings, profile, filters, sort })
+  // Poniżej 1024 px panel stoi nad listą, więc jest domyślnie zwinięty, żeby lista była widoczna od razu.
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const filtersId = useId()
 
   const keyOf = (night: string) => requestKey(buildCatalogRequest({ location, nightDate: night, settings }))
   const tonight = answers.tonight?.key === keyOf(nightDate) ? answers.tonight.response : null
@@ -149,13 +153,28 @@ export function CatalogTab() {
   return (
     <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
       <div className="lg:w-80 lg:shrink-0">
-        <CatalogPanel
-          catalog={objects ?? NO_OBJECTS}
-          filters={filters}
-          sort={sort}
-          onFiltersChange={setFilters}
-          onSortChange={setSort}
-        />
+        <button
+          type="button"
+          className="button w-full justify-between lg:hidden"
+          aria-expanded={filtersOpen}
+          aria-controls={filtersId}
+          onClick={() => setFiltersOpen((open) => !open)}
+        >
+          <span className="flex items-center gap-2">
+            <SlidersHorizontal aria-hidden size={18} />
+            Filtry i sortowanie
+          </span>
+          <ChevronDown aria-hidden size={18} className={`transition-transform ${filtersOpen ? 'rotate-180' : ''}`} />
+        </button>
+        <div id={filtersId} className={filtersOpen ? 'max-lg:mt-2' : 'max-lg:hidden'}>
+          <CatalogPanel
+            catalog={objects ?? NO_OBJECTS}
+            filters={filters}
+            sort={sort}
+            onFiltersChange={setFilters}
+            onSortChange={setSort}
+          />
+        </div>
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-3">
         <CatalogMessages view={view} onRetry={retry} />
