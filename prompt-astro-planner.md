@@ -476,7 +476,7 @@ W `outlines.dat` ze Stellarium brakuje wielu słabych obiektów (np. Sh2-129, vd
 ### 7.0 Kontekst globalny (górny pasek)
 
 - Pasek zawiera: lokalizację, noc (datę D), aktywny zestaw, kursor czasu (suwak + przycisk „Teraz”) i przełącznik Red Mode.
-- Jeden globalny kursor czasu steruje kartami katalogu, wykresem nocy i widokiem sfery. W zakładce Kadr kursora czasu (suwaka i „Teraz”) nie ma, bo kadr nie zależy od czasu; reszta paska zostaje (20.10.2026).
+- Jeden globalny kursor czasu steruje kartami katalogu, wykresem nocy i widokiem sfery. W zakładce Kadr kursora czasu (suwaka i „Teraz”) nie ma, bo kadr nie zależy od czasu; reszta paska zostaje (20.10.2026). W zakładce Noc też go nie ma: kursorem jest wykres nocy, a „Teraz” stoi w jego nagłówku (22.10.2026).
 - Tryb „Teraz”:
   - kursor podąża za zegarem i odświeża się co 60 s;
   - noc to bieżąca noc D (przed lokalnym południem jest to noc z poprzedniej daty).

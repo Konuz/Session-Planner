@@ -81,6 +81,15 @@ describe('P1 w Kadrze nie ma kursora czasu', () => {
     expectNoCursorRow(bar.markup, bar, '23:00')
   })
 
+  // Zmiana 22.10.2026 (decyzja użytkownika): w zakładce Noc kursorem jest sam wykres nocy, więc wiersza kursora
+  // na pasku też nie ma (jak w Kadrze); „Teraz” jest w nagłówku wykresu (NightTab).
+  it('test_p1_no_cursor_row_in_night: zakładka Noc → brak suwaka, pola „23:00” i przycisku „Teraz”', () => {
+    resetState({ tab: 'night' })
+    const bar = renderBar()
+    expectNoCursorRow(bar.markup, bar, '23:00')
+    expect(bar.dateInputs, 'pole „Noc” zostaje').toHaveLength(1)
+  })
+
   it('test_p1_state_unchanged_by_render: render paska w Kadrze nie zmienia kursora ani trybu „Teraz”', () => {
     resetState({ tab: 'framing' })
     renderBar()
@@ -135,7 +144,7 @@ describe('P2 reszta paska zostaje w Kadrze', () => {
 })
 
 describe('P3 inne zakładki bez zmian', () => {
-  for (const tab of ['catalog', 'night', 'settings'] as const satisfies readonly Tab[]) {
+  for (const tab of ['catalog', 'settings'] as const satisfies readonly Tab[]) {
     it(`test_p3_cursor_row_in_${tab}: suwak z wartością 23:00, pole „23:00” i „Teraz”`, () => {
       resetState({ tab })
       const bar = renderBar()
@@ -151,8 +160,8 @@ describe('P3 inne zakładki bez zmian', () => {
     })
   }
 
-  it('test_p3_slider_still_moves_cursor: w Noc suwak nadal ustawia kursor (01:30) i wyłącza „Teraz”', () => {
-    resetState({ tab: 'night', followNow: true })
+  it('test_p3_slider_still_moves_cursor: w Katalogu suwak nadal ustawia kursor (01:30) i wyłącza „Teraz”', () => {
+    resetState({ tab: 'catalog', followNow: true })
     const target = local('2026-10-21T01:30')
     change(cursorRow(renderBar()).range, String(target))
     expect(state().cursorMs).toBe(target)
@@ -205,8 +214,8 @@ describe('P5 Red Mode w Kadrze', () => {
 
 describe('P6 zmiana nocy w Kadrze', () => {
   it('test_p6_night_change_in_framing: noc 2026-10-25 → noc 25/26.10.2026, kursor jak przy zmianie w Noc, „Teraz” wyłączone', () => {
-    // Odniesienie: ta sama zmiana nocy z paska w zakładce Noc (zasada „jak w innych zakładkach”).
-    resetState({ tab: 'night' })
+    // Odniesienie: ta sama zmiana nocy z paska w zakładce Katalog (zasada „jak w innych zakładkach”).
+    resetState({ tab: 'catalog' })
     change(renderBar().dateInputs[0], '2026-10-25')
     const expectedCursor = state().cursorMs
     expect(state().nightDate).toBe('2026-10-25')
@@ -225,7 +234,7 @@ describe('P6 zmiana nocy w Kadrze', () => {
     expect(inFraming.dateInputs[0].props.value).toBe('2026-10-25')
     expect(inFraming.ranges).toHaveLength(0)
 
-    setTab('night')
+    setTab('catalog')
     const row = cursorRow(renderBar())
     expect(row.range.props.value).toBe(expectedCursor)
     expect(row.now.props['aria-pressed']).toBe(false)
@@ -233,8 +242,8 @@ describe('P6 zmiana nocy w Kadrze', () => {
 })
 
 describe('P7 wejście do Kadru nie zmienia kursora', () => {
-  it('test_p7_cursor_0130_survives_framing: Noc 01:30 → Kadr → Noc: kursor 01:30, „Teraz” wyłączone', () => {
-    resetState({ tab: 'night' })
+  it('test_p7_cursor_0130_survives_framing: Katalog 01:30 → Kadr → Katalog: kursor 01:30, „Teraz” wyłączone', () => {
+    resetState({ tab: 'catalog' })
     const target = local('2026-10-21T01:30')
     change(cursorRow(renderBar()).range, String(target))
     expect(state().cursorMs).toBe(target)
@@ -245,7 +254,7 @@ describe('P7 wejście do Kadru nie zmienia kursora', () => {
     expect(state().cursorMs).toBe(target)
     expect(state().followNow).toBe(false)
 
-    setTab('night')
+    setTab('catalog')
     const row = cursorRow(renderBar())
     expect(state().cursorMs).toBe(target)
     expect(state().followNow).toBe(false)
@@ -257,9 +266,9 @@ describe('P7 wejście do Kadru nie zmienia kursora', () => {
 })
 
 describe('P8 tryb „Teraz” w tle w Kadrze', () => {
-  it('test_p8_follow_now_stays_on: „Teraz” włączone → Kadr → zostaje włączone, odświeżenie kursora działa, w Noc „Teraz” wciśnięty', () => {
+  it('test_p8_follow_now_stays_on: „Teraz” włączone → Kadr → zostaje włączone, odświeżenie kursora działa, w Katalogu „Teraz” wciśnięty', () => {
     const now = local('2026-10-20T22:17')
-    resetState({ tab: 'night' })
+    resetState({ tab: 'catalog' })
     state().goNow(now)
     expect(state().followNow).toBe(true)
 
@@ -274,7 +283,7 @@ describe('P8 tryb „Teraz” w tle w Kadrze', () => {
     expect(state().cursorMs).toBe(tick)
     expect(state().followNow).toBe(true)
 
-    setTab('night')
+    setTab('catalog')
     const row = cursorRow(renderBar())
     expect(row.now.props['aria-pressed']).toBe(true)
     expect(row.range.props.value).toBe(tick)

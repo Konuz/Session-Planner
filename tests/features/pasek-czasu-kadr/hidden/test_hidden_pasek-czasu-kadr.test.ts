@@ -68,7 +68,7 @@ describe('ukryte: brak kursora w Kadrze przy innych wartościach', () => {
 })
 
 describe('ukryte: inne zakładki przy innych wartościach', () => {
-  for (const tab of ['catalog', 'night', 'settings'] as const satisfies readonly Tab[]) {
+  for (const tab of ['catalog', 'settings'] as const satisfies readonly Tab[]) {
     it(`hidden_p3_${tab}_cursor_0315: kursor 03:15 na nocy 2026-11-03 → suwak, godzina i „Teraz”`, () => {
       const cursor = local('2026-11-04T03:15')
       resetState({ tab, nightDate: '2026-11-03', cursorMs: cursor })
@@ -160,9 +160,9 @@ describe('ukryte: kursor po Kadrze', () => {
     expect(outputText(row.output)).toContain('00:07')
   })
 
-  it('hidden_p9_framing_to_night_and_settings: Kadr → Noc i Kadr → Ustawienia pokazują wiersz kursora od razu', () => {
+  it('hidden_p9_framing_to_catalog_and_settings: Kadr → Katalog i Kadr → Ustawienia pokazują wiersz kursora od razu', () => {
     const cursor = local('2026-10-21T02:20')
-    for (const tab of ['night', 'settings'] as const) {
+    for (const tab of ['catalog', 'settings'] as const) {
       resetState({ tab: 'framing', cursorMs: cursor })
       expect(renderBar().ranges).toHaveLength(0)
       setTab(tab)
