@@ -32,8 +32,9 @@ export function TopBar() {
   return (
     <header className="z-10 border-b border-border bg-background px-4 pt-2 pb-3 md:sticky md:top-0">
       <div className="mx-auto flex max-w-6xl flex-col gap-2">
-        <div className="flex flex-wrap items-end gap-x-6 gap-y-1">
-          <label className="flex min-w-0 flex-col text-xs text-muted">
+        {/* Telefon: siatka (lokalizacja i Red Mode w pierwszym wierszu, noc i zestaw w drugim); od 640 px jeden wiersz. */}
+        <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-end gap-x-4 gap-y-1 sm:flex sm:flex-wrap sm:gap-x-6">
+          <label className="col-span-2 flex min-w-0 flex-col text-xs text-muted">
             <span className="flex items-center gap-1.5 px-1">
               <MapPin aria-hidden size={13} /> Lokalizacja
             </span>
@@ -45,7 +46,7 @@ export function TopBar() {
               ))}
             </select>
           </label>
-          <label className="flex min-w-0 flex-col text-xs text-muted">
+          <label className="row-start-2 flex min-w-0 flex-col text-xs text-muted">
             <span className="flex items-center gap-1.5 px-1">
               <MoonStar aria-hidden size={13} /> Noc {formatNightLabel(nightDate)}
             </span>
@@ -56,7 +57,7 @@ export function TopBar() {
               onChange={(event) => setNightDate(event.target.value)}
             />
           </label>
-          <label className="flex min-w-0 flex-col text-xs text-muted">
+          <label className="col-span-2 row-start-2 flex min-w-0 flex-col text-xs text-muted">
             <span className="flex items-center gap-1.5 px-1">
               <Telescope aria-hidden size={13} /> Zestaw
             </span>
@@ -68,8 +69,8 @@ export function TopBar() {
               ))}
             </select>
           </label>
-          <button type="button" className="button ml-auto" aria-pressed={redMode} onClick={toggleRedMode}>
-            <Eye aria-hidden size={18} /> Red Mode
+          <button type="button" className="button col-start-3 row-start-1 ml-auto" aria-pressed={redMode} onClick={toggleRedMode}>
+            <Eye aria-hidden size={18} /> <span className="max-sm:sr-only">Red Mode</span>
           </button>
         </div>
         {/* Kadr nie zależy od czasu, więc w zakładce Kadr nie ma wiersza kursora; tryb „Teraz” działa dalej w tle. */}

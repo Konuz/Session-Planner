@@ -719,16 +719,24 @@ Pola liczbowe przyjmują przecinek i kropkę dziesiętną („3,76” = „3.76�
 
 Inspiracja: SkySafari, czyli ciemny, czytelny interfejs z dolnym paskiem zakładek na telefonie. Nie kopiuj elementów graficznych ani nazw.
 
+**Zasady wyglądu** (21.10.2026):
+- Kolor należy do nieba: interfejs jest achromatyczny (światło gwiazd na nocnym granacie), a barwy niosą tylko dane: typy obiektów, warunki filtrów i rampę zmierzchu.
+- Najjaśniejsze są tekst i linie, nigdy duże wypełnienia (stan włączony to przyciemnione wypełnienie, nie odwrócenie kolorów). Powierzchnie różnią się jasnością jak niebo o zmierzchu, a nie obramowaniem.
+- Krój: Atkinson Hyperlegible Next (zmienna grubość 200–800, cyfry tabelaryczne), pliki w `src/assets/fonts` (SIL OFL 1.1), więc działa offline.
+- Element charakterystyczny: kursor czasu na górnym pasku to „pas nocy”: suwak leży na pasach zmierzchu nocy D, z oknem ciemności (kreska u góry i podpis) i obecnością Księżyca (kreska u dołu).
+
 **Tokeny** (`src/theme/tokens.ts`, z nich generowane są zmienne CSS i z nich korzystają testy):
 
 | Token | Dark Cosmos | Red Mode |
 |---|---|---|
-| tło | `#07090E` | `#000000` |
-| karta | `rgba(15,23,42,0.7)` + rozmycie tła 12 px | `#140000`, bez przezroczystości i rozmycia |
-| obramowanie | `rgba(30,41,59,0.8)` | `#4D0000` |
-| tekst | `#E2E8F0` | `#CC0000` |
-| tekst wyróżniony / akcent | `#60A5FA` | `#FF0000` |
-| tekst pomocniczy | `#94A3B8` | `#800000` |
+| tło | `#05070D` | `#000000` |
+| karta | `#0B0F1A` (token rozmycia 12 px zostaje) | `#140000`, bez przezroczystości i rozmycia |
+| obramowanie | `#1C2436` | `#4D0000` |
+| tekst | `#D9D3C3` | `#CC0000` |
+| tekst wyróżniony / akcent | `#F6F1E4` (światło gwiazd) | `#FF0000` |
+| tekst pomocniczy | `#8890A4` | `#800000` |
+| ostrzeżenie, błąd pola (`alert`) | `#F5A65B` (lampa sodowa) | `#FF0000` |
+| zmierzch: dzień / cywilny / żeglarski / astronomiczny (`skyDay` … `skyAstronomical`); noc = tło | `#3D5D8F` / `#2B4470` / `#1B2A4A` / `#101930` | `#4D0000` / `#360000` / `#220000` / `#120000` |
 | mgławica refleksyjna | `#60A5FA` (błękit) | `#FF0000` |
 | mgławica emisyjna, SNR | `#F43F5E` (szkarłat) | `#FF0000` |
 | mgławica ciemna | `#F59E0B` (bursztyn) | `#CC0000` |
