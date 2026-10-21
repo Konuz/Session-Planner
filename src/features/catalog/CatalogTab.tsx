@@ -141,7 +141,7 @@ function NightList({ objects, results }: { objects: readonly DsoObject[]; result
         context={context}
         profile={profile}
         moonRules={settings.moonRules}
-        renderImage={(object) => <ObjectThumbnail key={object.uid} object={object} sizePx={THUMBNAIL_PX} />}
+        renderImage={(object) => <ObjectThumbnail key={object.uid} object={object} sizePx={THUMBNAIL_PX} layer="dss2-red" />}
         renderAltitude={(object) => (
           <AltitudeSpark
             frame={frame}
@@ -151,7 +151,7 @@ function NightList({ objects, results }: { objects: readonly DsoObject[]; result
           />
         )}
       />
-      <p className="text-xs text-muted">Zdjęcia: DSS2 kolor przez CDS hips2fits (Strasbourg), DSS © STScI/AURA.</p>
+      <p className="text-xs text-muted">Zdjęcia: DSS2 czerwony przez CDS hips2fits (Strasbourg), DSS © STScI/AURA.</p>
     </>
   )
 }

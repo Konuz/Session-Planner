@@ -1,8 +1,9 @@
-// Miniatura obiektu: zdjęcie DSS2 z CDS hips2fits, a do czasu jego wczytania, bez sieci albo po błędzie ikona typu
+// Miniatura obiektu: zdjęcie DSS2 (kolor albo czerwony mono) z CDS hips2fits, a do czasu jego wczytania, bez sieci albo po błędzie ikona typu
 // na tle nocnego nieba. Adres trafia do <img> dopiero, gdy miniatura jest widoczna na ekranie (nie tylko zamontowana
 // przez zapas wirtualizacji listy) przez LOAD_DELAY_MS, więc szybkie przewijanie nie wysyła zapytań do CDS.
 // Render nie dotyka sieci (testy renderują w Node).
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import type { SkyImageLayerId } from '../../services/skyImage/sources'
 import { thumbnailUrl } from '../../services/skyImage/thumbnail'
 import { tokenVariable } from '../../theme/tokens'
 import type { DsoObject } from '../../types'
@@ -15,11 +16,13 @@ export interface ObjectThumbnailProps {
   object: DsoObject
   /** Bok miniatury na ekranie [px] (na telefonie 72 px); zdjęcie pobiera się w podwójnej rozdzielczości. */
   sizePx: number
+  /** Warstwa DSS2: kolor (domyślnie) albo czerwony mono. */
+  layer?: SkyImageLayerId
 }
 
 /** Rodzic podaje `key={object.uid}`, więc stan zdjęcia zaczyna się od nowa przy każdym obiekcie. */
-export function ObjectThumbnail({ object, sizePx }: ObjectThumbnailProps) {
-  const url = thumbnailUrl(object, sizePx * 2)
+export function ObjectThumbnail({ object, sizePx, layer = 'dss2-color' }: ObjectThumbnailProps) {
+  const url = thumbnailUrl(object, sizePx * 2, layer)
   const boxRef = useRef<HTMLDivElement>(null)
   const [requested, setRequested] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)

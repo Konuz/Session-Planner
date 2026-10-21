@@ -720,7 +720,7 @@ Pola liczbowe przyjmują przecinek i kropkę dziesiętną („3,76” = „3.76�
 Inspiracja: SkySafari, czyli ciemny, czytelny interfejs z dolnym paskiem zakładek na telefonie. Nie kopiuj elementów graficznych ani nazw.
 
 **Zasady wyglądu** (22.10.2026; aplikacja jest używana głównie na komputerze, wzory: Skyshot i Telescopius):
-- Najpierw obraz nieba: każda karta katalogu i nagłówek zakładki Noc mają miniaturę obiektu (DSS2 kolor z CDS hips2fits, ładowaną dopiero, gdy miniatura jest widoczna na ekranie przez 400 ms; bez sieci ikona typu). Karta ma też mini-wykres wysokości na pasach zmierzchu.
+- Najpierw obraz nieba: każda karta katalogu i nagłówek zakładki Noc mają miniaturę obiektu (z CDS hips2fits: w katalogu DSS2 czerwony mono, na którym lepiej widać słabe i ciemne obiekty, w nagłówku Noc DSS2 kolor; ładowaną dopiero, gdy miniatura jest widoczna na ekranie przez 400 ms; bez sieci ikona typu). Karta ma też mini-wykres wysokości na pasach zmierzchu.
 - Granat nocnego nieba z poświatą zenitu i rzadkimi gwiazdami w tle (w Red Mode samo czarne tło), panele jak przyciemnione szkło, bursztyn lampy sodowej oznacza akcje i wybór, pergamin nazwy obiektów i duże liczby.
 - Kroje (pliki w `src/assets/fonts`, SIL OFL 1.1, działa offline): Atkinson Hyperlegible Next dla interfejsu i danych, EB Garamond dla nazw obiektów, tytułów i dużych liczb (cyfry nautyczne o stałej szerokości).
 - Kursor czasu na górnym pasku to „pas nocy”: suwak leży na pasach zmierzchu nocy D, z oknem ciemności i obecnością Księżyca. W zakładce Noc go nie ma, bo kursorem jest tam wykres nocy.
