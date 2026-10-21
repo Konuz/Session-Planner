@@ -84,7 +84,7 @@ export function NightTab() {
             {featured.status === 'ready' && object ? (
               <select
                 aria-labelledby="night-chart-title"
-                className="control control-quiet -ml-1 self-start font-serif text-3xl font-medium"
+                className="control control-quiet title-select -ml-1 max-w-full self-start font-serif text-3xl font-medium max-sm:text-xl"
                 value={object.uid}
                 onChange={(event) => selectObject(event.target.value)}
               >
@@ -128,6 +128,9 @@ export function NightTab() {
           patternIds={patternIds}
           thresholdDeg={frame.darkness.thresholdDeg}
         />
+        {featured.status === 'ready' && object && (
+          <p className="mt-3 text-xs text-muted">Zdjęcie: DSS2 kolor przez CDS hips2fits (Strasbourg), DSS © STScI/AURA.</p>
+        )}
       </section>
 
       <div className="grid gap-4 md:grid-cols-2">
