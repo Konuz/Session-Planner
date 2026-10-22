@@ -1,16 +1,17 @@
-import { CalendarDays, ChevronDown, Crosshair, Database, ExternalLink, LocateFixed, MapPin, Mountain, Search, Telescope, Trash2 } from 'lucide-react'
+import { CalendarDays, ChevronDown, ExternalLink, LocateFixed, MapPin, Search, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { addDays } from '../lib/night'
 import { placeForCoords, searchPlaces, type Place } from '../lib/services'
 import { useStore, type Location, type Tab } from '../state/store'
 import { Logo } from './Logo'
 
-const TABS: { id: Tab; label: string; icon: typeof Crosshair }[] = [
-  { id: 'sky', label: 'Niebo', icon: Crosshair },
-  { id: 'catalog', label: 'Katalog', icon: Database },
-  { id: 'planner', label: 'Planer sesji', icon: CalendarDays },
-  { id: 'equipment', label: 'Sprzęt', icon: Telescope },
-  { id: 'horizon', label: 'Mój horyzont', icon: Mountain },
+// Ikony zakładek: srebrna (nieaktywna) i świecąca (aktywna), z public/icons (scripts/build-assets.ts).
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'sky', label: 'Niebo' },
+  { id: 'catalog', label: 'Katalog' },
+  { id: 'planner', label: 'Planer sesji' },
+  { id: 'equipment', label: 'Sprzęt' },
+  { id: 'horizon', label: 'Mój horyzont' },
 ]
 
 function useOutside(ref: React.RefObject<HTMLElement | null>, close: () => void) {
@@ -218,9 +219,12 @@ export function TopBar() {
         </div>
       </a>
       <nav className="nav" aria-label="Widoki">
-        {TABS.map(({ id, label, icon: Icon }) => (
+        {TABS.map(({ id, label }) => (
           <button key={id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)} aria-current={tab === id ? 'page' : undefined}>
-            <Icon size={18} />
+            <span className="nav-icon" aria-hidden>
+              <img src={`/icons/tab-${id}-off.webp`} alt="" width={26} height={26} decoding="async" />
+              <img className="on" src={`/icons/tab-${id}-on.webp`} alt="" width={26} height={26} decoding="async" />
+            </span>
             <span>{label}</span>
           </button>
         ))}

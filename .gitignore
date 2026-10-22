@@ -5,3 +5,4 @@ scripts/.cache
 *.local
 .claude/worktrees
 .playwright-mcp
+/icons/

@@ -228,18 +228,5 @@ export function OpticsCard() {
 }
 
 function TelescopeDrawing() {
-  return (
-    <svg viewBox="0 0 220 120" style={{ display: 'block', width: '100%', maxHeight: 130, margin: '8px 0 12px' }} fill="none" stroke="rgba(0,224,255,0.55)" strokeWidth="1" aria-hidden>
-      <g transform="rotate(-24 120 60)">
-        <rect x="70" y="40" width="110" height="26" />
-        <rect x="178" y="37" width="8" height="32" />
-        <rect x="60" y="45" width="12" height="16" />
-        <rect x="46" y="48" width="14" height="10" />
-        <rect x="100" y="30" width="34" height="8" />
-        <path d="M108 30v-6h18v6M86 40v26M160 40v26" />
-      </g>
-      <path d="M118 74v14M118 88l-22 30M118 88l22 30M118 88v30M104 74h28" />
-      <circle cx="118" cy="74" r="4" />
-    </svg>
-  )
+  return <img className="telescope-art" src="/icons/telescope.webp" alt="" width={720} height={535} decoding="async" loading="lazy" />
 }
