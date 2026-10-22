@@ -1,66 +1,71 @@
-import { TriangleAlert } from 'lucide-react'
-import { useEffect } from 'react'
-import { DimHint } from './app/DimHint'
-import { NavBar } from './app/NavBar'
-import { TopBar } from './app/TopBar'
-import { CatalogTab } from './features/catalog/CatalogTab'
-import { RedOnlyPhotoFilter } from './features/catalog/ObjectThumbnail'
-import { FramingTab } from './features/framing/FramingTab'
-import { NightTab } from './features/night/NightTab'
-import { ProjectsTab } from './features/projects/ProjectsTab'
-import { SettingsTab } from './features/settings/SettingsTab'
-import { usePlannerStore } from './state/plannerStore'
+import { lazy, Suspense, useEffect, useState } from 'react'
+import { TopBar } from './components/TopBar'
+import { useCatalog } from './state/data'
+import { useStore } from './state/store'
+import { SkyView } from './views/SkyView'
 
-/** W trybie „Teraz” kursor odświeża się co 60 s (7.0). */
-const NOW_REFRESH_MS = 60_000
+const CatalogView = lazy(() => import('./views/CatalogView'))
+const PlannerView = lazy(() => import('./views/PlannerView'))
+const EquipmentView = lazy(() => import('./views/EquipmentView'))
+const HorizonView = lazy(() => import('./views/HorizonView'))
 
-export default function App() {
-  const tab = usePlannerStore((state) => state.tab)
-  const followNow = usePlannerStore((state) => state.followNow)
-  const locationsReady = usePlannerStore((state) => state.locationsReady)
-  const storageError = usePlannerStore((state) => state.storageError)
-  const loadLocations = usePlannerStore((state) => state.loadLocations)
-  const goNow = usePlannerStore((state) => state.goNow)
+const BOOT = ['Inicjalizacja układu współrzędnych', 'Wczytywanie katalogu obiektów', 'Kalibracja kopuły nieba', 'Synchronizacja z zegarem gwiazdowym']
 
+function Boot() {
+  const { catalog, error } = useCatalog()
+  const [step, setStep] = useState(0)
+  const [hidden, setHidden] = useState(false)
+  const [timedOut, setTimedOut] = useState(false)
+  // Interfejs nie czeka na katalog dłużej niż 1,5 s (wolne łącze) ani przy błędzie wczytania.
   useEffect(() => {
-    void loadLocations()
-  }, [loadLocations])
-
+    const id = setTimeout(() => setTimedOut(true), 1500)
+    return () => clearTimeout(id)
+  }, [])
+  const reduced = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
   useEffect(() => {
-    if (!followNow) return
-    const timer = window.setInterval(() => goNow(Date.now()), NOW_REFRESH_MS)
-    return () => window.clearInterval(timer)
-  }, [followNow, goNow])
-
+    if (step >= BOOT.length) return
+    const id = setTimeout(() => setStep((s) => s + 1), reduced ? 0 : 140)
+    return () => clearTimeout(id)
+  }, [step, reduced])
+  const done = step >= BOOT.length && (catalog !== null || error !== null || timedOut)
+  useEffect(() => {
+    if (!done) return
+    const id = setTimeout(() => setHidden(true), 700)
+    return () => clearTimeout(id)
+  }, [done])
+  if (hidden) return null
   return (
-    <div className="min-h-dvh md:flex">
-      <RedOnlyPhotoFilter />
-      <DimHint />
-      <NavBar />
-      <div className="min-w-0 flex-1 pb-24 md:pb-0">
-        <TopBar />
-        <main className="mx-auto max-w-[90rem] px-4 py-5 md:px-8 md:py-6">
-          {storageError && (
-            <p role="alert" className="card mb-4 flex items-start gap-2 p-3 text-sm">
-              <TriangleAlert aria-hidden size={18} className="mt-0.5 shrink-0 text-alert" />
-              {storageError}
-            </p>
-          )}
-          {!locationsReady ? (
-            <p className="text-sm text-muted">Wczytywanie lokalizacji…</p>
-          ) : tab === 'catalog' ? (
-            <CatalogTab />
-          ) : tab === 'night' ? (
-            <NightTab />
-          ) : tab === 'framing' ? (
-            <FramingTab />
-          ) : tab === 'projects' ? (
-            <ProjectsTab />
-          ) : (
-            <SettingsTab />
-          )}
-        </main>
+    <div className={`boot${done ? ' done' : ''}`} aria-hidden>
+      <div className="boot-lines">
+        <div className="kicker" style={{ marginBottom: 14 }}>Konuzastro · tracker</div>
+        {BOOT.slice(0, step).map((line, i) => (
+          <div key={line}>
+            <span>{line}</span>
+            <span className="ok">{i === 1 && !catalog ? '…' : '[OK]'}</span>
+          </div>
+        ))}
       </div>
     </div>
+  )
+}
+
+export function App() {
+  const tab = useStore((s) => s.tab)
+  return (
+    <>
+      <Boot />
+      <TopBar />
+      <main className="page" key={tab}>
+        <div className="view-enter">
+          <Suspense fallback={<div className="empty">Wczytywanie…</div>}>
+            {tab === 'sky' && <SkyView />}
+            {tab === 'catalog' && <CatalogView />}
+            {tab === 'planner' && <PlannerView />}
+            {tab === 'equipment' && <EquipmentView />}
+            {tab === 'horizon' && <HorizonView />}
+          </Suspense>
+        </div>
+      </main>
+    </>
   )
 }

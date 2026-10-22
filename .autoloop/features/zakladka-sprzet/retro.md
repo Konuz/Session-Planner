@@ -1,1 +1,0 @@
-- 2026-10-19: 1 próba, 1 keep, wynik PASS (148/148: 118 widocznych + 30 ukrytych), review testów bez uwag; nieudanych prób nie było; jedyny problem procesu to dwa puste pliki `element.tag` w katalogu głównym (niecytowane `=>` z kodu helperów testów w poleceniu powłoki, przy spec i przy review testów), usunięte przez orkiestratora.

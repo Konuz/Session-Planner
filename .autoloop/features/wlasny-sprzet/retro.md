@@ -1,1 +1,0 @@
-- 2026-10-19: próby 1, keep 1 (916995f), wynik PASS (71/71, w tym 26 ukrytych; baseline 0/71). Review testów dało approve bez uwag. Nieudanych prób nie było, więc nie ma ich przyczyny. Katalogu runs/ ani pliku dispute.md nie było. Nie zanotowano incydentów, więc LESSONS bez zmian.

@@ -1,1 +1,0 @@
-- 2026-10-19: próby 1, keep 1, wynik PASS (70/70, w tym 22 ukryte); nieudanych prób nie było; review testów bez uwag; jedyny incydent orkiestratora: check zatrzymało ostrzeżenie ESLint z lokalnego experiments/.venv (naprawione w 8f49940, pierwszy raz, więc bez reguły w LESSONS).

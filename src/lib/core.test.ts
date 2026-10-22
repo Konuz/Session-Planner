@@ -1,0 +1,227 @@
+import { Horizon, MakeTime, Observer, RotateVector, Rotation_EQJ_EQD, SphereFromVector, Vector } from 'astronomy-engine'
+import { describe, expect, it } from 'vitest'
+import { altAz, computeOptics, galactic, hourAngleDeg, horizontalMatrix, moonInfo, nextTransitMs, type Site } from './astro'
+import { matchesFilter, normalizeQuery, parseCatalog, searchScore, EMPTY_FILTER } from './catalog'
+import { frameCorners, gnomonic, gnomonicInverse, pixelToTangent, tangentToPixel } from './framing'
+import { exportHorizon, horizonAltitude, parseHorizon } from './horizon'
+import { darkWindow, nightDateOf, nightPhases, phaseAt, zonedMidnightMs } from './night'
+import { formatDec, formatPa, formatRa, ninaCsv } from './nina'
+import { affineFrom3, FULL_DOME, makeProjector } from './projection'
+import { autoSchedule, localTimeToMs, overlaps } from './planner'
+import { thumbFovDeg } from './thumbs'
+
+const SITE: Site = { latDeg: 51.09, lonDeg: 17.29, elevationM: 130 }
+const M51 = { raDeg: 202.4696, decDeg: 47.1952 }
+const TZ = 'Europe/Warsaw'
+
+describe('astro', () => {
+  it('wysokość i azymut zgodne z astronomy-engine (bez refrakcji)', () => {
+    const t = Date.UTC(2026, 9, 22, 20, 0)
+    const ours = altAz(M51, t, SITE)
+    const obs = new Observer(SITE.latDeg, SITE.lonDeg, SITE.elevationM)
+    // Wzorzec: precesja do daty i Horizon z astronomy-engine (bez refrakcji).
+    const ra = (M51.raDeg * Math.PI) / 180
+    const dec = (M51.decDeg * Math.PI) / 180
+    const v = new Vector(Math.cos(dec) * Math.cos(ra), Math.cos(dec) * Math.sin(ra), Math.sin(dec), MakeTime(new Date(t)))
+    const s = SphereFromVector(RotateVector(Rotation_EQJ_EQD(new Date(t)), v))
+    const ref = Horizon(new Date(t), obs, s.lon / 15, s.lat)
+    expect(ours.altDeg).toBeCloseTo(ref.altitude, 2)
+    expect(ours.azDeg).toBeCloseTo(ref.azimuth, 2)
+  })
+
+  it('górowanie: kąt godzinny 0 i wysokość 90 − |φ − δ|', () => {
+    const t = nextTransitMs(M51, Date.UTC(2026, 9, 22, 12), SITE)
+    expect(Math.abs(hourAngleDeg(M51, t, SITE))).toBeLessThan(0.01)
+    expect(altAz(M51, t, SITE).altDeg).toBeCloseTo(90 - Math.abs(SITE.latDeg - M51.decDeg), 0)
+  })
+
+  it('górowanie M 42 w nocy 22/23.10 wypada tej samej nocy (bez przeskoku o dobę)', () => {
+    const n = nightPhases('2026-10-22', SITE, TZ)
+    const t = nextTransitMs({ raDeg: 83.8187, decDeg: -5.3897 }, n.startMs, SITE)
+    expect(t).toBeGreaterThan(n.startMs)
+    expect(t).toBeLessThan(n.endMs)
+  })
+
+  it('macierz horyzontalna jest ortogonalna', () => {
+    const m = horizontalMatrix(Date.UTC(2026, 0, 1), SITE)
+    const dot = (a: number, b: number) => m[a * 3] * m[b * 3] + m[a * 3 + 1] * m[b * 3 + 1] + m[a * 3 + 2] * m[b * 3 + 2]
+    expect(dot(0, 0)).toBeCloseTo(1, 9)
+    expect(dot(0, 1)).toBeCloseTo(0, 9)
+    expect(dot(1, 2)).toBeCloseTo(0, 9)
+  })
+
+  it('faza Księżyca: 2026-10-26 to ok. pełni, 2026-11-09 ok. nowiu', () => {
+    // Pełnia 26.10.2026, nów 9.11.2026 (efemerydy USNO).
+    expect(moonInfo(Date.UTC(2026, 9, 26, 6)).illumination).toBeGreaterThan(0.97)
+    expect(moonInfo(Date.UTC(2026, 10, 9, 12)).illumination).toBeLessThan(0.03)
+    const m = moonInfo(Date.UTC(2026, 9, 22))
+    expect(m.nextFullMs).toBeGreaterThan(Date.UTC(2026, 9, 25))
+    expect(m.nextFullMs).toBeLessThan(Date.UTC(2026, 9, 27))
+  })
+
+  it('optyka: Newton 150/600 + Ares-M Pro', () => {
+    const o = computeOptics({ apertureMm: 150, focalLengthMm: 600, reducer: 1, widthPx: 3008, heightPx: 3008, pixelUm: 3.76, binning: 1 })
+    expect(o.fRatio).toBe(4)
+    expect(o.fovWdeg).toBeCloseTo(1.08, 2)
+    expect(o.scaleArcsecPx).toBeCloseTo(1.29, 2)
+  })
+
+  it('współrzędne galaktyczne: centrum Galaktyki (Sgr A*) ma l ≈ 0, b ≈ 0', () => {
+    const g = galactic({ raDeg: 266.41683, decDeg: -29.00781 })
+    expect(Math.min(g.lDeg, 360 - g.lDeg)).toBeLessThan(0.1)
+    expect(Math.abs(g.bDeg)).toBeLessThan(0.1)
+  })
+})
+
+describe('noc', () => {
+  it('północ strefy i data nocy', () => {
+    expect(new Date(zonedMidnightMs('2026-10-22', TZ)).toISOString()).toBe('2026-10-21T22:00:00.000Z')
+    expect(nightDateOf(Date.UTC(2026, 9, 23, 1), TZ)).toBe('2026-10-22')
+    expect(nightDateOf(Date.UTC(2026, 9, 22, 15), TZ)).toBe('2026-10-22')
+  })
+
+  it('fazy nocy 22/23 października w kolejności i w rozsądnych godzinach', () => {
+    const n = nightPhases('2026-10-22', SITE, TZ)
+    const order = [n.sunset, n.civilDusk, n.nauticalDusk, n.astroDusk, n.astroDawn, n.nauticalDawn, n.civilDawn, n.sunrise]
+    order.forEach((t) => expect(t).not.toBeNull())
+    for (let i = 1; i < order.length; i++) expect(order[i]!).toBeGreaterThan(order[i - 1]!)
+    // Zachód Słońca we Wrocławiu 22.10: ok. 17:55 CEST (15:55 UTC).
+    expect(Math.abs(n.sunset! - Date.UTC(2026, 9, 22, 15, 55))).toBeLessThan(15 * 60_000)
+    expect(phaseAt(n, (n.astroDusk! + n.astroDawn!) / 2)).toBe('night')
+    expect(phaseAt(n, n.sunset! - 60_000)).toBe('day')
+    expect(darkWindow(n)).toEqual([n.astroDusk, n.astroDawn])
+  })
+
+  it('białe noce: brak nocy astronomicznej w czerwcu na 51° N', () => {
+    const n = nightPhases('2026-06-21', SITE, TZ)
+    expect(n.astroDusk).toBeNull()
+    expect(n.nauticalDusk).not.toBeNull()
+    expect(darkWindow(n)).toEqual([n.nauticalDusk, n.nauticalDawn])
+  })
+})
+
+describe('horyzont', () => {
+  it('interpolacja z zawinięciem przez 360°', () => {
+    const h = [{ azDeg: 10, altDeg: 10 }, { azDeg: 350, altDeg: 20 }]
+    expect(horizonAltitude(h, 0)).toBeCloseTo(15)
+    expect(horizonAltitude([], 123)).toBe(0)
+  })
+
+  it('plik: komentarze, separatory, błędne linie', () => {
+    const p = parseHorizon('# moj\n0 10\n90;20\n180,5\nabc\n270 95\n')
+    expect(p.points).toEqual([{ azDeg: 0, altDeg: 10 }, { azDeg: 90, altDeg: 20 }, { azDeg: 180, altDeg: 5 }])
+    expect(p.rejected).toEqual([5, 6])
+    expect(exportHorizon(p.points, 'Test')).toContain('90 20')
+  })
+})
+
+describe('N.I.N.A.', () => {
+  it('formaty współrzędnych i CSV', () => {
+    expect(formatRa(202.4696)).toBe('13:29:52.70')
+    expect(formatDec(47.1952)).toBe('+47:11:42.7')
+    expect(formatDec(-0.5)).toBe('-00:30:00.0')
+    expect(formatPa(30)).toBe('30.0')
+    expect(formatPa(-10)).toBe('350.0')
+    expect(ninaCsv([{ name: 'M 51, Wir', raDeg: 202.4696, decDeg: 47.1952, paDeg: 0 }])).toBe(
+      'Pane,RA,DEC,Position Angle (East)\r\nM 51 Wir,13:29:52.70,+47:11:42.7,0.0\r\n',
+    )
+  })
+})
+
+describe('kadr i rzut', () => {
+  it('rzut gnomoniczny tam i z powrotem', () => {
+    const c = { raDeg: 83.8, decDeg: -5.4 }
+    const p = { raDeg: 84.3, decDeg: -4.9 }
+    const back = gnomonicInverse(c, gnomonic(c, p))
+    expect(back.raDeg).toBeCloseTo(p.raDeg, 9)
+    expect(back.decDeg).toBeCloseTo(p.decDeg, 9)
+  })
+
+  it('kadr bez obrotu: góra = N, lewy bok po stronie E; piksele tam i z powrotem', () => {
+    const [tl, tr] = frameCorners({ xi: 0, eta: 0 }, 2, 1, 0)
+    expect(tl.eta).toBeGreaterThan(0)
+    expect(tl.xi).toBeGreaterThan(0) // lewy górny róg jest po stronie E
+    expect(tr.xi).toBeLessThan(0)
+    const [x, y] = tangentToPixel(tl, 4, 800)
+    const back = pixelToTangent(x, y, 4, 800)
+    expect(back.xi).toBeCloseTo(tl.xi, 12)
+    expect(x).toBeLessThan(400)
+    expect(y).toBeLessThan(400)
+  })
+
+  it('kopuła: zenit w środku, N u góry, E po lewej', () => {
+    const p = makeProjector(horizontalMatrix(0, SITE), FULL_DOME, 500, 500, 400)
+    const [zx, zy] = p.hor([0, 0, 1])!
+    expect(zx).toBeCloseTo(500)
+    expect(zy).toBeCloseTo(500)
+    const [nx, ny] = p.hor([1, 0, 0])!
+    expect(ny).toBeLessThan(120)
+    expect(nx).toBeCloseTo(500)
+    const [ex] = p.hor([0, 1, 0])!
+    expect(ex).toBeLessThan(120)
+    const v = p.unprojectHor(ex, 500)
+    expect(v[1]).toBeCloseTo(1, 6)
+  })
+
+  it('transformacja afiniczna z trzech punktów', () => {
+    const m = affineFrom3([[0, 0], [1, 0], [0, 1]], [[10, 20], [12, 20], [10, 23]])!
+    expect(m).toEqual([2, 0, 0, 3, 10, 20])
+  })
+})
+
+describe('planer', () => {
+  const H = 3_600_000
+  it('dzieli ciemne okno wokół najlepszych chwil i pomija niewidoczne cele', () => {
+    const slots = autoSchedule(
+      [
+        { key: 'b', bestMs: 6 * H, usableStart: 2 * H, usableEnd: 9 * H },
+        { key: 'a', bestMs: 2 * H, usableStart: 0, usableEnd: 5 * H },
+        { key: 'x', bestMs: 4 * H, usableStart: null, usableEnd: null },
+      ],
+      0,
+      10 * H,
+    )
+    expect(slots).toEqual([
+      { key: 'a', startMs: 0, endMs: 4 * H },
+      { key: 'b', startMs: 4 * H, endMs: 9 * H },
+    ])
+    expect(overlaps(slots).size).toBe(0)
+    expect(overlaps([{ key: 'p', startMs: 0, endMs: 2 * H }, { key: 'q', startMs: H, endMs: 3 * H }])).toEqual(new Set(['p', 'q']))
+  })
+
+  it('godzina lokalna rano należy do następnego dnia kalendarzowego', () => {
+    expect(new Date(localTimeToMs('2026-10-22', '01:30', TZ)!).toISOString()).toBe('2026-10-22T23:30:00.000Z')
+    expect(new Date(localTimeToMs('2026-10-22', '21:00', TZ)!).toISOString()).toBe('2026-10-22T19:00:00.000Z')
+  })
+})
+
+describe('katalog', () => {
+  const rows = [
+    ['M 51', 'NGC 5194', 'Galaktyka Wir', 'Whirlpool Galaxy', 'G', 202.47, 47.2, 13.7, 11.7, 163, 8.4, 22.9, 'CVn', 0, '', ''],
+    ['LDN 1355', '', '', '', 'DN', 30, 60, 20, 0, -1, 99, 99, 'Cas', 0, '', ''],
+    ['Sh2-105', 'NGC 6888|LBN 203', 'Mgławica Półksiężyc', 'Crescent Nebula', 'EN', 303, 38.4, 18, 12, -1, 7.4, 99, 'Cyg', 4700, '', ''],
+  ] as Parameters<typeof parseCatalog>[0]
+  const cat = parseCatalog(rows)
+
+  it('katalogi z oznaczeń i filtr po katalogu i typie', () => {
+    expect(cat[0].catalogs).toEqual(['M', 'NGC'])
+    expect(cat[2].catalogs).toEqual(['Sh2', 'NGC', 'LBN'])
+    expect(cat.filter((o) => matchesFilter(o, { ...EMPTY_FILTER, catalogs: ['LBN', 'LDN'] })).map((o) => o.id)).toEqual(['LDN 1355', 'Sh2-105'])
+    expect(cat.filter((o) => matchesFilter(o, { ...EMPTY_FILTER, types: ['G'] }))).toHaveLength(1)
+    expect(cat.filter((o) => matchesFilter(o, { ...EMPTY_FILTER, maxMag: 8 }))).toHaveLength(1)
+  })
+
+  it('wyszukiwanie bez spacji i znaków diakrytycznych', () => {
+    expect(normalizeQuery('Półksiężyc')).toBe('polksiezyc')
+    expect(cat.filter((o) => matchesFilter(o, { ...EMPTY_FILTER, query: 'm51' }))).toHaveLength(1)
+    expect(cat.filter((o) => matchesFilter(o, { ...EMPTY_FILTER, query: 'polksiezyc' }))).toHaveLength(1)
+    expect(searchScore(cat[0], 'M 51')).toBe(0)
+    expect(searchScore(cat[2], 'NGC6888')).toBe(1)
+  })
+
+  it('pole miniatury', () => {
+    expect(thumbFovDeg({ majArcmin: 13.7 })).toBeCloseTo(0.388, 3)
+    expect(thumbFovDeg({ majArcmin: 600 })).toBe(4)
+    expect(thumbFovDeg({ majArcmin: 0 })).toBe(0.2)
+  })
+})

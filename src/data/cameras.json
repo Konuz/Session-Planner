@@ -1,0 +1,272 @@
+[
+ {
+  "id": "zwo-asi2600mc-pro",
+  "brand": "ZWO",
+  "model": "ASI2600MC Pro",
+  "sensorModel": "IMX571",
+  "sensor": "osc",
+  "resolutionXPx": 6248,
+  "resolutionYPx": 4176,
+  "pixelSizeUm": 3.76
+ },
+ {
+  "id": "zwo-asi2600mm-pro",
+  "brand": "ZWO",
+  "model": "ASI2600MM Pro",
+  "sensorModel": "IMX571",
+  "sensor": "mono",
+  "resolutionXPx": 6248,
+  "resolutionYPx": 4176,
+  "pixelSizeUm": 3.76
+ },
+ {
+  "id": "zwo-asi533mc-pro",
+  "brand": "ZWO",
+  "model": "ASI533MC Pro",
+  "sensorModel": "IMX533",
+  "sensor": "osc",
+  "resolutionXPx": 3008,
+  "resolutionYPx": 3008,
+  "pixelSizeUm": 3.76
+ },
+ {
+  "id": "zwo-asi533mm-pro",
+  "brand": "ZWO",
+  "model": "ASI533MM Pro",
+  "sensorModel": "IMX533",
+  "sensor": "mono",
+  "resolutionXPx": 3008,
+  "resolutionYPx": 3008,
+  "pixelSizeUm": 3.76
+ },
+ {
+  "id": "zwo-asi294mc-pro",
+  "brand": "ZWO",
+  "model": "ASI294MC Pro",
+  "sensorModel": "IMX294",
+  "sensor": "osc",
+  "resolutionXPx": 4144,
+  "resolutionYPx": 2822,
+  "pixelSizeUm": 4.63
+ },
+ {
+  "id": "zwo-asi183mc-pro",
+  "brand": "ZWO",
+  "model": "ASI183MC Pro",
+  "sensorModel": "IMX183",
+  "sensor": "osc",
+  "resolutionXPx": 5496,
+  "resolutionYPx": 3672,
+  "pixelSizeUm": 2.4
+ },
+ {
+  "id": "zwo-asi183mm-pro",
+  "brand": "ZWO",
+  "model": "ASI183MM Pro",
+  "sensorModel": "IMX183",
+  "sensor": "mono",
+  "resolutionXPx": 5496,
+  "resolutionYPx": 3672,
+  "pixelSizeUm": 2.4
+ },
+ {
+  "id": "zwo-asi1600mm-pro",
+  "brand": "ZWO",
+  "model": "ASI1600MM Pro",
+  "sensorModel": "MN34230",
+  "sensor": "mono",
+  "resolutionXPx": 4656,
+  "resolutionYPx": 3520,
+  "pixelSizeUm": 3.8
+ },
+ {
+  "id": "zwo-asi6200mc-pro",
+  "brand": "ZWO",
+  "model": "ASI6200MC Pro",
+  "sensorModel": "IMX455",
+  "sensor": "osc",
+  "resolutionXPx": 9576,
+  "resolutionYPx": 6388,
+  "pixelSizeUm": 3.76
+ },
+ {
+  "id": "zwo-asi6200mm-pro",
+  "brand": "ZWO",
+  "model": "ASI6200MM Pro",
+  "sensorModel": "IMX455",
+  "sensor": "mono",
+  "resolutionXPx": 9576,
+  "resolutionYPx": 6388,
+  "pixelSizeUm": 3.76
+ },
+ {
+  "id": "zwo-asi071mc-pro",
+  "brand": "ZWO",
+  "model": "ASI071MC Pro",
+  "sensorModel": "IMX071",
+  "sensor": "osc",
+  "resolutionXPx": 4944,
+  "resolutionYPx": 3284,
+  "pixelSizeUm": 4.78
+ },
+ {
+  "id": "zwo-asi585mc-pro",
+  "brand": "ZWO",
+  "model": "ASI585MC Pro",
+  "sensorModel": "IMX585",
+  "sensor": "osc",
+  "resolutionXPx": 3840,
+  "resolutionYPx": 2160,
+  "pixelSizeUm": 2.9
+ },
+ {
+  "id": "zwo-asi2400mc-pro",
+  "brand": "ZWO",
+  "model": "ASI2400MC Pro",
+  "sensorModel": "IMX410",
+  "sensor": "osc",
+  "resolutionXPx": 6072,
+  "resolutionYPx": 4042,
+  "pixelSizeUm": 5.94
+ },
+ {
+  "id": "player-one-ares-c-pro",
+  "brand": "Player One",
+  "model": "Ares-C Pro",
+  "sensorModel": "IMX533",
+  "sensor": "osc",
+  "resolutionXPx": 3008,
+  "resolutionYPx": 3008,
+  "pixelSizeUm": 3.76
+ },
+ {
+  "id": "player-one-ares-m-pro",
+  "brand": "Player One",
+  "model": "Ares-M Pro",
+  "sensorModel": "IMX533",
+  "sensor": "mono",
+  "resolutionXPx": 3008,
+  "resolutionYPx": 3008,
+  "pixelSizeUm": 3.76
+ },
+ {
+  "id": "player-one-poseidon-c-pro",
+  "brand": "Player One",
+  "model": "Poseidon-C Pro",
+  "sensorModel": "IMX571",
+  "sensor": "osc",
+  "resolutionXPx": 6252,
+  "resolutionYPx": 4176,
+  "pixelSizeUm": 3.76
+ },
+ {
+  "id": "player-one-poseidon-m-pro",
+  "brand": "Player One",
+  "model": "Poseidon-M Pro",
+  "sensorModel": "IMX571",
+  "sensor": "mono",
+  "resolutionXPx": 6252,
+  "resolutionYPx": 4176,
+  "pixelSizeUm": 3.76
+ },
+ {
+  "id": "player-one-uranus-c-pro",
+  "brand": "Player One",
+  "model": "Uranus-C Pro",
+  "sensorModel": "IMX585",
+  "sensor": "osc",
+  "resolutionXPx": 3856,
+  "resolutionYPx": 2180,
+  "pixelSizeUm": 2.9
+ },
+ {
+  "id": "qhyccd-qhy268c",
+  "brand": "QHYCCD",
+  "model": "QHY268C",
+  "sensorModel": "IMX571",
+  "sensor": "osc",
+  "resolutionXPx": 6252,
+  "resolutionYPx": 4176,
+  "pixelSizeUm": 3.76
+ },
+ {
+  "id": "qhyccd-qhy268m",
+  "brand": "QHYCCD",
+  "model": "QHY268M",
+  "sensorModel": "IMX571",
+  "sensor": "mono",
+  "resolutionXPx": 6252,
+  "resolutionYPx": 4176,
+  "pixelSizeUm": 3.76
+ },
+ {
+  "id": "qhyccd-qhy533c",
+  "brand": "QHYCCD",
+  "model": "QHY533C",
+  "sensorModel": "IMX533",
+  "sensor": "osc",
+  "resolutionXPx": 3008,
+  "resolutionYPx": 3008,
+  "pixelSizeUm": 3.76
+ },
+ {
+  "id": "qhyccd-qhy533m",
+  "brand": "QHYCCD",
+  "model": "QHY533M",
+  "sensorModel": "IMX533",
+  "sensor": "mono",
+  "resolutionXPx": 3008,
+  "resolutionYPx": 3008,
+  "pixelSizeUm": 3.76
+ },
+ {
+  "id": "qhyccd-qhy600m",
+  "brand": "QHYCCD",
+  "model": "QHY600M",
+  "sensorModel": "IMX455",
+  "sensor": "mono",
+  "resolutionXPx": 9576,
+  "resolutionYPx": 6388,
+  "pixelSizeUm": 3.76
+ },
+ {
+  "id": "canon-eos-6d",
+  "brand": "Canon",
+  "model": "EOS 6D",
+  "sensorModel": null,
+  "sensor": "osc",
+  "resolutionXPx": 5472,
+  "resolutionYPx": 3648,
+  "pixelSizeUm": 6.54
+ },
+ {
+  "id": "canon-eos-r",
+  "brand": "Canon",
+  "model": "EOS R / EOS Ra",
+  "sensorModel": null,
+  "sensor": "osc",
+  "resolutionXPx": 6720,
+  "resolutionYPx": 4480,
+  "pixelSizeUm": 5.36
+ },
+ {
+  "id": "nikon-z6-ii",
+  "brand": "Nikon",
+  "model": "Z6 II",
+  "sensorModel": null,
+  "sensor": "osc",
+  "resolutionXPx": 6048,
+  "resolutionYPx": 4024,
+  "pixelSizeUm": 5.94
+ },
+ {
+  "id": "sony-a7-iii",
+  "brand": "Sony",
+  "model": "A7 III",
+  "sensorModel": null,
+  "sensor": "osc",
+  "resolutionXPx": 6000,
+  "resolutionYPx": 4000,
+  "pixelSizeUm": 5.93
+ }
+]

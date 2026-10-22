@@ -1,1 +1,0 @@
-- 2026-10-19: 1 próba, 1 keep, wynik PASS (36/36, 27 jawnych + 9 ukrytych). Nieudanych prób nie było; jedyny problem to incydent procesu: puste pliki `object.uid` i `outline.uid` (niecytowany `=>` w poleceniu powłoki przy pisaniu testów) weszły do commita zamrożenia testów 4d02214 i usunięto je osobnym commitem 5749656.
