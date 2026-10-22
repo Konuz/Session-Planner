@@ -22,6 +22,7 @@ import { BAND_OPACITY } from './chartGeometry'
 import { MoonPhaseIcon } from './MoonPhaseIcon'
 import { NightChart } from './NightChart'
 import { objectName } from './objectName'
+import { SkyDome } from './SkyDome'
 import { useFeaturedObjects } from './useFeaturedObjects'
 
 const BAND_LABELS: Record<TwilightBand, string> = {
@@ -67,54 +68,66 @@ export function NightTab() {
   return (
     <div className="flex flex-col gap-4">
       <ChartPatterns ids={patternIds} />
-      <section className="card p-3 md:p-4" aria-labelledby="night-chart-title">
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-          <div className="flex min-w-60 flex-1 flex-col gap-1">
-            <h2 id="night-chart-title" className="text-xs text-muted">
-              Obiekt
-            </h2>
-            {featured.status === 'ready' && object ? (
-              <select
-                aria-labelledby="night-chart-title"
-                className="control max-w-md text-sm"
-                value={object.uid}
-                onChange={(event) => selectObject(event.target.value)}
-              >
-                {nightObjectOptions(featured.objects, object).map((option) => (
-                  <option key={option.uid} value={option.uid}>
-                    {objectName(option)}
-                  </option>
-                ))}
-              </select>
-            ) : featured.status === 'error' ? (
-              <p role="alert" className="flex flex-wrap items-center gap-2 text-sm">
-                Nie udało się wczytać katalogu: {featured.message}
-                <button type="button" className="button" onClick={retry}>
-                  <RotateCcw aria-hidden size={16} /> Spróbuj ponownie
-                </button>
-              </p>
-            ) : (
-              <p className="flex min-h-11 items-center text-sm text-muted">Wczytywanie katalogu…</p>
-            )}
+      {/* Na komputerze wykres nocy i widok sfery obok siebie: ten sam kursor czasu przesuwa oba (sekcja 9). */}
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_26rem]">
+        <section className="card min-w-0 p-3 md:p-4" aria-labelledby="night-chart-title">
+          <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+            <div className="flex min-w-60 flex-1 flex-col gap-1">
+              <h2 id="night-chart-title" className="text-xs text-muted">
+                Obiekt
+              </h2>
+              {featured.status === 'ready' && object ? (
+                <select
+                  aria-labelledby="night-chart-title"
+                  className="control max-w-md text-sm"
+                  value={object.uid}
+                  onChange={(event) => selectObject(event.target.value)}
+                >
+                  {nightObjectOptions(featured.objects, object).map((option) => (
+                    <option key={option.uid} value={option.uid}>
+                      {objectName(option)}
+                    </option>
+                  ))}
+                </select>
+              ) : featured.status === 'error' ? (
+                <p role="alert" className="flex flex-wrap items-center gap-2 text-sm">
+                  Nie udało się wczytać katalogu: {featured.message}
+                  <button type="button" className="button" onClick={retry}>
+                    <RotateCcw aria-hidden size={16} /> Spróbuj ponownie
+                  </button>
+                </p>
+              ) : (
+                <p className="flex min-h-11 items-center text-sm text-muted">Wczytywanie katalogu…</p>
+              )}
+            </div>
+            <EffectiveTime frame={frame} track={track} minAltitudeDeg={minAltitudeDeg} />
           </div>
-          <EffectiveTime frame={frame} track={track} minAltitudeDeg={minAltitudeDeg} />
-        </div>
 
-        <NightChart
+          <NightChart
+            frame={frame}
+            track={track}
+            objectLabel={label}
+            minAltitudeDeg={minAltitudeDeg}
+            cursorMs={cursorMs}
+            onCursorChange={setCursor}
+            patternIds={patternIds}
+          />
+          <Legend
+            objectLabel={object ? formatDesignation(object.primary) : null}
+            patternIds={patternIds}
+            thresholdDeg={frame.darkness.thresholdDeg}
+          />
+        </section>
+        <SkyDome
           frame={frame}
-          track={track}
-          objectLabel={label}
+          object={object}
+          horizon={location.horizon}
           minAltitudeDeg={minAltitudeDeg}
           cursorMs={cursorMs}
-          onCursorChange={setCursor}
+          readout={readout}
           patternIds={patternIds}
         />
-        <Legend
-          objectLabel={object ? formatDesignation(object.primary) : null}
-          patternIds={patternIds}
-          thresholdDeg={frame.darkness.thresholdDeg}
-        />
-      </section>
+      </div>
 
       <div className="grid gap-4 md:grid-cols-2">
         <NightSummary frame={frame} track={track} mount={profile.mount} />

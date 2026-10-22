@@ -1,37 +1,9 @@
 // Karta obiektu w katalogu (7A): komponent prezentacyjny modelu karty; ikony z Lucide, kolory tylko z tokenów.
-import {
-  Blend,
-  ChartSpline,
-  CircleDot,
-  CircleQuestionMark,
-  Cloud,
-  CloudFog,
-  Cloudy,
-  Grip,
-  Haze,
-  Orbit,
-  Sparkle,
-  Sparkles,
-  type LucideIcon,
-} from 'lucide-react'
+import { ChartSpline } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { tokenVariable, type ColorToken } from '../../theme/tokens'
-import type { DsoType } from '../../types'
 import type { ObjectCardModel } from './objectCardModel'
-
-const TYPE_ICONS: Record<DsoType, LucideIcon> = {
-  galaxy: Orbit,
-  galaxy_group: Blend,
-  emission_nebula: Cloud,
-  reflection_nebula: Cloudy,
-  dark_nebula: CloudFog,
-  planetary_nebula: CircleDot,
-  supernova_remnant: Sparkle,
-  open_cluster: Sparkles,
-  globular_cluster: Grip,
-  cluster_nebula: Haze,
-  other: CircleQuestionMark,
-}
+import { TYPE_ICONS } from './typeIcons'
 
 /** Kolor z tokenu przez zmienną CSS, więc Red Mode przełącza go razem z paletą. */
 function tokenColor(token: ColorToken): CSSProperties {
