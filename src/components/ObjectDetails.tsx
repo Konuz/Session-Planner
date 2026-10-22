@@ -73,8 +73,8 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
       <aside className="drawer" role="dialog" aria-label={`Szczegóły ${o.id}`}>
         <div style={{ position: 'relative' }}>
           <Thumb object={o} className="thumb" style={{ aspectRatio: '16 / 9' }} fovDeg={Math.min(4, Math.max(0.3, (Math.max(o.majArcmin, 3) * 2.6) / 60))} sizePx={560} />
-          <button className="button icon-button" style={{ position: 'absolute', top: 12, right: 12, background: 'rgba(0,0,0,0.7)' }} onClick={onClose} aria-label="Zamknij">
-            <X size={16} />
+          <button className="close-button" style={{ position: 'absolute', top: 16, right: 16, zIndex: 4 }} onClick={onClose} aria-label="Zamknij">
+            <X size={17} />
           </button>
         </div>
         <div style={{ padding: 22 }}>

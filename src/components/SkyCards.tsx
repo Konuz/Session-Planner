@@ -8,6 +8,7 @@ import { useNight, useSelected, useSite, useTime, useWeather } from '../state/da
 import { useStore } from '../state/store'
 import { MoonDisc } from './MoonDisc'
 import { ObjectSearch } from './ObjectSearch'
+import { ScrambleText } from './ScrambleText'
 import { Thumb } from './Thumb'
 import { CONSTELLATION_PL } from '../lib/constellations'
 
@@ -21,25 +22,20 @@ export function ObjectCard({ onDetails }: { onDetails: () => void }) {
       <ObjectSearch />
       {o ? (
         <div key={o.i} style={{ marginTop: 12, animation: 'fade-in 0.4s ease' }}>
-          <div className="object-photo">
+          <div className="object-photo corners">
             <Thumb object={o} className="thumb" style={{ position: 'absolute', inset: 0 }} fovDeg={Math.min(4, Math.max(0.25, (Math.max(o.majArcmin, 3) * 2.2) / 60))} sizePx={480} />
-            <svg className="reticle" viewBox="0 0 100 62.5" preserveAspectRatio="none">
-              <g stroke="rgba(0,224,255,0.5)" strokeWidth="0.3" fill="none">
-                <path d="M2 8V2h6M92 2h6v6M98 54.5v6h-6M8 60.5H2v-6" />
-              </g>
-            </svg>
           </div>
           <div className="object-name">
-            <span className="id">{o.id}</span>
+            <span className="id"><ScrambleText text={o.id} /></span>
             {displayName(o) && (
               <>
                 <span className="sep">·</span>
-                <span>{displayName(o)}</span>
+                <span><ScrambleText text={displayName(o)} /></span>
               </>
             )}
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <span className="chip filled" style={{ color: TYPE_INFO[o.type].color }}>
+            <span className="chip" style={{ color: TYPE_INFO[o.type].color }}>
               {TYPE_INFO[o.type].label}
             </span>
             {o.aliases.slice(0, 2).map((a) => (
@@ -96,7 +92,7 @@ export function MoonCard() {
       <div className="moon-row">
         <MoonDisc illumination={info.illumination} waxing={info.waxing} size={80} />
         <div>
-          <div style={{ fontWeight: 600, fontSize: 15 }}>Księżyc</div>
+          <div style={{ font: '700 14px var(--sans)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Księżyc</div>
           <div style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 4 }}>
             <span className="dim">Faza</span> <b className="figures">{Math.round(info.illumination * 100)}%</b> · {info.name}
           </div>

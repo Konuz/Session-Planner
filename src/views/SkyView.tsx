@@ -93,13 +93,13 @@ export function SkyView() {
           )}
           <div className="sky-toolbar">
             {MODES.map(({ id, label, icon: Icon }) => (
-              <button key={id} className={`button${mode === id ? ' active' : ''}`} onClick={() => setMode(id)}>
-                <Icon size={15} /> {label}
+              <button key={id} className={`button small${mode === id ? ' active' : ''}`} onClick={() => setMode(id)}>
+                <Icon size={14} /> {label}
               </button>
             ))}
             <span className="spacer" />
             {mode === 'dome' && (
-              <>
+              <div className="toolbar-group">
                 <button className="button small icon-button" title={playing ? 'Zatrzymaj' : 'Odtwórz noc'} onClick={() => setPlaying(!playing)}>
                   {playing ? <Pause size={14} /> : <Play size={14} />}
                 </button>
@@ -107,10 +107,12 @@ export function SkyView() {
                   <RotateCcw size={14} />
                 </button>
                 <span className="mono" style={{ fontSize: 12, minWidth: 44 }}>{fmtTime(time, tz)}</span>
-                <Switch on={showLines} onClick={() => toggle('showLines')} label="Linie" />
-                <Switch on={showArt} onClick={() => toggle('showArt')} label="Postacie" />
-                <Switch on={showTracks} onClick={() => toggle('showTracks')} label="Tory" />
-              </>
+                <span className="toolbar-group">
+                  <Switch on={showLines} onClick={() => toggle('showLines')} label="Linie" />
+                  <Switch on={showArt} onClick={() => toggle('showArt')} label="Postacie" />
+                  <Switch on={showTracks} onClick={() => toggle('showTracks')} label="Tory" />
+                </span>
+              </div>
             )}
           </div>
         </section>

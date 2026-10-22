@@ -220,7 +220,7 @@ export function TopBar() {
       </a>
       <nav className="nav" aria-label="Widoki">
         {TABS.map(({ id, label }) => (
-          <button key={id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)} aria-current={tab === id ? 'page' : undefined}>
+          <button key={id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)} aria-current={tab === id ? 'page' : undefined} aria-label={label} title={label}>
             <span className="nav-icon" aria-hidden>
               <img src={`/icons/tab-${id}-off.webp`} alt="" width={26} height={26} decoding="async" />
               <img className="on" src={`/icons/tab-${id}-on.webp`} alt="" width={26} height={26} decoding="async" />

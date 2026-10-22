@@ -1,7 +1,8 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { CalendarCheck, RotateCcw, Search, SlidersHorizontal } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { ObjectDetails } from '../components/ObjectDetails'
+import { ScrambleText } from '../components/ScrambleText'
 import { Thumb } from '../components/Thumb'
 import { CATALOGS, displayName, matchesFilter, searchScore, TYPE_INFO, EMPTY_FILTER, type DSO, type ObjectType } from '../lib/catalog'
 import { CONSTELLATION_PL } from '../lib/constellations'
@@ -178,35 +179,21 @@ export default function CatalogView() {
                   const maxAlt = vis ? vis.maxAlt[o.i] : null
                   const inPlan = plan.some((p) => p.objectIndex === o.i)
                   return (
-                    <button
+                    <CatalogCard
                       key={o.i}
-                      className={`obj-card${o.i === selectedIndex ? ' selected' : ''}`}
-                      onClick={() => {
+                      o={o}
+                      selected={o.i === selectedIndex}
+                      inPlan={inPlan}
+                      hours={hours}
+                      maxAlt={maxAlt}
+                      bestMs={vis ? vis.best[o.i] : null}
+                      minAlt={minAlt}
+                      tz={tz}
+                      onOpen={() => {
                         select(o.i, true)
                         setDetails(true)
                       }}
-                    >
-                      <Thumb object={o} />
-                      {inPlan && <span className="in-plan" title="W planie"><CalendarCheck size={14} /></span>}
-                      <div className="vis-bar" title={hours !== null ? `${fmtDuration(hours)} powyżej ${minAlt}°` : ''}>
-                        <div style={{ width: `${Math.min(100, ((hours ?? 0) / 10) * 100)}%`, background: (hours ?? 0) >= 3 ? 'var(--accent)' : (hours ?? 0) >= 1 ? 'var(--warn)' : 'var(--text-faint)' }} />
-                      </div>
-                      <div className="body">
-                        <div className="title">
-                          <b>{o.id}</b>
-                          <span className="chip" style={{ color: TYPE_INFO[o.type].color, padding: '1px 5px', fontSize: 9.5 }}>{TYPE_INFO[o.type].short}</span>
-                        </div>
-                        <div className="name">{displayName(o) || CONSTELLATION_PL[o.con] || ''}</div>
-                        <div className="meta">
-                          <span>{o.mag !== null ? `${fmtNum(o.mag, 1)}m` : '—'} · {fmtSize(o.majArcmin, o.minArcmin)}</span>
-                          <span>{maxAlt !== null ? `${Math.round(Math.max(0, maxAlt))}°` : ''}</span>
-                        </div>
-                        <div className="meta">
-                          <span>{hours !== null ? (hours > 0 ? fmtDuration(hours) : 'niewidoczny') : '…'}</span>
-                          <span>{vis && hours ? fmtTime(vis.best[o.i], tz) : ''}</span>
-                        </div>
-                      </div>
-                    </button>
+                    />
                   )
                 })}
               </div>
@@ -218,3 +205,49 @@ export default function CatalogView() {
     </div>
   )
 }
+
+interface CardProps {
+  o: DSO
+  selected: boolean
+  inPlan: boolean
+  hours: number | null
+  maxAlt: number | null
+  bestMs: number | null
+  minAlt: number
+  tz: string
+  onOpen: () => void
+}
+
+/** Karta obiektu jak karta galerii konuzastro.pl: narożniki, ramka w cyjanie i rozszyfrowanie nazwy po najechaniu myszą. */
+const CatalogCard = memo(function CatalogCard({ o, selected, inPlan, hours, maxAlt, bestMs, minAlt, tz, onOpen }: CardProps) {
+  const [hover, setHover] = useState(false)
+  return (
+    <button
+      className={`obj-card corners${selected ? ' selected' : ''}`}
+      onClick={onOpen}
+      onPointerEnter={(e) => e.pointerType === 'mouse' && setHover(true)}
+      onPointerLeave={() => setHover(false)}
+    >
+      <Thumb object={o} />
+      {inPlan && <span className="in-plan" title="W planie"><CalendarCheck size={14} /></span>}
+      <div className="vis-bar" title={hours !== null ? `${fmtDuration(hours)} powyżej ${minAlt}°` : ''}>
+        <div style={{ width: `${Math.min(100, ((hours ?? 0) / 10) * 100)}%`, background: (hours ?? 0) >= 3 ? 'var(--accent)' : (hours ?? 0) >= 1 ? 'var(--warn)' : 'var(--text-faint)' }} />
+      </div>
+      <div className="body">
+        <div className="title">
+          <b><ScrambleText text={o.id} trigger={hover} /></b>
+          <span className="type-label" style={{ color: TYPE_INFO[o.type].color }}>{TYPE_INFO[o.type].short}</span>
+        </div>
+        <div className="name"><ScrambleText text={displayName(o) || CONSTELLATION_PL[o.con] || ''} trigger={hover} /></div>
+        <div className="meta">
+          <span>{o.mag !== null ? `${fmtNum(o.mag, 1)}m` : '—'} · {fmtSize(o.majArcmin, o.minArcmin)}</span>
+          <span>{maxAlt !== null ? `${Math.round(Math.max(0, maxAlt))}°` : ''}</span>
+        </div>
+        <div className="meta">
+          <span>{hours !== null ? (hours > 0 ? fmtDuration(hours) : 'niewidoczny') : '…'}</span>
+          <span>{bestMs !== null && hours ? fmtTime(bestMs, tz) : ''}</span>
+        </div>
+      </div>
+    </button>
+  )
+})
