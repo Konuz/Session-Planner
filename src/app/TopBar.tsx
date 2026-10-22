@@ -90,9 +90,9 @@ export function TopBar() {
             <Eye aria-hidden size={18} /> Red Mode
           </button>
         </div>
-        {/* Kadr nie zależy od czasu, a w zakładce Noc kursorem jest wykres nocy, więc w obu nie ma wiersza kursora;
+        {/* Kadr i Projekty nie zależą od czasu, a w zakładce Noc kursorem jest wykres nocy, więc tam nie ma wiersza kursora;
             tryb „Teraz” działa dalej w tle. */}
-        {tab !== 'framing' && tab !== 'night' && <CursorRow />}
+        {tab !== 'framing' && tab !== 'night' && tab !== 'projects' && <CursorRow />}
       </div>
     </header>
   )

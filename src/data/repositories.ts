@@ -1,9 +1,10 @@
 // Repozytoria danych użytkownika: własny sprzęt widoczny razem z wbudowanym (6.5), warstwa katalogu z importu (6.3),
-// lokalizacje z horyzontem (7C), parametry planowania (sekcja 5) i profile sprzętu (7F).
+// lokalizacje z horyzontem (7C), parametry planowania (sekcja 5), profile sprzętu (7F) i projekty (7E).
 import type { EntityTable } from 'dexie'
 import { isEquipmentProfile } from '../services/equipment'
 import { DEFAULT_PLANNING_SETTINGS, isPlanningSettings, validatePlanningSettings } from '../services/planningSettings'
-import type { DsoObject, EquipmentProfile, ObserverLocation, PlanningSettings } from '../types'
+import { isProject } from '../services/projects'
+import type { DsoObject, EquipmentProfile, ObserverLocation, PlanningSettings, Project } from '../types'
 import type { PlannerDb } from './db'
 import { BUILTIN_CAMERAS, BUILTIN_TELESCOPES } from './equipmentCatalog'
 
@@ -97,5 +98,29 @@ export const profileRepository = {
   /** Zapis całej listy (kolejność listy = kolejność w aplikacji). */
   async save(db: PlannerDb, profiles: readonly EquipmentProfile[]): Promise<void> {
     await db.settings.put({ id: PROFILES_KEY, value: [...profiles] })
+  },
+}
+
+export const projectRepository = {
+  /** Projekty od najnowszego; uszkodzone wpisy są pomijane. */
+  async list(db: PlannerDb): Promise<Project[]> {
+    const projects = (await db.projects.toArray()).filter(isProject)
+    return projects.sort((a, b) => b.createdAtIso.localeCompare(a.createdAtIso))
+  },
+  async save(db: PlannerDb, project: Project): Promise<void> {
+    await db.projects.put(project)
+  },
+  /**
+   * Zmiana projektu na podstawie wersji z bazy, w jednej transakcji: kolejne zmiany (np. cel, a zaraz nowy wpis
+   * dziennika) nie nadpisują się nawzajem. Projekt usunięty w międzyczasie zostaje usunięty.
+   */
+  async update(db: PlannerDb, id: string, change: (project: Project) => Project): Promise<void> {
+    await db.transaction('rw', db.projects, async () => {
+      const current = await db.projects.get(id)
+      if (current !== undefined && isProject(current)) await db.projects.put(change(current))
+    })
+  },
+  async remove(db: PlannerDb, id: string): Promise<void> {
+    await db.projects.delete(id)
   },
 }

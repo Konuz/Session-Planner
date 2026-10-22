@@ -13,14 +13,18 @@
 //   `preventDefault`) i szczypanie dwoma palcami, zawsze wokół środka. Zmiana profilu albo mozaiki wraca do „Dopasuj”.
 //   W trakcie szczypania i do 300 ms po ostatnim ząbku kółka warstwa zdjęcia dostaje „gest trwa” (bez pobierania).
 // - Tło mapy (tlo-mapy): gwiazdy z `useBackgroundStars` (katalog wczytywany w efekcie) i siatka RA/Dec w widoku.
-import { Crosshair, RotateCcw } from 'lucide-react'
+// - „Zapisz jako projekt” (7E): obiekt, kadr i aktywny zestaw trafiają do tabeli projektów, a widok przechodzi do Projektów.
+import { Crosshair, FolderPlus, RotateCcw } from 'lucide-react'
 import { useEffect, useEffectEvent, useId, useRef, useState, type PointerEvent, type ReactNode } from 'react'
+import { appDb } from '../../data/appDb'
 import { selectFeatured, nightObjectOptions } from '../../data/featuredObjects'
+import { projectRepository } from '../../data/repositories'
 import { mosaicSizeDeg } from '../../services/framing'
 import { useActiveProfile, usePlannerStore } from '../../state/plannerStore'
 import type { DsoObject, Framing } from '../../types'
 import { MessageField } from '../equipment/MessageField'
 import { objectName } from '../night/objectName'
+import { createProject } from '../projects/projectModel'
 import { useFeaturedObjects } from '../night/useFeaturedObjects'
 import {
   DEFAULT_MOSAIC,
@@ -132,9 +136,42 @@ export function FramingTab() {
             </dl>
             {facts.mosaic && <p className="mt-2 text-sm">Mozaika: {facts.mosaic}</p>}
             {facts.oscNote && <p className="mt-2 text-xs text-muted">{facts.oscNote}</p>}
+            {object && frame && <SaveAsProject object={object} frame={frame} />}
           </section>
         </div>
       </div>
+    </div>
+  )
+}
+
+/** Zapis obiektu, kadru i aktywnego zestawu jako nowego projektu; po zapisie zakładka Projekty z tym projektem. */
+function SaveAsProject({ object, frame }: { object: DsoObject; frame: Framing }) {
+  const profile = useActiveProfile()
+  const selectProject = usePlannerStore((state) => state.selectProject)
+  const [error, setError] = useState<string | null>(null)
+
+  const save = async () => {
+    try {
+      const taken = (await projectRepository.list(appDb)).map((project) => project.id)
+      const project = createProject({ object, framing: frame, profile, nowIso: new Date().toISOString(), taken })
+      await projectRepository.save(appDb, project)
+      selectProject(project.id, true)
+    } catch (caught) {
+      setError(`Nie udało się zapisać projektu: ${caught instanceof Error ? caught.message : String(caught)}`)
+    }
+  }
+
+  return (
+    <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
+      <button type="button" className="button button-primary" onClick={() => void save()}>
+        <FolderPlus aria-hidden size={18} /> Zapisz jako projekt
+      </button>
+      <p className="text-xs text-muted">Obiekt, kadr i zestaw „{profile.name}”; dziennik akwizycji i eksport do N.I.N.A. w zakładce Projekty.</p>
+      {error && (
+        <p role="alert" className="text-sm text-alert">
+          {error}
+        </p>
+      )}
     </div>
   )
 }
@@ -450,7 +487,7 @@ function FramingControls({ frame, onChange }: { frame: Framing; onChange: (next:
           max={360}
           step={0.5}
           value={frame.paDeg}
-          className="w-full accent-accent"
+          className="h-11 w-full cursor-pointer accent-accent"
           onChange={(event) => {
             const value = Number(event.target.value)
             if (!Number.isFinite(value)) return

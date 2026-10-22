@@ -1,12 +1,15 @@
-// Zakładka Ustawienia (sekcja 9): lokalizacje i edytor horyzontu, sekcja „Sprzęt”, pod nimi parametry planowania; zapis w IndexedDB.
+// Zakładka Ustawienia (sekcja 9): lokalizacje i edytor horyzontu, sekcja „Sprzęt”, parametry planowania, kopia zapasowa
+// i „Źródła i licencje”; zapis w IndexedDB.
 import { MapPin, Plus, Save, Trash2, Undo2 } from 'lucide-react'
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { EquipmentSection } from '../equipment/EquipmentSection'
+import { BackupSection } from './BackupSection'
 import { locationToForm, readLocationForm, type LocationField, type LocationForm } from '../../services/location'
 import { useActiveLocation, usePlannerStore } from '../../state/plannerStore'
 import type { HorizonPoint, ObserverLocation, PlanningSettings } from '../../types'
 import { Field } from './Field'
 import { HorizonEditor } from './HorizonEditor'
+import { LicensesSection } from './LicensesSection'
 import { PlanningSettingsEditor } from './PlanningSettingsEditor'
 import { planningSettingsToForm, submitPlanningSettingsForm, type PlanningSaveMessage } from './planningSettingsForm'
 
@@ -19,19 +22,25 @@ export function SettingsTab() {
   const planningSettings = usePlannerStore((state) => state.planningSettings)
   // Komunikat zapisu parametrów jest tutaj, bo udany zapis zmienia klucz sekcji poniżej.
   const [planningMessage, setPlanningMessage] = useState<PlanningSaveMessage | null>(null)
+  // Po przywróceniu kopii zapasowej sekcje z własnym stanem formularzy montują się od nowa (świeże dane z bazy).
+  const [generation, setGeneration] = useState(0)
   return (
     <div className="flex flex-col gap-4">
-      <LocationList />
-      {/* Klucz resetuje formularz po wyborze innej lokalizacji. */}
-      <LocationEditor key={location.id} location={location} />
-      <EquipmentSection />
-      {/* Klucz ustawia formularz na nowo, gdy zmienią się zapisane parametry (wczytanie z bazy po starcie, zapis). */}
-      <PlanningSettingsSection
-        key={JSON.stringify(planningSettings)}
-        saved={planningSettings}
-        message={planningMessage}
-        onMessage={setPlanningMessage}
-      />
+      <Fragment key={generation}>
+        <LocationList />
+        {/* Klucz resetuje formularz po wyborze innej lokalizacji. */}
+        <LocationEditor key={location.id} location={location} />
+        <EquipmentSection />
+        {/* Klucz ustawia formularz na nowo, gdy zmienią się zapisane parametry (wczytanie z bazy po starcie, zapis). */}
+        <PlanningSettingsSection
+          key={JSON.stringify(planningSettings)}
+          saved={planningSettings}
+          message={planningMessage}
+          onMessage={setPlanningMessage}
+        />
+      </Fragment>
+      <BackupSection onRestored={() => setGeneration((value) => value + 1)} />
+      <LicensesSection />
     </div>
   )
 }

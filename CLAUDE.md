@@ -10,7 +10,7 @@ PWA do planowania sesji astrofotograficznych: React 19 + Vite + TypeScript 6 (st
 - `prompt-astro-planner.md` — specyfikacja:
   - założenia `[Z…]` (sekcja 0), konwencje (4), model danych (5), moduły 7A–7F, etapy budowy (12);
   - wektory testowe `[T…]` (załącznik A), katalog sprzętu (załącznik B);
-  - etapy 1–6 i przebudowa wyglądu są na `main` (etap 6, widok sfery 7D, zrobiony bez pętli); dalej 7 (projekty, eksport, PWA) i 8 (zarysy uzupełniające ze zdjęć).
+  - etapy 1–7 i przebudowa wyglądu są na `main` (etapy 6 i 7 zrobione bez pętli: widok sfery 7D; projekty, eksport do N.I.N.A., PWA i Red Mode); został etap 8 (zarysy uzupełniające ze zdjęć).
 - `.autoloop/ARCHITECTURE.md` — aktualna mapa modułów, publicznych funkcji, formatów danych i decyzji projektowych. Uzupełniaj ją, gdy zmieniasz architekturę.
 - `.autoloop/LESSONS.md` — reguły wyciągnięte z wcześniejszych przebiegów pętli, m.in. pułapki powłoki i testów.
 
@@ -21,7 +21,7 @@ PWA do planowania sesji astrofotograficznych: React 19 + Vite + TypeScript 6 (st
 - `npx vitest run <ścieżka>` albo `npx vitest run -t "<nazwa testu>"` — pojedynczy plik lub test.
 - `npm run typecheck` — `tsc --noEmit`. Nie używaj `tsc -b`: przepisuje śledzony plik `tsconfig.tsbuildinfo`.
 - `npm run lint` — ESLint z `--max-warnings 0`.
-- `npm run build` — typecheck i build Vite.
+- `npm run build` — typecheck i build Vite z service workerem (`vite-plugin-pwa`, opcje w `src/pwaOptions.ts`). Serwer dev działa bez service workera; tryb offline sprawdza się po buildzie przez `npm run preview` (konfiguracja `preview-4182` w `.claude/launch.json`).
 - Przed oddaniem pracy muszą przechodzić wszystkie cztery: `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`.
 - Projekt nie ma Prettiera ani innego formatera; pisz w stylu otaczającego kodu (bez średników, pojedyncze cudzysłowy, długie linie).
 
@@ -39,8 +39,8 @@ Budowa danych (Node uruchamia pliki `.ts` bezpośrednio):
   - `catalog/` — parsery katalogów, wspólne dla skryptów budowy i importu w aplikacji.
 - `src/workers/` — widoczność całego katalogu (ok. 16,5 tys. obiektów) w Web Workerze. `catalogEngine.ts` to czysty silnik testowany bezpośrednio; worker i klient są cienkimi adapterami.
 - `src/state/plannerStore.ts` — stan Zustand (zakładka, noc D, lokalizacje, profile sprzętu, wybrany obiekt, parametry planowania, kadr trzymany tylko w pamięci). Do `localStorage` trafiają tylko drobne preferencje.
-- `src/data/` — Dexie (`db.ts`, `appDb.ts`), repozytoria, dane wbudowane (lokalizacje, profile demo, katalog sprzętu w `equipment/`, „Klasyki”) oraz `outlines.dat` ze Stellarium (GPL-2.0, wczytywany importem `?raw`).
-- `src/features/<zakładka>/` (`catalog`, `night`, `framing`, `equipment`, `settings`) — logika widoku w czystych modułach `*Model.ts` / `*Form.ts`; komponenty `.tsx` tylko renderują.
+- `src/data/` — Dexie (`db.ts`, `appDb.ts`; wersja bazy 4 z tabelą `projects`), repozytoria, kopia zapasowa (`backup.ts`), dane wbudowane (lokalizacje, profile demo, katalog sprzętu w `equipment/`, „Klasyki”) oraz `outlines.dat` ze Stellarium (GPL-2.0, wczytywany importem `?raw`).
+- `src/features/<zakładka>/` (`catalog`, `night`, `framing`, `projects`, `equipment`, `settings`) — logika widoku w czystych modułach `*Model.ts` / `*Form.ts`; komponenty `.tsx` tylko renderują.
 - `src/app/` — NavBar i TopBar.
 - `src/theme/tokens.ts` — wszystkie kolory, także Red Mode.
 - `public/catalog/` — zbudowane dane: `catalog.v1.json` (6,9 MB w jednej linii, nie wczytuj go w całości), `meta.json`, `stars.v1.bin`.
@@ -61,7 +61,7 @@ Konwencje, które łatwo złamać (szczegóły w sekcji 4 specyfikacji i w `ARCH
   - IndexedDB zapewnia `fake-indexeddb`.
 
   Dlatego kod wykonywany przy renderze nie może używać `fetch`, `caches`, `Image` ani `URL`; to należy do efektów.
-- Zamrożone testy przypinają m.in. kolory typów obiektów w `tokens.ts`, klasy `control` i `button` w `index.css` oraz strukturę `TopBar`. Sprawdź je, zanim zmienisz wygląd.
+- Zamrożone testy przypinają m.in. kolory typów obiektów w `tokens.ts`, klasy `control` i `button` w `index.css`, strukturę `TopBar`, listę 5 zakładek nawigacji, wersję bazy (`db.verno` = 4) i 5 kluczy zapisu stanu w `localStorage` (nowe preferencje dostają osobny klucz). Sprawdź je, zanim zmienisz wygląd.
 
 ## Pętla tdd-autoloop (`.autoloop/`)
 

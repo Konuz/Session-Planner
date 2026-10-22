@@ -81,7 +81,7 @@ export function PlanningSettingsEditor({ saved, form, message, onFormChange, onS
             ))}
           </select>
         </label>
-        <label className="flex items-center gap-2 self-end text-sm">
+        <label className="flex min-h-11 cursor-pointer items-center gap-2 self-end text-sm">
           <input
             type="checkbox"
             checked={form.autoLowerThreshold}

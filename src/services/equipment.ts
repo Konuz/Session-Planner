@@ -1,5 +1,5 @@
 // Walidacja wartości sprzętu wpisywanych ręcznie (7F, Z25) i porównanie profilu z wpisem katalogu (Z26).
-import type { CameraSpec, EquipmentProfile, TelescopeSpec } from '../types'
+import type { CameraSpec, EquipmentProfile, FilterId, TelescopeSpec } from '../types'
 
 const EQUIPMENT_FIELDS = [
   'apertureMm',
@@ -123,7 +123,8 @@ export function changedCameraFields(camera: EquipmentProfile['camera'], spec: Ca
 
 // ---------- Profile sprzętu (7F): walidacja zapisu, odczyt z bazy, nazwy nowych profili ----------
 
-const FILTER_IDS: readonly string[] = ['L', 'R', 'G', 'B', 'Ha', 'OIII', 'SII', 'OSC', 'DualBand']
+/** Filtry w kolejności L…DualBand (sekcja 5). */
+export const FILTER_IDS: readonly FilterId[] = ['L', 'R', 'G', 'B', 'Ha', 'OIII', 'SII', 'OSC', 'DualBand']
 
 /** Wartości pól profilu sprawdzane przez `validateEquipment`. */
 export function profileValues(profile: EquipmentProfile): EquipmentValues {
@@ -160,7 +161,7 @@ export function isEquipmentProfile(raw: unknown): raw is EquipmentProfile {
     isNumber(c.resolutionXPx) && isNumber(c.resolutionYPx) && isNumber(c.pixelSizeUm) &&
     [1, 2, 3, 4].includes(c.binning as number) &&
     isObject(m) && ['gem', 'fork', 'altaz'].includes(m.type as string) && isNumber(m.flipMinutesAfterMeridian) &&
-    Array.isArray(filters) && filters.every((filter) => FILTER_IDS.includes(filter as string)) &&
+    Array.isArray(filters) && filters.every((filter) => FILTER_IDS.includes(filter as FilterId)) &&
     (o === null ||
       (isObject(o) && isNumber(o.prismWidthMm) && isNumber(o.prismHeightMm) && isNumber(o.offsetFromCenterMm) && isNumber(o.angleDeg)))
   return valid && profileErrors(raw as unknown as EquipmentProfile).length === 0

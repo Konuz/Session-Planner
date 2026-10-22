@@ -46,9 +46,9 @@ afterEach(() => {
 })
 
 describe('nawigacja', () => {
-  it('P1: nawigacja ma zakładki w kolejności Katalog, Noc, Kadr, Ustawienia', async () => {
+  it('P1: nawigacja ma zakładki w kolejności Katalog, Noc, Kadr, Projekty, Ustawienia', async () => {
     const app = await startApp(new MemoryStorage())
-    expect(navigation(app.render(app.navBar())).labels).toEqual(['Katalog', 'Noc', 'Kadr', 'Ustawienia'])
+    expect(navigation(app.render(app.navBar())).labels).toEqual(['Katalog', 'Noc', 'Kadr', 'Projekty', 'Ustawienia'])
   })
 })
 

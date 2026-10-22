@@ -1,11 +1,13 @@
 import { TriangleAlert } from 'lucide-react'
 import { useEffect } from 'react'
+import { DimHint } from './app/DimHint'
 import { NavBar } from './app/NavBar'
 import { TopBar } from './app/TopBar'
 import { CatalogTab } from './features/catalog/CatalogTab'
 import { RedOnlyPhotoFilter } from './features/catalog/ObjectThumbnail'
 import { FramingTab } from './features/framing/FramingTab'
 import { NightTab } from './features/night/NightTab'
+import { ProjectsTab } from './features/projects/ProjectsTab'
 import { SettingsTab } from './features/settings/SettingsTab'
 import { usePlannerStore } from './state/plannerStore'
 
@@ -33,6 +35,7 @@ export default function App() {
   return (
     <div className="min-h-dvh md:flex">
       <RedOnlyPhotoFilter />
+      <DimHint />
       <NavBar />
       <div className="min-w-0 flex-1 pb-24 md:pb-0">
         <TopBar />
@@ -51,6 +54,8 @@ export default function App() {
             <NightTab />
           ) : tab === 'framing' ? (
             <FramingTab />
+          ) : tab === 'projects' ? (
+            <ProjectsTab />
           ) : (
             <SettingsTab />
           )}

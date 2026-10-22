@@ -79,7 +79,7 @@ describe('zapis i ponowne otwarcie bazy', () => {
 
     const db = openPlannerDb(name)
     expect(await locationRepository.list(db)).toEqual([DEMO_LOCATION])
-    expect(db.verno).toBe(3)
+    expect(db.verno).toBe(4)
     expect(await planningSettingsRepository.load(db)).toEqual(defaults())
     await planningSettingsRepository.save(db, settingsWith({ minAltitudeDeg: 25 }))
     expect((await planningSettingsRepository.load(db)).minAltitudeDeg).toBe(25)

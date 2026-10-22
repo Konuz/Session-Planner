@@ -81,6 +81,8 @@
 @layer base {
   :root {
     color-scheme: dark;
+    /* Bez tego kolor tekstu korzenia to biały CanvasText ciemnego schematu, także w Red Mode. */
+    color: var(--token-foreground);
     font-variant-numeric: tabular-nums;
     scrollbar-color: var(--token-border) var(--token-background);
   }
@@ -359,6 +361,15 @@
   /* Zdjęcie nieba (miniatury obiektów): w Red Mode przez filtr luminancja → kanał R (sekcja 8). */
   html.red-mode .sky-photo {
     filter: url(#red-only-photo);
+  }
+
+  /* Ikona kalendarza w polu daty: przeglądarka rysuje ją na biało i nie przyjmuje filtru SVG, więc kształt ikony
+     jest maską, a kolor pochodzi z tokenu (w Red Mode czerwony). */
+  ::-webkit-calendar-picker-indicator {
+    background: var(--token-foreground);
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2'%3E%3Crect x='3' y='4' width='18' height='18' rx='2'/%3E%3Cpath d='M16 2v4M8 2v4M3 10h18'/%3E%3C/svg%3E")
+      center / contain no-repeat;
+    cursor: pointer;
   }
 
   /* Pole z niewidocznym natywnym wyborem daty nad podpisem nocy: obwódka fokusu na całym polu. */

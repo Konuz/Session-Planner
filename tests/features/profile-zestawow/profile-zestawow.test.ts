@@ -71,9 +71,9 @@ describe('P1 pierwsze uruchomienie', () => {
     expect(await again.saved()).toEqual(DEMO_PROFILES)
   })
 
-  it('P1 (Styk z resztą): bez nowej wersji bazy, db.verno zostaje 3', async () => {
+  it('P1 (Styk z resztą): profile bez własnej wersji bazy; od projektów (7E) db.verno = 4', async () => {
     await app.load()
-    expect(app.db.verno).toBe(3)
+    expect(app.db.verno).toBe(4)
   })
 })
 

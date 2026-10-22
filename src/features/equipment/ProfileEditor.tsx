@@ -254,7 +254,7 @@ export function ProfileEditor(props: ProfileEditorProps): ReactNode {
       <fieldset className="flex flex-wrap gap-3 text-sm">
         <legend className="text-sm font-semibold">Filtry</legend>
         {FILTERS.map((id) => (
-          <label key={id} className="flex items-center gap-1">
+          <label key={id} className="flex min-h-11 min-w-11 cursor-pointer items-center gap-1.5 pr-1">
             <input type="checkbox" checked={form.filters.includes(id)} onChange={(event) => toggleFilter(id, event.target.checked)} />
             {id}
           </label>
@@ -262,7 +262,7 @@ export function ProfileEditor(props: ProfileEditorProps): ReactNode {
       </fieldset>
 
       <div className="flex flex-col gap-3">
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex min-h-11 cursor-pointer items-center gap-2 self-start text-sm">
           <input type="checkbox" checked={form.oagEnabled} onChange={(event) => onFormChange({ ...form, oagEnabled: event.target.checked })} />
           OAG
         </label>

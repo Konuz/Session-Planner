@@ -130,6 +130,26 @@ export interface Framing {
   mosaic: { cols: number; rows: number; overlapPct: number } // 1×1 = pojedynczy kadr
 }
 
+// Projekt (7E, sekcja 5): obiekt, kadr, zestaw i dziennik akwizycji.
+export interface AcquisitionEntry {
+  nightDate: string // 'RRRR-MM-DD' = noc D
+  filter: FilterId
+  subs: number
+  exposureS: number
+}
+
+export interface Project {
+  id: string
+  name: string
+  objectUid: string
+  equipmentId: string
+  framing: Framing
+  log: AcquisitionEntry[]
+  goalMinutes: Partial<Record<FilterId, number>>
+  notes: string
+  createdAtIso: string
+}
+
 export interface PlanningSettings {
   darknessThresholdDeg: -18 | -15 | -12 // [Z6]
   autoLowerThreshold: boolean // [Z6]

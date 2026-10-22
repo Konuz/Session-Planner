@@ -156,10 +156,10 @@ function expectTabPanels(markup: string, profile: EquipmentProfile, frame: Frami
 // ---------- Nawigacja i obiekt ----------
 
 describe('P1 nawigacja', () => {
-  it('test_p1_navigation_order: zakładki w kolejności Katalog, Noc, Kadr, Ustawienia', async () => {
+  it('test_p1_navigation_order: zakładki w kolejności Katalog, Noc, Kadr, Projekty, Ustawienia', async () => {
     const app = await startApp()
     const buttons = elementsOf(parseMarkup(app.render(app.navBar()))).filter((element) => element.tag === 'button')
-    expect(buttons.map((button) => textOf(button))).toEqual(['Katalog', 'Noc', 'Kadr', 'Ustawienia'])
+    expect(buttons.map((button) => textOf(button))).toEqual(['Katalog', 'Noc', 'Kadr', 'Projekty', 'Ustawienia'])
   })
 
   it('test_p1_click_kadr: kliknięcie „Kadr” → zakładka Kadr (aria-current) i App pokazuje Kadr, bez Noc i Ustawień', async () => {

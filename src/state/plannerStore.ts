@@ -15,7 +15,7 @@ import { currentNightDate } from '../services/time'
 import { darknessWindow, nightRange } from '../services/visibility'
 import type { EquipmentProfile, Framing, ObserverLocation, PlanningSettings } from '../types'
 
-export type Tab = 'catalog' | 'night' | 'framing' | 'settings'
+export type Tab = 'catalog' | 'night' | 'framing' | 'projects' | 'settings'
 
 interface PlannerState {
   locations: ObserverLocation[]
@@ -44,6 +44,8 @@ interface PlannerState {
   framing: Framing | null
   /** uid obiektu, na którym wyśrodkowano `framing`; inny pokazywany obiekt przenosi środek na siebie. */
   framingObjectUid: string | null
+  /** Projekt wybrany w zakładce Projekty; null = najnowszy. Tylko w pamięci, bez zapisu. */
+  projectId: string | null
 }
 
 interface PlannerActions {
@@ -77,6 +79,8 @@ interface PlannerActions {
   setCatalogSort: (sort: CatalogSortKey) => void
   /** Zapis kadru zakładki Kadr razem z uid obiektu, przy którym go ustawiono. */
   updateFraming: (objectUid: string, framing: Framing) => void
+  /** Wybór projektu; z `open` także przejście do zakładki Projekty (np. po „Zapisz jako projekt” w Kadrze). */
+  selectProject: (id: string | null, open?: boolean) => void
 }
 
 export type PlannerStore = PlannerState & PlannerActions
@@ -148,6 +152,7 @@ export const usePlannerStore = create<PlannerStore>()(
         catalogSort: DEFAULT_CATALOG_SORT,
         framing: null,
         framingObjectUid: null,
+        projectId: null,
 
         async loadLocations() {
           let locations: ObserverLocation[]
@@ -296,6 +301,10 @@ export const usePlannerStore = create<PlannerStore>()(
 
         updateFraming(objectUid, framing) {
           set({ framing, framingObjectUid: objectUid })
+        },
+
+        selectProject(id, open = false) {
+          set(open ? { projectId: id, tab: 'projects' } : { projectId: id })
         },
       }
     },
