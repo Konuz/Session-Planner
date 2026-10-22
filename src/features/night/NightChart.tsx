@@ -27,7 +27,8 @@ interface NightChartProps {
 
 export function NightChart({ frame, track, objectLabel, minAltitudeDeg, cursorMs, onCursorChange, patternIds }: NightChartProps) {
   const [containerRef, width] = useElementWidth<HTMLDivElement>()
-  const height = width < 560 ? 280 : 340
+  // Wysokość rośnie z szerokością (do 440 px), żeby wykres obok widoku sfery wypełniał kartę tej samej wysokości.
+  const height = width < 560 ? 280 : Math.min(440, Math.round(width * 0.6))
   const geometry = useMemo(
     () => (width > 0 ? chartGeometry(frame, track, minAltitudeDeg, { width, height }) : null),
     [frame, track, minAltitudeDeg, width, height],

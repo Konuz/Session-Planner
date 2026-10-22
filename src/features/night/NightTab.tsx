@@ -27,6 +27,7 @@ import { BAND_FILL } from './chartGeometry'
 import { MoonPhaseIcon } from './MoonPhaseIcon'
 import { NightChart } from './NightChart'
 import { objectName } from './objectName'
+import { SkyDome } from './SkyDome'
 import { useFeaturedObjects } from './useFeaturedObjects'
 
 const BAND_LABELS: Record<TwilightBand, string> = {
@@ -75,7 +76,7 @@ export function NightTab() {
     <div className="flex flex-col gap-4">
       <ChartPatterns ids={patternIds} />
       <section className="card p-4 md:p-6" aria-labelledby="night-chart-title">
-        <div className="mb-5 flex flex-wrap items-start gap-5">
+        <div className="flex flex-wrap items-start gap-5">
           {featured.status === 'ready' && object && <ObjectThumbnail key={object.uid} object={object} sizePx={136} layer="dss2-red" />}
           <div className="flex min-w-60 flex-1 flex-col gap-1">
             <h2 id="night-chart-title" className="text-xs text-muted">
@@ -113,25 +114,39 @@ export function NightTab() {
             </button>
           </div>
         </div>
-
-        <NightChart
-          frame={frame}
-          track={track}
-          objectLabel={label}
-          minAltitudeDeg={minAltitudeDeg}
-          cursorMs={cursorMs}
-          onCursorChange={setCursor}
-          patternIds={patternIds}
-        />
-        <Legend
-          objectLabel={object ? formatDesignation(object.primary) : null}
-          patternIds={patternIds}
-          thresholdDeg={frame.darkness.thresholdDeg}
-        />
         {featured.status === 'ready' && object && (
           <p className="mt-3 text-xs text-muted">Zdjęcie: DSS2 czerwony przez CDS hips2fits (Strasbourg), DSS © STScI/AURA.</p>
         )}
       </section>
+
+      {/* Na komputerze wykres nocy i widok sfery obok siebie: ten sam kursor czasu przesuwa oba (sekcja 9). */}
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_26rem]">
+        <section className="card min-w-0 p-4 md:p-6" aria-label="Wykres nocy">
+          <NightChart
+            frame={frame}
+            track={track}
+            objectLabel={label}
+            minAltitudeDeg={minAltitudeDeg}
+            cursorMs={cursorMs}
+            onCursorChange={setCursor}
+            patternIds={patternIds}
+          />
+          <Legend
+            objectLabel={object ? formatDesignation(object.primary) : null}
+            patternIds={patternIds}
+            thresholdDeg={frame.darkness.thresholdDeg}
+          />
+        </section>
+        <SkyDome
+          frame={frame}
+          object={object}
+          horizon={location.horizon}
+          minAltitudeDeg={minAltitudeDeg}
+          cursorMs={cursorMs}
+          readout={readout}
+          patternIds={patternIds}
+        />
+      </div>
 
       <div className="grid gap-4 md:grid-cols-2">
         <NightSummary frame={frame} track={track} mount={profile.mount} />
