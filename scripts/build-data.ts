@@ -3,7 +3,8 @@
 //   i tytułami artykułów Wikipedii z Wikidata,
 // - sky.json: gwiazdy do ok. 6,5 mag (d3-celestial, BSD) z numerami HIP, linie i nazwy gwiazdozbiorów
 //   (Stellarium modern, CC BY-SA 4.0; polskie nazwy z tłumaczenia Stellarium),
-// - art/<IAU>.webp: ilustracje gwiazdozbiorów (Stellarium, Free Art License) jako biały rysunek z kanałem alfa.
+// - art/<IAU>.webp: ilustracje gwiazdozbiorów (Stellarium, Free Art License) jako biały rysunek z kanałem alfa,
+// - outlines.json: kontury mgławic (OpenNGC outlines, CC BY-SA 4.0).
 //
 // Uruchom: node scripts/build-data.ts   (Node ≥ 23 uruchamia TypeScript bez kompilacji)
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -300,5 +301,178 @@ async function buildSky() {
   console.log(`sky: ${starRows.length} gwiazd, ${constellations.length} gwiazdozbiorów, ${constellations.filter((c) => c.art).length} ilustracji; nazwa PL = łacińska: ${noPl.join(' ')}`)
 }
 
+// ---------- Kontury mgławic ----------
+
+// OpenNGC outlines (Mattia Verga, CC BY-SA 4.0): obrysy narysowane w Aladin na DSS2, po trzy poziomy jasności
+// (1 — słaby zasięg, 2 — standardowy, 3 — jasne jądro). Pliki objects/*.txt to TSV z Aladin; wiersz z Cont_Flag „*”
+// zamyka pierścień.
+const ONGC_TAG = 'v20260501'
+// Pliki nazwane od regionu nieba, nie od obiektu katalogu (bez odpowiednika w katalogu; nazwa do podpisu).
+const REGIONS = new Map([
+  ['Antlia', 'Pompa'], ['Cepheus', 'Cefeusz'], ['CoronaAustralis', 'Korona Południowa'], ['Cygnus', 'Łabędź'],
+  ['LMC', 'Wielki Obłok Magellana'], ['Orion', 'Orion'], ['Puppis', 'Rufa'], ['Scorpion', 'Skorpion'], ['Vela', 'Żagiel'],
+])
+// Poziom 1 tylko dla dużych obrysów: promień od środka co najmniej tyle stopni.
+const LARGE_LV1_DEG = 2
+// Tolerancja uproszczenia w stopniach (przy najmniejszym polu kopuły 8° to ok. pół piksela).
+const SIMPLIFY_DEG = 0.005
+
+type RaDec = [number, number]
+
+function parseAladin(tsv: string): RaDec[][] {
+  const rings: RaDec[][] = [[]]
+  for (const line of tsv.split('\n').slice(1)) {
+    const cols = line.split('\t')
+    if (cols.length < 4) continue
+    const ring = rings[rings.length - 1]
+    const p: RaDec = [Number(cols[2]), Number(cols[3])]
+    const last = ring[ring.length - 1]
+    if (!last || last[0] !== p[0] || last[1] !== p[1]) ring.push(p)
+    if (cols[1] === '*') rings.push([])
+  }
+  return rings.filter((ring) => ring.length >= 3)
+}
+
+/** Środek pierścienia (średnia wektorów jednostkowych) i największa odległość kątowa od niego. */
+function ringBounds(ring: RaDec[]): { centre: RaDec; radiusDeg: number } {
+  const D = Math.PI / 180
+  let x = 0, y = 0, z = 0
+  for (const [ra, dec] of ring) {
+    x += Math.cos(dec * D) * Math.cos(ra * D)
+    y += Math.cos(dec * D) * Math.sin(ra * D)
+    z += Math.sin(dec * D)
+  }
+  const n = Math.hypot(x, y, z)
+  const centre: RaDec = [((Math.atan2(y, x) / D) + 360) % 360, Math.asin(z / n) / D]
+  let radiusDeg = 0
+  for (const [ra, dec] of ring) {
+    const c = Math.sin(dec * D) * Math.sin(centre[1] * D) + Math.cos(dec * D) * Math.cos(centre[1] * D) * Math.cos((ra - centre[0]) * D)
+    radiusDeg = Math.max(radiusDeg, Math.acos(Math.min(1, c)) / D)
+  }
+  return { centre, radiusDeg }
+}
+
+/** Douglas–Peucker w płaszczyźnie stycznej przy środku pierścienia (ΔRA·cos δ, Δδ), odporny na przejście RA przez 0°. */
+function simplify(ring: RaDec[], centre: RaDec, tol: number): RaDec[] {
+  const cosDec = Math.cos(centre[1] * Math.PI / 180)
+  const xy = ring.map(([ra, dec]) => [(((ra - centre[0] + 540) % 360) - 180) * cosDec, dec - centre[1]])
+  const keep = new Uint8Array(ring.length)
+  keep[0] = keep[ring.length - 1] = 1
+  const stack: [number, number][] = [[0, ring.length - 1]]
+  while (stack.length) {
+    const [a, b] = stack.pop()!
+    const [ax, ay] = xy[a], [bx, by] = xy[b]
+    const len = Math.hypot(bx - ax, by - ay)
+    let best = -1, bestD = tol
+    for (let i = a + 1; i < b; i++) {
+      const [px, py] = xy[i]
+      const d = len > 0 ? Math.abs((bx - ax) * (ay - py) - (ax - px) * (by - ay)) / len : Math.hypot(px - ax, py - ay)
+      if (d > bestD) { bestD = d; best = i }
+    }
+    if (best >= 0) {
+      keep[best] = 1
+      stack.push([a, best], [best, b])
+    }
+  }
+  return ring.filter((_, i) => keep[i])
+}
+
+function angularDistance(a: RaDec, b: RaDec): number {
+  const D = Math.PI / 180
+  const c = Math.sin(a[1] * D) * Math.sin(b[1] * D) + Math.cos(a[1] * D) * Math.cos(b[1] * D) * Math.cos((a[0] - b[0]) * D)
+  return Math.acos(Math.min(1, c)) / D
+}
+
+/** Punkt w pierścieniu (reguła parzystości) w płaszczyźnie stycznej przy jego środku. */
+function insideRing(ring: RaDec[], centre: RaDec, ra: number, dec: number): boolean {
+  const cosDec = Math.cos(centre[1] * Math.PI / 180)
+  const xy = (a: number, d: number) => [(((a - centre[0] + 540) % 360) - 180) * cosDec, d - centre[1]]
+  const [px, py] = xy(ra, dec)
+  let inside = false
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = xy(...ring[i]), [xj, yj] = xy(...ring[j])
+    if (yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) inside = !inside
+  }
+  return inside
+}
+
+/** „NGC0604” → „NGC 604”, „M045” → „M 45”, „IC0359A” → „IC 359A”, „C9” → „C 9”. */
+function outlineId(base: string): string {
+  const m = /^(NGC|IC|LBN|M|C)0*(\d+[A-Z]?)$/.exec(base)
+  return m ? `${m[1]} ${m[2]}` : base
+}
+
+async function buildOutlines() {
+  const list = JSON.parse(
+    await cached('ongc-outlines-list.json', `https://api.github.com/repos/mattiaverga/OpenNGC/contents/outlines/objects?ref=${ONGC_TAG}`),
+  ) as { name: string }[]
+  const files = new Map<string, Map<number, string>>()
+  for (const { name } of list) {
+    const m = /^(.+?)_lv(\d)\.txt$/.exec(name)
+    if (!m) continue
+    if (!files.has(m[1])) files.set(m[1], new Map())
+    files.get(m[1])!.set(Number(m[2]), name)
+  }
+
+  // Mgławice katalogu (zbudowanego wyżej): [id, …, typ, RA, Dec, wymiar a, …].
+  const catalogRows = (JSON.parse(readFileSync(join(OUT, 'catalog.json'), 'utf8')) as { rows: [string, string, string, string, string, number, number, number][] }).rows
+  const nebulae = catalogRows.filter((row) => ['EN', 'RN', 'DN', 'SNR', 'CN'].includes(row[4]))
+  const assigned: string[] = []
+
+  const objects = []
+  let points = 0
+  const largeLv1: string[] = []
+  for (const [base, levels] of [...files].sort(([a], [b]) => a.localeCompare(b))) {
+    // Jeden poziom na obiekt: 2, a gdy go brak — 3 (jądro), potem 1. Duże obrysy poziomu 1 dochodzą osobno.
+    const picked = [[2, 3, 1].find((lv) => levels.has(lv))!]
+    if (levels.has(1) && picked[0] !== 1) picked.push(1)
+    for (const level of picked) {
+      const name = levels.get(level)!
+      const raw = parseAladin(await cached(`ongc-${name}`, `https://raw.githubusercontent.com/mattiaverga/OpenNGC/${ONGC_TAG}/outlines/objects/${name}`))
+      const bounds = raw.map(ringBounds)
+      const extra = level === 1 && picked[0] !== 1
+      if (extra && !REGIONS.has(base) && Math.max(...bounds.map((b) => b.radiusDeg)) < LARGE_LV1_DEG) continue
+      if (extra) largeLv1.push(base)
+      const rings = raw.map((ring, i) => simplify(ring, bounds[i].centre, SIMPLIFY_DEG).flatMap(([ra, dec]) => [r(ra, 3), r(dec, 3)]))
+      points += rings.reduce((s, ring) => s + ring.length / 2, 0)
+      if (!REGIONS.has(base)) {
+        objects.push({ id: outlineId(base), level, rings })
+        continue
+      }
+      // Pierścień regionu przypisany do największej mgławicy katalogu, której środek leży w środku pierścienia
+      // (jak IC 434 z Płomieniem i B 33 w jednym obrysie) albo która obejmuje cały pierścień swoim promieniem
+      // z katalogu i jest najwyżej dwa razy większa (łuk Barnarda: środek Sh2-276 leży poza obrysem łuku; bez
+      // tej granicy całe kompleksy jak Cygnus X zagarniają wszystkie pierścienie). Bez takiej zostaje podpis regionu.
+      raw.forEach((ring, i) => {
+        const { centre, radiusDeg } = bounds[i]
+        const inside = nebulae.filter((row) => {
+          if (insideRing(ring, centre, row[5], row[6])) return true
+          const objR = row[7] / 120
+          return objR >= radiusDeg && objR <= 2 * radiusDeg && angularDistance(centre, [row[5], row[6]]) + radiusDeg <= objR * 1.1
+        })
+        const best = inside.sort((a, b) => b[7] - a[7])[0]
+        if (best) assigned.push(`${base}#${i}→${best[0]}`)
+        objects.push(best ? { id: best[0], level, rings: [rings[i]] } : { id: base, level, region: REGIONS.get(base), rings: [rings[i]] })
+      })
+    }
+  }
+  console.log(`outlines: pierścienie regionów: ${assigned.join(' ')}`)
+  writeFileSync(
+    join(OUT, 'outlines.json'),
+    JSON.stringify({
+      v: 1,
+      source: {
+        url: `https://github.com/mattiaverga/OpenNGC/tree/${ONGC_TAG}/outlines`,
+        licence: 'CC-BY-SA-4.0',
+        credit: 'OpenNGC, Mattia Verga; obrysy na DSS2 w Aladin (CDS, Strasbourg)',
+        changes: `Poziom 2 (bez niego 3, potem 1) oraz poziom 1 regionów i obrysów o promieniu ≥ ${LARGE_LV1_DEG}°; pierścienie regionów przypisane do największej mgławicy katalogu w środku; uproszczone do ${SIMPLIFY_DEG}°, zaokrąglone do 0,001°.`,
+      },
+      objects,
+    }),
+  )
+  console.log(`outlines: ${objects.length} obrysów, ${points} wierzchołków; poziom 1 dodatkowo: ${largeLv1.join(' ')}`)
+}
+
 await buildCatalog()
 await buildSky()
+await buildOutlines()

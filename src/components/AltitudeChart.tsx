@@ -117,7 +117,7 @@ export function AltitudeChart() {
           <defs>
             <linearGradient id="g-day-l" x1="0" x2="1"><stop offset="0" stopColor="rgba(150, 90, 40, 0.55)" /><stop offset="1" stopColor="rgba(130, 80, 40, 0.45)" /></linearGradient>
             <linearGradient id="g-day-r" x1="0" x2="1"><stop offset="0" stopColor="rgba(130, 80, 40, 0.45)" /><stop offset="1" stopColor="rgba(150, 90, 40, 0.55)" /></linearGradient>
-            <linearGradient id="g-night" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="rgba(14, 38, 92, 0.75)" /><stop offset="1" stopColor="rgba(6, 18, 48, 0.75)" /></linearGradient>
+            <linearGradient id="g-night" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="rgba(7, 14, 34, 0.92)" /><stop offset="1" stopColor="rgba(2, 4, 12, 0.96)" /></linearGradient>
             <linearGradient id="g-obj" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="rgba(0, 224, 255, 0.28)" /><stop offset="1" stopColor="rgba(0, 224, 255, 0)" /></linearGradient>
             <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><path d="M0 0v6" stroke="rgba(245, 165, 36, 0.45)" strokeWidth="1.5" /></pattern>
             <filter id="glow"><feGaussianBlur stdDeviation="2.2" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>

@@ -8,7 +8,7 @@ Stos: React 19 + Vite 8 + TypeScript 6 (strict), Zustand (stan i localStorage), 
 
 - `npm run dev` — serwer (konfiguracje podglądu w `.claude/launch.json`: `dev` 5173, `preview` 4173).
 - `npm test` — Vitest (`src/**/*.test.ts`), `npm run typecheck`, `npm run build` (typecheck + Vite + service worker).
-- `npm run build:data` — przebudowa `public/data/` i `src/lib/constellations.ts` ze źródeł buforowanych w `scripts/.cache` (ignorowany przez git). Katalog obiektów pochodzi z `scripts/.cache/old-catalog.json` = `git show 6c2fb33:public/catalog/catalog.v1.json` (OpenNGC + VizieR); odległości i tytuły Wikipedii z Wikidata SPARQL; gwiazdy z d3-celestial; linie, ilustracje i polskie nazwy gwiazdozbiorów ze Stellarium (ilustracje: Free Art License).
+- `npm run build:data` — przebudowa `public/data/` i `src/lib/constellations.ts` ze źródeł buforowanych w `scripts/.cache` (ignorowany przez git). Katalog obiektów pochodzi z `scripts/.cache/old-catalog.json` = `git show 6c2fb33:public/catalog/catalog.v1.json` (OpenNGC + VizieR); odległości i tytuły Wikipedii z Wikidata SPARQL; gwiazdy z d3-celestial; linie, ilustracje i polskie nazwy gwiazdozbiorów ze Stellarium (ilustracje: Free Art License). Kontury mgławic (`outlines.json`) z OpenNGC `outlines/objects` (tag v20260501, CC BY-SA 4.0): poziom 2 (bez niego 3, potem 1) plus poziom 1 regionów i obrysów o promieniu ≥ 2°; pierścienie regionów przypisane do największej mgławicy katalogu w środku (bez niej podpis regionu).
 - Weryfikacja wizualna: panel przeglądarki aplikacji bywa ukryty (wtedy animacje i WebGL stoją); zrzuty rób Playwrightem.
 
 ## Architektura
@@ -16,7 +16,7 @@ Stos: React 19 + Vite 8 + TypeScript 6 (strict), Zustand (stan i localStorage), 
 - `src/lib/` — czysta logika bez Reacta: `astro.ts` (jedyny import astronomy-engine; macierze J2000 → horyzont, Słońce, Księżyc, optyka, współrzędne galaktyczne), `night.ts` (fazy zmierzchu, ciemne okno, tory i widoczność), `projection.ts` (rzut stereograficzny kopuły, N u góry, E po lewej), `framing.ts` (TAN, narożniki kadru), `horizon.ts`, `nina.ts` (CSV Telescopius dla N.I.N.A.), `planner.ts`, `catalog.ts`, `sky.ts`, `thumbs.ts` (kolejka hips2fits + Cache Storage), `services.ts` (Open-Meteo, geokodowanie, Wikipedia).
 - `src/workers/visibility.worker.ts` — widoczność 16,5 tys. obiektów w nocy.
 - `src/state/store.ts` (Zustand, persist) i `src/state/data.ts` (katalog, noc, czas, widoczność, pogoda jako hooki).
-- `src/components/` — `SkyDome` (gwiazdy w WebGL2 + nakładka 2D: linie, postacie gwiazdozbiorów przy najechaniu, horyzont, tor, animacja „znajdź obiekt”), `AltitudeChart`, `FramingPanel`, `Space3D` (lazy), karty widoku Niebo, `ObjectDetails`.
+- `src/components/` — `SkyDome` (gwiazdy w WebGL2 + nakładka 2D: linie, kontury mgławic z podpisami, elipsy obiektów według suwaka głębi, postacie gwiazdozbiorów przy najechaniu, horyzont, tor, animacja „znajdź obiekt”), `AltitudeChart`, `FramingPanel`, `Space3D` (lazy), karty widoku Niebo, `ObjectDetails`.
 - `src/views/` — Niebo, Katalog, Planer, Sprzęt, Horyzont (wszystkie oprócz Nieba ładowane leniwie).
 - `docs/wymagania.md` — lista wymagań z dowodami.
 

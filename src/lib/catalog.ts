@@ -109,6 +109,14 @@ export function displayName(o: DSO): string {
   return o.namePl || o.namesEn[0] || ''
 }
 
+/** Najmniejsza głębia adnotacji kopuły, przy której obiekt dostaje elipsę: 1 — NGC/IC/Caldwell (i Messier),
+ *  2 — Sharpless, Barnard, van den Bergh, 3 — pozostałe (LBN, LDN, SNR). Liczy się najpopularniejszy katalog obiektu. */
+export function annotationDepthOf(o: Pick<DSO, 'catalogs'>): 1 | 2 | 3 {
+  if (o.catalogs.some((c) => c === 'M' || c === 'NGC' || c === 'IC' || c === 'C')) return 1
+  if (o.catalogs.some((c) => c === 'Sh2' || c === 'B' || c === 'vdB')) return 2
+  return 3
+}
+
 export interface CatalogFilter {
   query: string
   catalogs: string[]

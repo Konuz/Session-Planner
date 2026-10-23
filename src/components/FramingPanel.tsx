@@ -95,7 +95,6 @@ export function FramingPanel() {
             onPointerMove={onMove}
             onPointerUp={() => (drag.current = null)}
             onPointerLeave={() => (drag.current = null)}
-            onWheel={(e) => setZoom((z) => Math.max(0.5, Math.min(4, z * Math.exp(-e.deltaY * 0.0015))))}
           >
             <g stroke="rgba(255,255,255,0.25)" strokeWidth="1">
               <path d={`M${SIZE / 2 - 10} ${SIZE / 2}h20M${SIZE / 2} ${SIZE / 2 - 10}v20`} />
@@ -176,7 +175,7 @@ export function FramingPanel() {
         >
           <Plus size={14} /> {planItem ? 'Zapisz kadr w planie' : 'Dodaj do planu'}
         </button>
-        <p className="dim" style={{ fontSize: 11.5, margin: 0 }}>Przeciągnij prostokąt, aby przesunąć kadr; uchwyt nad kadrem obraca go. Kółko myszy zmienia powiększenie.</p>
+        <p className="dim" style={{ fontSize: 11.5, margin: 0 }}>Przeciągnij prostokąt, aby przesunąć kadr; uchwyt nad kadrem obraca go. Powiększenie zmienia suwak.</p>
       </div>
     </div>
   )

@@ -222,8 +222,8 @@ export function TopBar() {
         {TABS.map(({ id, label }) => (
           <button key={id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)} aria-current={tab === id ? 'page' : undefined} aria-label={label} title={label}>
             <span className="nav-icon" aria-hidden>
-              <img src={`/icons/tab-${id}-off.webp`} alt="" width={26} height={26} decoding="async" />
-              <img className="on" src={`/icons/tab-${id}-on.webp`} alt="" width={26} height={26} decoding="async" />
+              <img src={`/icons/tab-${id}-off.webp`} alt="" width={39} height={39} decoding="async" />
+              <img className="on" src={`/icons/tab-${id}-on.webp`} alt="" width={39} height={39} decoding="async" />
             </span>
             <span>{label}</span>
           </button>

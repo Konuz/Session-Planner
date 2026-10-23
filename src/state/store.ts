@@ -97,6 +97,9 @@ interface State {
   showLines: boolean
   showTracks: boolean
   showArt: boolean
+  showOutlines: boolean
+  /** Głębia adnotacji kopuły: 0 — tylko kontury, 1 — + NGC/IC, 2 — + Sh2, Barnard, vdB, 3 — + LBN, LDN, SNR. */
+  annotationDepth: number
   showLabels: boolean
   /** Licznik „znajdź obiekt” — zmiana uruchamia animację na kopule. */
   findPulse: number
@@ -119,7 +122,8 @@ interface State {
   movePlan(key: string, delta: number): void
   setFilter(patch: Partial<CatalogFilter>): void
   setSort(s: State['sortBy']): void
-  toggle(key: 'showLines' | 'showTracks' | 'showArt' | 'showLabels' | 'onlyVisible'): void
+  setAnnotationDepth(depth: number): void
+  toggle(key: 'showLines' | 'showTracks' | 'showArt' | 'showOutlines' | 'showLabels' | 'onlyVisible'): void
 }
 
 export const useStore = create<State>()(
@@ -143,6 +147,8 @@ export const useStore = create<State>()(
       showLines: true,
       showTracks: true,
       showArt: true,
+      showOutlines: true,
+      annotationDepth: 0,
       showLabels: true,
       findPulse: 0,
 
@@ -196,6 +202,7 @@ export const useStore = create<State>()(
         }),
       setFilter: (patch) => set((s) => ({ filter: { ...s.filter, ...patch } })),
       setSort: (sortBy) => set({ sortBy }),
+      setAnnotationDepth: (annotationDepth) => set({ annotationDepth }),
       toggle: (key) => set((s) => ({ [key]: !s[key] }) as Partial<State>),
     }),
     {
@@ -215,6 +222,8 @@ export const useStore = create<State>()(
         showLines: s.showLines,
         showTracks: s.showTracks,
         showArt: s.showArt,
+        showOutlines: s.showOutlines,
+        annotationDepth: s.annotationDepth,
         showLabels: s.showLabels,
       }),
       // Noc zawsze startuje od bieżącej daty w strefie zapisanej lokalizacji.

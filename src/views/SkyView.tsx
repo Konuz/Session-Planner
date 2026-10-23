@@ -20,6 +20,7 @@ function Switch({ on, onClick, label }: { on: boolean; onClick: () => void; labe
   )
 }
 
+
 const MODES: { id: CenterMode; label: string; icon: typeof Tent }[] = [
   { id: 'dome', label: 'Kopuła', icon: Tent },
   { id: 'framing', label: 'Kadr teleskopu', icon: Crosshair },
@@ -58,6 +59,7 @@ export function SkyView() {
   const showLines = useStore((s) => s.showLines)
   const showTracks = useStore((s) => s.showTracks)
   const showArt = useStore((s) => s.showArt)
+  const showOutlines = useStore((s) => s.showOutlines)
   const toggle = useStore((s) => s.toggle)
   const setTime = useStore((s) => s.setTime)
   const selectedIndex = useStore((s) => s.selectedIndex)
@@ -97,9 +99,8 @@ export function SkyView() {
                 <Icon size={14} /> {label}
               </button>
             ))}
-            <span className="spacer" />
             {mode === 'dome' && (
-              <div className="toolbar-group">
+              <div style={{ display: 'contents' }}>
                 <button className="button small icon-button" title={playing ? 'Zatrzymaj' : 'Odtwórz noc'} onClick={() => setPlaying(!playing)}>
                   {playing ? <Pause size={14} /> : <Play size={14} />}
                 </button>
@@ -107,9 +108,10 @@ export function SkyView() {
                   <RotateCcw size={14} />
                 </button>
                 <span className="mono" style={{ fontSize: 12, minWidth: 44 }}>{fmtTime(time, tz)}</span>
-                <span className="toolbar-group">
+                <span className="toolbar-group" style={{ marginLeft: 'auto' }}>
                   <Switch on={showLines} onClick={() => toggle('showLines')} label="Linie" />
                   <Switch on={showArt} onClick={() => toggle('showArt')} label="Postacie" />
+                  <Switch on={showOutlines} onClick={() => toggle('showOutlines')} label="Mgławice" />
                   <Switch on={showTracks} onClick={() => toggle('showTracks')} label="Tory" />
                 </span>
               </div>

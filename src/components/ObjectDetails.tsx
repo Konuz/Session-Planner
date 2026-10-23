@@ -129,7 +129,7 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
             <a href={aladin} target="_blank" rel="noreferrer">Aladin Lite <ExternalLink size={11} /></a>
           </div>
           <p className="faint" style={{ fontSize: 11, marginTop: 18 }}>
-            Dane: OpenNGC (CC BY-SA 4.0), katalogi VizieR/CDS, odległości i artykuły: Wikidata (CC0), opisy: Wikipedia (CC BY-SA), zdjęcia: DSS2 przez CDS hips2fits.
+            Dane: OpenNGC (CC BY-SA 4.0), kontury mgławic: OpenNGC outlines (CC BY-SA 4.0, obrysy na DSS2 w Aladin, CDS), katalogi VizieR/CDS, odległości i artykuły: Wikidata (CC0), opisy: Wikipedia (CC BY-SA), zdjęcia: DSS2 przez CDS hips2fits.
           </p>
         </div>
       </aside>

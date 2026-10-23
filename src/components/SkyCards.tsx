@@ -195,6 +195,10 @@ export function OpticsCard() {
     <section className="card">
       <h2 className="panel-title">
         <Telescope size={20} /> Zestaw optyczny
+        <span className="spacer" />
+        <button className="button ghost icon-button" style={{ minHeight: 28, width: 28 }} onClick={() => setTab('equipment')} title="Konfiguruj zestaw" aria-label="Konfiguruj zestaw">
+          <Settings size={18} />
+        </button>
       </h2>
       <div className="wx-rows" style={{ gridTemplateColumns: 'auto 1fr', fontSize: 13.5, gap: '12px 14px' }}>
         <Aperture size={17} />
@@ -213,12 +217,6 @@ export function OpticsCard() {
         </span>
       </div>
       <TelescopeDrawing />
-      <button className="button" style={{ width: '100%', justifyContent: 'space-between' }} onClick={() => setTab('equipment')}>
-        <span style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <Settings size={15} /> Konfiguruj zestaw
-        </span>
-        <ChevronRight size={15} />
-      </button>
     </section>
   )
 }

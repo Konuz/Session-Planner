@@ -1,11 +1,13 @@
 import { Horizon, MakeTime, Observer, RotateVector, Rotation_EQJ_EQD, SphereFromVector, Vector } from 'astronomy-engine'
 import { describe, expect, it } from 'vitest'
-import { altAz, computeOptics, galactic, hourAngleDeg, horizontalMatrix, moonInfo, nextTransitMs, type Site } from './astro'
-import { matchesFilter, normalizeQuery, parseCatalog, searchScore, EMPTY_FILTER } from './catalog'
+import { readFileSync } from 'node:fs'
+import { altAz, computeOptics, DEG, galactic, hourAngleDeg, horizontalMatrix, moonInfo, nextTransitMs, vecToEquatorial, type Site } from './astro'
+import { annotationDepthOf, matchesFilter, normalizeQuery, parseCatalog, searchScore, EMPTY_FILTER } from './catalog'
 import { frameCorners, gnomonic, gnomonicInverse, pixelToTangent, tangentToPixel } from './framing'
 import { exportHorizon, horizonAltitude, parseHorizon } from './horizon'
 import { darkWindow, nightDateOf, nightPhases, phaseAt, zonedMidnightMs } from './night'
 import { formatDec, formatPa, formatRa, ninaCsv } from './nina'
+import { pointInPolygon, polygonArea, prepareRing } from './outlines'
 import { affineFrom3, FULL_DOME, makeProjector } from './projection'
 import { autoSchedule, localTimeToMs, overlaps } from './planner'
 import { thumbFovDeg } from './thumbs'
@@ -219,9 +221,50 @@ describe('katalog', () => {
     expect(searchScore(cat[2], 'NGC6888')).toBe(1)
   })
 
+  it('głębia adnotacji według katalogu', () => {
+    expect(annotationDepthOf({ catalogs: ['NGC', 'LBN'] })).toBe(1)
+    expect(annotationDepthOf({ catalogs: ['Sh2', 'LBN'] })).toBe(2)
+    expect(annotationDepthOf({ catalogs: ['B'] })).toBe(2)
+    expect(annotationDepthOf({ catalogs: ['LDN'] })).toBe(3)
+    expect(cat.map(annotationDepthOf)).toEqual([1, 3, 1])
+  })
+
   it('pole miniatury', () => {
     expect(thumbFovDeg({ majArcmin: 13.7 })).toBeCloseTo(0.388, 3)
     expect(thumbFovDeg({ majArcmin: 600 })).toBe(4)
     expect(thumbFovDeg({ majArcmin: 0 })).toBe(0.2)
+  })
+})
+
+describe('kontury mgławic', () => {
+  it('środek i promień pierścienia przechodzącego przez RA 0°', () => {
+    const ring = prepareRing([359, 10, 1, 10, 1, 12, 359, 12])
+    const c = vecToEquatorial(ring.centre)
+    expect(Math.min(c.raDeg, 360 - c.raDeg)).toBeLessThan(1e-6)
+    expect(c.decDeg).toBeCloseTo(11, 1)
+    expect(ring.radiusDeg).toBeCloseTo(Math.hypot(Math.cos(11 * DEG), 1), 1)
+  })
+
+  it('trafienie w kontur na ekranie', () => {
+    const square: [number, number][] = [[0, 0], [10, 0], [10, 10], [0, 10]]
+    expect(pointInPolygon(square, 5, 5)).toBe(true)
+    expect(pointInPolygon(square, 15, 5)).toBe(false)
+    expect(polygonArea(square)).toBe(100)
+  })
+
+  it('outlines.json: poziom 2, duże obrysy poziomu 1 i obiekty z M 33', () => {
+    const data = JSON.parse(readFileSync(new URL('../../public/data/outlines.json', import.meta.url), 'utf8')) as {
+      objects: { id: string; level: number; rings: number[][] }[]
+    }
+    const levels = (id: string) => data.objects.filter((o) => o.id === id).map((o) => o.level).sort()
+    expect(levels('NGC 604')).toEqual([2])
+    expect(levels('NGC 595')).toEqual([2])
+    expect(levels('NGC 7000')).toEqual([1, 2])
+    expect(levels('NGC 6888')).toEqual([3])
+    // Pierścienie regionów przypisane do największej mgławicy w środku; bez niej zostaje region.
+    expect(levels('Sh2-264')).toEqual([1])
+    expect(levels('Cygnus')).toEqual([])
+    expect(levels('Puppis')).toEqual([1, 1, 1])
+    for (const o of data.objects) for (const ring of o.rings) expect(ring.length).toBeGreaterThanOrEqual(6)
   })
 })

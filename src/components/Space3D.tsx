@@ -123,8 +123,12 @@ export default function Space3D() {
     const sunPos = scale === 'galaxy' ? toThree([-SUN_TO_GC_KLY, 0, 0]) : new THREE.Vector3()
     const target0 = dist !== null ? position(o, dist, scale) : sunPos.clone()
     // Rozmiar sceny wokół celu: etykiety i znaczniki skalują się z nim, punkty mają stały rozmiar w pikselach.
-    const span = Math.max(scale === 'galaxy' ? 36 : 70, sunPos.distanceTo(target0) * 1.8)
+    const sep = sunPos.distanceTo(target0)
+    // Kadr dopasowany do odległości Słońce–obiekt (bliskie obiekty: zbliżenie na okolicę Słońca).
+    const span = Math.max(scale === 'galaxy' ? 8 : 70, sep * 2.2)
     const k = span / 40
+    // Promień znaczników: najwyżej 15% odległości Słońce–obiekt, żeby kule i pierścień nigdy na siebie nie nachodziły.
+    const mr = sep > 0 ? Math.min(0.5 * k, sep * 0.15) : 0.5 * k
     const label = (text: string, color: string, size: number) => textSprite(text, color, size * k)
 
     // Tło: obiekty katalogu z odległością.
@@ -173,7 +177,7 @@ export default function Space3D() {
     }
 
     // Słońce.
-    const sun = new THREE.Mesh(new THREE.SphereGeometry(0.5 * k, 16, 16), new THREE.MeshBasicMaterial({ color: 0xffd27a }))
+    const sun = new THREE.Mesh(new THREE.SphereGeometry(mr * 0.9, 16, 16), new THREE.MeshBasicMaterial({ color: 0xffd27a }))
     sun.position.copy(sunPos)
     scene.add(sun)
     disposables.push(sun.geometry, sun.material as THREE.Material)
@@ -185,10 +189,10 @@ export default function Space3D() {
     let target = sunPos.clone()
     if (dist !== null) {
       target = target0.clone()
-      const obj = new THREE.Mesh(new THREE.SphereGeometry(0.55 * k, 20, 20), new THREE.MeshBasicMaterial({ color: 0x00e0ff }))
+      const obj = new THREE.Mesh(new THREE.SphereGeometry(mr, 20, 20), new THREE.MeshBasicMaterial({ color: 0x00e0ff }))
       obj.position.copy(target)
       scene.add(obj)
-      const ring = new THREE.Mesh(new THREE.RingGeometry(1.1 * k, 1.3 * k, 48), new THREE.MeshBasicMaterial({ color: 0x00e0ff, transparent: true, opacity: 0.8, side: THREE.DoubleSide }))
+      const ring = new THREE.Mesh(new THREE.RingGeometry(mr * 1.8, mr * 2.1, 48), new THREE.MeshBasicMaterial({ color: 0x00e0ff, transparent: true, opacity: 0.8, side: THREE.DoubleSide }))
       ring.position.copy(target)
       scene.add(ring)
       const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([sunPos, target]), new THREE.LineDashedMaterial({ color: 0x00e0ff, dashSize: 0.8, gapSize: 0.6, transparent: true, opacity: 0.8 }))
