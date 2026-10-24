@@ -180,6 +180,17 @@ function withAlpha(hex: string, a: number): string {
 // ---------- Postacie gwiazdozbiorów ----------
 
 const artLevels = new Map<string, HTMLCanvasElement>()
+let artLayerCanvas: HTMLCanvasElement | null = null
+
+/** Płótno robocze postaci w rozmiarze nakładki (piksele urządzenia). */
+function artLayer(w: number, h: number): HTMLCanvasElement {
+  artLayerCanvas ??= document.createElement('canvas')
+  if (artLayerCanvas.width !== w || artLayerCanvas.height !== h) {
+    artLayerCanvas.width = w
+    artLayerCanvas.height = h
+  }
+  return artLayerCanvas
+}
 
 /**
  * Wersja ilustracji dla rozmiaru na ekranie `screenPx`: oryginał tylko przy prawie pełnym rozmiarze, poniżej
@@ -851,28 +862,42 @@ export function SkyDome({ playing = false }: Props) {
             const imgScale = Math.hypot(m[0], m[1])
             const src = artLevel(img, c.art.file, 384 * imgScale)
             const alpha = Math.min(0.6, 0.42 / Math.min(1, imgScale) ** 0.4)
-            ctx.save()
-            if (fullDome) {
-              // Pełna kopuła: postać przycięta do koła horyzontu matematycznego (0°), nie wychodzi poza kopułę.
-              ctx.beginPath()
-              ctx.arc(proj.cx, proj.cy, 2 * proj.scale, 0, Math.PI * 2)
-              ctx.clip()
-            }
-            ctx.imageSmoothingEnabled = true
-            ctx.imageSmoothingQuality = 'high'
-            ctx.globalAlpha = alpha * easeInOut(k)
-            ctx.globalCompositeOperation = 'screen'
-            ctx.setTransform(m[0] * dpr, m[1] * dpr, m[2] * dpr, m[3] * dpr, m[4] * dpr, m[5] * dpr)
+            // Postać rysowana na osobnej warstwie, z której maska ziemi (ta sama co dla gruntu) wycina wszystko pod
+            // horyzontem (własnym, jeśli ustawiony) — przy każdym powiększeniu i kierunku widoku.
+            const layer = artLayer(overlay.width, overlay.height)
+            const lc = layer.getContext('2d')!
+            lc.setTransform(1, 0, 0, 1, 0, 0)
+            lc.globalCompositeOperation = 'source-over'
+            lc.globalAlpha = 1
+            lc.clearRect(0, 0, layer.width, layer.height)
+            lc.save()
+            lc.imageSmoothingEnabled = true
+            lc.imageSmoothingQuality = 'high'
+            lc.globalAlpha = alpha * easeInOut(k)
+            lc.setTransform(m[0] * dpr, m[1] * dpr, m[2] * dpr, m[3] * dpr, m[4] * dpr, m[5] * dpr)
             if (c.art.mask) {
               // Część ilustracji (np. Wąż z rysunku Wężownika): maska w pikselach ilustracji.
-              ctx.beginPath()
+              lc.beginPath()
               for (const poly of c.art.mask) {
-                poly.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)))
-                ctx.closePath()
+                poly.forEach(([x, y], i) => (i ? lc.lineTo(x, y) : lc.moveTo(x, y)))
+                lc.closePath()
               }
-              ctx.clip()
+              lc.clip()
             }
-            ctx.drawImage(src, 0, 0, 384, 384)
+            lc.drawImage(src, 0, 0, 384, 384)
+            lc.restore()
+            if (groundCanvas) {
+              lc.globalCompositeOperation = 'destination-out'
+              lc.imageSmoothingEnabled = true
+              // Ziemia ma krycie ok. 92–98%, więc dwa przejścia, żeby pod horyzontem nie został cień postaci.
+              lc.drawImage(groundCanvas, 0, 0, groundCanvas.width * GROUND_STEP * dpr, groundCanvas.height * GROUND_STEP * dpr)
+              lc.drawImage(groundCanvas, 0, 0, groundCanvas.width * GROUND_STEP * dpr, groundCanvas.height * GROUND_STEP * dpr)
+              lc.globalCompositeOperation = 'source-over'
+            }
+            ctx.save()
+            ctx.setTransform(1, 0, 0, 1, 0, 0)
+            ctx.globalCompositeOperation = 'screen'
+            ctx.drawImage(layer, 0, 0)
             ctx.restore()
           }
         }
@@ -1029,7 +1054,7 @@ export function SkyDome({ playing = false }: Props) {
     overlayRef.current!.style.cursor = pick(x, y) ? 'pointer' : view.fovDeg < 180 ? 'grab' : 'crosshair'
   }
 
-  // Przybliżanie tylko suwakiem: rolka myszy przewija stronę.
+  // Przybliżanie suwakiem albo rolką nad kopułą.
   const setFov = (target: number) =>
     setView((v) => {
       const fovDeg = Math.max(MIN_FOV, Math.min(184, target))
@@ -1037,6 +1062,22 @@ export function SkyDome({ playing = false }: Props) {
       // Przybliżenie do środka bieżącego widoku, bez zmiany kierunku i obrotu.
       return { ...v, fovDeg }
     })
+
+  // Rolka myszy przybliża tylko nad kopułą: nasłuch nie-pasywny, żeby zablokować przewijanie strony.
+  const setFovRef = useRef(setFov)
+  setFovRef.current = setFov
+  const viewRef = useRef(view)
+  viewRef.current = view
+  useEffect(() => {
+    const el = stageRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      setFovRef.current(viewRef.current.fovDeg * Math.exp(e.deltaY * 0.0015))
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
 
   const hovered = hoverCon && sky ? sky.byAbbr.get(hoverCon.abbr) : null
   const hoveredOutline = hoverDepth

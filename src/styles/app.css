@@ -389,7 +389,10 @@ input[type='checkbox'] { accent-color: var(--accent); }
 }
 @keyframes photo-scan { to { background-position: 0 250%; } }
 @keyframes fade-in { from { opacity: 0; } }
-.object-name { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 12px 0 6px; font-size: 20px; }
+/* Nazwa obiektu i przycisk „Do planu” w jednym wierszu pod zdjęciem (przycisk wyrównany do prawej). */
+.object-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin: 12px 0 6px; }
+.object-head .button { flex: none; margin-top: 1px; }
+.object-name { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; min-width: 0; font-size: 20px; }
 .object-name .id { font: 700 20px var(--mono); }
 .object-name .sep { color: var(--text-faint); }
 .facts { display: grid; grid-template-columns: auto 1fr; gap: 9px 14px; margin: 12px 0 4px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 13.5px; }
@@ -607,5 +610,5 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .hud-value { min-width: 1ch; font: 600 11px var(--mono); color: var(--accent); }
 /* Ikona „cała kopuła”: pojawia się po przybliżeniu na lewo od suwaka, poza układem (nie przesuwa innych). */
 .hud-icon { display: grid; place-items: center; padding: 0; background: none; border: 0; color: var(--accent); cursor: pointer; transition: color 0.15s var(--ease-std); }
-.hud-reset { position: absolute; right: calc(100% + 6px); top: 50%; width: 28px; height: 28px; transform: translateY(-50%); background: transparent; animation: fade-in 0.2s; }
+.hud-reset { position: absolute; right: calc(100% - 6px); top: 50%; width: 20px; height: 28px; transform: translateY(-50%); background: transparent; animation: fade-in 0.2s; }
 .hud-icon:hover { color: #fff; }

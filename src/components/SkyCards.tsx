@@ -25,14 +25,19 @@ export function ObjectCard({ onDetails }: { onDetails: () => void }) {
           <div className="object-photo corners">
             <Thumb object={o} className="thumb" style={{ position: 'absolute', inset: 0 }} fovDeg={Math.min(4, Math.max(0.25, (Math.max(o.majArcmin, 3) * 2.2) / 60))} sizePx={480} />
           </div>
-          <div className="object-name">
-            <span className="id"><ScrambleText text={o.id} /></span>
-            {displayName(o) && (
-              <>
-                <span className="sep">·</span>
-                <span><ScrambleText text={displayName(o)} /></span>
-              </>
-            )}
+          <div className="object-head">
+            <div className="object-name">
+              <span className="id"><ScrambleText text={o.id} /></span>
+              {displayName(o) && (
+                <>
+                  <span className="sep">·</span>
+                  <span><ScrambleText text={displayName(o)} /></span>
+                </>
+              )}
+            </div>
+            <button className={`button small${inPlan ? ' active' : ''}`} onClick={() => addToPlan(o.i, o.id)} disabled={inPlan}>
+              {inPlan ? <Check size={13} /> : <Plus size={13} />} {inPlan ? 'W planie' : 'Do planu'}
+            </button>
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <span className="chip" style={{ color: TYPE_INFO[o.type].color }}>
@@ -54,12 +59,9 @@ export function ObjectCard({ onDetails }: { onDetails: () => void }) {
             <dt><Ruler size={15} /> Odległość</dt>
             <dd>{fmtDistance(o.distLy)}</dd>
           </dl>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+          <div style={{ marginTop: 8 }}>
             <button className="link-row" onClick={onDetails}>
               <ChevronRight size={15} /> Szczegóły obiektu
-            </button>
-            <button className={`button small${inPlan ? ' active' : ''}`} onClick={() => addToPlan(o.i, o.id)} disabled={inPlan}>
-              {inPlan ? <Check size={13} /> : <Plus size={13} />} {inPlan ? 'W planie' : 'Do planu'}
             </button>
           </div>
         </div>
