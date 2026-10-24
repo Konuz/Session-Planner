@@ -98,7 +98,7 @@ interface State {
   showTracks: boolean
   showArt: boolean
   showOutlines: boolean
-  /** Głębia adnotacji kopuły: 0 — tylko kontury, 1 — + NGC/IC, 2 — + Sh2, Barnard, vdB, 3 — + LBN, LDN, SNR, 4 — + kółka obiektów wewnątrz konturów. */
+  /** Głębia adnotacji kopuły: 0 — tylko kontury, 1 — + NGC/IC, 2 — + Sh2, Barnard, vdB, 3 — + LBN, LDN, SNR. */
   annotationDepth: number
   showLabels: boolean
   /** Licznik „znajdź obiekt” — zmiana uruchamia animację na kopule. */

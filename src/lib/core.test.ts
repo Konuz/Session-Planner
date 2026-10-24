@@ -1,13 +1,13 @@
 import { Horizon, MakeTime, Observer, RotateVector, Rotation_EQJ_EQD, SphereFromVector, Vector } from 'astronomy-engine'
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { altAz, computeOptics, DEG, galactic, unitVector, hourAngleDeg, horizontalMatrix, moonInfo, nextTransitMs, vecToEquatorial, type Site } from './astro'
+import { altAz, computeOptics, DEG, galactic, hourAngleDeg, horizontalMatrix, moonInfo, nextTransitMs, vecToEquatorial, type Site } from './astro'
 import { annotationDepthOf, matchesFilter, normalizeQuery, parseCatalog, searchScore, EMPTY_FILTER } from './catalog'
 import { frameCorners, gnomonic, gnomonicInverse, pixelToTangent, tangentToPixel } from './framing'
 import { exportHorizon, horizonAltitude, parseHorizon } from './horizon'
 import { darkWindow, nightDateOf, nightPhases, phaseAt, zonedMidnightMs } from './night'
 import { formatDec, formatPa, formatRa, ninaCsv } from './nina'
-import { pointInPolygon, polygonArea, prepareRing, ringContains } from './outlines'
+import { pointInPolygon, polygonArea, prepareRing } from './outlines'
 import { affineFrom3, FULL_DOME, makeProjector } from './projection'
 import { autoSchedule, localTimeToMs, overlaps } from './planner'
 import { astrobinSearchUrl } from './services'
@@ -244,17 +244,6 @@ describe('kontury mgławic', () => {
     expect(Math.min(c.raDeg, 360 - c.raDeg)).toBeLessThan(1e-6)
     expect(c.decDeg).toBeCloseTo(11, 1)
     expect(ring.radiusDeg).toBeCloseTo(Math.hypot(Math.cos(11 * DEG), 1), 1)
-  })
-
-  it('obiekt wewnątrz konturu na sferze (też przy RA 0° i przy biegunie)', () => {
-    const ring = prepareRing([359, 10, 1, 10, 1, 12, 359, 12])
-    expect(ringContains(ring, unitVector(0, 11))).toBe(true)
-    expect(ringContains(ring, unitVector(0.5, 11.5))).toBe(true)
-    expect(ringContains(ring, unitVector(2, 11))).toBe(false)
-    expect(ringContains(ring, unitVector(180, 11))).toBe(false)
-    const polar = prepareRing([0, 88, 90, 88, 180, 88, 270, 88])
-    expect(ringContains(polar, unitVector(45, 89.5))).toBe(true)
-    expect(ringContains(polar, unitVector(45, 86))).toBe(false)
   })
 
   it('trafienie w kontur na ekranie', () => {

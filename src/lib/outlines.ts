@@ -84,23 +84,3 @@ export function polygonArea(pts: readonly [number, number][]): number {
   for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) sum += pts[j][0] * pts[i][1] - pts[i][0] * pts[j][1]
   return Math.abs(sum) / 2
 }
-
-/** Czy kierunek v (wektor jednostkowy J2000) leży wewnątrz pierścienia: rzut gnomoniczny wokół środka pierścienia
- *  i reguła parzystości. Poza promieniem pierścienia od razu false. */
-export function ringContains(ring: OutlineRing, v: Vec3): boolean {
-  const c = ring.centre
-  const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-  if (dot(v, c) < Math.cos(ring.radiusDeg * DEG)) return false
-  // Baza płaszczyzny stycznej: e1 ⟂ c (z osi z, a przy biegunie z osi x), e2 = c × e1.
-  const ref: Vec3 = Math.abs(c[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0]
-  let e1: Vec3 = [ref[1] * c[2] - ref[2] * c[1], ref[2] * c[0] - ref[0] * c[2], ref[0] * c[1] - ref[1] * c[0]]
-  const n = Math.hypot(...e1)
-  e1 = [e1[0] / n, e1[1] / n, e1[2] / n]
-  const e2: Vec3 = [c[1] * e1[2] - c[2] * e1[1], c[2] * e1[0] - c[0] * e1[2], c[0] * e1[1] - c[1] * e1[0]]
-  const proj = (p: Vec3): [number, number] => {
-    const d = dot(p, c)
-    return [dot(p, e1) / d, dot(p, e2) / d]
-  }
-  const [x, y] = proj(v)
-  return pointInPolygon(ring.points.map(proj), x, y)
-}

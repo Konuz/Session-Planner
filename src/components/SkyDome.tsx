@@ -20,7 +20,7 @@ import {
 import { annotationDepthOf, displayName, TYPE_INFO, type DSO, type ObjectType } from '../lib/catalog'
 import { horizonAltitude, type HorizonPoint } from '../lib/horizon'
 import { altitudeTrack, nightGrid } from '../lib/night'
-import { loadOutlines, pointInPolygon, polygonArea, ringContains, type Outline } from '../lib/outlines'
+import { loadOutlines, pointInPolygon, polygonArea, type Outline } from '../lib/outlines'
 import { affineFrom3, FULL_DOME, makeProjector, type Projector, type View } from '../lib/projection'
 import { loadMilkyWay, loadSky, type MilkyWay, type SkyData } from '../lib/sky'
 import { useCatalog, useNight, useSelected, useSite, useTime } from '../state/data'
@@ -33,7 +33,6 @@ const DEPTH_TITLES = [
   'Głębia 1: + obiekty NGC, IC i Caldwella',
   'Głębia 2: + Sharpless, Barnard, van den Bergh',
   'Głębia 3: + LBN, LDN i pozostałości po supernowych',
-  'Głębia 4: + kółka obiektów katalogu wewnątrz konturów',
 ]
 
 /** Stos warstw (cztery romby): kontur = mniej adnotacji, wypełnienie = więcej. */
@@ -405,7 +404,7 @@ export function SkyDome({ playing = false }: Props) {
   const showTracks = useStore((s) => s.showTracks)
   const showArt = useStore((s) => s.showArt)
   const showOutlines = useStore((s) => s.showOutlines)
-  const annotationDepth = useStore((s) => s.annotationDepth)
+  const annotationDepth = Math.min(3, useStore((s) => s.annotationDepth))
   const setDepth = useStore((s) => s.setAnnotationDepth)
   const showLabels = useStore((s) => s.showLabels)
   const findPulse = useStore((s) => s.findPulse)
@@ -462,20 +461,6 @@ export function SkyDome({ playing = false }: Props) {
     return byId
   }, [catalog])
   // Obiekt katalogu dla każdego konturu; regiony nie mają obiektu.
-  // Obiekty katalogu (bez galaktyk) ze środkiem wewnątrz konturu oraz obiekt konturu i jego wspólne oznaczenia.
-  const outlineMembers = useMemo(() => {
-    if (!outlines || !catalog || !catalogById) return null
-    const pts = catalog.filter((o) => o.type !== 'G' && o.type !== 'GG').map((o) => ({ o, v: unitVector(o.raDeg, o.decDeg) }))
-    return outlines.map((ol) => {
-      const found = new Map<number, DSO>()
-      for (const id of ol.region ? [] : [ol.id, ...ol.also]) {
-        const d = catalogById.get(id)
-        if (d) found.set(d.i, d)
-      }
-      for (const ring of ol.rings) for (const p of pts) if (ringContains(ring, p.v)) found.set(p.o.i, p.o)
-      return [...found.values()]
-    })
-  }, [outlines, catalog, catalogById])
   const outlineObjects = useMemo(
     () => (outlines && catalogById ? outlines.map((o) => (o.region ? null : catalogById.get(o.id) ?? null)) : null),
     [outlines, catalogById],
@@ -658,8 +643,6 @@ export function SkyDome({ playing = false }: Props) {
     const labelList: { dso: DSO; c: [number, number]; top: [number, number]; r: number; prio: number; minR: number; hov: boolean; color: string; name?: string }[] = []
     // Obiekty z narysowanym konturem nie dostają już elipsy głębi.
     const outlined = new Set<string>()
-    // Obiekty z kółkiem wewnątrz konturu (głębia 4): warstwa głębi nie rysuje im już elipsy.
-    const memberDrawn = new Set<number>()
     ctx.save()
     ctx.lineWidth = 1
     if (outlines && showOutlines) {
@@ -667,8 +650,6 @@ export function SkyDome({ playing = false }: Props) {
       const hoverKey = hoverOutline === null ? null : outlineKey(hoverOutline)
       // Największy widoczny pierścień obiektu, z poziomu 2/3 przed poziomem 1.
       const best = new Map<string, { k: number; c: [number, number]; top: [number, number]; r: number; faint: boolean }>()
-      // Największy promień narysowanego pierścienia każdego konturu (dla kółek obiektów wewnątrz).
-      const drawnR = new Map<number, number>()
       outlines.forEach((o, k) => {
         const key = outlineKey(k)
         const sel = selIds ? selIds.has(o.id) || o.also.some((a) => selIds.has(a)) : false
@@ -683,7 +664,6 @@ export function SkyDome({ playing = false }: Props) {
           if (r < 2) continue
           const c = proj.eq(ring.centre)
           if (c ? c[0] < -2 * r || c[1] < -2 * r || c[0] > size.w + 2 * r || c[1] > size.h + 2 * r : ring.radiusDeg < 60) continue
-          drawnR.set(k, Math.max(drawnR.get(k) ?? 0, r))
           const pts = ring.points.map((v) => proj.eq(v))
           ctx.beginPath()
           polyline(ctx, pts, size)
@@ -703,41 +683,6 @@ export function SkyDome({ playing = false }: Props) {
           ctx.stroke()
         }
       })
-      // Głębia 4: kółka obiektów katalogu wewnątrz konturów (pozycja i wymiar z katalogu) — kontur często obejmuje kilka
-      // obiektów, kółko pokazuje, gdzie leży każdy z nich. Tylko przy konturach większych niż ~40 px; podpisy (poza
-      // obiektem samego konturu, od 5 px promienia) we wspólnym przebiegu etykiet.
-      if (outlineMembers && annotationDepth >= 4) {
-        ctx.save()
-        ctx.setLineDash([3, 3])
-        ctx.lineWidth = 1
-        outlines.forEach((o, k) => {
-          if ((drawnR.get(k) ?? 0) < 40) return
-          const tint = typeColors[o.dark ? 'DN' : 'EN']
-          for (const d of outlineMembers[k]) {
-            if (memberDrawn.has(d.i)) continue
-            const v = unitVector(d.raDeg, d.decDeg)
-            const c = proj.eq(v)
-            const r = Math.max(3, (d.majArcmin / 120) * pxPerDeg)
-            if (!c || c[0] < -r || c[1] < -r || c[0] > size.w + r || c[1] > size.h + r || !aboveHorizon(v)) continue
-            memberDrawn.add(d.i)
-            const sel = selected?.i === d.i
-            ctx.strokeStyle = sel ? 'rgba(0, 224, 255, 0.85)' : withAlpha(tint, 0.7)
-            ctx.beginPath()
-            ctx.arc(c[0], c[1], r, 0, Math.PI * 2)
-            ctx.stroke()
-            ctx.beginPath()
-            ctx.moveTo(c[0] - 4, c[1])
-            ctx.lineTo(c[0] + 4, c[1])
-            ctx.moveTo(c[0], c[1] - 4)
-            ctx.lineTo(c[0], c[1] + 4)
-            ctx.stroke()
-            if (!sel && d.i !== outlineObjects?.[k]?.i) {
-              labelList.push({ dso: d, c, top: [c[0], c[1] - r], r, prio: 3, minR: 5, hov: false, color: withAlpha(tint, 0.75) })
-            }
-          }
-        })
-        ctx.restore()
-      }
       for (const [key, l] of best) {
         const dso = outlineObjects![l.k]!
         // Obiekty Messiera przy polu < 90° mają już własną etykietę przy znaczniku.
@@ -755,7 +700,7 @@ export function SkyDome({ playing = false }: Props) {
     // Elipsy mniejsze niż 1,5 px pomijane, więc przy oddaleniu zostają tylko duże obiekty.
     if (annotationDepth > 0) {
       for (const d of depthObjects) {
-        if (d.depth > annotationDepth || outlined.has(d.o.id) || memberDrawn.has(d.o.i)) continue
+        if (d.depth > annotationDepth || outlined.has(d.o.id)) continue
         const a0 = (d.o.majArcmin / 120) * pxPerDeg
         if (a0 < 1.5) continue
         // Małe obiekty (jak B 33) powiększone do co najmniej 3 px, żeby dało się je zobaczyć i trafić.
@@ -1347,7 +1292,7 @@ export function SkyDome({ playing = false }: Props) {
           <LayersIcon filled={false} />
           <Range
             min={0}
-            max={4}
+            max={3}
             step={1}
             value={annotationDepth}
             onChange={(e) => setDepth(Number(e.target.value))}
