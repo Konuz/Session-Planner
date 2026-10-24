@@ -36,7 +36,7 @@ const DEPTH_TITLES = [
 ]
 
 /** Stos warstw (cztery romby): kontur = mniej adnotacji, wypełnienie = więcej. */
-function LayersIcon({ filled }: { filled: boolean }) {
+export function LayersIcon({ filled }: { filled: boolean }) {
   const layers = [11, 8, 5, 2]
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" aria-hidden fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={filled ? 0 : 1.4} strokeLinejoin="round">

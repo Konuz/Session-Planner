@@ -30,6 +30,7 @@
   --t-planetary: #2dd4bf;
   --t-cluster: #facc15;
   --t-snr: #fb923c;
+  --pin: #22c55e; /* green-500: pinezka celu jak na mapie nieba konuzastro.pl */
   --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
   --sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --gap: 14px;
@@ -465,6 +466,13 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .depth-slider { display: inline-flex; align-items: center; gap: 6px; font: 10px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-2); cursor: pointer; }
 .depth-slider input { width: 64px; accent-color: var(--accent); }
 .depth-slider b { min-width: 1ch; color: var(--accent); font-weight: 600; }
+/* Pinezka obiektu w widoku 3D: kropka z białą obwódką i dwa pulsujące pierścienie (animate-ping z konuzastro.pl). */
+.pin { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; z-index: 2; }
+.pin > span { position: absolute; left: 0; top: 0; border-radius: 50%; translate: -50% -50%; }
+.pin-ring { width: 24px; height: 24px; background: color-mix(in srgb, var(--pin) 50%, transparent); animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite; }
+.pin-ring + .pin-ring { background: color-mix(in srgb, var(--pin) 30%, transparent); }
+.pin-dot { width: 16px; height: 16px; background: var(--pin); border: 2px solid var(--text); box-shadow: 0 0 15px color-mix(in srgb, var(--pin) 80%, transparent); }
+@keyframes ping { 75%, 100% { transform: scale(2); opacity: 0; } }
 .sky-hud { position: absolute; pointer-events: none; font: 11px var(--mono); color: var(--text-dim); letter-spacing: 0.08em; }
 .sky-hud.tl { top: 12px; left: 14px; }
 .sky-hud.tr { top: 12px; right: 14px; text-align: right; }
