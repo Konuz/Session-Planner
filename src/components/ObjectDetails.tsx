@@ -78,11 +78,18 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
           </button>
         </div>
         <div style={{ padding: 22 }}>
-          <div className="kicker">{TYPE_INFO[o.type].label}</div>
-          <h2 style={{ margin: '6px 0 4px', fontSize: 26, fontFamily: 'var(--mono)' }}>
-            {o.id}
-            {displayName(o) && <span style={{ fontFamily: 'var(--sans)', fontWeight: 400, color: 'var(--text-2)' }}> · {displayName(o)}</span>}
+          <h2 className="object-name" style={{ margin: 0, width: 'fit-content', fontWeight: 400 }}>
+            <span className="id">{o.id}</span>
+            {displayName(o) && (
+              <>
+                <span className="sep">·</span>
+                <span>{displayName(o)}</span>
+              </>
+            )}
           </h2>
+          <div style={{ margin: '10px 0 6px' }}>
+            <span className="chip" style={{ color: TYPE_INFO[o.type].color }}>{TYPE_INFO[o.type].label}</span>
+          </div>
           {o.aliases.length > 0 && <div className="dim mono" style={{ fontSize: 12 }}>{o.aliases.join(' · ')}</div>}
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '16px 0' }}>
@@ -109,7 +116,7 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
             <div className="stat"><div className="label">Zachód</div><div className="v">{stats.circumpolar ? '—' : fmtTime(stats.set, tz)}</div></div>
             <div className="stat"><div className="label">Maks. wysokość</div><div className="v">{fmtDeg(stats.vis.maxAlt)}</div></div>
             <div className="stat"><div className="label">Czas ≥ {minAlt}°</div><div className="v">{fmtDuration(stats.vis.hoursUsable)}</div></div>
-            <div className="stat"><div className="label">Księżyc</div><div className="v" style={{ fontSize: 15 }}>{fmtDeg(stats.moonSep)} · {Math.round(stats.moonIllum * 100)}%</div></div>
+            <div className="stat"><div className="label">Księżyc</div><div className="v">{fmtDeg(stats.moonSep)} · {Math.round(stats.moonIllum * 100)}%</div></div>
           </div>
 
           <div className="label" style={{ marginTop: 22, marginBottom: 10 }}>Dane</div>

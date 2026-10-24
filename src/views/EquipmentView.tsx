@@ -112,7 +112,7 @@ export default function EquipmentView() {
             <div className="stat"><div className="label">Skala</div><div className="v">{fmtNum(optics.scaleArcsecPx, 2)}″/px</div></div>
             <div className="stat">
               <div className="label">Próbkowanie przy {fmtNum(eq.seeingArcsec, 1)}″</div>
-              <div className="v" style={{ color: samp === 'optymalne' ? 'var(--ok)' : 'var(--warn)', fontSize: 16 }}>{samp}</div>
+              <div className="v" style={{ color: samp === 'optymalne' ? 'var(--ok)' : 'var(--warn)' }}>{samp}</div>
             </div>
           </div>
           <p className="dim" style={{ fontSize: 12, marginTop: 12 }}>

@@ -25,6 +25,7 @@ import { affineFrom3, FULL_DOME, makeProjector, type Projector, type View } from
 import { loadSky, type SkyData } from '../lib/sky'
 import { useCatalog, useNight, useSelected, useSite, useTime } from '../state/data'
 import { useStore } from '../state/store'
+import { Range } from './Range'
 
 // Opis kroków suwaka głębi adnotacji (podpowiedź i czytnik ekranu).
 const DEPTH_TITLES = [
@@ -1155,8 +1156,7 @@ export function SkyDome({ playing = false }: Props) {
         )}
         <div className="zoom-slider">
           <ZoomOut size={14} aria-hidden />
-          <input
-            type="range"
+          <Range
             min={0}
             max={100}
             step={1}
@@ -1169,8 +1169,7 @@ export function SkyDome({ playing = false }: Props) {
         </div>
         <label className="zoom-slider" title={DEPTH_TITLES[annotationDepth]}>
           <LayersIcon filled={false} />
-          <input
-            type="range"
+          <Range
             min={0}
             max={3}
             step={1}

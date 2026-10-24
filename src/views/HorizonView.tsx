@@ -9,7 +9,7 @@ import { useStore } from '../state/store'
 const W = 1100
 const H = 380
 const PAD = { l: 44, r: 16, t: 16, b: 34 }
-const ALT_MAX = 60
+const ALT_MAX = 90
 const ALT_MIN = -5
 
 const PRESETS: { label: string; points: HorizonPoint[] }[] = [
@@ -111,7 +111,7 @@ export default function HorizonView() {
           }}
           onPointerUp={() => (dragIndex.current = null)}
         >
-          {[0, 15, 30, 45, 60].map((a) => (
+          {[0, 15, 30, 45, 60, 75, 90].map((a) => (
             <g key={a}>
               <line x1={PAD.l} x2={W - PAD.r} y1={y(a)} y2={y(a)} stroke="rgba(200,210,230,0.12)" />
               <text x={PAD.l - 8} y={y(a) + 4} fill="rgba(200,210,230,0.7)" fontSize="11" textAnchor="end" fontFamily="var(--mono)">{a}°</text>

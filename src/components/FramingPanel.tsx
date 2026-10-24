@@ -7,6 +7,7 @@ import { frameCorners, gnomonic, gnomonicInverse, pixelToTangent, tangentToPixel
 import { getSkyImage } from '../lib/thumbs'
 import { useSelected } from '../state/data'
 import { useStore } from '../state/store'
+import { Range } from './Range'
 
 const SIZE = 800
 
@@ -137,12 +138,12 @@ export function FramingPanel() {
       </div>
       <div style={{ borderLeft: '1px solid var(--border)', padding: 14, display: 'flex', flexDirection: 'column', gap: 12, overflow: 'auto' }}>
         <div className="label">Kadr</div>
-        <div className="stat"><div className="label">Pole widzenia</div><div className="v" style={{ fontSize: 15 }}>{fmtNum(optics.fovWdeg, 2)}° × {fmtNum(optics.fovHdeg, 2)}°</div></div>
-        <div className="stat"><div className="label">Obiekt w kadrze</div><div className="v" style={{ fontSize: 15 }}>{coverage}</div></div>
+        <div className="stat"><div className="label">Pole widzenia</div><div className="v">{fmtNum(optics.fovWdeg, 2)}° × {fmtNum(optics.fovHdeg, 2)}°</div></div>
+        <div className="stat"><div className="label">Obiekt w kadrze</div><div className="v">{coverage}</div></div>
         <div className="field">
           <span className="label">Kąt pozycyjny (PA)</span>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <input type="range" min={0} max={359} value={framing.paDeg} onChange={(e) => setFraming({ paDeg: Number(e.target.value) })} style={{ flex: 1 }} />
+            <Range min={0} max={359} value={framing.paDeg} onChange={(e) => setFraming({ paDeg: Number(e.target.value) })} style={{ flex: 1 }} />
             <input className="control figures" style={{ width: 64 }} type="number" min={0} max={359} value={framing.paDeg} onChange={(e) => setFraming({ paDeg: ((Number(e.target.value) % 360) + 360) % 360 })} />
           </div>
         </div>
@@ -164,7 +165,7 @@ export function FramingPanel() {
         </div>
         <div className="field">
           <span className="label">Powiększenie zdjęcia</span>
-          <input type="range" min={0.5} max={4} step={0.1} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} />
+          <Range min={0.5} max={4} step={0.1} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} />
         </div>
         <button
           className="button primary"

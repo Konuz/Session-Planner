@@ -1,4 +1,4 @@
-import { Box, Crosshair, Pause, Play, RotateCcw, Tent } from 'lucide-react'
+import { Pause, Play, RotateCcw } from 'lucide-react'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { AltitudeChart } from '../components/AltitudeChart'
 import { FramingPanel } from '../components/FramingPanel'
@@ -14,17 +14,17 @@ const Space3D = lazy(() => import('../components/Space3D'))
 function Switch({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {
   return (
     <button className={`switch${on ? ' on' : ''}`} onClick={onClick} role="switch" aria-checked={on} style={{ background: 'none', border: 0, padding: 0 }}>
-      <span>{label}</span>
       <span className="track" />
+      <span>{label}</span>
     </button>
   )
 }
 
 
-const MODES: { id: CenterMode; label: string; icon: typeof Tent }[] = [
-  { id: 'dome', label: 'Kopuła', icon: Tent },
-  { id: 'framing', label: 'Kadr teleskopu', icon: Crosshair },
-  { id: '3d', label: 'Pozycja 3D', icon: Box },
+const MODES: { id: CenterMode; label: string }[] = [
+  { id: 'dome', label: 'Kopuła' },
+  { id: 'framing', label: 'Kadr teleskopu' },
+  { id: '3d', label: 'Pozycja 3D' },
 ]
 
 /** Odtwarzanie przebiegu nocy na kopule (1 s ≈ 12 min). */
@@ -94,9 +94,9 @@ export function SkyView() {
             </Suspense>
           )}
           <div className="sky-toolbar">
-            {MODES.map(({ id, label, icon: Icon }) => (
+            {MODES.map(({ id, label }) => (
               <button key={id} className={`button small${mode === id ? ' active' : ''}`} onClick={() => setMode(id)}>
-                <Icon size={14} /> {label}
+                {label}
               </button>
             ))}
             {mode === 'dome' && (
@@ -108,7 +108,7 @@ export function SkyView() {
                   <RotateCcw size={14} />
                 </button>
                 <span className="mono" style={{ fontSize: 12, minWidth: 44 }}>{fmtTime(time, tz)}</span>
-                <span className="toolbar-group" style={{ marginLeft: 'auto' }}>
+                <span className="toolbar-group">
                   <Switch on={showLines} onClick={() => toggle('showLines')} label="Linie" />
                   <Switch on={showArt} onClick={() => toggle('showArt')} label="Postacie" />
                   <Switch on={showOutlines} onClick={() => toggle('showOutlines')} label="Mgławice" />

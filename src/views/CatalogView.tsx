@@ -2,6 +2,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { CalendarCheck, RotateCcw, Search, SlidersHorizontal } from 'lucide-react'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { ObjectDetails } from '../components/ObjectDetails'
+import { Range } from '../components/Range'
 import { ScrambleText } from '../components/ScrambleText'
 import { Thumb } from '../components/Thumb'
 import { CATALOGS, displayName, matchesFilter, searchScore, TYPE_INFO, EMPTY_FILTER, type DSO, type ObjectType } from '../lib/catalog'
@@ -142,15 +143,15 @@ export default function CatalogView() {
         </div>
         <div className="filter-group">
           <span className="label">Jasność do {filter.maxMag === null ? 'dowolnej' : `${filter.maxMag} mag`}</span>
-          <input type="range" min={4} max={16} step={0.5} value={filter.maxMag ?? 16} onChange={(e) => setFilter({ maxMag: Number(e.target.value) >= 16 ? null : Number(e.target.value) })} style={{ width: '100%' }} />
+          <Range min={4} max={16} step={0.5} value={filter.maxMag ?? 16} onChange={(e) => setFilter({ maxMag: Number(e.target.value) >= 16 ? null : Number(e.target.value) })} style={{ width: '100%' }} />
         </div>
         <div className="filter-group">
           <span className="label">Rozmiar od {filter.minSizeArcmin}′</span>
-          <input type="range" min={0} max={120} step={1} value={filter.minSizeArcmin} onChange={(e) => setFilter({ minSizeArcmin: Number(e.target.value) })} style={{ width: '100%' }} />
+          <Range min={0} max={120} step={1} value={filter.minSizeArcmin} onChange={(e) => setFilter({ minSizeArcmin: Number(e.target.value) })} style={{ width: '100%' }} />
         </div>
         <div className="filter-group">
           <span className="label">Limit wysokości {minAlt}°</span>
-          <input type="range" min={0} max={60} step={5} value={minAlt} onChange={(e) => setMinAlt(Number(e.target.value))} style={{ width: '100%' }} />
+          <Range min={0} max={60} step={5} value={minAlt} onChange={(e) => setMinAlt(Number(e.target.value))} style={{ width: '100%' }} />
         </div>
         <label className={`switch${onlyVisible ? ' on' : ''}`} onClick={() => toggle('onlyVisible')}>
           <span className="track" /> <span>Widoczne tej nocy ≥ 1 h</span>
