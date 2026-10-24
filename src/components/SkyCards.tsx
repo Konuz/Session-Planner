@@ -1,7 +1,7 @@
 import { ChevronRight, CircleDot, CloudMoon, Droplets, Eye, Gauge, Maximize2, Moon, Ruler, Settings, Sparkles, Sun, Telescope, Thermometer, Wind, Camera, Aperture, Plus, Check } from 'lucide-react'
 import { useMemo } from 'react'
 import { angularDistanceDeg, bodyAltAz, computeOptics, moonInfo, moonJ2000, riseSetMs, sampling } from '../lib/astro'
-import { displayName, TYPE_INFO } from '../lib/catalog'
+import { TYPE_INFO } from '../lib/catalog'
 import { fmtDate, fmtDeg, fmtDistance, fmtNum, fmtSize, fmtTime } from '../lib/format'
 import { skyRating, weatherAt } from '../lib/services'
 import { useNight, useSelected, useSite, useTime, useWeather } from '../state/data'
@@ -28,12 +28,6 @@ export function ObjectCard({ onDetails }: { onDetails: () => void }) {
           <div className="object-head">
             <div className="object-name">
               <span className="id"><ScrambleText text={o.id} /></span>
-              {displayName(o) && (
-                <>
-                  <span className="sep">·</span>
-                  <span><ScrambleText text={displayName(o)} /></span>
-                </>
-              )}
             </div>
             <button className={`button small${inPlan ? ' active' : ''}`} onClick={() => addToPlan(o.i, o.id)} disabled={inPlan}>
               {inPlan ? <Check size={13} /> : <Plus size={13} />} {inPlan ? 'W planie' : 'Do planu'}

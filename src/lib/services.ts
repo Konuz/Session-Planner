@@ -140,3 +140,25 @@ export async function fetchWikiSummary(titlePl: string, titleEn: string, fallbac
   writeCache(key, result)
   return result
 }
+
+/**
+ * Adres wyszukiwania AstroBin dla obiektu z filtrem nagród IOTD i Top Pick. Nowa wyszukiwarka (app.astrobin.com)
+ * trzyma filtry w parametrze `p`: ciąg `klucz=JSON` zakodowany jak w adresie, zapisany jako napis msgpack,
+ * skompresowany zlib (deflate) i w base64 — tak robi ich `compressQueryString`.
+ */
+export async function astrobinSearchUrl(subject: string): Promise<string> {
+  const query = [
+    ['text', { value: '', matchType: 'ALL', onlySearchInTitlesAndDescriptions: false }],
+    ['subjects', { value: [subject], matchType: null }],
+    ['award', ['iotd', 'top-pick']],
+  ]
+    .map(([k, v]) => `${encodeURIComponent(k as string)}=${encodeURIComponent(JSON.stringify(v))}`)
+    .join('&')
+  const text = new TextEncoder().encode(query)
+  const head = text.length < 32 ? [0xa0 | text.length] : text.length < 256 ? [0xd9, text.length] : [0xda, text.length >> 8, text.length & 255]
+  const packed = new Uint8Array([...head, ...text])
+  const zipped = new Uint8Array(await new Response(new Blob([packed]).stream().pipeThrough(new CompressionStream('deflate'))).arrayBuffer())
+  let bin = ''
+  for (const b of zipped) bin += String.fromCharCode(b)
+  return `https://app.astrobin.com/search?p=${encodeURIComponent(btoa(bin))}`
+}

@@ -1,11 +1,11 @@
-import { Box, Crosshair, ExternalLink, Plus, Target, X } from 'lucide-react'
+import { ExternalLink, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { angularDistanceDeg, galactic, moonInfo, moonJ2000 } from '../lib/astro'
 import { displayName, TYPE_INFO } from '../lib/catalog'
 import { CONSTELLATION_PL } from '../lib/constellations'
 import { fmtDec, fmtDeg, fmtDistance, fmtDuration, fmtNum, fmtRa, fmtSize, fmtTime } from '../lib/format'
 import { altitudeTrack, nightGrid, visibility } from '../lib/night'
-import { fetchWikiSummary, type WikiSummary } from '../lib/services'
+import { astrobinSearchUrl, fetchWikiSummary, type WikiSummary } from '../lib/services'
 import { useNight, useSelected, useSite } from '../state/data'
 import { useStore } from '../state/store'
 import { Thumb } from './Thumb'
@@ -22,6 +22,7 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
   const addToPlan = useStore((s) => s.addToPlan)
   const setTab = useStore((s) => s.setTab)
   const [wiki, setWiki] = useState<{ key: number; data: WikiSummary | null } | null>(null)
+  const [astrobin, setAstrobin] = useState<{ key: number; url: string } | null>(null)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -35,6 +36,18 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
     fetchWikiSummary(o.wikiPl, o.wikiEn, o.namesEn[0] ?? '')
       .then((data) => alive && setWiki({ key: o.i, data }))
       .catch(() => alive && setWiki({ key: o.i, data: null }))
+    return () => {
+      alive = false
+    }
+  }, [o])
+
+  // Adres AstroBin liczony asynchronicznie (kompresja), żeby przycisk był zwykłym linkiem.
+  useEffect(() => {
+    if (!o) return
+    let alive = true
+    astrobinSearchUrl(o.id)
+      .then((url) => alive && setAstrobin({ key: o.i, url }))
+      .catch((e) => console.error('AstroBin: adres wyszukiwania', e))
     return () => {
       alive = false
     }
@@ -93,10 +106,15 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
           {o.aliases.length > 0 && <div className="dim mono" style={{ fontSize: 12 }}>{o.aliases.join(' · ')}</div>}
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '16px 0' }}>
-            <button className="button primary" onClick={() => go('dome')}><Target size={14} /> Pokaż na niebie</button>
-            <button className="button" onClick={() => go('framing')}><Crosshair size={14} /> Kadruj</button>
-            <button className="button" onClick={() => go('3d')}><Box size={14} /> Pozycja 3D</button>
-            <button className="button" onClick={() => addToPlan(o.i, o.id)}><Plus size={14} /> Do planu</button>
+            <button className="button primary" onClick={() => go('dome')}>Pokaż na niebie</button>
+            <button className="button" onClick={() => go('framing')}>Kadruj</button>
+            <button className="button" onClick={() => go('3d')}>Pozycja 3D</button>
+            <button className="button" onClick={() => addToPlan(o.i, o.id)}>Do planu</button>
+            {astrobin?.key === o.i && (
+              <a className="button" href={astrobin.url} target="_blank" rel="noreferrer" title="Zdjęcia z AstroBin wyróżnione jako IOTD lub Top Pick">
+                AstroBin
+              </a>
+            )}
           </div>
 
           <div className="label" style={{ marginTop: 18 }}>Opis</div>
@@ -136,7 +154,7 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
             <a href={aladin} target="_blank" rel="noreferrer">Aladin Lite <ExternalLink size={11} /></a>
           </div>
           <p className="faint" style={{ fontSize: 11, marginTop: 18 }}>
-            Dane: OpenNGC (CC BY-SA 4.0), kontury mgławic: OpenNGC outlines (CC BY-SA 4.0, obrysy na DSS2 w Aladin, CDS), katalogi VizieR/CDS, odległości i artykuły: Wikidata (CC0), opisy: Wikipedia (CC BY-SA), zdjęcia: DSS2 przez CDS hips2fits.
+            Dane: OpenNGC (CC BY-SA 4.0), kontury mgławic: OpenNGC outlines (CC BY-SA 4.0, obrysy na DSS2 w Aladin, CDS), mgławic ciemnych: mapy Planck 857 GHz (ESA, NASA SkyView) dopasowane SAM 3 (Meta) do zdjęć z AstroBin, katalogi VizieR/CDS, odległości i artykuły: Wikidata (CC0), opisy: Wikipedia (CC BY-SA), zdjęcia: DSS2 przez CDS hips2fits.
           </p>
         </div>
       </aside>

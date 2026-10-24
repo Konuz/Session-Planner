@@ -1,15 +1,16 @@
 import { Horizon, MakeTime, Observer, RotateVector, Rotation_EQJ_EQD, SphereFromVector, Vector } from 'astronomy-engine'
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { altAz, computeOptics, DEG, galactic, hourAngleDeg, horizontalMatrix, moonInfo, nextTransitMs, vecToEquatorial, type Site } from './astro'
+import { altAz, computeOptics, DEG, galactic, unitVector, hourAngleDeg, horizontalMatrix, moonInfo, nextTransitMs, vecToEquatorial, type Site } from './astro'
 import { annotationDepthOf, matchesFilter, normalizeQuery, parseCatalog, searchScore, EMPTY_FILTER } from './catalog'
 import { frameCorners, gnomonic, gnomonicInverse, pixelToTangent, tangentToPixel } from './framing'
 import { exportHorizon, horizonAltitude, parseHorizon } from './horizon'
 import { darkWindow, nightDateOf, nightPhases, phaseAt, zonedMidnightMs } from './night'
 import { formatDec, formatPa, formatRa, ninaCsv } from './nina'
-import { pointInPolygon, polygonArea, prepareRing } from './outlines'
+import { pointInPolygon, polygonArea, prepareRing, ringContains } from './outlines'
 import { affineFrom3, FULL_DOME, makeProjector } from './projection'
 import { autoSchedule, localTimeToMs, overlaps } from './planner'
+import { astrobinSearchUrl } from './services'
 import { thumbFovDeg } from './thumbs'
 
 const SITE: Site = { latDeg: 51.09, lonDeg: 17.29, elevationM: 130 }
@@ -245,6 +246,17 @@ describe('kontury mgławic', () => {
     expect(ring.radiusDeg).toBeCloseTo(Math.hypot(Math.cos(11 * DEG), 1), 1)
   })
 
+  it('obiekt wewnątrz konturu na sferze (też przy RA 0° i przy biegunie)', () => {
+    const ring = prepareRing([359, 10, 1, 10, 1, 12, 359, 12])
+    expect(ringContains(ring, unitVector(0, 11))).toBe(true)
+    expect(ringContains(ring, unitVector(0.5, 11.5))).toBe(true)
+    expect(ringContains(ring, unitVector(2, 11))).toBe(false)
+    expect(ringContains(ring, unitVector(180, 11))).toBe(false)
+    const polar = prepareRing([0, 88, 90, 88, 180, 88, 270, 88])
+    expect(ringContains(polar, unitVector(45, 89.5))).toBe(true)
+    expect(ringContains(polar, unitVector(45, 86))).toBe(false)
+  })
+
   it('trafienie w kontur na ekranie', () => {
     const square: [number, number][] = [[0, 0], [10, 0], [10, 10], [0, 10]]
     expect(pointInPolygon(square, 5, 5)).toBe(true)
@@ -266,5 +278,33 @@ describe('kontury mgławic', () => {
     expect(levels('Cygnus')).toEqual([])
     expect(levels('Puppis')).toEqual([1, 1, 1])
     for (const o of data.objects) for (const ring of o.rings) expect(ring.length).toBeGreaterThanOrEqual(6)
+  })
+
+  it('outlines.json: mgławice ciemne z nazwami i wspólnymi oznaczeniami, bez wykluczonych', () => {
+    const data = JSON.parse(readFileSync(new URL('../../public/data/outlines.json', import.meta.url), 'utf8')) as {
+      objects: { id: string; dark?: number; name?: string; also?: string[] }[]
+    }
+    const dark = new Map(data.objects.filter((o) => o.dark === 1).map((o) => [o.id, o]))
+    expect(dark.size).toBe(24)
+    expect(dark.get('LDN 1235')?.name).toBe('Shark')
+    expect(dark.get('LDN 1251')?.name).toBe('Rotten Fish')
+    expect(dark.get('LDN 1082')?.also).toEqual(['B 150'])
+    expect(dark.get('LDN 1355')?.also).toEqual(['LDN 1357'])
+    for (const id of ['LDN 935', 'LDN 886', 'B 347', 'B 150']) expect(dark.has(id)).toBe(false)
+  })
+})
+
+describe('AstroBin', () => {
+  it('adres wyszukiwania: msgpack + zlib + base64 z obiektem i filtrem IOTD/Top Pick', async () => {
+    const url = new URL(await astrobinSearchUrl('M 81'))
+    expect(url.origin + url.pathname).toBe('https://app.astrobin.com/search')
+    const zipped = Uint8Array.from(atob(url.searchParams.get('p')!), (c) => c.charCodeAt(0))
+    const raw = new Uint8Array(await new Response(new Blob([zipped]).stream().pipeThrough(new DecompressionStream('deflate'))).arrayBuffer())
+    // Napis msgpack str8: znacznik 0xd9 i długość.
+    expect(raw[0]).toBe(0xd9)
+    expect(raw[1]).toBe(raw.length - 2)
+    const params = new URLSearchParams(new TextDecoder().decode(raw.slice(2)))
+    expect(JSON.parse(params.get('subjects')!)).toEqual({ value: ['M 81'], matchType: null })
+    expect(JSON.parse(params.get('award')!)).toEqual(['iotd', 'top-pick'])
   })
 })

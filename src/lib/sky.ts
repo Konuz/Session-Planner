@@ -52,3 +52,32 @@ export function loadSky(): Promise<SkyData> {
     })
   return pending
 }
+
+/** Jasność Drogi Mlecznej: siatka RA 0…360° × Dec +90…−90° (wiersze od północy), wartości 0–255. */
+export interface MilkyWay {
+  w: number
+  h: number
+  data: Uint8Array
+}
+
+let pendingMw: Promise<MilkyWay> | null = null
+
+export function loadMilkyWay(): Promise<MilkyWay> {
+  pendingMw ??= new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => {
+      const c = document.createElement('canvas')
+      c.width = img.width
+      c.height = img.height
+      const ctx = c.getContext('2d')!
+      ctx.drawImage(img, 0, 0)
+      const rgba = ctx.getImageData(0, 0, c.width, c.height).data
+      const data = new Uint8Array(c.width * c.height)
+      for (let i = 0; i < data.length; i++) data[i] = rgba[i * 4]
+      resolve({ w: c.width, h: c.height, data })
+    }
+    img.onerror = () => reject(new Error('Nie udało się wczytać mapy Drogi Mlecznej'))
+    img.src = '/data/milkyway.png'
+  })
+  return pendingMw
+}

@@ -20,9 +20,9 @@ import {
 import { annotationDepthOf, displayName, TYPE_INFO, type DSO, type ObjectType } from '../lib/catalog'
 import { horizonAltitude, type HorizonPoint } from '../lib/horizon'
 import { altitudeTrack, nightGrid } from '../lib/night'
-import { loadOutlines, pointInPolygon, polygonArea, type Outline } from '../lib/outlines'
+import { loadOutlines, pointInPolygon, polygonArea, ringContains, type Outline } from '../lib/outlines'
 import { affineFrom3, FULL_DOME, makeProjector, type Projector, type View } from '../lib/projection'
-import { loadSky, type SkyData } from '../lib/sky'
+import { loadMilkyWay, loadSky, type MilkyWay, type SkyData } from '../lib/sky'
 import { useCatalog, useNight, useSelected, useSite, useTime } from '../state/data'
 import { useStore } from '../state/store'
 import { Range } from './Range'
@@ -33,6 +33,7 @@ const DEPTH_TITLES = [
   'Głębia 1: + obiekty NGC, IC i Caldwella',
   'Głębia 2: + Sharpless, Barnard, van den Bergh',
   'Głębia 3: + LBN, LDN i pozostałości po supernowych',
+  'Głębia 4: + kółka obiektów katalogu wewnątrz konturów',
 ]
 
 /** Stos warstw (cztery romby): kontur = mniej adnotacji, wypełnienie = więcej. */
@@ -288,6 +289,82 @@ function drawGround(ctx: CanvasRenderingContext2D, proj: Projector, horizon: rea
   ctx.drawImage(groundCanvas, 0, 0, mw * GROUND_STEP, mh * GROUND_STEP)
 }
 
+// ---------- Droga Mleczna ----------
+
+const mwCanvas = typeof document !== 'undefined' ? document.createElement('canvas') : null
+const MW_STEP = 4 // piksele CSS na próbkę
+
+/** Smuga Drogi Mlecznej: dla każdej próbki ekranu kierunek J2000 → jasność z siatki RA/Dec (dwuliniowo), potem
+ *  powiększenie z wygładzaniem i rysowanie w trybie „screen”. Ziemia rysowana później zakrywa część pod horyzontem. */
+function drawMilkyWay(ctx: CanvasRenderingContext2D, proj: Projector, mw: MilkyWay, horizon: readonly HorizonPoint[], w: number, h: number, alpha: number) {
+  if (!mwCanvas || alpha <= 0) return
+  const table = new Float32Array(721)
+  for (let i = 0; i <= 720; i++) table[i] = horizonAltitude(horizon, i / 2)
+  const cw = Math.ceil(w / MW_STEP)
+  const ch = Math.ceil(h / MW_STEP)
+  if (mwCanvas.width !== cw || mwCanvas.height !== ch) {
+    mwCanvas.width = cw
+    mwCanvas.height = ch
+  }
+  const g = mwCanvas.getContext('2d')!
+  const img = g.createImageData(cw, ch)
+  const m = proj.eqToView
+  const hm = proj.horToView
+  const k = 1 / (2 * proj.scale)
+  const { w: gw, h: gh, data } = mw
+  for (let j = 0; j < ch; j++) {
+    const Y = -((j + 0.5) * MW_STEP - proj.cy) * k
+    for (let i = 0; i < cw; i++) {
+      const X = ((i + 0.5) * MW_STEP - proj.cx) * k
+      const rr = X * X + Y * Y
+      const inv = 1 / (1 + rr)
+      const vx = 2 * X * inv
+      const vy = 2 * Y * inv
+      const vz = (1 - rr) * inv
+      // Tylko nad horyzontem (własnym, z wygaszaniem w 1°): ziemia przykrywa smugę niecałkowicie, a poza kręgiem
+      // kopuły nie ma jej wcale.
+      const hx = hm[0] * vx + hm[3] * vy + hm[6] * vz
+      const hy = hm[1] * vx + hm[4] * vy + hm[7] * vz
+      const alt = Math.asin(Math.max(-1, Math.min(1, hm[2] * vx + hm[5] * vy + hm[8] * vz))) / DEG
+      let az = Math.atan2(hy, hx) / DEG
+      if (az < 0) az += 360
+      const fade = Math.min(1, alt - table[Math.round(az * 2)])
+      if (fade <= 0) continue
+      // Widok → J2000 (transpozycja macierzy).
+      const ex = m[0] * vx + m[3] * vy + m[6] * vz
+      const ey = m[1] * vx + m[4] * vy + m[7] * vz
+      const ez = m[2] * vx + m[5] * vy + m[8] * vz
+      let ra = Math.atan2(ey, ex) / DEG
+      if (ra < 0) ra += 360
+      const dec = Math.asin(Math.max(-1, Math.min(1, ez))) / DEG
+      const fx = (ra / 360) * gw - 0.5
+      const fy = ((90 - dec) / 180) * gh - 0.5
+      const x0 = Math.floor(fx)
+      const y0 = Math.max(0, Math.min(gh - 2, Math.floor(fy)))
+      const tx = fx - x0
+      const ty = Math.max(0, Math.min(1, fy - y0))
+      const xa = (x0 + gw) % gw
+      const xb = (x0 + 1) % gw
+      const v =
+        (data[y0 * gw + xa] * (1 - tx) + data[y0 * gw + xb] * tx) * (1 - ty) +
+        (data[(y0 + 1) * gw + xa] * (1 - tx) + data[(y0 + 1) * gw + xb] * tx) * ty
+      if (v < 1) continue
+      const o = (j * cw + i) * 4
+      img.data[o] = 190
+      img.data[o + 1] = 205
+      img.data[o + 2] = 255
+      img.data[o + 3] = v * alpha * fade
+    }
+  }
+  g.putImageData(img, 0, 0)
+  ctx.save()
+  ctx.globalCompositeOperation = 'screen'
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+  ctx.drawImage(mwCanvas, 0, 0, cw * MW_STEP, ch * MW_STEP)
+  ctx.restore()
+}
+
 // ---------- Komponent ----------
 
 interface Props {
@@ -300,11 +377,14 @@ export function SkyDome({ playing = false }: Props) {
   const glRef = useRef<HTMLCanvasElement>(null)
   const overlayRef = useRef<HTMLCanvasElement>(null)
   const [sky, setSky] = useState<SkyData | null>(null)
+  const [milkyWay, setMilkyWay] = useState<MilkyWay | null>(null)
   const [outlines, setOutlines] = useState<Outline[] | null>(null)
   const [size, setSize] = useState({ w: 800, h: 600 })
   const [view, setView] = useState<View>(FULL_DOME)
   const [hoverOutline, setHoverOutline] = useState<number | null>(null)
   const [hoverDepth, setHoverDepth] = useState<DSO | null>(null)
+  // Obiekt pod kursorem (to samo, co wybrałoby kliknięcie): podświetlenie zwłaszcza małych obiektów bez konturu.
+  const [hoverObj, setHoverObj] = useState<DSO | null>(null)
   const depthHits = useRef<{ dso: DSO; c: [number, number]; r: number }[]>([])
   const outlineHits = useRef<{ k: number; pts: [number, number][]; area: number }[]>([])
   const [hoverCon, setHoverCon] = useState<{ abbr: string; x: number; y: number; since: number } | null>(null)
@@ -335,6 +415,7 @@ export function SkyDome({ playing = false }: Props) {
 
   useEffect(() => {
     loadSky().then(setSky).catch(() => setSky(null))
+    loadMilkyWay().then(setMilkyWay).catch((e) => console.error('Kopuła: Droga Mleczna', e))
   }, [])
 
   useEffect(() => {
@@ -372,14 +453,33 @@ export function SkyDome({ playing = false }: Props) {
   const grid = useMemo(() => nightGrid(night, site, 10), [night, site])
   const track = useMemo(() => (selected ? altitudeTrack(selected, grid) : []), [selected, grid])
   const messier = useMemo(() => (catalog ? catalog.filter((o) => o.catalogs.includes('M')) : []), [catalog])
-  // Obiekt katalogu dla każdego konturu (po oznaczeniu głównym, potem po aliasach); regiony nie mają obiektu.
-  const outlineObjects = useMemo(() => {
-    if (!outlines || !catalog) return null
+  // Obiekty katalogu po oznaczeniu głównym, potem po aliasach.
+  const catalogById = useMemo(() => {
+    if (!catalog) return null
     const byId = new Map<string, DSO>()
     for (const o of catalog) byId.set(o.id, o)
     for (const o of catalog) for (const a of o.aliases) if (!byId.has(a)) byId.set(a, o)
-    return outlines.map((o) => (o.region ? null : byId.get(o.id) ?? null))
-  }, [outlines, catalog])
+    return byId
+  }, [catalog])
+  // Obiekt katalogu dla każdego konturu; regiony nie mają obiektu.
+  // Obiekty katalogu (bez galaktyk) ze środkiem wewnątrz konturu oraz obiekt konturu i jego wspólne oznaczenia.
+  const outlineMembers = useMemo(() => {
+    if (!outlines || !catalog || !catalogById) return null
+    const pts = catalog.filter((o) => o.type !== 'G' && o.type !== 'GG').map((o) => ({ o, v: unitVector(o.raDeg, o.decDeg) }))
+    return outlines.map((ol) => {
+      const found = new Map<number, DSO>()
+      for (const id of ol.region ? [] : [ol.id, ...ol.also]) {
+        const d = catalogById.get(id)
+        if (d) found.set(d.i, d)
+      }
+      for (const ring of ol.rings) for (const p of pts) if (ringContains(ring, p.v)) found.set(p.o.i, p.o)
+      return [...found.values()]
+    })
+  }, [outlines, catalog, catalogById])
+  const outlineObjects = useMemo(
+    () => (outlines && catalogById ? outlines.map((o) => (o.region ? null : catalogById.get(o.id) ?? null)) : null),
+    [outlines, catalogById],
+  )
   // Obiekty dla suwaka głębi: z wymiarem, bez Messiera (ma własne znaczniki), z wektorem liczonym raz.
   const depthObjects = useMemo(
     () => (catalog ?? []).filter((o) => o.majArcmin > 0 && !o.catalogs.includes('M')).map((o) => ({ o, v: unitVector(o.raDeg, o.decDeg), depth: annotationDepthOf(o) })),
@@ -483,6 +583,9 @@ export function SkyDome({ playing = false }: Props) {
       stage.style.background = `radial-gradient(circle at 50% 50%, ${sky1} 0%, #02050d ${fullDome ? 62 : 120}%, #000 100%)`
     }
 
+    // Smuga Drogi Mlecznej pod siatką i liniami; w dzień i zmierzchu słabsza razem z gwiazdami.
+    if (milkyWay) drawMilkyWay(ctx, proj, milkyWay, horizon, size.w, size.h, 0.3 * bright * bright)
+
     const toScreenHor = (alt: number, az: number) => proj.hor(horizontalToVec({ altDeg: alt, azDeg: az }))
 
     // Siatka wysokości (pierścienie co 20°) i kierunki świata.
@@ -552,9 +655,11 @@ export function SkyDome({ playing = false }: Props) {
       return hv.altDeg > horizonAltitude(horizon, hv.azDeg)
     }
     // Kandydaci na etykiety konturów i elips; rysowani razem na końcu, bez nakładania się.
-    const labelList: { dso: DSO; c: [number, number]; top: [number, number]; r: number; prio: number; minR: number; hov: boolean; color: string }[] = []
+    const labelList: { dso: DSO; c: [number, number]; top: [number, number]; r: number; prio: number; minR: number; hov: boolean; color: string; name?: string }[] = []
     // Obiekty z narysowanym konturem nie dostają już elipsy głębi.
     const outlined = new Set<string>()
+    // Obiekty z kółkiem wewnątrz konturu (głębia 4): warstwa głębi nie rysuje im już elipsy.
+    const memberDrawn = new Set<number>()
     ctx.save()
     ctx.lineWidth = 1
     if (outlines && showOutlines) {
@@ -562,18 +667,23 @@ export function SkyDome({ playing = false }: Props) {
       const hoverKey = hoverOutline === null ? null : outlineKey(hoverOutline)
       // Największy widoczny pierścień obiektu, z poziomu 2/3 przed poziomem 1.
       const best = new Map<string, { k: number; c: [number, number]; top: [number, number]; r: number; faint: boolean }>()
+      // Największy promień narysowanego pierścienia każdego konturu (dla kółek obiektów wewnątrz).
+      const drawnR = new Map<number, number>()
       outlines.forEach((o, k) => {
         const key = outlineKey(k)
-        const sel = selIds?.has(o.id) ?? false
+        const sel = selIds ? selIds.has(o.id) || o.also.some((a) => selIds.has(a)) : false
         const hov = key === hoverKey
         const faint = o.level === 1 && !sel && !hov
-        ctx.fillStyle = sel ? 'rgba(0, 224, 255, 0.08)' : hov ? 'rgba(244, 63, 94, 0.13)' : faint ? 'rgba(244, 63, 94, 0.05)' : 'rgba(244, 63, 94, 0.08)'
-        ctx.strokeStyle = sel ? 'rgba(0, 224, 255, 0.85)' : hov ? 'rgba(255, 140, 165, 0.85)' : faint ? 'rgba(244, 63, 94, 0.25)' : 'rgba(244, 63, 94, 0.45)'
+        // Mgławice ciemne w kolorze typu DN, pozostałe kontury w kolorze mgławic emisyjnych.
+        const tint = typeColors[o.dark ? 'DN' : 'EN']
+        ctx.fillStyle = sel ? 'rgba(0, 224, 255, 0.08)' : withAlpha(tint, hov ? 0.13 : faint ? 0.05 : 0.08)
+        ctx.strokeStyle = sel ? 'rgba(0, 224, 255, 0.85)' : withAlpha(tint, hov ? 0.9 : faint ? 0.25 : 0.45)
         for (const ring of o.rings) {
           const r = ring.radiusDeg * pxPerDeg
           if (r < 2) continue
           const c = proj.eq(ring.centre)
           if (c ? c[0] < -2 * r || c[1] < -2 * r || c[0] > size.w + 2 * r || c[1] > size.h + 2 * r : ring.radiusDeg < 60) continue
+          drawnR.set(k, Math.max(drawnR.get(k) ?? 0, r))
           const pts = ring.points.map((v) => proj.eq(v))
           ctx.beginPath()
           polyline(ctx, pts, size)
@@ -593,12 +703,51 @@ export function SkyDome({ playing = false }: Props) {
           ctx.stroke()
         }
       })
+      // Głębia 4: kółka obiektów katalogu wewnątrz konturów (pozycja i wymiar z katalogu) — kontur często obejmuje kilka
+      // obiektów, kółko pokazuje, gdzie leży każdy z nich. Tylko przy konturach większych niż ~40 px; podpisy (poza
+      // obiektem samego konturu, od 5 px promienia) we wspólnym przebiegu etykiet.
+      if (outlineMembers && annotationDepth >= 4) {
+        ctx.save()
+        ctx.setLineDash([3, 3])
+        ctx.lineWidth = 1
+        outlines.forEach((o, k) => {
+          if ((drawnR.get(k) ?? 0) < 40) return
+          const tint = typeColors[o.dark ? 'DN' : 'EN']
+          for (const d of outlineMembers[k]) {
+            if (memberDrawn.has(d.i)) continue
+            const v = unitVector(d.raDeg, d.decDeg)
+            const c = proj.eq(v)
+            const r = Math.max(3, (d.majArcmin / 120) * pxPerDeg)
+            if (!c || c[0] < -r || c[1] < -r || c[0] > size.w + r || c[1] > size.h + r || !aboveHorizon(v)) continue
+            memberDrawn.add(d.i)
+            const sel = selected?.i === d.i
+            ctx.strokeStyle = sel ? 'rgba(0, 224, 255, 0.85)' : withAlpha(tint, 0.7)
+            ctx.beginPath()
+            ctx.arc(c[0], c[1], r, 0, Math.PI * 2)
+            ctx.stroke()
+            ctx.beginPath()
+            ctx.moveTo(c[0] - 4, c[1])
+            ctx.lineTo(c[0] + 4, c[1])
+            ctx.moveTo(c[0], c[1] - 4)
+            ctx.lineTo(c[0], c[1] + 4)
+            ctx.stroke()
+            if (!sel && d.i !== outlineObjects?.[k]?.i) {
+              labelList.push({ dso: d, c, top: [c[0], c[1] - r], r, prio: 3, minR: 5, hov: false, color: withAlpha(tint, 0.75) })
+            }
+          }
+        })
+        ctx.restore()
+      }
       for (const [key, l] of best) {
         const dso = outlineObjects![l.k]!
         // Obiekty Messiera przy polu < 90° mają już własną etykietę przy znaczniku.
         if (view.fovDeg < 90 && dso.catalogs.includes('M')) continue
         const hov = key === hoverKey
-        labelList.push({ dso, c: l.c, top: l.top, r: l.r, prio: 1, minR: fullDome ? 8 : 5, hov, color: hov ? 'rgba(255, 210, 220, 0.95)' : 'rgba(255, 178, 192, 0.62)' })
+        const ol = outlines[l.k]
+        labelList.push({
+          dso, c: l.c, top: l.top, r: l.r, prio: 1, minR: fullDome ? 8 : 5, hov, name: ol.name ?? undefined,
+          color: ol.dark ? withAlpha(typeColors.DN, hov ? 0.95 : 0.7) : hov ? 'rgba(255, 210, 220, 0.95)' : 'rgba(255, 178, 192, 0.62)',
+        })
       }
     }
 
@@ -606,7 +755,7 @@ export function SkyDome({ playing = false }: Props) {
     // Elipsy mniejsze niż 1,5 px pomijane, więc przy oddaleniu zostają tylko duże obiekty.
     if (annotationDepth > 0) {
       for (const d of depthObjects) {
-        if (d.depth > annotationDepth || outlined.has(d.o.id)) continue
+        if (d.depth > annotationDepth || outlined.has(d.o.id) || memberDrawn.has(d.o.i)) continue
         const a0 = (d.o.majArcmin / 120) * pxPerDeg
         if (a0 < 1.5) continue
         // Małe obiekty (jak B 33) powiększone do co najmniej 3 px, żeby dało się je zobaczyć i trafić.
@@ -662,7 +811,7 @@ export function SkyDome({ playing = false }: Props) {
     labelList.sort((p, q) => p.prio - q.prio || q.r - p.r)
     for (const l of labelList) {
       if (l.r < l.minR && !l.hov) continue
-      const name = l.r >= 40 ? displayName(l.dso) : ''
+      const name = l.r >= 40 ? displayName(l.dso) || l.name || '' : ''
       const text = name ? l.dso.id + ' · ' + name : l.dso.id
       const w = ctx.measureText(text).width
       // Mały kształt: etykieta z prawej (jak przy znacznikach Messiera); duży: nad najwyższym punktem. Gdy miejsce
@@ -930,6 +1079,26 @@ export function SkyDome({ playing = false }: Props) {
       ctx.fillText(o.id, p[0] + 7, p[1] + 4)
     }
 
+    // Obiekt pod kursorem: świecący pierścień (nazwę pokazuje dymek). Obiekty z podświetlonym konturem i duże elipsy już się
+    // wyróżniają, więc pierścień tylko dla małych (znaczniki Messiera i planu, elipsy do 12 px).
+    if (hoverObj && hoverObj.i !== selected?.i) {
+      const p = proj.eq(unitVector(hoverObj.raDeg, hoverObj.decDeg))
+      const ellipse = depthHits.current.find((h) => h.dso.i === hoverObj.i)
+      const viaOutline = hoverOutline !== null && outlineObjects?.[hoverOutline]?.i === hoverObj.i
+      if (p && !viaOutline && (ellipse?.r ?? 0) <= 12) {
+        const r = Math.max(7, (ellipse?.r ?? 3.5) + 4)
+        ctx.save()
+        ctx.strokeStyle = 'rgba(230, 251, 255, 0.95)'
+        ctx.shadowColor = '#00e0ff'
+        ctx.shadowBlur = 10
+        ctx.lineWidth = 1.5
+        ctx.beginPath()
+        ctx.arc(p[0], p[1], r, 0, Math.PI * 2)
+        ctx.stroke()
+        ctx.restore()
+      }
+    }
+
     // Wybrany obiekt: celownik i animacja namierzania.
     if (selected) {
       const p = proj.eq(unitVector(selected.raDeg, selected.decDeg))
@@ -1041,6 +1210,7 @@ export function SkyDome({ playing = false }: Props) {
       if (hoverCon) setHoverCon(null)
       if (hoverOutline !== null) setHoverOutline(null)
       if (hoverDepth) setHoverDepth(null)
+      if (hoverObj) setHoverObj(null)
       return
     }
     const visible = h.altDeg >= horizonAltitude(horizon, h.azDeg)
@@ -1052,7 +1222,9 @@ export function SkyDome({ playing = false }: Props) {
     const abbr = constellationOf(eq)
     if (abbr !== hoverCon?.abbr) setHoverCon({ abbr, x, y, since: performance.now() })
     else if (hoverCon) setHoverCon({ ...hoverCon, x, y })
-    overlayRef.current!.style.cursor = pick(x, y) ? 'pointer' : view.fovDeg < 180 ? 'grab' : 'crosshair'
+    const hit = visible ? pick(x, y) : null
+    if (hit !== hoverObj) setHoverObj(hit)
+    overlayRef.current!.style.cursor = hit ? 'pointer' : view.fovDeg < 180 ? 'grab' : 'crosshair'
   }
 
   // Przybliżanie suwakiem albo rolką nad kopułą.
@@ -1081,10 +1253,12 @@ export function SkyDome({ playing = false }: Props) {
   }, [])
 
   const hovered = hoverCon && sky ? sky.byAbbr.get(hoverCon.abbr) : null
-  const hoveredOutline = hoverDepth
+  const hoveredOutline: { dso: DSO | null; region: string | null; outline?: Outline } | null = hoverObj
+    ? { dso: hoverObj, region: null }
+    : hoverDepth
     ? { dso: hoverDepth, region: null }
     : hoverOutline !== null && outlines?.[hoverOutline]
-      ? { dso: outlineObjects?.[hoverOutline] ?? null, region: outlines[hoverOutline].region }
+      ? { dso: outlineObjects?.[hoverOutline] ?? null, region: outlines[hoverOutline].region, outline: outlines[hoverOutline] }
       : null
 
   return (
@@ -1100,6 +1274,7 @@ export function SkyDome({ playing = false }: Props) {
           setHoverCon(null)
           setHoverOutline(null)
           setHoverDepth(null)
+          setHoverObj(null)
           drag.current = null
         }}
         onPointerDown={(e) => {
@@ -1127,7 +1302,8 @@ export function SkyDome({ playing = false }: Props) {
           {hoveredOutline.dso ? (
             <>
               <b>{hoveredOutline.dso.id}</b>
-              {displayName(hoveredOutline.dso) && <> {displayName(hoveredOutline.dso)}</>}
+              {hoveredOutline.outline?.also.length ? <span className="dim"> · {hoveredOutline.outline.also.join(', ')}</span> : null}
+              {(displayName(hoveredOutline.dso) || hoveredOutline.outline?.name) && <> {displayName(hoveredOutline.dso) || hoveredOutline.outline?.name}</>}
               <span className="dim"> · {TYPE_INFO[hoveredOutline.dso.type].short}</span>
             </>
           ) : (
@@ -1171,7 +1347,7 @@ export function SkyDome({ playing = false }: Props) {
           <LayersIcon filled={false} />
           <Range
             min={0}
-            max={3}
+            max={4}
             step={1}
             value={annotationDepth}
             onChange={(e) => setDepth(Number(e.target.value))}

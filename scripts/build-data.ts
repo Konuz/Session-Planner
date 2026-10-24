@@ -5,6 +5,7 @@
 //   (Stellarium modern, CC BY-SA 4.0; polskie nazwy z tłumaczenia Stellarium),
 // - art/<IAU>.webp: ilustracje gwiazdozbiorów (Stellarium, Free Art License) jako biały rysunek z kanałem alfa,
 // - outlines.json: kontury mgławic (OpenNGC outlines, CC BY-SA 4.0).
+// - milkyway.png: jasność Drogi Mlecznej w siatce RA/Dec co 0,5° (kontury d3-celestial, BSD), rozmyta.
 //
 // Uruchom: node scripts/build-data.ts   (Node ≥ 23 uruchamia TypeScript bez kompilacji)
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -457,6 +458,23 @@ async function buildOutlines() {
     }
   }
   console.log(`outlines: pierścienie regionów: ${assigned.join(' ')}`)
+
+  // Mgławice ciemne (LDN, B) z scripts/data/dark-outlines.json: kontury wybrane ręcznie (Planck 857 GHz jako
+  // podpowiedź dla SAM 3 na zdjęciach referencyjnych z AstroBin). Plik jest danymi źródłowymi w repozytorium,
+  // bo tego kroku nie da się powtórzyć bez GPU i sieci. Jeden kontur może mieć kilka oznaczeń (also).
+  const darkPath = join(ROOT, 'scripts', 'data', 'dark-outlines.json')
+  let darkCount = 0
+  if (existsSync(darkPath)) {
+    const dark = JSON.parse(readFileSync(darkPath, 'utf8')) as {
+      objects: { id: string; also: string[]; name: string | null; rings: [number, number][][] }[]
+    }
+    for (const d of dark.objects) {
+      const rings = d.rings.map((ring) => ring.flatMap(([ra, dec]) => [r(ra, 4), r(dec, 4)]))
+      points += rings.reduce((s, ring) => s + ring.length / 2, 0)
+      objects.push({ id: d.id, level: 2, dark: 1, ...(d.also.length ? { also: d.also } : {}), ...(d.name ? { name: d.name } : {}), rings })
+      darkCount++
+    }
+  }
   writeFileSync(
     join(OUT, 'outlines.json'),
     JSON.stringify({
@@ -467,12 +485,62 @@ async function buildOutlines() {
         credit: 'OpenNGC, Mattia Verga; obrysy na DSS2 w Aladin (CDS, Strasbourg)',
         changes: `Poziom 2 (bez niego 3, potem 1) oraz poziom 1 regionów i obrysów o promieniu ≥ ${LARGE_LV1_DEG}°; pierścienie regionów przypisane do największej mgławicy katalogu w środku; uproszczone do ${SIMPLIFY_DEG}°, zaokrąglone do 0,001°.`,
       },
+      darkSource: 'Mgławice ciemne (dark: 1): kontury z map Planck 857 GHz (ESA, przez NASA SkyView) dopasowane SAM 3 (Meta) do zdjęć z AstroBin; wybór ręczny. Zdjęcia nie są publikowane.',
       objects,
     }),
   )
-  console.log(`outlines: ${objects.length} obrysów, ${points} wierzchołków; poziom 1 dodatkowo: ${largeLv1.join(' ')}`)
+  console.log(`outlines: ${objects.length} obrysów (w tym ${darkCount} mgławic ciemnych), ${points} wierzchołków; poziom 1 dodatkowo: ${largeLv1.join(' ')}`)
 }
 
-await buildCatalog()
-await buildSky()
-await buildOutlines()
+// Droga Mleczna: pięć poziomów konturów jasności z d3-celestial (mw.json, współrzędne [RA −180…180, Dec]) zliczone
+// w siatce 720 × 360 (x: RA 0…360° co 0,5°, y: Dec +90…−90°), potem rozmyte. Wnętrze: parzystość przecięć promienia
+// od bieguna północnego (poza pasem) w dół południka — działa też dla pierścieni poziomu 1, które obiegają całe niebo.
+// Wynik: PNG w skali szarości, 0 = brak, 255 = najjaśniejsza część pasa.
+async function buildMilkyWay() {
+  const mw = JSON.parse(await cached('d3c-mw.json', 'https://raw.githubusercontent.com/ofrohn/d3-celestial/master/data/mw.json')) as {
+    features: { id: string; geometry: { coordinates: [number, number][][][] } }[]
+  }
+  const W = 720
+  const H = 360
+  const levels = new Uint8Array(W * H)
+  for (const f of mw.features) {
+    // Krawędzie rozwinięte przez szew ±180° (krótszy łuk), sprawdzane dla RA, RA ± 360°.
+    const edges: [number, number, number, number][] = []
+    for (const ring of f.geometry.coordinates.flat()) {
+      for (let i = 0; i < ring.length; i++) {
+        const [a0, d0] = ring[i]
+        let [a1, d1] = ring[(i + 1) % ring.length]
+        if (a1 - a0 > 180) a1 -= 360
+        else if (a0 - a1 > 180) a1 += 360
+        edges.push([a0, d0, a1, d1])
+      }
+    }
+    for (let x = 0; x < W; x++) {
+      const ra = (x + 0.5) / 2
+      const lon = ra > 180 ? ra - 360 : ra
+      const decs: number[] = []
+      for (const [a0, d0, a1, d1] of edges) {
+        for (const l of [lon, lon - 360, lon + 360]) {
+          if (a0 > l === a1 > l) continue
+          decs.push(d0 + ((l - a0) / (a1 - a0)) * (d1 - d0))
+        }
+      }
+      decs.sort((p, q) => q - p)
+      let k = 0
+      for (let y = 0; y < H; y++) {
+        const dec = 90 - (y + 0.5) / 2
+        while (k < decs.length && decs[k] > dec) k++
+        if (k % 2) levels[y * W + x]++
+      }
+    }
+  }
+  const pixels = Buffer.from(levels.map((n) => Math.min(255, n * 51)))
+  await sharp(pixels, { raw: { width: W, height: H, channels: 1 } }).blur(2).png({ compressionLevel: 9 }).toFile(join(OUT, 'milkyway.png'))
+  console.log(`milkyway: ${W}×${H}, piksele z pasem: ${levels.filter((n) => n > 0).length}`)
+}
+
+const only = process.argv[2]
+if (!only || only === 'catalog') await buildCatalog()
+if (!only || only === 'sky') await buildSky()
+if (!only || only === 'outlines') await buildOutlines()
+if (!only || only === 'milkyway') await buildMilkyWay()
