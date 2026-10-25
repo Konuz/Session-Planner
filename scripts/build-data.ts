@@ -461,18 +461,19 @@ async function buildOutlines() {
 
   // Mgławice ciemne (LDN, B) z scripts/data/dark-outlines.json: kontury wybrane ręcznie (Planck 857 GHz jako
   // podpowiedź dla SAM 3 na zdjęciach referencyjnych z AstroBin). Plik jest danymi źródłowymi w repozytorium,
-  // bo tego kroku nie da się powtórzyć bez GPU i sieci. Jeden kontur może mieć kilka oznaczeń (also).
+  // bo tego kroku nie da się powtórzyć bez GPU i sieci. Jeden kontur może mieć kilka oznaczeń (also). Tą samą
+  // metodą powstają kontury jasnych mgławic bez obrysu w OpenNGC (bright: true, np. LBN 777), rysowane jak jasne.
   const darkPath = join(ROOT, 'scripts', 'data', 'dark-outlines.json')
   let darkCount = 0
   if (existsSync(darkPath)) {
     const dark = JSON.parse(readFileSync(darkPath, 'utf8')) as {
-      objects: { id: string; also: string[]; name: string | null; rings: [number, number][][] }[]
+      objects: { id: string; also: string[]; name: string | null; bright?: boolean; rings: [number, number][][] }[]
     }
     for (const d of dark.objects) {
       const rings = d.rings.map((ring) => ring.flatMap(([ra, dec]) => [r(ra, 4), r(dec, 4)]))
       points += rings.reduce((s, ring) => s + ring.length / 2, 0)
-      objects.push({ id: d.id, level: 2, dark: 1, ...(d.also.length ? { also: d.also } : {}), ...(d.name ? { name: d.name } : {}), rings })
-      darkCount++
+      objects.push({ id: d.id, level: 2, ...(d.bright ? {} : { dark: 1 }), ...(d.also.length ? { also: d.also } : {}), ...(d.name ? { name: d.name } : {}), rings })
+      if (!d.bright) darkCount++
     }
   }
   writeFileSync(
