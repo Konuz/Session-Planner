@@ -124,7 +124,8 @@ interface State {
   /** Głębia adnotacji kopuły: 0: tylko kontury, 1: + NGC/IC, 2: + Sh2, Barnard, vdB, 3: + LBN, LDN, SNR. */
   annotationDepth: number
   showLabels: boolean
-  /** Licznik „znajdź obiekt” — zmiana uruchamia animację na kopule. */
+  showAnnotations: boolean
+  /** Licznik „znajdź obiekt”: zmiana uruchamia animację na kopule. */
   findPulse: number
 
   setTab(tab: Tab, catalogPlanMode?: State['catalogPlanMode']): void
@@ -150,7 +151,7 @@ interface State {
   setFilter(patch: Partial<CatalogFilter>): void
   setSort(s: State['sortBy']): void
   setAnnotationDepth(depth: number): void
-  toggle(key: 'showLines' | 'showTracks' | 'showArt' | 'showOutlines' | 'showLabels' | 'onlyVisible'): void
+  toggle(key: 'showLines' | 'showTracks' | 'showArt' | 'showOutlines' | 'showLabels' | 'showAnnotations' | 'onlyVisible'): void
 }
 
 export const useStore = create<State>()(
@@ -180,6 +181,7 @@ export const useStore = create<State>()(
       showOutlines: true,
       annotationDepth: 0,
       showLabels: true,
+      showAnnotations: true,
       findPulse: 0,
 
       setTab: (tab, catalogPlanMode) => set({ tab, catalogPlanMode: tab === 'catalog' ? catalogPlanMode ?? null : null }),
@@ -301,6 +303,7 @@ export const useStore = create<State>()(
         showOutlines: s.showOutlines,
         annotationDepth: s.annotationDepth,
         showLabels: s.showLabels,
+        showAnnotations: s.showAnnotations,
       }),
       // Noc zawsze startuje od bieżącej daty w strefie zapisanej lokalizacji.
       onRehydrateStorage: () => (state) => {

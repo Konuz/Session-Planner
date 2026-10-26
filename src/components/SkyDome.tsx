@@ -408,6 +408,7 @@ export function SkyDome({ playing = false }: Props) {
   const annotationDepth = Math.min(3, useStore((s) => s.annotationDepth))
   const setDepth = useStore((s) => s.setAnnotationDepth)
   const showLabels = useStore((s) => s.showLabels)
+  const showAnnotations = useStore((s) => s.showAnnotations)
   const findPulse = useStore((s) => s.findPulse)
   const plan = useStore((s) => s.plan)
   const select = useStore((s) => s.select)
@@ -751,14 +752,15 @@ export function SkyDome({ playing = false }: Props) {
     const sp = selected ? proj.eq(unitVector(selected.raDeg, selected.decDeg)) : null
     if (sp) boxes.push([sp[0] - 24, sp[1] - 24, sp[0] + 24, sp[1] + 24], [sp[0] + 14, sp[1] + 12, sp[0] + 110, sp[1] + 30])
     // Etykiety Messiera (rysowane niżej, przy polu < 90°) też zajmują miejsce.
-    if (view.fovDeg < 90 && labelList.length) {
+    if (showAnnotations && view.fovDeg < 90 && labelList.length) {
       for (const o of messier) {
         const p = proj.eq(unitVector(o.raDeg, o.decDeg))
         if (p) boxes.push([p[0] - 4, p[1] - 7, p[0] + 8 + ctx.measureText(o.id).width, p[1] + 5])
       }
     }
     labelList.sort((p, q) => p.prio - q.prio || q.r - p.r)
-    for (const l of labelList) {
+    // Przełącznik „Opisy”: bez podpisów konturów i elips.
+    for (const l of showAnnotations ? labelList : []) {
       if (l.r < l.minR && !l.hov) continue
       const name = l.r >= 40 ? displayName(l.dso) || l.name || '' : ''
       const text = name ? l.dso.id + ' · ' + name : l.dso.id
@@ -821,7 +823,7 @@ export function SkyDome({ playing = false }: Props) {
         ctx.beginPath()
         ctx.arc(p[0], p[1], 3.5, 0, Math.PI * 2)
         ctx.stroke()
-        if (view.fovDeg < 90) {
+        if (showAnnotations && view.fovDeg < 90) {
           ctx.fillStyle = 'rgba(200, 190, 255, 0.6)'
           ctx.fillText(o.id.replace(' ', ''), p[0] + 6, p[1] + 3)
         }
