@@ -42,6 +42,7 @@
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; }
+html { scrollbar-gutter: stable; }
 body {
   margin: 0;
   background:
@@ -67,12 +68,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .dim { color: var(--text-dim); }
 .faint { color: var(--text-faint); }
 .accent { color: var(--accent); }
-.gradient-text {
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
 
 /* ---------- Karty z narożnikami (jak karty galerii konuzastro.pl) ----------
    Cztery stałe narożniki 8 px z linii 1 px, białe (bez animacji). Rysowane jednym pseudoelementem z maską. */
@@ -267,9 +262,8 @@ input[type='checkbox'] { accent-color: var(--accent); }
   border-bottom: 1px solid var(--border);
 }
 .brand { display: flex; align-items: center; gap: 12px; color: var(--text); text-decoration: none !important; flex: none; }
-.brand-name { font: 700 19px var(--mono); letter-spacing: 0.32em; }
-.brand-sub { font: 8.5px var(--mono); letter-spacing: 0.24em; color: var(--text-dim); text-transform: uppercase; margin-top: 3px; }
-.nav { display: flex; align-items: stretch; height: 100%; gap: 4px; }
+.brand-logo { display: block; width: 140px; height: 64px; margin-top: 4px; object-fit: cover; object-position: center; }
+.nav { position: absolute; left: 50%; transform: translateX(-50%); display: flex; align-items: stretch; height: 100%; gap: 4px; }
 .nav button {
   position: relative;
   display: flex;
@@ -359,7 +353,7 @@ input[type='checkbox'] { accent-color: var(--accent); }
 /* Pasek górny na węższych monitorach: najpierw podtytuł i tekst odnośnika, potem etykiety zakładek (zostają ikony, poniżej 1620 px). */
 @media (max-width: 1480px) {
   .topbar { gap: 18px; }
-  .brand-sub, .home-link span { display: none; }
+  .home-link span { display: none; }
 }
 @media (max-width: 1620px) {
   .nav button > span:not(.nav-icon) { display: none; }
@@ -371,9 +365,9 @@ input[type='checkbox'] { accent-color: var(--accent); }
 }
 @media (max-width: 760px) {
   .topbar { height: auto; flex-wrap: wrap; padding: 10px 14px; gap: 10px; }
-  .nav { order: 3; width: 100%; overflow-x: auto; height: 46px; }
+  .nav { position: static; order: 3; width: 100%; overflow-x: auto; height: 46px; transform: none; }
   .nav button > span:not(.nav-icon) { display: none; }
-  .brand-sub, .home-link span { display: none; }
+  .home-link span { display: none; }
   .page { padding: 12px; }
   .sky-grid { grid-template-columns: 1fr; }
 }

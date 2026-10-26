@@ -1,4 +1,4 @@
-import { Download, Mountain, Trash2, Upload } from 'lucide-react'
+import { Download, Trash2, Upload } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 import { altitudeTrack, nightGrid } from '../lib/night'
 import { exportHorizon, horizonAltitude, normalizeHorizon, parseHorizon, type HorizonPoint } from '../lib/horizon'
@@ -56,7 +56,7 @@ export default function HorizonView() {
     <div className="col">
       <section className="card">
         <h2 className="panel-title">
-          <Mountain size={20} /> Mój horyzont <span className="sub">— {location.name}</span>
+          Mój horyzont <span className="sub">- {location.name}</span>
           <span className="spacer" />
           <span className="sub">{horizon.length ? `${horizon.length} punktów` : 'bez przeszkód'}</span>
         </h2>
@@ -157,7 +157,7 @@ export default function HorizonView() {
                 setHorizon(horizon.filter((_, k) => k !== i))
               }}
             >
-              <title>{`Az ${p.azDeg}°, wysokość ${p.altDeg}° — prawy klik usuwa`}</title>
+              <title>{`Az ${p.azDeg}°, wysokość ${p.altDeg}°; prawy klik usuwa`}</title>
             </circle>
           ))}
         </svg>

@@ -1,13 +1,14 @@
 // Przygotowuje grafiki interfejsu w public/icons z obrazów źródłowych (domyślnie folder icons/ w katalogu głównym):
 // - telescope.webp: kadr teleskopu (zanikanie krawędzi robi CSS),
-// - moon.webp: tarcza Księżyca przycięta do koła (faza nakładana w SVG),
+// - moon.webp: baza Księżyca do wygenerowania obrazów poszczególnych faz przez build-moon-phases.ts,
 // - tab-<id>-on.webp / tab-<id>-off.webp: ikony zakładek z jednego arkusza (świecące = aktywna, srebrne = nieaktywna)
 //   z kanałem alfa wyliczonym z jasności względem ciemnego tła arkusza.
 //
 // Uruchom: node scripts/build-assets.ts [katalog-źródeł]
-import { mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import sharp from 'sharp'
+import { buildTabIcons } from './build-tab-icons.ts'
 
 const ROOT = join(import.meta.dirname, '..')
 const SRC = process.argv[2] ?? join(ROOT, 'icons')
@@ -80,6 +81,10 @@ async function tabIcons(file: string, centersX: number[], centerY: number, sides
   }
 }
 
-await tabIcons(TABS, TAB_CENTERS_X, 110, TAB_SIDES, 70, 12, 'off')
-await tabIcons(TABS, TAB_CENTERS_X, 388, TAB_SIDES, 110, 24, 'on', [0, 224, 255])
+if (!process.argv[2] && existsSync(join(ROOT, 'output', 'icons-3d', 'vista-a', 'source.png'))) {
+  await buildTabIcons()
+} else {
+  await tabIcons(TABS, TAB_CENTERS_X, 110, TAB_SIDES, 70, 12, 'off')
+  await tabIcons(TABS, TAB_CENTERS_X, 388, TAB_SIDES, 110, 24, 'on', [0, 224, 255])
+}
 console.log('Gotowe: public/icons')

@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from 'react'
 import { addDays } from '../lib/night'
 import { placeForCoords, searchPlaces, type Place } from '../lib/services'
 import { useStore, type Location, type Tab } from '../state/store'
-import { Logo } from './Logo'
 
 // Ikony zakładek: srebrna (nieaktywna) i świecąca (aktywna), z public/icons (scripts/build-assets.ts).
 const TABS: { id: Tab; label: string }[] = [
@@ -211,12 +210,8 @@ export function TopBar() {
   const setTab = useStore((s) => s.setTab)
   return (
     <header className="topbar">
-      <a className="brand" href="https://www.konuzastro.pl" title="KONUZASTRO — strona główna">
-        <Logo size={44} />
-        <div>
-          <div className="brand-name gradient-text">KONUZASTRO</div>
-          <div className="brand-sub">System akwizycji danych wizualnych</div>
-        </div>
+      <a className="brand" href="https://www.konuzastro.pl" title="Michał Kania – astrofotografia">
+        <img className="brand-logo" src="/michal-kania-logo.jpg" alt="Michał Kania Astrophotography" />
       </a>
       <nav className="nav" aria-label="Widoki">
         {TABS.map(({ id, label }) => (
