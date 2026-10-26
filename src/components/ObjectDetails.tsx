@@ -85,11 +85,12 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
       <div className="drawer-backdrop" onClick={onClose} />
       <aside className="drawer" role="dialog" aria-label={`Szczegóły ${o.id}`}>
         <div style={{ position: 'relative' }}>
-          <Thumb object={o} className="thumb" style={{ aspectRatio: '16 / 9' }} fovDeg={Math.min(4, Math.max(0.3, (Math.max(o.majArcmin, 3) * 2.6) / 60))} sizePx={560} />
+          <Thumb object={o} className="thumb" style={{ aspectRatio: '16 / 9' }} fovDeg={Math.min(4, Math.max(0.3, (Math.max(o.majArcmin, 3) * 2.6) / 60))} sizePx={560} preferAstroBin />
           <button className="close-button" style={{ position: 'absolute', top: 16, right: 16, zIndex: 4 }} onClick={onClose} aria-label="Zamknij">
             <X size={17} />
           </button>
         </div>
+        <p className="faint" style={{ fontSize: 10, margin: '7px 22px 0' }}>This product uses the AstroBin API but is not endorsed or certified by AstroBin.</p>
         <div style={{ padding: 22 }}>
           <h2 className="object-name" style={{ margin: 0, width: 'fit-content', fontWeight: 400 }}>
             <span className="id">{o.id}</span>
@@ -109,7 +110,7 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
             <button className="button primary" onClick={() => go('dome')}>Pokaż na niebie</button>
             <button className="button" onClick={() => go('framing')}>Kadruj</button>
             <button className="button" onClick={() => go('3d')}>Pozycja 3D</button>
-            <button className="button" onClick={() => addToPlan(o.i, o.id)}>Do planu</button>
+            <button className="button" onClick={() => { addToPlan(o.i, o.id); onClose(); setTab('planner') }}>Do planu</button>
             {astrobin?.key === o.i && (
               <a className="button" href={astrobin.url} target="_blank" rel="noreferrer" title="Zdjęcia z AstroBin wyróżnione jako IOTD lub Top Pick">
                 AstroBin
@@ -131,7 +132,7 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
           <div className="stat-grid">
             <div className="stat"><div className="label">Wschód</div><div className="v">{stats.circumpolar ? 'okołobiegunowy' : fmtTime(stats.rise, tz)}</div></div>
             <div className="stat"><div className="label">Górowanie</div><div className="v">{fmtTime(stats.vis.transitMs, tz)}</div></div>
-            <div className="stat"><div className="label">Zachód</div><div className="v">{stats.circumpolar ? '—' : fmtTime(stats.set, tz)}</div></div>
+            <div className="stat"><div className="label">Zachód</div><div className="v">{stats.circumpolar ? '-' : fmtTime(stats.set, tz)}</div></div>
             <div className="stat"><div className="label">Maks. wysokość</div><div className="v">{fmtDeg(stats.vis.maxAlt)}</div></div>
             <div className="stat"><div className="label">Czas ≥ {minAlt}°</div><div className="v">{fmtDuration(stats.vis.hoursUsable)}</div></div>
             <div className="stat"><div className="label">Księżyc</div><div className="v">{fmtDeg(stats.moonSep)} · {Math.round(stats.moonIllum * 100)}%</div></div>
@@ -143,7 +144,7 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
               <tr><td className="dim">RA / Dec (J2000)</td><td className="mono">{fmtRa(o.raDeg)} · {fmtDec(o.decDeg)}</td></tr>
               <tr><td className="dim">Galaktyczne l / b</td><td className="mono">{fmtNum(g.lDeg, 2)}° · {fmtNum(g.bDeg, 2)}°</td></tr>
               <tr><td className="dim">Gwiazdozbiór</td><td>{CONSTELLATION_PL[o.con] ?? o.con}</td></tr>
-              <tr><td className="dim">Jasność</td><td className="mono">{o.mag !== null ? `${fmtNum(o.mag, 1)} mag` : '—'}{o.sb !== null ? ` · jasność pow. ${fmtNum(o.sb, 1)} mag/″²` : ''}</td></tr>
+              <tr><td className="dim">Jasność</td><td className="mono">{o.mag !== null ? `${fmtNum(o.mag, 1)} mag` : '-'}{o.sb !== null ? ` · jasność pow. ${fmtNum(o.sb, 1)} mag/″²` : ''}</td></tr>
               <tr><td className="dim">Rozmiar</td><td className="mono">{fmtSize(o.majArcmin, o.minArcmin)}{o.paDeg !== null ? ` · PA ${o.paDeg}°` : ''}</td></tr>
               <tr><td className="dim">Odległość</td><td className="mono">{fmtDistance(o.distLy)}</td></tr>
               {o.namesEn.length > 0 && <tr><td className="dim">Nazwy (ang.)</td><td>{o.namesEn.join(', ')}</td></tr>}
@@ -154,7 +155,7 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
             <a href={aladin} target="_blank" rel="noreferrer">Aladin Lite <ExternalLink size={11} /></a>
           </div>
           <p className="faint" style={{ fontSize: 11, marginTop: 18 }}>
-            Dane: OpenNGC (CC BY-SA 4.0), kontury mgławic: OpenNGC outlines (CC BY-SA 4.0, obrysy na DSS2 w Aladin, CDS), mgławic ciemnych: mapy Planck 857 GHz (ESA, NASA SkyView) dopasowane SAM 3 (Meta) do zdjęć z AstroBin, katalogi VizieR/CDS, odległości i artykuły: Wikidata (CC0), opisy: Wikipedia (CC BY-SA), zdjęcia: DSS2 przez CDS hips2fits.
+            Dane: OpenNGC (CC BY-SA 4.0), kontury mgławic: OpenNGC outlines (CC BY-SA 4.0, obrysy na DSS2 w Aladin, CDS), mgławic ciemnych: mapy Planck 857 GHz (ESA, NASA SkyView) dopasowane SAM 3 (Meta) do zdjęć z AstroBin, katalogi VizieR/CDS, odległości i artykuły: Wikidata (CC0), opisy: Wikipedia (CC BY-SA), zdjęcia: AstroBin API użytkownika Konuz lub DSS2 przez CDS hips2fits.
           </p>
         </div>
       </aside>

@@ -572,7 +572,7 @@ input[type='checkbox'] { accent-color: var(--accent); }
 /* Rodzaj obiektu jak kategoria na karcie galerii: mono 10 px, wersaliki, kolor rodzaju. */
 .type-label { font: 10px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
 .thumb { position: relative; background: #05060b; overflow: hidden; }
-.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; filter: grayscale(1) contrast(1.2); animation: fade-in 0.5s ease; }
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; filter: grayscale(1); animation: fade-in 0.5s ease; }
 .thumb .ph { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-faint); font: 10px var(--mono); letter-spacing: 0.1em; }
 .thumb .ph::before {
   content: '';
