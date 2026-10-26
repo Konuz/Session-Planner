@@ -89,7 +89,7 @@ export function nightPhases(date: string, site: Site, timeZone: string): NightPh
   return { date, startMs, endMs, sunset, civilDusk, nauticalDusk, astroDusk, astroDawn, nauticalDawn, civilDawn, sunrise, midnight }
 }
 
-/** Okno „ciemnej nocy”: noc astronomiczna, a gdy jej brak (lato) — żeglarska, potem cywilna. */
+/** Okno „ciemnej nocy”: noc astronomiczna, a gdy jej brak (lato), żeglarska, potem cywilna. */
 export function darkWindow(n: NightPhases): [number, number] {
   if (n.astroDusk !== null && n.astroDawn !== null) return [n.astroDusk, n.astroDawn]
   if (n.nauticalDusk !== null && n.nauticalDawn !== null) return [n.nauticalDusk, n.nauticalDawn]

@@ -3,7 +3,7 @@
 const pad = (n: number) => String(n).padStart(2, '0')
 
 export function fmtTime(t: number | null, timeZone: string): string {
-  if (t === null || !Number.isFinite(t)) return '—'
+  if (t === null || !Number.isFinite(t)) return '-'
   return new Intl.DateTimeFormat('pl-PL', { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(t)
 }
 
@@ -40,13 +40,13 @@ export function fmtNum(v: number, digits = 1): string {
 }
 
 export function fmtSize(majArcmin: number, minArcmin: number): string {
-  if (!majArcmin) return '—'
+  if (!majArcmin) return '-'
   const f = (a: number) => (a >= 60 ? `${fmtNum(a / 60, 1)}°` : `${a >= 10 ? Math.round(a) : fmtNum(a, 1)}′`)
   return minArcmin && minArcmin !== majArcmin ? `${f(majArcmin)} × ${f(minArcmin)}` : f(majArcmin)
 }
 
 export function fmtDistance(ly: number | null): string {
-  if (!ly) return '—'
+  if (!ly) return '-'
   if (ly >= 1e9) return `${fmtNum(ly / 1e9, 1)} mld lś`
   if (ly >= 1e6) return `${fmtNum(ly / 1e6, ly >= 1e7 ? 0 : 1)} mln lś`
   if (ly >= 1e4) return `${Math.round(ly / 1000).toLocaleString('pl-PL')} tys. lś`

@@ -144,7 +144,7 @@ export async function fetchWikiSummary(titlePl: string, titleEn: string, fallbac
 /**
  * Adres wyszukiwania AstroBin dla obiektu z filtrem nagród IOTD i Top Pick. Nowa wyszukiwarka (app.astrobin.com)
  * trzyma filtry w parametrze `p`: ciąg `klucz=JSON` zakodowany jak w adresie, zapisany jako napis msgpack,
- * skompresowany zlib (deflate) i w base64 — tak robi ich `compressQueryString`.
+ * skompresowany zlib (deflate) i w base64; tak robi ich `compressQueryString`.
  */
 export async function astrobinSearchUrl(subject: string): Promise<string> {
   const query = [

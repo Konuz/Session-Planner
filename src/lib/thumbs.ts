@@ -61,7 +61,7 @@ async function run(job: Job) {
       await cache?.put(job.key, new Response(blob, { headers: { 'Content-Type': 'image/jpeg' } }))
       job.resolve(URL.createObjectURL(blob))
     } catch (e) {
-      // Ostatnie źródło: NASA SkyView (bez CORS, więc bez Cache Storage — tylko pamięć HTTP przeglądarki).
+      // Ostatnie źródło: NASA SkyView (bez CORS, więc bez Cache Storage; tylko pamięć HTTP przeglądarki).
       if (job.fallback && !job.signal?.aborted) job.resolve(job.fallback)
       else job.reject(e instanceof AggregateError ? e.errors[0] : e)
     }

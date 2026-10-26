@@ -305,7 +305,7 @@ async function buildSky() {
 // ---------- Kontury mgławic ----------
 
 // OpenNGC outlines (Mattia Verga, CC BY-SA 4.0): obrysy narysowane w Aladin na DSS2, po trzy poziomy jasności
-// (1 — słaby zasięg, 2 — standardowy, 3 — jasne jądro). Pliki objects/*.txt to TSV z Aladin; wiersz z Cont_Flag „*”
+// (1: słaby zasięg, 2: standardowy, 3: jasne jądro). Pliki objects/*.txt to TSV z Aladin; wiersz z Cont_Flag „*”
 // zamyka pierścień.
 const ONGC_TAG = 'v20260501'
 // Pliki nazwane od regionu nieba, nie od obiektu katalogu (bez odpowiednika w katalogu; nazwa do podpisu).
@@ -424,7 +424,7 @@ async function buildOutlines() {
   let points = 0
   const largeLv1: string[] = []
   for (const [base, levels] of [...files].sort(([a], [b]) => a.localeCompare(b))) {
-    // Jeden poziom na obiekt: 2, a gdy go brak — 3 (jądro), potem 1. Duże obrysy poziomu 1 dochodzą osobno.
+    // Jeden poziom na obiekt: 2, a gdy go brak, 3 (jądro), potem 1. Duże obrysy poziomu 1 dochodzą osobno.
     const picked = [[2, 3, 1].find((lv) => levels.has(lv))!]
     if (levels.has(1) && picked[0] !== 1) picked.push(1)
     for (const level of picked) {
@@ -495,7 +495,7 @@ async function buildOutlines() {
 
 // Droga Mleczna: pięć poziomów konturów jasności z d3-celestial (mw.json, współrzędne [RA −180…180, Dec]) zliczone
 // w siatce 720 × 360 (x: RA 0…360° co 0,5°, y: Dec +90…−90°), potem rozmyte. Wnętrze: parzystość przecięć promienia
-// od bieguna północnego (poza pasem) w dół południka — działa też dla pierścieni poziomu 1, które obiegają całe niebo.
+// od bieguna północnego (poza pasem) w dół południka; działa też dla pierścieni poziomu 1, które obiegają całe niebo.
 // Wynik: PNG w skali szarości, 0 = brak, 255 = najjaśniejsza część pasa.
 async function buildMilkyWay() {
   const mw = JSON.parse(await cached('d3c-mw.json', 'https://raw.githubusercontent.com/ofrohn/d3-celestial/master/data/mw.json')) as {

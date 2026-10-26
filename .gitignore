@@ -6,3 +6,9 @@ scripts/.cache
 .claude/worktrees
 .playwright-mcp
 /icons/
+
+# Narzędzia i robocze warianty grafik
+.serena/
+output/
+public/icons/version-a/
+public/icons/version-b/

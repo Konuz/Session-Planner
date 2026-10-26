@@ -12,7 +12,7 @@ export interface OutlineRing {
 export interface Outline {
   /** Oznaczenie obiektu („NGC 7000”, „M 45”) albo nazwa regionu z OpenNGC („Cygnus”). */
   id: string
-  /** Poziom jasności OpenNGC: 1 — słaby zasięg, 2 — standardowy, 3 — jasne jądro. */
+  /** Poziom jasności OpenNGC: 1: słaby zasięg, 2: standardowy, 3: jasne jądro. */
   level: 1 | 2 | 3
   /** Polska nazwa regionu, gdy obrys obejmuje obszar nieba, a nie obiekt katalogu („Łabędź”). */
   region: string | null
