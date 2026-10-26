@@ -132,7 +132,7 @@ export default function CatalogView() {
           <div className="chips">
             {TYPES.map((t) => (
               <button key={t} className={`toggle-chip${filter.types.includes(t) ? ' on' : ''}`} onClick={() => setFilter({ types: toggleIn(filter.types, t) })}>
-                <span className="dot" style={{ background: TYPE_INFO[t].color }} /> {TYPE_INFO[t].short}
+                <span className="dot" style={{ background: TYPE_INFO[t].color }} /> {TYPE_INFO[t].plural}
               </button>
             ))}
           </div>

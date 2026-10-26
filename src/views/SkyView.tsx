@@ -60,6 +60,7 @@ export function SkyView() {
   const showTracks = useStore((s) => s.showTracks)
   const showArt = useStore((s) => s.showArt)
   const showOutlines = useStore((s) => s.showOutlines)
+  const showAnnotations = useStore((s) => s.showAnnotations)
   const toggle = useStore((s) => s.toggle)
   const setTime = useStore((s) => s.setTime)
   const selectedIndex = useStore((s) => s.selectedIndex)
@@ -99,6 +100,7 @@ export function SkyView() {
                 {label}
               </button>
             ))}
+            {mode === '3d' && <Switch on={showAnnotations} onClick={() => toggle('showAnnotations')} label="Opisy" />}
             {mode === 'dome' && (
               <div style={{ display: 'contents' }}>
                 <button className="button small icon-button" title={playing ? 'Zatrzymaj' : 'Odtwórz noc'} onClick={() => setPlaying(!playing)}>
@@ -112,6 +114,7 @@ export function SkyView() {
                   <Switch on={showLines} onClick={() => toggle('showLines')} label="Linie" />
                   <Switch on={showArt} onClick={() => toggle('showArt')} label="Postacie" />
                   <Switch on={showOutlines} onClick={() => toggle('showOutlines')} label="Mgławice" />
+                  <Switch on={showAnnotations} onClick={() => toggle('showAnnotations')} label="Opisy" />
                   <Switch on={showTracks} onClick={() => toggle('showTracks')} label="Tory" />
                 </span>
               </div>

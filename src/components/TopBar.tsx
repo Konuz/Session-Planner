@@ -13,7 +13,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'horizon', label: 'Mój horyzont' },
 ]
 
-function useOutside(ref: React.RefObject<HTMLElement | null>, close: () => void) {
+export function useOutside(ref: React.RefObject<HTMLElement | null>, close: () => void) {
   useEffect(() => {
     const onDown = (e: PointerEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) close()

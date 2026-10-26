@@ -27,18 +27,18 @@ export interface DSO {
   search: string
 }
 
-export const TYPE_INFO: Record<ObjectType, { label: string; short: string; color: string }> = {
-  G: { label: 'Galaktyka', short: 'Galaktyka', color: 'var(--t-galaxy)' },
-  GG: { label: 'Grupa galaktyk', short: 'Grupa gal.', color: 'var(--t-galaxy)' },
-  EN: { label: 'Mgławica emisyjna', short: 'Emisyjna', color: 'var(--t-emission)' },
-  RN: { label: 'Mgławica refleksyjna', short: 'Refleksyjna', color: 'var(--t-reflection)' },
-  DN: { label: 'Mgławica ciemna', short: 'Ciemna', color: 'var(--t-dark)' },
-  PN: { label: 'Mgławica planetarna', short: 'Planetarna', color: 'var(--t-planetary)' },
-  SNR: { label: 'Pozostałość po supernowej', short: 'Pozost. SN', color: 'var(--t-snr)' },
-  OC: { label: 'Gromada otwarta', short: 'Gr. otwarta', color: 'var(--t-cluster)' },
-  GC: { label: 'Gromada kulista', short: 'Gr. kulista', color: 'var(--t-cluster)' },
-  CN: { label: 'Gromada z mgławicą', short: 'Gr. + mgławica', color: 'var(--t-emission)' },
-  X: { label: 'Inny obiekt', short: 'Inny', color: 'var(--text-dim)' },
+export const TYPE_INFO: Record<ObjectType, { label: string; short: string; plural: string; color: string }> = {
+  G: { label: 'Galaktyka', short: 'Galaktyka', plural: 'Galaktyki', color: 'var(--t-galaxy)' },
+  GG: { label: 'Grupa galaktyk', short: 'Grupa gal.', plural: 'Grupy galaktyk', color: 'var(--t-galaxy)' },
+  EN: { label: 'Mgławica emisyjna', short: 'Emisyjna', plural: 'Mgławice emisyjne', color: 'var(--t-emission)' },
+  RN: { label: 'Mgławica refleksyjna', short: 'Refleksyjna', plural: 'Mgławice refleksyjne', color: 'var(--t-reflection)' },
+  DN: { label: 'Mgławica ciemna', short: 'Ciemna', plural: 'Mgławice ciemne', color: 'var(--t-dark)' },
+  PN: { label: 'Mgławica planetarna', short: 'Planetarna', plural: 'Mgławice planetarne', color: 'var(--t-planetary)' },
+  SNR: { label: 'Pozostałość po supernowej', short: 'Pozost. SN', plural: 'Pozostałości po supernowych', color: 'var(--t-snr)' },
+  OC: { label: 'Gromada otwarta', short: 'Gr. otwarta', plural: 'Gromady otwarte', color: 'var(--t-cluster)' },
+  GC: { label: 'Gromada kulista', short: 'Gr. kulista', plural: 'Gromady kuliste', color: 'var(--t-cluster)' },
+  CN: { label: 'Gromada z mgławicą', short: 'Gr. + mgławica', plural: 'Gromady z mgławicami', color: 'var(--t-emission)' },
+  X: { label: 'Inny obiekt', short: 'Inny', plural: 'Inne obiekty', color: 'var(--text-dim)' },
 }
 
 export const CATALOGS: { id: string; label: string; title: string }[] = [
