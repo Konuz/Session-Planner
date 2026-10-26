@@ -1,13 +1,5 @@
 [
  {
-  "id": "gso-newton-150-600",
-  "brand": "GSO",
-  "model": "Newton 6\" f/4 Astrograf",
-  "design": "newtonian",
-  "apertureMm": 150,
-  "focalLengthMm": 600
- },
- {
   "id": "william-optics-redcat-51",
   "brand": "William Optics",
   "model": "RedCat 51",

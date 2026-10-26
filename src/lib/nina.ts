@@ -2,6 +2,7 @@
 // - CSV w formacie planu mozaiki Telescopius, który N.I.N.A. importuje w sekwencerze (Import targets):
 //   kolumny Pane, RA, DEC, Position Angle (East); separator „,”, kropka dziesiętna, końce linii CRLF.
 // - Plik tekstowy planu nocy dla operatora (kolejność, okna czasowe, filtry).
+import { validExposure, type Exposure } from './exposures'
 
 export interface NinaTarget {
   name: string
@@ -46,6 +47,34 @@ export const NINA_HEADER = 'Pane,RA,DEC,Position Angle (East)'
 export function ninaCsv(targets: readonly NinaTarget[]): string {
   const rows = targets.map((t) => `${cleanName(t.name)},${formatRa(t.raDeg)},${formatDec(t.decDeg)},${formatPa(t.paDeg)}`)
   return [NINA_HEADER, ...rows].join('\r\n') + '\r\n'
+}
+
+const csvCell = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`
+
+/** Osobny format importera Target Scheduler; ekspozycje ustawia się w jego szablonie. */
+export function schedulerCsv(targets: readonly (NinaTarget & { type: string })[]): string {
+  return ['Type,Name,Ra,Dec,Rotation,ROI', ...targets.map((t) => [
+    t.type, t.name, formatRa(t.raDeg), formatDec(t.decDeg), formatPa(t.paDeg), 100,
+  ].map(csvCell).join(','))].join('\r\n') + '\r\n'
+}
+
+export interface ExposureTarget extends NinaTarget {
+  exposures: Exposure[]
+  startMs: number | null
+  endMs: number | null
+  note: string
+}
+
+/** Pełny wykaz dla operatora / arkusza, nie format importu sekwencji NINA. */
+export function exposureCsv(targets: readonly ExposureTarget[], timeZone: string): string {
+  const rows = targets.flatMap((t, i) => t.exposures.map((e) => {
+    if (!validExposure(e)) throw new Error('Uzupełnij poprawnie filtry, liczbę klatek i czas ekspozycji.')
+    return [i + 1, t.name, formatRa(t.raDeg), formatDec(t.decDeg), formatPa(t.paDeg), e.filter,
+      e.count, e.seconds, e.count * e.seconds, t.startMs === null ? '' : new Date(t.startMs).toISOString(),
+      t.endMs === null ? '' : new Date(t.endMs).toISOString(), timeZone, t.note].map(csvCell).join(',')
+  }))
+  return ['Order,Target,RA J2000,DEC J2000,PA East deg,Filter,Frames,Exposure seconds,Integration seconds,Start UTC,End UTC,Time zone,Note',
+    ...rows].join('\r\n') + '\r\n'
 }
 
 export function download(filename: string, content: string, type = 'text/csv') {

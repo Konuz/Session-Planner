@@ -1,20 +1,69 @@
 // Wykres wysokości obiektu w nocy: tło w fazach zmierzchu, limit wysokości, własny horyzont na torze obiektu,
 // Księżyc, kulminacja i południk, pas zachmurzenia i przeciągany kursor czasu.
-import { Activity, Clock, Moon, Mountain, Timer } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { bodyAltAz } from '../lib/astro'
+import { Clock, Moon, Mountain, Timer } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { bodyAltAz, moonInfo } from '../lib/astro'
+import type { DSO } from '../lib/catalog'
 import { fmtDate, fmtDuration, fmtTime } from '../lib/format'
 import { horizonAltitude } from '../lib/horizon'
 import { altitudeTrack, darkWindow, nightGrid, visibility } from '../lib/night'
 import { useNight, useSelected, useSite, useTime, useWeather } from '../state/data'
 import { useStore } from '../state/store'
+import { moonPhaseImageIndex, moonPhaseImageSrc } from './MoonDisc'
 
 const H = 250
 const PAD = { l: 44, r: 14, t: 30, b: 34 }
-const ALT_MIN = -5
+const ALT_MIN = 0
 const ALT_MAX = 90
 
-export function AltitudeChart() {
+function visibleAltitudeSegments(points: { t: number; alt: number }[]) {
+  const segments: { t: number; alt: number }[][] = []
+  let segment: { t: number; alt: number }[] = []
+  const crossing = (a: { t: number; alt: number }, b: { t: number; alt: number }) => {
+    const fraction = a.alt / (a.alt - b.alt)
+    return { t: a.t + fraction * (b.t - a.t), alt: 0 }
+  }
+
+  for (let i = 0; i < points.length; i++) {
+    const point = points[i]
+    if (i === 0) {
+      if (point.alt >= 0) segment = [{ t: point.t, alt: point.alt }]
+      continue
+    }
+
+    const previous = points[i - 1]
+    if (previous.alt < 0 && point.alt < 0) continue
+    if (previous.alt < 0 && point.alt >= 0) {
+      segment = [crossing(previous, point)]
+      if (point.alt > 0) segment.push({ t: point.t, alt: point.alt })
+      continue
+    }
+    if (previous.alt >= 0 && point.alt < 0) {
+      if (segment.length === 0) segment.push({ t: previous.t, alt: previous.alt })
+      const end = crossing(previous, point)
+      if (end.t > segment[segment.length - 1].t) segment.push(end)
+      segments.push(segment)
+      segment = []
+      continue
+    }
+    if (point.alt >= 0) {
+      if (segment.length === 0) segment.push({ t: previous.t, alt: previous.alt })
+      if (point.t > segment[segment.length - 1].t) segment.push({ t: point.t, alt: point.alt })
+    }
+  }
+
+  if (segment.length > 0) segments.push(segment)
+  return segments.filter((part) => part.length > 1 && part.some((point) => point.alt > 0))
+}
+
+interface AltitudeChartProps {
+  object?: DSO
+  slot?: { startMs: number; endMs: number; conflict?: boolean } | null
+  title?: string
+  toolbar?: ReactNode
+}
+
+export function AltitudeChart({ object, slot, title = 'Widoczność obiektu', toolbar }: AltitudeChartProps = {}) {
   const ref = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(1200)
   const [hoverT, setHoverT] = useState<number | null>(null)
@@ -22,7 +71,8 @@ export function AltitudeChart() {
   const night = useNight()
   const site = useSite()
   const time = useTime()
-  const o = useSelected()
+  const selected = useSelected()
+  const o = object ?? selected
   const tz = useStore((s) => s.location.timeZone)
   const minAlt = useStore((s) => s.minAltDeg)
   const horizon = useStore((s) => s.horizon)
@@ -50,13 +100,13 @@ export function AltitudeChart() {
   const n = night
   const bands: { from: number | null; to: number | null; fill: string; label: string }[] = [
     { from: n.startMs, to: n.sunset, fill: 'url(#g-day-l)', label: 'Dzień' },
-    { from: n.sunset, to: n.civilDusk, fill: 'rgba(120, 72, 40, 0.42)', label: 'Zmierzch cywilny' },
-    { from: n.civilDusk, to: n.nauticalDusk, fill: 'rgba(44, 46, 78, 0.55)', label: 'żeglarski' },
-    { from: n.nauticalDusk, to: n.astroDusk, fill: 'rgba(22, 40, 84, 0.6)', label: 'astronomiczny' },
+    { from: n.sunset, to: n.civilDusk, fill: 'url(#g-dusk-civil)', label: 'Zmierzch' },
+    { from: n.civilDusk, to: n.nauticalDusk, fill: 'url(#g-dusk-nautical)', label: 'żeglarski' },
+    { from: n.nauticalDusk, to: n.astroDusk, fill: 'url(#g-dusk-astro)', label: 'astronomiczny' },
     { from: n.astroDusk, to: n.astroDawn, fill: 'url(#g-night)', label: 'Noc astronomiczna' },
-    { from: n.astroDawn, to: n.nauticalDawn, fill: 'rgba(22, 40, 84, 0.6)', label: '' },
-    { from: n.nauticalDawn, to: n.civilDawn, fill: 'rgba(44, 46, 78, 0.55)', label: '' },
-    { from: n.civilDawn, to: n.sunrise, fill: 'rgba(120, 72, 40, 0.42)', label: 'Świt' },
+    { from: n.astroDawn, to: n.nauticalDawn, fill: 'url(#g-dawn-astro)', label: '' },
+    { from: n.nauticalDawn, to: n.civilDawn, fill: 'url(#g-dawn-nautical)', label: '' },
+    { from: n.civilDawn, to: n.sunrise, fill: 'url(#g-dawn-civil)', label: 'Świt' },
     { from: n.sunrise, to: n.endMs, fill: 'url(#g-day-r)', label: 'Dzień' },
   ]
   // Bez nocy astronomicznej: najciemniejsza faza wypełnia środek.
@@ -68,8 +118,9 @@ export function AltitudeChart() {
   const everyN = width < 700 ? 2 : 1
 
   const linePath = (pts: { t: number; alt: number }[]) => pts.map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(p.alt).toFixed(1)}`).join('')
-  const objPath = linePath(track)
-  const areaPath = track.length ? `${objPath}L${x(track[track.length - 1].t)},${y(ALT_MIN)}L${x(track[0].t)},${y(ALT_MIN)}Z` : ''
+  const visibleSegments = visibleAltitudeSegments(track)
+  const objPath = visibleSegments.map(linePath).join('')
+  const areaPath = visibleSegments.map((part) => `${linePath(part)}L${x(part[part.length - 1].t)},${y(0)}L${x(part[0].t)},${y(0)}Z`).join('')
   // Przeszkody własnego horyzontu na azymucie obiektu w danej chwili.
   const obstaclePath = o && horizon.length
     ? `${linePath(track.map((s) => ({ t: s.t, alt: horizonAltitude(horizon, s.az) })))}L${x(night.endMs)},${y(ALT_MIN)}L${x(night.startMs)},${y(ALT_MIN)}Z`
@@ -77,8 +128,20 @@ export function AltitudeChart() {
 
   const cursorT = hoverT ?? time
   const cursorAlt = track.length ? track.reduce((b, s) => (Math.abs(s.t - cursorT) < Math.abs(b.t - cursorT) ? s : b)).alt : null
+  const moonCursor = useMemo(() => ({ ...bodyAltAz('moon', cursorT, site), info: moonInfo(cursorT) }), [cursorT, site])
+  const moonCursorLineY = moonTrack.length === 0 ? null : (() => {
+    const nextIndex = moonTrack.findIndex((point) => point.t >= cursorT)
+    const rightIndex = nextIndex < 0 ? moonTrack.length - 1 : nextIndex
+    const leftIndex = Math.max(0, rightIndex - 1)
+    const left = moonTrack[leftIndex]
+    const right = moonTrack[rightIndex]
+    const progress = right.t === left.t ? 0 : Math.max(0, Math.min(1, (cursorT - left.t) / (right.t - left.t)))
+    return y(left.alt) + (y(right.alt) - y(left.alt)) * progress
+  })()
+  const moonCursorInRange = cursorT >= night.startMs && cursorT <= night.endMs && moonCursor.altDeg >= 0 && moonCursorLineY !== null
   const [darkStart, darkEnd] = darkWindow(night)
   const transitIn = vis?.transitMs != null && vis.transitMs >= night.startMs && vis.transitMs <= night.endMs ? vis.transitMs : null
+  const transitLabelOnLeft = transitIn !== null && x(transitIn) > width - 185
   const toTransit = transitIn !== null ? (transitIn - time) / 3_600_000 : null
 
   const onPointer = (e: React.PointerEvent<SVGSVGElement>, commit: boolean) => {
@@ -94,10 +157,11 @@ export function AltitudeChart() {
   return (
     <section className="card span-all">
       <h2 className="panel-title">
-        <Activity size={20} /> Widoczność obiektu <span className="sub">— noc {nightLabel}</span>
+        {title} <span className="sub">- noc {nightLabel}</span>
         <span className="spacer" />
         {o && <span className="sub">{o.id}</span>}
       </h2>
+      {toolbar}
       <div ref={ref} className="chart-wrap">
         <svg
           viewBox={`0 0 ${width} ${H}`}
@@ -115,9 +179,15 @@ export function AltitudeChart() {
           aria-label="Wykres wysokości obiektu w nocy"
         >
           <defs>
-            <linearGradient id="g-day-l" x1="0" x2="1"><stop offset="0" stopColor="rgba(150, 90, 40, 0.55)" /><stop offset="1" stopColor="rgba(130, 80, 40, 0.45)" /></linearGradient>
-            <linearGradient id="g-day-r" x1="0" x2="1"><stop offset="0" stopColor="rgba(130, 80, 40, 0.45)" /><stop offset="1" stopColor="rgba(150, 90, 40, 0.55)" /></linearGradient>
-            <linearGradient id="g-night" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="rgba(7, 14, 34, 0.92)" /><stop offset="1" stopColor="rgba(2, 4, 12, 0.96)" /></linearGradient>
+            <linearGradient id="g-day-l" x1="0" x2="1"><stop offset="0" stopColor="rgba(150, 90, 40, 0.55)" /><stop offset="1" stopColor="rgba(255, 118, 58, 0.43)" /></linearGradient>
+            <linearGradient id="g-day-r" x1="0" x2="1"><stop offset="0" stopColor="rgba(232, 162, 102, 0.47)" /><stop offset="1" stopColor="rgba(150, 90, 40, 0.55)" /></linearGradient>
+            <linearGradient id="g-dusk-civil" x1="0" x2="1"><stop offset="0" stopColor="rgba(255, 118, 58, 0.43)" /><stop offset="1" stopColor="rgba(205, 68, 112, 0.4)" /></linearGradient>
+            <linearGradient id="g-dusk-nautical" x1="0" x2="1"><stop offset="0" stopColor="rgba(205, 68, 112, 0.4)" /><stop offset="1" stopColor="rgba(54, 66, 137, 0.46)" /></linearGradient>
+            <linearGradient id="g-dusk-astro" x1="0" x2="1"><stop offset="0" stopColor="rgba(54, 66, 137, 0.46)" /><stop offset="1" stopColor="rgba(18, 33, 78, 0.55)" /></linearGradient>
+            <linearGradient id="g-dawn-astro" x1="0" x2="1"><stop offset="0" stopColor="rgba(29, 43, 63, 0.6)" /><stop offset="1" stopColor="rgba(67, 92, 126, 0.48)" /></linearGradient>
+            <linearGradient id="g-dawn-nautical" x1="0" x2="1"><stop offset="0" stopColor="rgba(67, 92, 126, 0.48)" /><stop offset="1" stopColor="rgba(154, 106, 131, 0.4)" /></linearGradient>
+            <linearGradient id="g-dawn-civil" x1="0" x2="1"><stop offset="0" stopColor="rgba(154, 106, 131, 0.4)" /><stop offset="1" stopColor="rgba(232, 162, 102, 0.47)" /></linearGradient>
+            <linearGradient id="g-night" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stopColor="rgba(18, 33, 78, 0.55)" /><stop offset="22%" stopColor="rgba(12, 24, 56, 0.82)" /><stop offset="50%" stopColor="rgba(2, 4, 12, 0.96)" /><stop offset="78%" stopColor="rgba(15, 27, 54, 0.82)" /><stop offset="100%" stopColor="rgba(29, 43, 63, 0.6)" /></linearGradient>
             <linearGradient id="g-obj" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="rgba(0, 224, 255, 0.28)" /><stop offset="1" stopColor="rgba(0, 224, 255, 0)" /></linearGradient>
             <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><path d="M0 0v6" stroke="rgba(245, 165, 36, 0.45)" strokeWidth="1.5" /></pattern>
             <filter id="glow"><feGaussianBlur stdDeviation="2.2" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
@@ -127,7 +197,7 @@ export function AltitudeChart() {
             b.from !== null && b.to !== null && b.to > b.from ? (
               <g key={i}>
                 <rect x={x(b.from)} y={PAD.t} width={Math.max(0, x(b.to) - x(b.from))} height={H - PAD.t - PAD.b} fill={b.fill} />
-                {b.label && x(b.to) - x(b.from) > b.label.length * 6.2 && (
+                {b.label && x(b.to) - x(b.from) > (b.label === 'Zmierzch' ? 34 : b.label.length * 6.2) && (
                   <text x={(x(b.from) + x(b.to)) / 2} y={PAD.t + 16} textAnchor="middle" fill="rgba(220, 228, 240, 0.75)" fontSize="11.5">{b.label}</text>
                 )}
               </g>
@@ -153,7 +223,7 @@ export function AltitudeChart() {
             .filter((w) => w.t >= night.startMs - 1_800_000 && w.t <= night.endMs)
             .map((w) => (
               <rect key={w.t} x={x(Math.max(night.startMs, w.t - 1_800_000))} y={H - PAD.b + 22} width={Math.max(0, x(Math.min(night.endMs, w.t + 1_800_000)) - x(Math.max(night.startMs, w.t - 1_800_000)))} height={5} fill={`rgba(200, 210, 230, ${0.08 + (w.cloud / 100) * 0.7})`}>
-                <title>{`${fmtTime(w.t, tz)} — zachmurzenie ${Math.round(w.cloud)}%`}</title>
+                <title>{`${fmtTime(w.t, tz)} - zachmurzenie ${Math.round(w.cloud)}%`}</title>
               </rect>
             ))}
 
@@ -166,7 +236,7 @@ export function AltitudeChart() {
           {/* Księżyc. */}
           <path d={linePath(moonTrack)} fill="none" stroke="rgba(220, 225, 235, 0.38)" strokeDasharray="2 4" strokeWidth="1.2" />
 
-          {o && track.length > 0 && (
+          {o && visibleSegments.length > 0 && (
             <>
               <path d={areaPath} fill="url(#g-obj)" />
               <path d={objPath} fill="none" stroke="#00e0ff" strokeWidth="2" filter="url(#glow)" />
@@ -175,8 +245,8 @@ export function AltitudeChart() {
                   <line x1={x(transitIn)} x2={x(transitIn)} y1={PAD.t} y2={H - PAD.b} stroke="#f5a524" strokeDasharray="4 4" />
                   <line x1={PAD.l} x2={width - PAD.r} y1={y(vis.transitAlt)} y2={y(vis.transitAlt)} stroke="rgba(200, 210, 230, 0.22)" strokeDasharray="6 6" />
                   <circle cx={x(transitIn)} cy={y(vis.transitAlt)} r="5" fill="#0b0d17" stroke="#00e0ff" strokeWidth="2" />
-                  <text x={x(transitIn) + 8} y={PAD.t - 14} fill="#00e0ff" fontSize="12">Kulminacja · południk</text>
-                  <text x={x(transitIn) + 8} y={PAD.t - 1} fill="#e6edf7" fontSize="12" fontFamily="var(--mono)">
+                  <text x={x(transitIn) + (transitLabelOnLeft ? -8 : 8)} y={PAD.t - 14} textAnchor={transitLabelOnLeft ? 'end' : 'start'} fill="#00e0ff" fontSize="12">Kulminacja · południk</text>
+                  <text x={x(transitIn) + (transitLabelOnLeft ? -8 : 8)} y={PAD.t - 1} textAnchor={transitLabelOnLeft ? 'end' : 'start'} fill="#e6edf7" fontSize="12" fontFamily="var(--mono)">
                     {fmtTime(transitIn, tz)} · {Math.round(vis.transitAlt)}°
                   </text>
                 </g>
@@ -184,9 +254,30 @@ export function AltitudeChart() {
             </>
           )}
 
+          {/* Granice zaplanowanego okna w planerze. */}
+          {slot && slot.endMs > slot.startMs && [slot.startMs, slot.endMs].map((t, i) => (
+            <g key={i}>
+              <title>{i ? 'Koniec' : 'Początek'} planowanego okna: {fmtTime(t, tz)}</title>
+              <line x1={x(t)} x2={x(t)} y1={PAD.t} y2={H - PAD.b} stroke={slot.conflict ? 'var(--bad)' : 'var(--accent)'} strokeWidth="1.5" strokeDasharray="5 5" />
+            </g>
+          ))}
+
           {/* Kursor czasu. */}
           <line x1={x(cursorT)} x2={x(cursorT)} y1={PAD.t} y2={H - PAD.b} stroke={hoverT !== null ? 'rgba(255,255,255,0.6)' : '#00e0ff'} strokeWidth="1" />
           {cursorAlt !== null && <circle cx={x(cursorT)} cy={y(cursorAlt)} r="4" fill="#fff" />}
+          {moonCursorInRange && moonCursorLineY !== null && (
+            <image
+              href={moonPhaseImageSrc(moonPhaseImageIndex(moonCursor.info.phaseDeg))}
+              x={x(cursorT) - 9}
+              y={moonCursorLineY - 9}
+              width="18"
+              height="18"
+              preserveAspectRatio="xMidYMid meet"
+              pointerEvents="none"
+            >
+              <title>{`Księżyc · ${moonCursor.info.name}`}</title>
+            </image>
+          )}
           <g transform={`translate(${Math.min(width - 110, Math.max(PAD.l, x(cursorT) + 6))}, ${H - PAD.b - 22})`}>
             <rect width="100" height="18" fill="rgba(0,0,0,0.75)" stroke="rgba(0,224,255,0.4)" />
             <text x="6" y="13" fill="#e6edf7" fontSize="11" fontFamily="var(--mono)">

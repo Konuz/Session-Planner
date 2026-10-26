@@ -119,7 +119,8 @@ export interface NightGrid {
 
 export function nightGrid(n: NightPhases, site: Site, stepMin = 5): NightGrid {
   const times: number[] = []
-  for (let t = n.startMs; t <= n.endMs + 1; t += stepMin * 60_000) times.push(t)
+  for (let t = n.startMs; t < n.endMs; t += stepMin * 60_000) times.push(t)
+  if (times[times.length - 1] !== n.endMs) times.push(n.endMs)
   return { times, matrices: times.map((t) => horizontalMatrix(t, site)) }
 }
 

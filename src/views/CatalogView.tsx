@@ -1,5 +1,5 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { CalendarCheck, RotateCcw, Search, SlidersHorizontal } from 'lucide-react'
+import { CalendarCheck, RotateCcw, Search } from 'lucide-react'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { ObjectDetails } from '../components/ObjectDetails'
 import { Range } from '../components/Range'
@@ -35,6 +35,9 @@ export default function CatalogView() {
   const minAlt = useStore((s) => s.minAltDeg)
   const setMinAlt = useStore((s) => s.setMinAlt)
   const select = useStore((s) => s.select)
+  const addToPlan = useStore((s) => s.addToPlan)
+  const setTab = useStore((s) => s.setTab)
+  const catalogPlanMode = useStore((s) => s.catalogPlanMode)
   const selectedIndex = useStore((s) => s.selectedIndex)
   const plan = useStore((s) => s.plan)
   const tz = useStore((s) => s.location.timeZone)
@@ -107,7 +110,7 @@ export default function CatalogView() {
   return (
     <div className="catalog-layout">
       <aside className="card catalog-filters">
-        <h2 className="panel-title"><SlidersHorizontal size={18} /> Filtry <span className="spacer" />
+        <h2 className="panel-title">Filtry <span className="spacer" />
           <button className="button ghost small" onClick={() => { setFilter(EMPTY_FILTER); setQuery('') }} title="Wyczyść filtry"><RotateCcw size={13} /></button>
         </h2>
         <div className="filter-group search-box">
@@ -159,6 +162,10 @@ export default function CatalogView() {
       </aside>
 
       <section>
+        {catalogPlanMode && <div className="catalog-plan-prompt">
+          <span>{catalogPlanMode === 'single' ? 'Kliknij obiekt, aby dodać go do planu i wrócić.' : 'Klikaj obiekty, aby dodać je do planu bez opuszczania katalogu.'}</span>
+          <button className="button small" onClick={() => setTab('planner')}>Wróć do planera ({plan.length})</button>
+        </div>}
         <div className="catalog-head">
           <div className="kicker">Baza obiektów</div>
           <b className="mono" style={{ fontSize: 15 }}>{catalog ? list.length.toLocaleString('pl-PL') : '…'}</b>
@@ -191,8 +198,14 @@ export default function CatalogView() {
                       minAlt={minAlt}
                       tz={tz}
                       onOpen={() => {
-                        select(o.i, true)
-                        setDetails(true)
+                        if (catalogPlanMode) {
+                          select(o.i, false)
+                          addToPlan(o.i, o.id)
+                          if (catalogPlanMode === 'single') setTab('planner')
+                        } else {
+                          select(o.i, true)
+                          setDetails(true)
+                        }
                       }}
                     />
                   )
@@ -241,7 +254,7 @@ const CatalogCard = memo(function CatalogCard({ o, selected, inPlan, hours, maxA
         </div>
         <div className="name"><ScrambleText text={displayName(o) || CONSTELLATION_PL[o.con] || ''} trigger={hover} /></div>
         <div className="meta">
-          <span>{o.mag !== null ? `${fmtNum(o.mag, 1)}m` : '—'} · {fmtSize(o.majArcmin, o.minArcmin)}</span>
+          <span>{o.mag !== null ? `${fmtNum(o.mag, 1)}m` : '-'} · {fmtSize(o.majArcmin, o.minArcmin)}</span>
           <span>{maxAlt !== null ? `${Math.round(Math.max(0, maxAlt))}°` : ''}</span>
         </div>
         <div className="meta">

@@ -1,5 +1,5 @@
 // Kadrowanie: zdjęcie DSS2 wokół obiektu w rzucie TAN i prostokąt matrycy z obrotem (PA od N przez E).
-import { Crosshair, Plus, RotateCw } from 'lucide-react'
+import { Crosshair, RotateCw } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { computeOptics } from '../lib/astro'
 import { fmtDec, fmtNum, fmtRa } from '../lib/format'
@@ -17,6 +17,7 @@ export function FramingPanel() {
   const framing = useStore((s) => s.framing)
   const setFraming = useStore((s) => s.setFraming)
   const addToPlan = useStore((s) => s.addToPlan)
+  const setTab = useStore((s) => s.setTab)
   const updatePlan = useStore((s) => s.updatePlan)
   const plan = useStore((s) => s.plan)
   const [layer, setLayer] = useState<'red' | 'color'>('red')
@@ -83,7 +84,7 @@ export function FramingPanel() {
       <div style={{ position: 'relative', display: 'grid', placeItems: 'center', overflow: 'hidden', padding: 12 }}>
         <div style={{ position: 'relative', height: '100%', aspectRatio: '1', maxWidth: '100%' }}>
           {img?.key === imageKey ? (
-            <img src={img.url} alt={`${o.id} — DSS2`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', filter: layer === 'red' ? 'grayscale(1) contrast(1.15)' : undefined, animation: 'fade-in .5s' }} />
+            <img src={img.url} alt={`${o.id}, DSS2`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', filter: layer === 'red' ? 'grayscale(1) contrast(1.15)' : undefined, animation: 'fade-in .5s' }} />
           ) : (
             <div className="thumb" style={{ position: 'absolute', inset: 0 }}>
               <div className="ph">{err ?? 'POBIERANIE ZDJĘCIA'}</div>
@@ -130,7 +131,7 @@ export function FramingPanel() {
             <circle cx={centerPx[0]} cy={centerPx[1]} r="4" fill="#00e0ff" />
             <text x="18" y="34" fill="#fff" fontSize="22" fontFamily="var(--mono)">N ↑</text>
             <text x="18" y="62" fill="#fff" fontSize="22" fontFamily="var(--mono)">← E</text>
-            <text x={SIZE - 18} y={SIZE - 20} fill="rgba(255,255,255,0.6)" fontSize="18" textAnchor="end" fontFamily="var(--mono)">
+            <text x={SIZE - 18} y={SIZE - 20} fill="rgba(255,255,255,0.6)" fontSize="13" textAnchor="end" fontFamily="var(--mono)">
               pole zdjęcia {fmtNum(imageFov, 2)}° · DSS2 {layer === 'red' ? 'czerwony' : 'kolor'} · CDS hips2fits
             </text>
           </svg>
@@ -171,10 +172,10 @@ export function FramingPanel() {
           className="button primary"
           onClick={() => {
             if (planItem) updatePlan(planItem.key, { framing })
-            else addToPlan(o.i, o.id)
+            else { addToPlan(o.i, o.id); setTab('planner') }
           }}
         >
-          <Plus size={14} /> {planItem ? 'Zapisz kadr w planie' : 'Dodaj do planu'}
+          {planItem ? 'Zapisz kadr w planie' : 'Dodaj do planu'}
         </button>
         <p className="dim" style={{ fontSize: 11.5, margin: 0 }}>Przeciągnij prostokąt, aby przesunąć kadr; uchwyt nad kadrem obraca go. Powiększenie zmienia suwak.</p>
       </div>

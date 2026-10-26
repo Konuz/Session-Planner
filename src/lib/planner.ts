@@ -1,6 +1,6 @@
 // Planer nocy: automatyczny podział ciemnego okna między cele (każdy wokół swojej najlepszej chwili).
 import { DAY_MS } from './astro'
-import { zonedMidnightMs } from './night'
+import { tzOffsetMs } from './night'
 
 export interface PlanTarget {
   key: string
@@ -32,20 +32,28 @@ export function autoSchedule(targets: readonly PlanTarget[], darkStart: number, 
     let end = next ? (t.bestMs + next.bestMs) / 2 : darkEnd
     start = Math.max(start, t.usableStart!, darkStart)
     end = Math.min(end, t.usableEnd!, darkEnd)
-    if (end - start >= 10 * 60_000) slots.push({ key: t.key, startMs: Math.round(start / 60_000) * 60_000, endMs: Math.round(end / 60_000) * 60_000 })
+    start = Math.ceil(start / 60_000) * 60_000
+    end = Math.floor(end / 60_000) * 60_000
+    if (end - start >= 10 * 60_000) slots.push({ key: t.key, startMs: start, endMs: end })
   }
   return slots
 }
 
 /** Godzina „HH:MM” w strefie lokalizacji jako chwila tej nocy (godziny przed 12:00 należą do poranka). */
-export function localTimeToMs(nightDate: string, hhmm: string, timeZone: string): number | null {
+export function localTimeToMs(nightDate: string, hhmm: string, timeZone: string, referenceMs?: number): number | null {
   const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm)
   if (!m) return null
   const h = Number(m[1])
   const min = Number(m[2])
-  let t = zonedMidnightMs(nightDate, timeZone) + (h * 60 + min) * 60_000
-  if (h < 12) t += DAY_MS
-  return t
+  if (h > 23 || min > 59) return null
+  const [year, month, day] = nightDate.split('-').map(Number)
+  const local = Date.UTC(year, month - 1, day + (h < 12 ? 1 : 0), h, min)
+  // Zmiana czasu może dać dwie chwile dla tej samej godziny albo żadną.
+  const offsets = new Set([-DAY_MS, 0, DAY_MS].map((delta) => tzOffsetMs(local + delta, timeZone)))
+  const candidates = [...offsets].map((offset) => local - offset)
+    .filter((t) => t + tzOffsetMs(t, timeZone) === local)
+    .sort((a, b) => referenceMs === undefined ? a - b : Math.abs(a - referenceMs) - Math.abs(b - referenceMs))
+  return candidates[0] ?? null
 }
 
 export function overlaps(slots: readonly Slot[]): Set<string> {

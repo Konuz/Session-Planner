@@ -1,4 +1,4 @@
-import { Camera, Gauge, Telescope } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import { useMemo } from 'react'
 import cameras from '../data/cameras.json'
 import reducers from '../data/reducers.json'
@@ -23,6 +23,14 @@ function NumField({ label, value, onChange, step = 1, min = 0, unit }: { label: 
 export default function EquipmentView() {
   const eq = useStore((s) => s.equipment)
   const set = useStore((s) => s.setEquipment)
+  const savedTelescopes = useStore((s) => s.savedTelescopes)
+  const savedCameras = useStore((s) => s.savedCameras)
+  const addTelescope = useStore((s) => s.addTelescope)
+  const removeTelescope = useStore((s) => s.removeTelescope)
+  const addCamera = useStore((s) => s.addCamera)
+  const removeCamera = useStore((s) => s.removeCamera)
+  const savedTelescope = savedTelescopes.find((item) => item.id === eq.telescopeId)
+  const savedCamera = savedCameras.find((item) => item.id === eq.cameraId)
   const { catalog } = useCatalog()
   const optics = useMemo(
     () => computeOptics({ apertureMm: eq.apertureMm, focalLengthMm: eq.focalLengthMm, reducer: eq.reducer, widthPx: eq.widthPx, heightPx: eq.heightPx, pixelUm: eq.pixelUm, binning: eq.binning }),
@@ -35,61 +43,69 @@ export default function EquipmentView() {
     <div className="two-col">
       <div className="col">
         <section className="card">
-          <h2 className="panel-title"><Telescope size={20} /> Teleskop</h2>
+          <h2 className="panel-title">Teleskop <span className="spacer" /><button className="button small" title="Zapisz bieżący teleskop jako własny model" aria-label="Dodaj własny teleskop" onClick={addTelescope}>Dodaj</button><button className="button small ghost" aria-label="Usuń własny teleskop" disabled={!savedTelescope} onClick={() => { if (savedTelescope && confirm(`Usunąć zapisany teleskop „${savedTelescope.name}”?`)) removeTelescope() }}><Trash2 size={14} /> Usuń</button></h2>
           <div className="form-grid">
             <label className="field" style={{ gridColumn: '1 / -1' }}>
               <span className="label">Model</span>
               <select
                 className="control"
-                value={telescopes.some((t) => t.id === eq.telescopeId) ? eq.telescopeId : 'custom'}
+                value={savedTelescope || telescopes.some((t) => t.id === eq.telescopeId) ? eq.telescopeId : 'custom'}
                 onChange={(e) => {
                   const t = telescopes.find((x) => x.id === e.target.value)
-                  if (t) set({ telescopeId: t.id, telescopeName: `${t.brand} ${t.model}`, apertureMm: t.apertureMm, focalLengthMm: t.focalLengthMm })
+                  const own = savedTelescopes.find((x) => x.id === e.target.value)
+                  if (own) set({ telescopeId: own.id, telescopeName: own.name, apertureMm: own.apertureMm, focalLengthMm: own.focalLengthMm, reducer: own.reducer })
+                  else if (t) set({ telescopeId: t.id, telescopeName: `${t.brand} ${t.model}`, apertureMm: t.apertureMm, focalLengthMm: t.focalLengthMm })
                   else set({ telescopeId: 'custom', telescopeName: 'Własny teleskop' })
                 }}
               >
-                {telescopes.map((t) => <option key={t.id} value={t.id}>{t.brand} {t.model} — {t.apertureMm}/{t.focalLengthMm}</option>)}
+                {savedTelescopes.length > 0 && <optgroup label="Moje teleskopy">{savedTelescopes.map((t) => <option key={t.id} value={t.id}>{t.name} - {t.apertureMm}/{t.focalLengthMm}</option>)}</optgroup>}
+                {telescopes.map((t) => <option key={t.id} value={t.id}>{t.brand} {t.model} - {t.apertureMm}/{t.focalLengthMm}</option>)}
                 <option value="custom">Własny…</option>
               </select>
             </label>
-            {eq.telescopeId === 'custom' && (
+            {(eq.telescopeId === 'custom' || savedTelescope) && (
               <label className="field" style={{ gridColumn: '1 / -1' }}>
                 <span className="label">Nazwa</span>
-                <input className="control" value={eq.telescopeName} onChange={(e) => set({ telescopeName: e.target.value })} />
+                <input className="control" value={eq.telescopeName} onChange={(e) => set({ telescopeName: e.target.value })} onBlur={() => set({ telescopeName: eq.telescopeName.trim() || 'Własny teleskop' })} />
               </label>
             )}
-            <NumField label="Apertura" unit="mm" value={eq.apertureMm} onChange={(v) => set({ apertureMm: v, telescopeId: 'custom' })} />
-            <NumField label="Ogniskowa" unit="mm" value={eq.focalLengthMm} onChange={(v) => set({ focalLengthMm: v, telescopeId: 'custom' })} />
+            <NumField label="Apertura" unit="mm" value={eq.apertureMm} onChange={(v) => set({ apertureMm: v, telescopeId: savedTelescope ? eq.telescopeId : 'custom' })} />
+            <NumField label="Ogniskowa" unit="mm" value={eq.focalLengthMm} onChange={(v) => set({ focalLengthMm: v, telescopeId: savedTelescope ? eq.telescopeId : 'custom' })} />
             <label className="field">
               <span className="label">Reduktor / korektor</span>
               <select className="control" value={eq.reducer} onChange={(e) => set({ reducer: Number(e.target.value) })}>
-                {reducers.map((r) => <option key={r.factor} value={r.factor}>×{r.factor}{r.note ? ` — ${r.note}` : ''}</option>)}
+                {reducers.map((r) => <option key={r.factor} value={r.factor}>×{r.factor}</option>)}
               </select>
             </label>
           </div>
         </section>
 
         <section className="card">
-          <h2 className="panel-title"><Camera size={20} /> Kamera</h2>
+          <h2 className="panel-title">Kamera <span className="spacer" /><button className="button small" title="Zapisz bieżącą kamerę jako własny model" aria-label="Dodaj własną kamerę" onClick={addCamera}>Dodaj</button><button className="button small ghost" aria-label="Usuń własną kamerę" disabled={!savedCamera} onClick={() => { if (savedCamera && confirm(`Usunąć zapisaną kamerę „${savedCamera.name}”?`)) removeCamera() }}><Trash2 size={14} /> Usuń</button></h2>
           <div className="form-grid">
             <label className="field" style={{ gridColumn: '1 / -1' }}>
               <span className="label">Model</span>
               <select
                 className="control"
-                value={cameras.some((c) => c.id === eq.cameraId) ? eq.cameraId : 'custom'}
+                value={savedCamera || cameras.some((c) => c.id === eq.cameraId) ? eq.cameraId : 'custom'}
                 onChange={(e) => {
                   const c = cameras.find((x) => x.id === e.target.value)
-                  if (c) set({ cameraId: c.id, cameraName: `${c.brand} ${c.model}`, widthPx: c.resolutionXPx, heightPx: c.resolutionYPx, pixelUm: c.pixelSizeUm, mono: c.sensor === 'mono' })
+                  const own = savedCameras.find((x) => x.id === e.target.value)
+                  if (own) set({ cameraId: own.id, cameraName: own.name, widthPx: own.widthPx, heightPx: own.heightPx, pixelUm: own.pixelUm, binning: own.binning, mono: own.mono })
+                  else if (c) set({ cameraId: c.id, cameraName: `${c.brand} ${c.model}`, widthPx: c.resolutionXPx, heightPx: c.resolutionYPx, pixelUm: c.pixelSizeUm, mono: c.sensor === 'mono' })
                   else set({ cameraId: 'custom', cameraName: 'Własna kamera' })
                 }}
               >
-                {cameras.map((c) => <option key={c.id} value={c.id}>{c.brand} {c.model} — {c.sensorModel}, {c.sensor === 'mono' ? 'mono' : 'kolor'}</option>)}
+                {savedCameras.length > 0 && <optgroup label="Moje kamery">{savedCameras.map((c) => <option key={c.id} value={c.id}>{c.name} - {c.mono ? 'mono' : 'kolor'}</option>)}</optgroup>}
+                {cameras.map((c) => <option key={c.id} value={c.id}>{c.brand} {c.model} - {c.sensorModel ? `${c.sensorModel}, ` : ''}{c.sensor === 'mono' ? 'mono' : 'kolor'}</option>)}
                 <option value="custom">Własna…</option>
               </select>
             </label>
-            <NumField label="Szerokość" unit="px" value={eq.widthPx} onChange={(v) => set({ widthPx: v, cameraId: 'custom' })} />
-            <NumField label="Wysokość" unit="px" value={eq.heightPx} onChange={(v) => set({ heightPx: v, cameraId: 'custom' })} />
-            <NumField label="Piksel" unit="µm" step={0.01} value={eq.pixelUm} onChange={(v) => set({ pixelUm: v, cameraId: 'custom' })} />
+            {(eq.cameraId === 'custom' || savedCamera) && <label className="field" style={{ gridColumn: '1 / -1' }}><span className="label">Nazwa</span><input className="control" value={eq.cameraName} onChange={(e) => set({ cameraName: e.target.value })} onBlur={() => set({ cameraName: eq.cameraName.trim() || 'Własna kamera' })} /></label>}
+            <NumField label="Szerokość" unit="px" value={eq.widthPx} onChange={(v) => set({ widthPx: v, cameraId: savedCamera ? eq.cameraId : 'custom' })} />
+            <NumField label="Wysokość" unit="px" value={eq.heightPx} onChange={(v) => set({ heightPx: v, cameraId: savedCamera ? eq.cameraId : 'custom' })} />
+            <NumField label="Piksel" unit="µm" step={0.01} value={eq.pixelUm} onChange={(v) => set({ pixelUm: v, cameraId: savedCamera ? eq.cameraId : 'custom' })} />
+            {(eq.cameraId === 'custom' || savedCamera) && <label className="field"><span className="label">Matryca</span><select className="control" value={eq.mono ? 'mono' : 'color'} onChange={(e) => set({ mono: e.target.value === 'mono' })}><option value="mono">Mono</option><option value="color">Kolor</option></select></label>}
             <label className="field">
               <span className="label">Binning</span>
               <select className="control" value={eq.binning} onChange={(e) => set({ binning: Number(e.target.value) })}>
@@ -103,7 +119,7 @@ export default function EquipmentView() {
 
       <div className="col">
         <section className="card">
-          <h2 className="panel-title"><Gauge size={20} /> Parametry zestawu <span className="sub">{eq.telescopeName} + {eq.cameraName}</span></h2>
+          <h2 className="panel-title">Parametry zestawu <span className="sub">{eq.telescopeName} + {eq.cameraName}</span></h2>
           <div className="stat-grid">
             <div className="stat"><div className="label">Ogniskowa efektywna</div><div className="v">{fmtNum(optics.focalMm, 0)} mm</div></div>
             <div className="stat"><div className="label">Światłosiła</div><div className="v">f/{fmtNum(optics.fRatio, 2)}</div></div>
