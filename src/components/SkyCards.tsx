@@ -1,12 +1,13 @@
-import { ChevronRight, CircleDot, CloudMoon, Droplets, Eye, Gauge, Maximize2, Moon, Ruler, Settings, Sparkles, Sun, Telescope, Thermometer, Wind, Camera, Aperture, Plus, Check } from 'lucide-react'
-import { useMemo } from 'react'
+import { CircleDot, CloudMoon, Droplets, Eye, Gauge, Ruler, Settings, Telescope, Thermometer, Wind, Camera, Check } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { angularDistanceDeg, bodyAltAz, computeOptics, moonInfo, moonJ2000, riseSetMs, sampling } from '../lib/astro'
 import { TYPE_INFO } from '../lib/catalog'
 import { fmtDate, fmtDeg, fmtDistance, fmtNum, fmtSize, fmtTime } from '../lib/format'
+import { darkWindow, nightPhases } from '../lib/night'
 import { skyRating, weatherAt } from '../lib/services'
 import { useNight, useSelected, useSite, useTime, useWeather } from '../state/data'
 import { useStore } from '../state/store'
-import { MoonDisc } from './MoonDisc'
+import { MoonDisc, moonPhaseImageIndex } from './MoonDisc'
 import { ObjectSearch } from './ObjectSearch'
 import { ScrambleText } from './ScrambleText'
 import { Thumb } from './Thumb'
@@ -16,6 +17,7 @@ export function ObjectCard({ onDetails }: { onDetails: () => void }) {
   const o = useSelected()
   const plan = useStore((s) => s.plan)
   const addToPlan = useStore((s) => s.addToPlan)
+  const setTab = useStore((s) => s.setTab)
   const inPlan = o ? plan.some((p) => p.objectIndex === o.i) : false
   return (
     <section className="card">
@@ -29,9 +31,6 @@ export function ObjectCard({ onDetails }: { onDetails: () => void }) {
             <div className="object-name">
               <span className="id"><ScrambleText text={o.id} /></span>
             </div>
-            <button className={`button small${inPlan ? ' active' : ''}`} onClick={() => addToPlan(o.i, o.id)} disabled={inPlan}>
-              {inPlan ? <Check size={13} /> : <Plus size={13} />} {inPlan ? 'W planie' : 'Do planu'}
-            </button>
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <span className="chip" style={{ color: TYPE_INFO[o.type].color }}>
@@ -44,18 +43,21 @@ export function ObjectCard({ onDetails }: { onDetails: () => void }) {
             ))}
           </div>
           <dl className="facts">
-            <dt><Sparkles size={15} /> Gwiazdozbiór</dt>
+            <dt>Gwiazdozbiór</dt>
             <dd>{CONSTELLATION_PL[o.con] ?? o.con}</dd>
-            <dt><Sun size={15} /> Jasność</dt>
-            <dd>{o.mag !== null ? `${fmtNum(o.mag, 1)} mag` : '—'}</dd>
-            <dt><Maximize2 size={15} /> Rozmiar</dt>
+            <dt>Jasność</dt>
+            <dd>{o.mag !== null ? `${fmtNum(o.mag, 1)} mag` : '-'}</dd>
+            <dt>Rozmiar</dt>
             <dd>{fmtSize(o.majArcmin, o.minArcmin)}</dd>
-            <dt><Ruler size={15} /> Odległość</dt>
+            <dt>Odległość</dt>
             <dd>{fmtDistance(o.distLy)}</dd>
           </dl>
-          <div style={{ marginTop: 8 }}>
-            <button className="link-row" onClick={onDetails}>
-              <ChevronRight size={15} /> Szczegóły obiektu
+          <div className="object-actions">
+            <button className="button small" onClick={onDetails}>
+              Szczegóły obiektu
+            </button>
+            <button className={`button small${inPlan ? ' active' : ''}`} onClick={() => { addToPlan(o.i, o.id); setTab('planner') }} disabled={inPlan}>
+              {inPlan && <Check size={13} />} {inPlan ? 'W planie' : 'Do planu'}
             </button>
           </div>
         </div>
@@ -86,7 +88,7 @@ export function MoonCard() {
   return (
     <section className="card">
       <div className="moon-row">
-        <MoonDisc illumination={info.illumination} waxing={info.waxing} size={80} />
+        <MoonDisc phaseIndex={moonPhaseImageIndex(info.phaseDeg)} phaseName={info.name} size={80} />
         <div>
           <div style={{ font: '700 14px var(--sans)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Księżyc</div>
           <div style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 4 }}>
@@ -95,7 +97,6 @@ export function MoonCard() {
           <div className="dim" style={{ fontSize: 12, marginTop: 2 }}>{next}</div>
           <div className="progress"><div style={{ width: `${info.illumination * 100}%` }} /></div>
         </div>
-        <Moon size={18} className="dim" />
       </div>
       <dl className="facts" style={{ gridTemplateColumns: 'auto 1fr auto 1fr', fontSize: 12.5 }}>
         <dt>Wschód</dt>
@@ -105,7 +106,7 @@ export function MoonCard() {
         <dt>Wysokość</dt>
         <dd>{fmtDeg(pos.altDeg)}</dd>
         <dt>Od obiektu</dt>
-        <dd style={{ color: sep !== null && sep < 30 && pos.altDeg > 0 && info.illumination > 0.3 ? 'var(--warn)' : undefined }}>{sep !== null ? fmtDeg(sep) : '—'}</dd>
+        <dd style={{ color: sep !== null && sep < 30 && pos.altDeg > 0 && info.illumination > 0.3 ? 'var(--warn)' : undefined }}>{sep !== null ? fmtDeg(sep) : '-'}</dd>
       </dl>
       <div className="dim" style={{ fontSize: 11.5, marginTop: 8 }}>
         Nów {fmtDate(info.nextNewMs, tz)} · pełnia {fmtDate(info.nextFullMs, tz)}
@@ -125,22 +126,70 @@ function WeatherIcon({ cloud, night }: { cloud: number; night: boolean }) {
   )
 }
 
+function RatingFace({ score, label }: { score: number; label: string }) {
+  const color = score >= 60 ? 'var(--ok)' : score >= 35 ? 'var(--warn)' : 'var(--bad)'
+  const mouth = score >= 60 ? 'M7.5 13 Q12 18 16.5 13' : score >= 35 ? 'M8 14h8' : 'M7.5 15.5 Q12 10.5 16.5 15.5'
+
+  return (
+    <span className="v" style={{ display: 'flex', justifyContent: 'flex-end' }} role="img" aria-label={`Ocena nieba: ${label}`} title={`Ocena nieba: ${label}`}>
+      <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="10" fill={color} />
+        <circle cx="9" cy="9.5" r="1" fill="#081018" />
+        <circle cx="15" cy="9.5" r="1" fill="#081018" />
+        <path d={mouth} fill="none" stroke="#081018" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    </span>
+  )
+}
+
 export function WeatherCard() {
+  const [weekView, setWeekView] = useState(false)
   const time = useTime()
   const night = useNight()
+  const site = useSite()
   const { hours, error, loading } = useWeather()
   const h = weatherAt(hours, time)
   const nightHours = hours.filter((x) => x.t >= night.startMs && x.t <= night.endMs)
   const isNight = night.sunset !== null && time > night.sunset && (night.sunrise === null || time < night.sunrise)
   const rating = h ? skyRating(h) : null
   const tz = useStore((s) => s.location.timeZone)
+  const week = useMemo(() => {
+    const [year, month, day] = night.date.split('-').map(Number)
+    return Array.from({ length: 7 }, (_, i) => {
+      const date = new Date(Date.UTC(year, month - 1, day + i)).toISOString().slice(0, 10)
+      const phases = nightPhases(date, site, tz)
+      const [start, end] = darkWindow(phases)
+      const samples = hours.filter((x) => x.t >= start && x.t <= end)
+      const score = samples.length ? samples.reduce((sum, x) => sum + skyRating(x).score, 0) / samples.length : null
+      return {
+        date,
+        label: fmtDate(phases.startMs, tz, { weekday: 'short', day: 'numeric', month: 'short' }),
+        cloud: samples.length ? Math.round(samples.reduce((sum, x) => sum + x.cloud, 0) / samples.length) : null,
+        minTemp: samples.length ? Math.round(Math.min(...samples.map((x) => x.temp))) : null,
+        score,
+        rating: score === null ? null : score >= 80 ? 'bardzo dobre' : score >= 60 ? 'dobre' : score >= 35 ? 'przeciętne' : 'złe',
+      }
+    })
+  }, [night.date, site, tz, hours])
   return (
-    <section className="card">
-      <h2 className="panel-title">
-        <CloudMoon size={20} /> Warunki tej nocy <span className="spacer" /> <span className="sub">{fmtTime(time, tz)}</span>
+    <section className="card weather-card">
+      <h2 className="panel-title weather-title">
+        <span className="weather-title-label">{weekView ? 'Warunki na 7 nocy' : 'Warunki tej nocy'}</span>
+        <span className="sub weather-time" aria-hidden={weekView} style={{ visibility: weekView ? 'hidden' : 'visible' }}>{fmtTime(time, tz)}</span>
+        <button className={`switch weather-period${weekView ? ' on' : ''}`} onClick={() => setWeekView(!weekView)} role="switch" aria-checked={weekView} aria-label={weekView ? 'Pokaż warunki tej nocy' : 'Pokaż prognozę na 7 nocy'} style={{ background: 'none', border: 0, padding: 0 }}><span className="track" /><span>{weekView ? '7 nocy' : '1 noc'}</span></button>
       </h2>
-      {h && rating ? (
-        <>
+      <p className="dim weather-note">Przełącz zakres prognozy: tej nocy lub kolejnych 7 nocy.</p>
+      {weekView ? (
+        <div className="wx-week">
+          {week.map((day) => <div className="wx-week-row" key={day.date}>
+            <strong>{day.label}</strong>
+            {day.score === null || day.rating === null ? <span className="dim">Brak danych</span> : <RatingFace score={day.score} label={day.rating} />}
+            {day.cloud !== null && <small>Zachmurzenie {day.cloud}% - min. {day.minTemp}°C</small>}
+          </div>)}
+          <p className="dim" style={{ fontSize: 11, marginBottom: 0 }}>Średnia ocena i zachmurzenie w ciemnym oknie każdej nocy. Prognoza: Open-Meteo.</p>
+        </div>
+      ) : h && rating ? (
+        <div className="wx-current">
           <div className="wx-main">
             <div style={{ textAlign: 'center' }}>
               <WeatherIcon cloud={h.cloud} night={isNight} />
@@ -148,7 +197,7 @@ export function WeatherCard() {
             </div>
             <div className="wx-rows">
               <Gauge size={15} /> <span>Ocena nieba</span>
-              <span className="v" style={{ color: rating.score >= 60 ? 'var(--ok)' : rating.score >= 35 ? 'var(--warn)' : 'var(--bad)' }}>{rating.label}</span>
+              <RatingFace score={rating.score} label={rating.label} />
               <CloudMoon size={15} /> <span>Zachmurzenie</span> <span className="v">{Math.round(h.cloud)}%</span>
               <Droplets size={15} /> <span>Wilgotność</span> <span className="v">{Math.round(h.humidity)}%</span>
               <Thermometer size={15} /> <span>Punkt rosy</span> <span className="v">{fmtNum(h.dew, 0)}°C</span>
@@ -169,9 +218,9 @@ export function WeatherCard() {
               </div>
             </>
           )}
-        </>
+        </div>
       ) : (
-        <div className="dim" style={{ fontSize: 13, padding: '18px 0' }}>
+        <div className="dim wx-empty" style={{ fontSize: 13, padding: '18px 0' }}>
           {loading ? 'Pobieranie prognozy…' : error ? `Prognoza niedostępna: ${error}` : 'Prognoza obejmuje najbliższe 7 dni. Dla tej nocy brak danych.'}
         </div>
       )}
@@ -190,14 +239,14 @@ export function OpticsCard() {
   return (
     <section className="card">
       <h2 className="panel-title">
-        <Telescope size={20} /> Zestaw optyczny
+        Zestaw optyczny
         <span className="spacer" />
         <button className="button ghost icon-button" style={{ minHeight: 28, width: 28 }} onClick={() => setTab('equipment')} title="Konfiguruj zestaw" aria-label="Konfiguruj zestaw">
           <Settings size={18} />
         </button>
       </h2>
       <div className="wx-rows" style={{ gridTemplateColumns: 'auto 1fr', fontSize: 13.5, gap: '12px 14px' }}>
-        <Aperture size={17} />
+        <Telescope size={17} />
         <span>
           {eq.telescopeName} <span className="dim">·</span> <span className="mono">{fmtNum(eq.apertureMm, 0)}/{fmtNum(o.focalMm, 0)} f/{fmtNum(o.fRatio, 1)}</span>
         </span>

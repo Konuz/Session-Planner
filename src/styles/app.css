@@ -397,6 +397,7 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .object-name { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; min-width: 0; font-size: 20px; padding: 3px 10px; border: 1px solid var(--text); }
 .object-name .id { font: 700 20px var(--mono); }
 .object-name .sep { color: var(--text-faint); }
+.object-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .facts { display: grid; grid-template-columns: auto 1fr; gap: 9px 14px; margin: 12px 0 4px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 13.5px; }
 .facts dt { display: flex; align-items: center; gap: 10px; color: var(--text-dim); }
 .facts dt svg { color: var(--accent); }
@@ -499,8 +500,31 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .wx-rows { display: grid; grid-template-columns: auto 1fr auto; gap: 8px 10px; align-items: center; font-size: 13px; }
 .wx-rows svg { color: var(--accent); }
 .wx-rows .v { font-family: var(--mono); text-align: right; }
+.weather-card { display: flex; flex-direction: column; min-height: 0; }
+.weather-title { display: grid; grid-template-columns: minmax(0, 1fr) 44px 86px; }
+.weather-title-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.weather-time { width: 44px; text-align: right; }
+.weather-period { width: 86px; flex: none; justify-content: flex-start; gap: 6px; white-space: nowrap; }
+.weather-note { flex: none; font-size: 11px; margin: -6px 0 10px; }
+.wx-week, .wx-current, .wx-empty {
+  flex: 0 0 200px;
+  height: 200px;
+  min-height: 200px;
+  overflow-y: auto;
+  padding-right: 12px;
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+  scrollbar-color: transparent transparent;
+}
+.wx-week:hover, .wx-current:hover, .wx-empty:hover { scrollbar-color: var(--border-strong) transparent; }
+.wx-week::-webkit-scrollbar, .wx-current::-webkit-scrollbar, .wx-empty::-webkit-scrollbar { width: 6px; }
+.wx-week::-webkit-scrollbar-thumb, .wx-current::-webkit-scrollbar-thumb, .wx-empty::-webkit-scrollbar-thumb { background: transparent; transition: background-color 0.2s; }
+.wx-week:hover::-webkit-scrollbar-thumb, .wx-current:hover::-webkit-scrollbar-thumb, .wx-empty:hover::-webkit-scrollbar-thumb { background: var(--border-strong); }
 .cloud-bars { display: flex; gap: 2px; align-items: flex-end; height: 34px; margin-top: 12px; }
 .cloud-bars div { flex: 1; background: var(--accent); opacity: 0.85; min-height: 1px; transition: height 0.4s var(--ease); }
+.wx-week-row { display: grid; grid-template-columns: 1fr auto; gap: 3px 8px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.wx-week-row strong { font-family: var(--mono); font-weight: 500; }
+.wx-week-row small { grid-column: 1 / -1; color: var(--text-dim); font: 11px var(--mono); }
 /* Zdjęcie teleskopu wtapia się w kartę: krawędzie zanikają do przezroczystości. */
 .telescope-art {
   display: block;
@@ -610,7 +634,8 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .zoom-slider input:focus:not(:focus-visible), .zoom-slider input:focus { outline: none; }
 
 /* Prawa kolumna Nieba: karta pogody rośnie, żeby dół karty zestawu zrównał się z dołem kopuły. */
-.sky-grid > div.col:nth-of-type(2) > .card:first-child { flex: 1; }
+.sky-grid > div.col:nth-of-type(2) > .card:first-child { flex: 1; min-height: 0; }
+.sky-grid > div.col:first-child > .card:last-child { flex: 1; min-height: 0; }
 /* Prawy dolny róg kopuły: suwak powiększenia, pod nim suwak głębi (ta sama szerokość). */
 .hud-stack { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .hud-stack .zoom-slider { width: 212px; justify-content: space-between; }

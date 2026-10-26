@@ -25,6 +25,7 @@ import { affineFrom3, FULL_DOME, makeProjector, type Projector, type View } from
 import { loadMilkyWay, loadSky, type MilkyWay, type SkyData } from '../lib/sky'
 import { useCatalog, useNight, useSelected, useSite, useTime } from '../state/data'
 import { useStore } from '../state/store'
+import { MoonDisc, moonPhaseImageIndex } from './MoonDisc'
 import { Range } from './Range'
 
 // Opis kroków suwaka głębi adnotacji (podpowiedź i czytnik ekranu).
@@ -195,7 +196,7 @@ function artLayer(w: number, h: number): HTMLCanvasElement {
 
 /**
  * Wersja ilustracji dla rozmiaru na ekranie `screenPx`: oryginał tylko przy prawie pełnym rozmiarze, poniżej
- * najbliższy większy poziom (192, 96 lub 48 px) pogrubiony — kilka przesuniętych kopii łączonych trybem „lighten”
+ * najbliższy większy poziom (192, 96 lub 48 px) pogrubiony: kilka przesuniętych kopii łączonych trybem „lighten”
  * (najjaśniejszy piksel), żeby cienkie linie nie zniknęły, a wypełnienia nie przepaliły się do bieli.
  */
 function artLevel(img: HTMLImageElement, file: string, screenPx: number): CanvasImageSource {
@@ -367,7 +368,7 @@ function drawMilkyWay(ctx: CanvasRenderingContext2D, proj: Projector, mw: MilkyW
 // ---------- Komponent ----------
 
 interface Props {
-  /** Animacja czasu (odtwarzanie) — wyłącza ciężkie elementy pośrednie. */
+  /** Animacja czasu (odtwarzanie): wyłącza ciężkie elementy pośrednie. */
   playing?: boolean
 }
 
@@ -447,10 +448,12 @@ export function SkyDome({ playing = false }: Props) {
   const horMatrix = useMemo(() => horizontalMatrix(time, site), [time, site])
   const sun = useMemo(() => bodyAltAz('sun', time, site), [time, site])
   const moon = useMemo(() => ({ ...bodyAltAz('moon', time, site), info: moonInfo(time) }), [time, site])
+  const moonMarkerSize = Math.round(2 * Math.max(5, 9 * (184 / view.fovDeg) ** 0.5))
 
   // Tor wybranego obiektu przez noc (co 5 min).
   const grid = useMemo(() => nightGrid(night, site, 10), [night, site])
   const track = useMemo(() => (selected ? altitudeTrack(selected, grid) : []), [selected, grid])
+  const moonTrack = useMemo(() => grid.times.map((t) => ({ t, ...bodyAltAz('moon', t, site) })), [grid, site])
   const messier = useMemo(() => (catalog ? catalog.filter((o) => o.catalogs.includes('M')) : []), [catalog])
   // Obiekty katalogu po oznaczeniu głównym, potem po aliasach.
   const catalogById = useMemo(() => {
@@ -536,6 +539,7 @@ export function SkyDome({ playing = false }: Props) {
   const dpr = Math.min(2, typeof devicePixelRatio === 'number' ? devicePixelRatio : 1)
   const radius = Math.min(size.w, size.h) / 2 - 18
   const proj = useMemo(() => makeProjector(horMatrix, view, size.w / 2, size.h / 2, radius), [horMatrix, view, size, radius])
+  const moonPoint = moon.altDeg > -2 ? proj.hor(horizontalToVec({ altDeg: moon.altDeg, azDeg: moon.azDeg })) : null
 
   // ---------- Rysowanie ----------
   useEffect(() => {
@@ -825,45 +829,65 @@ export function SkyDome({ playing = false }: Props) {
     }
 
     // Księżyc z fazą i Słońce.
-    const drawBody = (alt: number, az: number, r: number, kind: 'moon' | 'sun') => {
+    const drawSun = (alt: number, az: number, r: number) => {
       const p = toScreenHor(alt, az)
       if (!p) return
       ctx.save()
-      if (kind === 'sun') {
-        const g = ctx.createRadialGradient(p[0], p[1], 0, p[0], p[1], r * 3)
-        g.addColorStop(0, 'rgba(255, 220, 140, 0.9)')
-        g.addColorStop(1, 'rgba(255, 180, 60, 0)')
-        ctx.fillStyle = g
+      const g = ctx.createRadialGradient(p[0], p[1], 0, p[0], p[1], r * 3)
+      g.addColorStop(0, 'rgba(255, 220, 140, 0.9)')
+      g.addColorStop(1, 'rgba(255, 180, 60, 0)')
+      ctx.fillStyle = g
+      ctx.beginPath()
+      ctx.arc(p[0], p[1], r * 3, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.restore()
+    }
+    if (sun.altDeg > -2) drawSun(sun.altDeg, sun.azDeg, 8)
+
+    // Tor Księżyca przez noc; przełącznik „Tory” steruje nim razem z torem obiektu.
+    if (showTracks && moonTrack.length) {
+      ctx.save()
+      ctx.setLineDash([3, 5])
+      ctx.strokeStyle = 'rgba(220, 225, 235, 0.65)'
+      ctx.lineWidth = 1.5
+      ctx.beginPath()
+      let started = false
+      const moonPoints: { p: [number, number]; t: number }[] = []
+      for (const point of moonTrack) {
+        const p = point.altDeg > -1 ? toScreenHor(point.altDeg, point.azDeg) : null
+        if (!p) {
+          started = false
+          continue
+        }
+        moonPoints.push({ p, t: point.t })
+        if (!started) ctx.moveTo(p[0], p[1])
+        else ctx.lineTo(p[0], p[1])
+        started = true
+      }
+      ctx.stroke()
+      ctx.setLineDash([])
+      for (const { p, t } of moonPoints) {
+        const local = new Date(t).toLocaleTimeString('pl-PL', { timeZone: tz, hour: '2-digit', minute: '2-digit' })
+        if (Number(local.slice(3, 5)) >= 10) continue
+        ctx.fillStyle = 'rgba(220, 225, 235, 0.85)'
         ctx.beginPath()
-        ctx.arc(p[0], p[1], r * 3, 0, Math.PI * 2)
+        ctx.arc(p[0], p[1], 2.2, 0, Math.PI * 2)
         ctx.fill()
-      } else {
-        const f = moon.info.illumination
-        ctx.fillStyle = 'rgba(40, 46, 60, 0.95)'
-        ctx.beginPath()
-        ctx.arc(p[0], p[1], r, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.fillStyle = '#e8ecf2'
-        ctx.beginPath()
-        const dir = moon.info.waxing ? 1 : -1
-        ctx.arc(p[0], p[1], r, -Math.PI / 2, Math.PI / 2, dir < 0)
-        ctx.ellipse(p[0], p[1], Math.abs(1 - 2 * f) * r, r, 0, Math.PI / 2, -Math.PI / 2, (f > 0.5) !== dir > 0)
-        ctx.fill()
-        ctx.shadowColor = 'rgba(230, 236, 255, 0.6)'
-        ctx.shadowBlur = 16
-        ctx.strokeStyle = 'rgba(230, 236, 255, 0.3)'
-        ctx.beginPath()
-        ctx.arc(p[0], p[1], r, 0, Math.PI * 2)
-        ctx.stroke()
-        ctx.fillStyle = 'rgba(220, 225, 235, 0.7)'
-        ctx.font = '11px system-ui, sans-serif'
-        ctx.shadowBlur = 0
-        ctx.fillText('Księżyc', p[0] + r + 5, p[1] + 4)
+        if (Number(local.slice(0, 2)) % 2 === 0) {
+          ctx.fillStyle = 'rgba(220, 225, 235, 0.7)'
+          ctx.fillText(local.slice(0, 2), p[0] + 5, p[1] - 4)
+        }
+      }
+      if (moonPoints.length) {
+        for (const end of [moonPoints[0], moonPoints[moonPoints.length - 1]]) {
+          ctx.fillStyle = '#e1e5ed'
+          ctx.beginPath()
+          ctx.arc(end.p[0], end.p[1], 3.5, 0, Math.PI * 2)
+          ctx.fill()
+        }
       }
       ctx.restore()
     }
-    if (moon.altDeg > -2) drawBody(moon.altDeg, moon.azDeg, Math.max(5, 9 * (184 / view.fovDeg) ** 0.5), 'moon')
-    if (sun.altDeg > -2) drawBody(sun.altDeg, sun.azDeg, 8, 'sun')
 
     // Tor obiektu przez noc z godzinami.
     if (selected && showTracks && track.length) {
@@ -925,7 +949,7 @@ export function SkyDome({ playing = false }: Props) {
     // Postać gwiazdozbioru pod kursorem: półprzezroczysta nakładka z płynnym pojawieniem. Rysowana nad ziemią,
     // żeby gwiazdozbiory nisko nad horyzontem (np. Wolarz, Korona Północna, Ryś) miały całą postać.
     // Postać zasłania tylko duży obiekt pod kursorem (kontur ≥ 2500 px² albo elipsa o promieniu ≥ 25 px);
-    // obszary mgławic (tło Drogi Mlecznej) i małe obiekty jej nie blokują — inaczej np. Kasjopeja, Lutnia
+    // obszary mgławic (tło Drogi Mlecznej) i małe obiekty jej nie blokują; inaczej np. Kasjopeja, Lutnia
     // czy Jaszczurka przy pełnej kopule nie miałyby postaci wcale.
     const outlineBlocks =
       hoverOutline !== null &&
@@ -958,7 +982,7 @@ export function SkyDome({ playing = false }: Props) {
             const src = artLevel(img, c.art.file, 384 * imgScale)
             const alpha = Math.min(0.6, 0.42 / Math.min(1, imgScale) ** 0.4)
             // Postać rysowana na osobnej warstwie, z której maska ziemi (ta sama co dla gruntu) wycina wszystko pod
-            // horyzontem (własnym, jeśli ustawiony) — przy każdym powiększeniu i kierunku widoku.
+            // horyzontem (własnym, jeśli ustawiony) przy każdym powiększeniu i kierunku widoku.
             const layer = artLayer(overlay.width, overlay.height)
             const lc = layer.getContext('2d')!
             lc.setTransform(1, 0, 0, 1, 0, 0)
@@ -1242,6 +1266,22 @@ export function SkyDome({ playing = false }: Props) {
           setHoverCon((h) => (h ? { ...h } : h))
         }}
       />
+      {moonPoint && (
+        <div
+          style={{
+            position: 'absolute',
+            left: moonPoint[0] - moonMarkerSize / 2,
+            top: moonPoint[1] - moonMarkerSize / 2,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 5,
+            pointerEvents: 'none',
+          }}
+        >
+          <MoonDisc phaseIndex={moonPhaseImageIndex(moon.info.phaseDeg)} phaseName={moon.info.name} size={moonMarkerSize} />
+          <span style={{ color: 'rgba(220, 225, 235, 0.7)', font: '11px system-ui, sans-serif', whiteSpace: 'nowrap' }}>Księżyc</span>
+        </div>
+      )}
       {hoverCon && !drag.current && (hoveredOutline ? (
         <div className="const-tip" style={{ left: hoverCon.x, top: hoverCon.y }}>
           {hoveredOutline.dso ? (
