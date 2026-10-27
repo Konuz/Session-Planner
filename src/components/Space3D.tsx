@@ -9,6 +9,7 @@ import { galacticVector } from '../lib/astro'
 import { TYPE_INFO, type DSO, type ObjectType } from '../lib/catalog'
 import { useCatalog, useSelected } from '../state/data'
 import { useStore } from '../state/store'
+import { fmtDistance } from '../lib/format'
 import { Range } from './Range'
 import { LayersIcon } from './SkyDome'
 import { useOutside } from './TopBar'
@@ -17,7 +18,8 @@ const SUN_TO_GC_KLY = 26.7
 const GALACTIC_LIMIT_LY = 150_000
 const MILKY_WAY_DIAMETER_LY = 100_000
 const UNIVERSE_GALAXY_SCALE = 0.12
-const TYPE_RGB: Record<ObjectType, number> = { G: 0xa78bfa, GG: 0xa78bfa, EN: 0xf43f5e, RN: 0x60a5fa, DN: 0xf59e0b, PN: 0x2dd4bf, SNR: 0xfb923c, OC: 0xfacc15, GC: 0xfacc15, CN: 0xf43f5e, X: 0x99a1af }
+// Te same stonowane barwy co tokeny --t-* w app.css.
+const TYPE_RGB: Record<ObjectType, number> = { G: 0x38194c, GG: 0x38194c, EN: 0x941e43, RN: 0xe54f29, DN: 0xf88f05, PN: 0xe54f29, SNR: 0xf88f05, OC: 0xffd03b, GC: 0xffd03b, CN: 0x941e43, X: 0x99a1af }
 type GalaxyProfile = {
   kind: 'spiral' | 'flocculent' | 'elliptical' | 'irregular'
   label: string
@@ -125,7 +127,8 @@ function localGroupGalaxy(o: DSO, profile: GalaxyProfile, texture: THREE.Texture
   // M31 i M33: średnice NASA; karły: średnica z rozmiaru kątowego i odległości katalogowej.
   const diameterLy = o.id === 'M 31' ? 220_000 : o.id === 'M 33' ? 50_000 : o.distLy! * o.majArcmin * Math.PI / 10_800
   const spiral = profile.kind === 'spiral' || profile.kind === 'flocculent'
-  const count = o.id === 'M 31' ? 36000 : o.id === 'M 33' ? 4400 : Math.max(300, Math.round(12000 * (diameterLy / MILKY_WAY_DIAMETER_LY) ** 1.8))
+  // Minimum próbek zachowuje czytelność karłów przy zbliżeniu; M33 ma rozległy, rozproszony dysk.
+  const count = o.id === 'M 31' ? 36000 : o.id === 'M 33' ? 8800 : Math.max(600, Math.round(18000 * (diameterLy / MILKY_WAY_DIAMETER_LY) ** 1.8))
   const pos = new Float32Array(count * 3)
   const col = new Float32Array(count * 3)
   let seed = [...o.id].reduce((n, c) => n * 31 + c.charCodeAt(0), 7) >>> 0
@@ -149,28 +152,49 @@ function localGroupGalaxy(o: DSO, profile: GalaxyProfile, texture: THREE.Texture
     const part = rnd()
     if (spiral) {
       if (part < profile.core) {
-        // M31: przestrzenne zgrubienie starych gwiazd. M33: brak dużego zgrubienia.
+        // M31: klasyczne zgrubienie i wydłużona składowa poprzeczki. M33: bez dużego zgrubienia.
+        // https://www.aanda.org/articles/aa/pdf/2018/10/aa32517-17.pdf
         const r = radius(2.5)
         const a = rnd() * Math.PI * 2
         const h = rnd() * 2 - 1
         x = r * Math.sqrt(1 - h * h) * Math.cos(a)
         y = r * Math.sqrt(1 - h * h) * Math.sin(a)
         z = r * h * 0.65
+        if (rnd() < 0.35) {
+          // PA poprzeczki 55,7° rzutujemy z powrotem do płaszczyzny dysku nachylonego o 77°.
+          const barAngle = -Math.atan(Math.tan((55.7 - (o.paDeg ?? 35)) * Math.PI / 180) / Math.cos(77 * Math.PI / 180))
+          x *= 1.6
+          y *= 0.65
+          ;[x, y] = [x * Math.cos(barAngle) - y * Math.sin(barAngle), x * Math.sin(barAngle) + y * Math.cos(barAngle)]
+        }
         color = [1, 0.8, 0.58]
       } else {
-        const disk = part < profile.core + 0.35
+        const disk = part < profile.core + (flocculent ? 0.45 : 0.48)
         // Pierścień M31: ok. 10 kpc od centrum (NASA/Spitzer), na tle dysku i ramion.
         // https://science.nasa.gov/asset/webb/infrared-universe-andromeda-galaxy/
-        const ring = !flocculent && part > 0.92
-        const r = ring ? 14.8 + gauss() * 1.2 : radius(flocculent ? 18 : 11)
+        const ring = !flocculent && part > 0.96
         const arm = Math.floor(rnd() * 2)
-        const pitch = (flocculent ? 24 : 12) * Math.PI / 180
-        const a = disk || ring ? rnd() * Math.PI * 2 : Math.log(1 + r / 3) / Math.tan(pitch) + arm * Math.PI + gauss() * (flocculent ? 0.4 : 0.25) + (flocculent ? 0.3 * Math.sin(r * 0.55 + arm) : 0)
+        let r = ring ? 14.8 + gauss() * 2.4 : radius(flocculent ? 18 : 11)
+        // M33: dwa słabe, niesymetryczne ramiona ze skupiskami zamiast jednolitych wstęg.
+        // https://www.aanda.org/articles/aa/pdf/2024/05/aa48910-23.pdf
+        if (flocculent && !disk && rnd() < 0.6) {
+          r = Math.max(2, Math.min(48, 8 + Math.floor(rnd() * 4) * 10 + arm * 3 + gauss() * 2))
+        }
+        const pitch = (flocculent ? 22 + arm * 6 : 12) * Math.PI / 180
+        const spiralAngle = Math.log(1 + r / 3) / Math.tan(pitch) + arm * Math.PI
+        const a = disk || ring ? rnd() * Math.PI * 2 : spiralAngle + gauss() * (flocculent ? 0.5 : 0.35) + (flocculent ? 0.45 * Math.sin(r * 0.35 + arm * 2) : 0)
+        if (ring) r += 1.5 * Math.sin(a) + 0.8 * Math.sin(3 * a)
         x = Math.cos(a) * r
         y = Math.sin(a) * r
         z = gauss() * (0.35 + r * 0.012)
         const hii = !disk && rnd() < (flocculent ? 0.09 : 0.035)
-        color = disk ? [0.42, 0.4, 0.37] : hii ? [0.95, 0.42, 0.55] : ring ? [0.4, 0.45, 0.55] : [0.63, 0.76, 1]
+        color = disk ? (flocculent ? [0.56, 0.58, 0.64] : [0.42, 0.4, 0.37]) : hii ? [0.95, 0.42, 0.55] : ring ? [0.4, 0.45, 0.55] : [0.63, 0.76, 1]
+        if (!flocculent) {
+          // Poglądowe pasma pyłu: osłabienie światła w dysku, bez jasnego obrysu pierścienia.
+          const lane = Math.exp(-((Math.sin(a - Math.log(1 + r / 3) / Math.tan(pitch) - 0.18) / 0.13) ** 2))
+          const dim = 1 - 0.7 * lane * THREE.MathUtils.smoothstep(r, 4, 9)
+          color = [color[0] * dim, color[1] * dim, color[2] * dim]
+        }
       }
     } else if (profile.kind === 'elliptical') {
       const r = radius(part < profile.core ? 2.5 : 11)
@@ -186,7 +210,7 @@ function localGroupGalaxy(o: DSO, profile: GalaxyProfile, texture: THREE.Texture
         const a = rnd() * Math.PI * 2
         x = Math.cos(a) * r
         y = Math.sin(a) * r * profile.axisRatio
-        color = [0.34, 0.38, 0.43]
+        color = [0.44, 0.49, 0.56]
       } else if (profile.bar && part < 0.8) {
         x = (rnd() - 0.5) * 55
         y = gauss() * 3 + x * 0.12
@@ -220,8 +244,10 @@ function localGroupGalaxy(o: DSO, profile: GalaxyProfile, texture: THREE.Texture
   const minor = sight.clone().cross(major).normalize()
   points.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(major, minor, sight))
   if (spiral) {
-    const ratio = Math.min(1, o.minArcmin / o.majArcmin)
-    const inclination = Math.acos(Math.sqrt(Math.max(0, (ratio * ratio - 0.15 ** 2) / (1 - 0.15 ** 2))))
+    // Orientacja dysków z badań, nie z elipsy całej galaktyki obejmującej zgrubienie.
+    // M31: https://academic.oup.com/mnras/article/366/3/996/994137
+    // M33: https://www.aanda.org/articles/aa/pdf/2025/08/aa55408-25.pdf
+    const inclination = (flocculent ? 54 : 77) * Math.PI / 180
     points.rotateX(inclination)
   }
   return points
@@ -342,6 +368,7 @@ export default function Space3D() {
   const auto: Scale = dist !== null && dist > GALACTIC_LIMIT_LY ? 'universe' : 'galaxy'
   const [scaleChoice, setScaleChoice] = useState<Scale | null>(null)
   const scale = scaleChoice ?? auto
+  const outOfScale = scale === 'galaxy' && dist !== null && dist > GALACTIC_LIMIT_LY
   const withDistance = useMemo(() => (catalog ? catalog.filter((c) => c.distLy !== null) : []), [catalog])
 
   useEffect(() => {
@@ -368,7 +395,9 @@ export default function Space3D() {
     disposables.push(stars)
 
     const sunPos = scale === 'galaxy' ? toThree([-SUN_TO_GC_KLY, 0, 0]) : new THREE.Vector3()
-    const target0 = dist !== null ? position(o, dist, scale) : sunPos.clone()
+    // Obiekt dalszy niż zasięg skali Drogi Mlecznej pokazany jak bez odległości: tylko kierunek, bez oddalania kadru.
+    const placed = dist !== null && !outOfScale
+    const target0 = placed ? position(o, dist, scale) : sunPos.clone()
     // Rozmiar sceny wokół celu: etykiety i znaczniki skalują się z nim, punkty mają stały rozmiar w pikselach.
     const sep = sunPos.distanceTo(target0)
     // Kadr dopasowany do odległości Słońce–obiekt (bliskie obiekty: zbliżenie na okolicę Słońca).
@@ -393,7 +422,7 @@ export default function Space3D() {
       bg.forEach((c, i) => {
         const p = position(c, c.distLy!, scale)
         pos.set([p.x, p.y, p.z], i * 3)
-        tmp.setHex(scale === 'universe' ? 0xffffff : TYPE_RGB[c.type])
+        tmp.setHex(TYPE_RGB[c.type])
         col.set([tmp.r, tmp.g, tmp.b], i * 3)
       })
       const g = new THREE.BufferGeometry()
@@ -450,20 +479,34 @@ export default function Space3D() {
       })
     }
 
-    // Słońce.
+    // Ziemia jako umowny znacznik naszego położenia (rozmiar poza skalą).
+    let earth: THREE.Mesh | undefined
     if (scale === 'galaxy') {
-      const sun = new THREE.Mesh(new THREE.SphereGeometry(mr * 0.9, 16, 16), new THREE.MeshBasicMaterial({ color: 0xffd27a }))
-      sun.position.copy(sunPos)
-      scene.add(sun)
-      disposables.push(sun.geometry, sun.material as THREE.Material)
+      // Tekstura: https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg
+      const map = new THREE.TextureLoader().load(`${import.meta.env.BASE_URL}textures/earth.webp`)
+      map.colorSpace = THREE.SRGBColorSpace
+      earth = new THREE.Mesh(new THREE.SphereGeometry(mr * 1.35, 48, 32), new THREE.MeshPhongMaterial({ map, shininess: 12, specular: 0x233344 }))
+      const axis = new THREE.Group()
+      axis.position.copy(sunPos)
+      // Biegun ziemski J2000: l = 122,932°, b = 27,128°; płaszczyzna Galaktyki to XZ.
+      // https://asc.harvard.edu/ciao/ahelp/prop-coords.html
+      axis.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), toThree(galacticVector({ raDeg: 0, decDeg: 90 })).normalize())
+      axis.add(earth)
+      scene.add(axis)
+      scene.add(new THREE.AmbientLight(0xffffff, 1.5))
+      const light = new THREE.DirectionalLight(0xffffff, 2)
+      light.position.copy(sunPos).add(new THREE.Vector3(10, 15, 10))
+      light.target.position.copy(sunPos)
+      scene.add(light, light.target)
+      disposables.push(earth.geometry, earth.material as THREE.Material, map)
     }
-    const sunLabel = label(scale === 'galaxy' ? 'Słońce' : 'Droga Mleczna', scale === 'galaxy' ? '#ffd27a' : '#e6edf7', 0.55)
+    const sunLabel = label(scale === 'galaxy' ? 'Ziemia' : 'Droga Mleczna', scale === 'galaxy' ? '#93cfff' : '#e6edf7', 0.55)
     sunLabel.position.copy(sunPos).add(new THREE.Vector3(0, -2.4 * k, 0))
     scene.add(sunLabel)
 
     // Obiekt.
     let target = sunPos.clone()
-    if (dist !== null) {
+    if (placed) {
       target = target0.clone()
       const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([sunPos, target]), new THREE.LineDashedMaterial({ color: 0x00e0ff, ...dashes, transparent: true, opacity: 0.8 }))
       line.computeLineDistances()
@@ -513,6 +556,8 @@ export default function Space3D() {
       controls.autoRotate = false
     })
     const tick = () => {
+      // Powolny obrót poglądowy: jeden obrót na trzy minuty, niezależnie od liczby klatek.
+      if (earth && !reduced) earth.rotation.y = ((performance.now() - t0) / 180_000) * Math.PI * 2
       if (flying) {
         const k = Math.min(1, (performance.now() - t0) / 2200)
         const e = 1 - (1 - k) ** 3
@@ -541,7 +586,7 @@ export default function Space3D() {
       const pin = pinRef.current
       if (pin) {
         const v = target.clone().project(camera)
-        pin.style.display = dist !== null && v.z < 1 ? '' : 'none'
+        pin.style.display = placed && v.z < 1 ? '' : 'none'
         pin.style.transform = `translate(${((v.x + 1) / 2) * mount.clientWidth}px, ${((1 - v.y) / 2) * mount.clientHeight}px)`
       }
       raf = requestAnimationFrame(tick)
@@ -593,7 +638,7 @@ export default function Space3D() {
         hits.push({ c: l.c, x: l.x, y: l.y, box: [l.x - 6, b[1], b[2], b[3]] })
         labelCtx.strokeStyle = 'rgba(2, 5, 13, 0.85)'
         labelCtx.strokeText(l.c.id, l.x + 6, l.y + 3)
-        labelCtx.fillStyle = scale === 'universe' ? 'rgba(230, 237, 247, 0.7)' : `#${TYPE_RGB[l.c.type].toString(16).padStart(6, '0')}c0`
+        labelCtx.fillStyle = `#${TYPE_RGB[l.c.type].toString(16).padStart(6, '0')}c0`
         labelCtx.fillText(l.c.id, l.x + 6, l.y + 3)
       }
     }
@@ -652,7 +697,7 @@ export default function Space3D() {
       renderer.domElement.remove()
       labels.remove()
     }
-  }, [o, dist, scale, withDistance, select])
+  }, [o, dist, scale, outOfScale, withDistance, select])
 
   useEffect(() => {
     const bg = bgRef.current
@@ -687,11 +732,14 @@ export default function Space3D() {
       <div className="sky-hud bl" style={{ maxWidth: 520, lineHeight: 1.6, fontSize: 10 }}>
         {dist === null
           ? 'Wikidata nie podaje odległości tego obiektu - pokazany jest tylko kierunek ze Słońca.'
+          : outOfScale
+            ? `Obiekt (${fmtDistance(dist)}) leży poza zasięgiem tej skali - pokazany jest tylko kierunek ze Słońca. Jego położenie: Wszechświat lokalny.`
           : scale === 'galaxy'
             ? `Skala liniowa, 1 j. = 1000 lś. Punkty: ${withDistance.filter((c) => c.distLy! < GALACTIC_LIMIT_LY).length} obiektów katalogu z odległością.`
             : 'Skala odległości logarytmiczna. Modele Grupy Lokalnej zachowują proporcje rozmiarów względem Drogi Mlecznej; pozostałe galaktyki to białe punkty.'}
         <br />
         Odległości: Wikidata (mediana wartości). Morfologia: NED, NASA, NAOJ. Modele poglądowe.
+        {scale === 'galaxy' && <> Ziemia poza skalą; orientacja osi J2000, obrót poglądowy.</>}
       </div>
       {scale === 'galaxy' && (
         <div ref={filterRef} className="sky-hud br">

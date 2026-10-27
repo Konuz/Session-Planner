@@ -23,13 +23,13 @@
   --text-2: #c8cfdc;
   --text-dim: #99a1af;
   --text-faint: #5b6478;
-  --t-galaxy: #a78bfa;
-  --t-emission: #f43f5e;
-  --t-reflection: #60a5fa;
-  --t-dark: #f59e0b;
-  --t-planetary: #2dd4bf;
-  --t-cluster: #facc15;
-  --t-snr: #fb923c;
+  --t-galaxy: #38194c;
+  --t-emission: #941e43;
+  --t-reflection: #e54f29;
+  --t-dark: #f88f05;
+  --t-planetary: #e54f29;
+  --t-cluster: #ffd03b;
+  --t-snr: #f88f05;
   --pin: #22c55e; /* green-500: pinezka celu jak na mapie nieba konuzastro.pl */
   --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
   --sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -457,7 +457,8 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .sky-toolbar .spacer { flex: 1; }
 /* Przyciski na obrazie kopuły: półprzezroczyste czarne tło w spoczynku, po najechaniu pełny cyjan. */
 .sky-hud .button:not(:hover):not(.active) { background: rgba(0, 0, 0, 0.6); }
-.toolbar-group { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
+/* Przełączniki warstw w osobnym wierszu pod przyciskami trybów. */
+.toolbar-group { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; flex-basis: 100%; }
 .sky-toolbar .button:not(.icon-button) { padding: 0 10px; letter-spacing: 0.04em; }
 .sky-toolbar .switch { font: 10px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; gap: 6px; }
 .sky-toolbar .switch .track { width: 30px; height: 16px; }

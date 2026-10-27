@@ -22,7 +22,7 @@ function Switch({ on, onClick, label }: { on: boolean; onClick: () => void; labe
 
 
 const MODES: { id: CenterMode; label: string }[] = [
-  { id: 'dome', label: 'Kopuła' },
+  { id: 'dome', label: 'Niebo' },
   { id: 'framing', label: 'Kadr teleskopu' },
   { id: '3d', label: 'Pozycja 3D' },
 ]
@@ -100,7 +100,7 @@ export function SkyView() {
                 {label}
               </button>
             ))}
-            {mode === '3d' && <Switch on={showAnnotations} onClick={() => toggle('showAnnotations')} label="Opisy" />}
+            {mode === '3d' && <span className="toolbar-group"><Switch on={showAnnotations} onClick={() => toggle('showAnnotations')} label="Opisy" /></span>}
             {mode === 'dome' && (
               <div style={{ display: 'contents' }}>
                 <button className="button small icon-button" title={playing ? 'Zatrzymaj' : 'Odtwórz noc'} onClick={() => setPlaying(!playing)}>
@@ -113,7 +113,7 @@ export function SkyView() {
                 <span className="toolbar-group">
                   <Switch on={showLines} onClick={() => toggle('showLines')} label="Linie" />
                   <Switch on={showArt} onClick={() => toggle('showArt')} label="Postacie" />
-                  <Switch on={showOutlines} onClick={() => toggle('showOutlines')} label="Mgławice" />
+                  <Switch on={showOutlines} onClick={() => toggle('showOutlines')} label="Kontury" />
                   <Switch on={showAnnotations} onClick={() => toggle('showAnnotations')} label="Opisy" />
                   <Switch on={showTracks} onClick={() => toggle('showTracks')} label="Tory" />
                 </span>

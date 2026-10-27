@@ -1,6 +1,6 @@
 // Kopuła nieba: gwiazdy w WebGL (rzut stereograficzny w shaderze), nakładka 2D z liniami i postaciami
 // gwiazdozbiorów, konturami mgławic, horyzontem, torem obiektu i animacją „znajdź obiekt”. Rysuje tylko przy zmianie stanu.
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { RefreshCw, ZoomIn, ZoomOut } from 'lucide-react'
 import {
   bodyAltAz,
@@ -100,7 +100,8 @@ void main() {
   if (r > 1.0) discard;
   float d = sqrt(r);
   float a = smoothstep(1.0, 0.0, d);
-  a = (a * a * 0.75 + exp(-r * 18.0) * 0.5) * v_alpha;
+  float halo = (exp(-r * 3.2) - exp(-r * 16.0)) * 0.18;
+  a = (a * a * 0.75 + exp(-r * 18.0) * 0.5 + halo) * v_alpha;
   outColor = vec4(v_color * a, a);
 }`
 
@@ -543,7 +544,8 @@ export function SkyDome({ playing = false }: Props) {
   const moonPoint = moon.altDeg > -2 ? proj.hor(horizontalToVec({ altDeg: moon.altDeg, azDeg: moon.azDeg })) : null
 
   // ---------- Rysowanie ----------
-  useEffect(() => {
+  // Canvas i znacznik Księżyca w DOM muszą trafić na ekran w tej samej klatce.
+  useLayoutEffect(() => {
     const overlay = overlayRef.current
     const glCanvas = glRef.current
     if (!overlay || !glCanvas) return
@@ -1239,7 +1241,7 @@ export function SkyDome({ playing = false }: Props) {
         ref={overlayRef}
         className="overlay"
         role="img"
-        aria-label={`Kopuła nieba${selected ? `, wybrany obiekt ${selected.id}` : ''}`}
+        aria-label={`Niebo${selected ? `, wybrany obiekt ${selected.id}` : ''}`}
         onPointerMove={onPointerMove}
         onPointerLeave={() => {
           setHoverCon(null)
@@ -1272,8 +1274,9 @@ export function SkyDome({ playing = false }: Props) {
         <div
           style={{
             position: 'absolute',
-            left: moonPoint[0] - moonMarkerSize / 2,
-            top: moonPoint[1] - moonMarkerSize / 2,
+            left: 0,
+            top: 0,
+            transform: `translate3d(${moonPoint[0] - moonMarkerSize / 2}px, ${moonPoint[1] - moonMarkerSize / 2}px, 0)`,
             display: 'flex',
             alignItems: 'center',
             gap: 5,
@@ -1305,7 +1308,7 @@ export function SkyDome({ playing = false }: Props) {
         </div>
       ))}
       <div className="sky-hud tl">
-        {view.fovDeg > 150 ? 'KOPUŁA · ZENIT' : `POLE ${Math.round(view.fovDeg)}° · AZ ${Math.round(view.azDeg)}° · H ${Math.round(view.altDeg)}°`}
+        {view.fovDeg > 150 ? 'NIEBO · ZENIT' : `POLE ${Math.round(view.fovDeg)}° · AZ ${Math.round(view.azDeg)}° · H ${Math.round(view.altDeg)}°`}
       </div>
       <div className="sky-hud tr">
         {selected ? `${selected.id} ${displayName(selected) ? '· ' + displayName(selected) : ''}` : 'Wybierz obiekt'}
