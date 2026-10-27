@@ -1,7 +1,7 @@
 import { ExternalLink, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { angularDistanceDeg, galactic, moonInfo, moonJ2000 } from '../lib/astro'
-import { displayName, TYPE_INFO } from '../lib/catalog'
+import { DEFAULT_ANNOTATION_COLORS, displayName, TYPE_INFO } from '../lib/catalog'
 import { CONSTELLATION_PL } from '../lib/constellations'
 import { fmtDec, fmtDeg, fmtDistance, fmtDuration, fmtNum, fmtRa, fmtSize, fmtTime } from '../lib/format'
 import { altitudeTrack, nightGrid, visibility } from '../lib/night'
@@ -15,6 +15,7 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
   const night = useNight()
   const site = useSite()
   const tz = useStore((s) => s.location.timeZone)
+  const annotationColors = useStore((s) => s.annotationColors)
   const minAlt = useStore((s) => s.minAltDeg)
   const horizon = useStore((s) => s.horizon)
   const setMode = useStore((s) => s.setCenterMode)
@@ -102,7 +103,7 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
             )}
           </h2>
           <div style={{ margin: '10px 0 6px' }}>
-            <span className="chip" style={{ color: TYPE_INFO[o.type].color }}>{TYPE_INFO[o.type].label}</span>
+            <span className="chip" style={{ color: annotationColors[o.type] ?? DEFAULT_ANNOTATION_COLORS[o.type] }}>{TYPE_INFO[o.type].label}</span>
           </div>
           {o.aliases.length > 0 && <div className="dim mono" style={{ fontSize: 12 }}>{o.aliases.join(' · ')}</div>}
 

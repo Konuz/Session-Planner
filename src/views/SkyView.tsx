@@ -20,7 +20,6 @@ function Switch({ on, onClick, label }: { on: boolean; onClick: () => void; labe
   )
 }
 
-
 const MODES: { id: CenterMode; label: string }[] = [
   { id: 'dome', label: 'Niebo' },
   { id: 'framing', label: 'Kadr teleskopu' },

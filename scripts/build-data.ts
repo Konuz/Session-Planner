@@ -3,6 +3,7 @@
 //   i tytułami artykułów Wikipedii z Wikidata,
 // - sky.json: gwiazdy do ok. 6,5 mag (d3-celestial, BSD) z numerami HIP, linie i nazwy gwiazdozbiorów
 //   (Stellarium modern, CC BY-SA 4.0; polskie nazwy z tłumaczenia Stellarium),
+// - constellations3d.json: linie Stellarium z odległościami gwiazd z paralaks Hipparcosa (CDS I/239),
 // - art/<IAU>.webp: ilustracje gwiazdozbiorów (Stellarium, Free Art License) jako biały rysunek z kanałem alfa,
 // - outlines.json: kontury mgławic (OpenNGC outlines, CC BY-SA 4.0).
 // - milkyway.png: jasność Drogi Mlecznej w siatce RA/Dec co 0,5° (kontury d3-celestial, BSD), rozmyta.
@@ -241,6 +242,34 @@ async function buildSky() {
       if (cols.length >= 4 && /^\d+$/.test(cols[0].trim())) byHip.set(Number(cols[0]), [Number(cols[1]), Number(cols[2]), Number(cols[3])])
     }
   }
+
+  // Hipparcos: paralaksa w mas; tylko dodatnie pomiary pozwalają oszacować odległość.
+  const lineHips = [...new Set(modern.constellations.flatMap((c) => c.lines.flat()))]
+  const distances = new Map<number, number>()
+  for (let i = 0; i < lineHips.length; i += 100) {
+    const parallaxes = await cached(
+      `hip-constellation-parallax-${i}.tsv`,
+      `https://vizier.cds.unistra.fr/viz-bin/asu-tsv?-source=I/239/hip_main&-out=HIP,Plx&HIP=${lineHips.slice(i, i + 100).join(',')}`,
+    )
+    for (const line of parallaxes.split('\n')) {
+      const cols = line.trim().split(/\t/)
+      if (!/^\d+$/.test(cols[0]?.trim())) continue
+      const parallax = Number(cols[1])
+      if (Number.isFinite(parallax) && parallax > 0) distances.set(Number(cols[0]), 3261.56 / parallax)
+    }
+  }
+  if (!distances.size) throw new Error('Brak paralaks Hipparcosa dla gwiazdozbiorów 3D')
+  writeFileSync(join(OUT, 'constellations3d.json'), JSON.stringify({
+    source: 'Hipparcos I/239 (CDS); linie: Stellarium modern (CC BY-SA 4.0)',
+    constellations: modern.constellations.map((c) => ({
+      abbr: c.id.split(' ')[2],
+      lines: c.lines.map((line) => line.map((hip) => {
+        const star = byHip.get(hip)
+        const dist = distances.get(hip)
+        return star && dist ? [r(star[0], 3), r(star[1], 3), r(dist, 2)] : null
+      })),
+    })),
+  }))
 
   // Gwiazdy: [ra, dec, mag, b-v, hip] posortowane od najjaśniejszej.
   const starRows = stars.features

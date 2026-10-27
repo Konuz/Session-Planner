@@ -6,10 +6,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { galacticVector } from '../lib/astro'
-import { TYPE_INFO, type DSO, type ObjectType } from '../lib/catalog'
+import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO, type DSO, type ObjectType } from '../lib/catalog'
 import { useCatalog, useSelected } from '../state/data'
 import { useStore } from '../state/store'
 import { fmtDistance } from '../lib/format'
+import { CONSTELLATION_PL } from '../lib/constellations'
 import { Range } from './Range'
 import { LayersIcon } from './SkyDome'
 import { useOutside } from './TopBar'
@@ -18,8 +19,6 @@ const SUN_TO_GC_KLY = 26.7
 const GALACTIC_LIMIT_LY = 150_000
 const MILKY_WAY_DIAMETER_LY = 100_000
 const UNIVERSE_GALAXY_SCALE = 0.12
-// Te same stonowane barwy co tokeny --t-* w app.css.
-const TYPE_RGB: Record<ObjectType, number> = { G: 0x38194c, GG: 0x38194c, EN: 0x941e43, RN: 0xe54f29, DN: 0xf88f05, PN: 0xe54f29, SNR: 0xf88f05, OC: 0xffd03b, GC: 0xffd03b, CN: 0x941e43, X: 0x99a1af }
 type GalaxyProfile = {
   kind: 'spiral' | 'flocculent' | 'elliptical' | 'irregular'
   label: string
@@ -46,6 +45,7 @@ const LOCAL_GROUP_SHAPES: Record<string, GalaxyProfile> = {
 }
 
 type Scale = 'galaxy' | 'universe'
+type Constellations3D = { constellations: { abbr: string; lines: ([number, number, number] | null)[][] }[] }
 
 // Suwak liczby galaktyk (skala Wszechświat lokalny): górna granica odległości na każdym poziomie.
 const GALAXY_LEVELS = [
@@ -348,7 +348,7 @@ export default function Space3D() {
   const pinRef = useRef<HTMLDivElement>(null)
   // Punkty tła posortowane wg odległości: suwak zmienia tylko zakres rysowania, bez przebudowy sceny.
   const bgRef = useRef<{ geometry: THREE.BufferGeometry; counts: number[]; types: ObjectType[]; pos: Float32Array; col: Float32Array } | null>(null)
-  const [galaxyLevel, setGalaxyLevel] = useState(GALAXY_LEVELS.length - 1)
+  const [galaxyLevel, setGalaxyLevel] = useState(0)
   const galaxyLevelRef = useRef(galaxyLevel)
   galaxyLevelRef.current = galaxyLevel
   // Filtr rodzajów obiektów tła w skali Drogi Mlecznej (lista rozwijana z polami wyboru).
@@ -356,24 +356,56 @@ export default function Space3D() {
   const hiddenTypesRef = useRef(hiddenTypes)
   hiddenTypesRef.current = hiddenTypes
   const [filterOpen, setFilterOpen] = useState(false)
+  const [showConstellations, setShowConstellations] = useState(false)
+  const showConstellationsRef = useRef(showConstellations)
+  showConstellationsRef.current = showConstellations
+  const constellationGroupRef = useRef<THREE.Group | null>(null)
+  const [constellations, setConstellations] = useState<Constellations3D | null>(null)
+  const [constellationError, setConstellationError] = useState(false)
   const filterRef = useRef<HTMLDivElement>(null)
   useOutside(filterRef, () => setFilterOpen(false))
   const showAnnotations = useStore((s) => s.showAnnotations)
   const annotationsRef = useRef(showAnnotations)
   annotationsRef.current = showAnnotations
+  const annotationColors = useStore((s) => s.annotationColors)
+  const typeRGB = useMemo(() => Object.fromEntries(
+    (Object.keys(TYPE_INFO) as ObjectType[]).map((type) => [type, Number.parseInt((annotationColors[type] ?? DEFAULT_ANNOTATION_COLORS[type]).slice(1), 16)]),
+  ) as Record<ObjectType, number>, [annotationColors])
   const o = useSelected()
+  const [constellationChoice, setConstellationChoice] = useState(o?.con ?? 'Ori')
+  const constellationChoiceRef = useRef(constellationChoice)
+  constellationChoiceRef.current = constellationChoice
   const { catalog } = useCatalog()
   const select = useStore((s) => s.select)
   const dist = o?.distLy ?? null
   const auto: Scale = dist !== null && dist > GALACTIC_LIMIT_LY ? 'universe' : 'galaxy'
   const [scaleChoice, setScaleChoice] = useState<Scale | null>(null)
   const scale = scaleChoice ?? auto
+  const [scaleInfoOpen, setScaleInfoOpen] = useState(false)
   const outOfScale = scale === 'galaxy' && dist !== null && dist > GALACTIC_LIMIT_LY
   const withDistance = useMemo(() => (catalog ? catalog.filter((c) => c.distLy !== null) : []), [catalog])
 
   useEffect(() => {
+    const controller = new AbortController()
+    fetch('/data/constellations3d.json', { signal: controller.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.json() as Promise<Constellations3D>
+      })
+      .then(setConstellations)
+      .catch((e: Error) => { if (e.name !== 'AbortError') setConstellationError(true) })
+    return () => controller.abort()
+  }, [])
+
+  useEffect(() => {
     setScaleChoice(null)
   }, [o?.i])
+
+  useEffect(() => {
+    if (!scaleInfoOpen) return
+    const timeout = window.setTimeout(() => setScaleInfoOpen(false), 10_000)
+    return () => window.clearTimeout(timeout)
+  }, [scaleInfoOpen])
 
   useEffect(() => {
     const mount = mountRef.current
@@ -382,15 +414,24 @@ export default function Space3D() {
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' })
     renderer.setPixelRatio(Math.min(1.5, devicePixelRatio))
     renderer.setSize(mount.clientWidth, mount.clientHeight)
+    renderer.domElement.tabIndex = 0
+    renderer.domElement.setAttribute('aria-label', 'Widok 3D. Użyj WASD lub strzałek, aby poruszać kamerą.')
     mount.appendChild(renderer.domElement)
     const scene = new THREE.Scene()
     const camera = new THREE.PerspectiveCamera(50, mount.clientWidth / mount.clientHeight, 0.1, 5000)
     const controls = new OrbitControls(camera, renderer.domElement)
+    // PPM jest przechwytywany jako swobodne rozglądanie, bez obiegania celu przez OrbitControls.
+    controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE }
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button === 1) e.preventDefault()
+    }
+    renderer.domElement.addEventListener('mousedown', onMouseDown)
     controls.enableDamping = true
     controls.dampingFactor = 0.08
     controls.autoRotate = !reduced
     controls.autoRotateSpeed = 0.35
     const disposables: { dispose(): void }[] = [renderer, controls]
+    constellationGroupRef.current = null
     const stars = galaxyTexture()
     disposables.push(stars)
 
@@ -415,6 +456,7 @@ export default function Space3D() {
     const bg = withDistance
       .filter((c) => (scale === 'galaxy' ? c.distLy! < GALACTIC_LIMIT_LY : c.distLy! > GALACTIC_LIMIT_LY && !LOCAL_GROUP_SHAPES[c.id]))
       .sort((a, b) => a.distLy! - b.distLy!)
+    const localGroup = scale === 'universe' ? withDistance.filter((c) => LOCAL_GROUP_SHAPES[c.id]) : []
     {
       const pos = new Float32Array(bg.length * 3)
       const col = new Float32Array(bg.length * 3)
@@ -422,7 +464,7 @@ export default function Space3D() {
       bg.forEach((c, i) => {
         const p = position(c, c.distLy!, scale)
         pos.set([p.x, p.y, p.z], i * 3)
-        tmp.setHex(TYPE_RGB[c.type])
+        tmp.setHex(typeRGB[c.type])
         col.set([tmp.r, tmp.g, tmp.b], i * 3)
       })
       const g = new THREE.BufferGeometry()
@@ -442,6 +484,42 @@ export default function Space3D() {
     let milkyWayMaterial: THREE.PointsMaterial | undefined
     const localGalaxyModels: THREE.Points[] = []
     if (scale === 'galaxy') {
+      if (constellations) {
+        const group = new THREE.Group()
+        const material = new THREE.LineBasicMaterial({ color: 0x00e0ff, transparent: true, opacity: 0.65, depthWrite: false })
+        const dot = dotTexture()
+        const starMaterial = new THREE.PointsMaterial({ color: 0xc5f7ff, size: 3, sizeAttenuation: false, map: dot, transparent: true, depthWrite: false })
+        disposables.push(material, starMaterial, dot)
+        for (const c of constellations.constellations) {
+          const segments: number[] = []
+          const points = new Map<string, THREE.Vector3>()
+          for (const line of c.lines) {
+            for (let i = 1; i < line.length; i++) {
+              const a = line[i - 1], b = line[i]
+              // Brak pomiaru przerywa linię; nie łączymy sąsiadów ponad brakującą gwiazdą.
+              if (!a || !b) continue
+              for (const s of [a, b]) {
+                const p = position({ raDeg: s[0], decDeg: s[1] }, s[2], 'galaxy')
+                segments.push(p.x, p.y, p.z)
+                points.set(s.join(','), p)
+              }
+            }
+          }
+          const figure = new THREE.Group()
+          figure.name = c.abbr
+          figure.visible = constellationChoiceRef.current === 'all' || constellationChoiceRef.current === c.abbr
+          const geometry = new THREE.BufferGeometry()
+          geometry.setAttribute('position', new THREE.Float32BufferAttribute(segments, 3))
+          figure.add(new THREE.LineSegments(geometry, material))
+          const starGeometry = new THREE.BufferGeometry().setFromPoints([...points.values()])
+          figure.add(new THREE.Points(starGeometry, starMaterial))
+          group.add(figure)
+          disposables.push(geometry, starGeometry)
+        }
+        group.visible = showConstellationsRef.current
+        scene.add(group)
+        constellationGroupRef.current = group
+      }
       const mw = milkyWay(52000, stars)
       milkyWayMaterial = mw.material as THREE.PointsMaterial
       scene.add(mw)
@@ -470,7 +548,7 @@ export default function Space3D() {
       localGalaxyModels.push(mw)
       scene.add(mw)
       disposables.push(mw.geometry, mw.material as THREE.Material)
-      withDistance.filter((c) => LOCAL_GROUP_SHAPES[c.id]).forEach((c) => {
+      localGroup.forEach((c) => {
         const model = localGroupGalaxy(c, LOCAL_GROUP_SHAPES[c.id], stars)
         model.position.copy(position(c, c.distLy!, 'universe'))
         localGalaxyModels.push(model)
@@ -550,22 +628,57 @@ export default function Space3D() {
     const t0 = performance.now()
     let raf = 0
     let flying = !reduced
+    let lastTick = performance.now()
+    const pressedKeys = new Set<string>()
+    let rightLook: { pointerId: number; x: number; y: number; distance: number; yaw: number; pitch: number; position: THREE.Vector3 } | null = null
+    const moveKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight'])
     const stopFly = () => (flying = false)
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (document.activeElement !== renderer.domElement || !moveKeys.has(e.code) || e.altKey || e.ctrlKey || e.metaKey) return
+      e.preventDefault()
+      pressedKeys.add(e.code)
+      stopFly()
+      controls.autoRotate = false
+    }
+    const onKeyUp = (e: KeyboardEvent) => pressedKeys.delete(e.code)
+    const clearPressedKeys = () => pressedKeys.clear()
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    window.addEventListener('blur', clearPressedKeys)
     controls.addEventListener('start', () => {
       stopFly()
       controls.autoRotate = false
     })
     const tick = () => {
+      const now = performance.now()
+      const delta = Math.min((now - lastTick) / 1000, 0.05)
+      lastTick = now
       // Powolny obrót poglądowy: jeden obrót na trzy minuty, niezależnie od liczby klatek.
       if (earth && !reduced) earth.rotation.y = ((performance.now() - t0) / 180_000) * Math.PI * 2
       if (flying) {
-        const k = Math.min(1, (performance.now() - t0) / 2200)
+        const k = Math.min(1, (now - t0) / 2200)
         const e = 1 - (1 - k) ** 3
         camera.position.lerpVectors(startCam, endCam, e)
         controls.target.lerpVectors(new THREE.Vector3(), focus, e)
         if (k >= 1) flying = false
       }
-      controls.update()
+      if (!flying && pressedKeys.size) {
+        const forward = camera.getWorldDirection(new THREE.Vector3())
+        const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion)
+        const movement = new THREE.Vector3()
+        if (pressedKeys.has('KeyW') || pressedKeys.has('ArrowUp')) movement.add(forward)
+        if (pressedKeys.has('KeyS') || pressedKeys.has('ArrowDown')) movement.sub(forward)
+        if (pressedKeys.has('KeyD') || pressedKeys.has('ArrowRight')) movement.add(right)
+        if (pressedKeys.has('KeyA') || pressedKeys.has('ArrowLeft')) movement.sub(right)
+        if (movement.lengthSq()) {
+          const speed = Math.max(camera.position.distanceTo(controls.target) * 0.2, 0.1)
+          movement.normalize().multiplyScalar(speed * delta)
+          camera.position.add(movement)
+          controls.target.add(movement)
+          rightLook?.position.add(movement)
+        }
+      }
+      if (!rightLook) controls.update()
       if (milkyWayMaterial) {
         // Przy zbliżeniu gwiazdy pozostają widoczne, a z daleka nie zlewają się w jasną plamę.
         const close = 1 - THREE.MathUtils.smoothstep(camera.position.distanceTo(controls.target), 20, 100)
@@ -614,15 +727,22 @@ export default function Space3D() {
       hits = []
       const hidden = hiddenTypesRef.current
       const limit = scale === 'universe' ? bgRef.current!.counts[galaxyLevelRef.current] : bg.length
-      const candidates: { c: DSO; x: number; y: number; d: number }[] = []
+      const candidates: { c: DSO; x: number; y: number; d: number; localGroup: boolean }[] = []
       for (let i = 0; i < limit; i++) {
         const c = bg[i]
         if (c.i === o!.i || (scale === 'galaxy' && hidden.includes(c.type))) continue
         projected.copy(bgPos[i]).project(camera)
         if (projected.z > 1 || Math.abs(projected.x) > 1 || Math.abs(projected.y) > 1) continue
-        candidates.push({ c, x: ((projected.x + 1) / 2) * w, y: ((1 - projected.y) / 2) * h, d: camera.position.distanceToSquared(bgPos[i]) })
+        candidates.push({ c, x: ((projected.x + 1) / 2) * w, y: ((1 - projected.y) / 2) * h, d: camera.position.distanceToSquared(bgPos[i]), localGroup: false })
       }
-      candidates.sort((a, b) => a.d - b.d)
+      for (const c of localGroup) {
+        if (c.i === o!.i) continue
+        const p = position(c, c.distLy!, 'universe')
+        projected.copy(p).project(camera)
+        if (projected.z > 1 || Math.abs(projected.x) > 1 || Math.abs(projected.y) > 1) continue
+        candidates.push({ c, x: ((projected.x + 1) / 2) * w, y: ((1 - projected.y) / 2) * h, d: camera.position.distanceToSquared(p), localGroup: true })
+      }
+      candidates.sort((a, b) => Number(b.localGroup) - Number(a.localGroup) || a.d - b.d)
       for (const l of candidates) hits.push({ c: l.c, x: l.x, y: l.y, box: null })
       if (!annotationsRef.current) return
       labelCtx.font = '10px ui-monospace, Consolas, monospace'
@@ -632,14 +752,32 @@ export default function Space3D() {
       for (const l of candidates) {
         if (boxes.length >= 120) break
         const tw = labelCtx.measureText(l.c.id).width
-        const b: [number, number, number, number] = [l.x + 4, l.y - 8, l.x + 8 + tw, l.y + 5]
-        if (boxes.some((x) => b[0] < x[2] && b[2] > x[0] && b[1] < x[3] && b[3] > x[1])) continue
+        const boxAt = (x: number, y: number): [number, number, number, number] => [x - 2, y - 11, x + tw + 2, y + 3]
+        const overlaps = (b: [number, number, number, number]) => boxes.some((x) => b[0] < x[2] && b[2] > x[0] && b[1] < x[3] && b[3] > x[1])
+        let labelX = l.x + 6
+        let labelY = l.y + 3
+        let b = boxAt(labelX, labelY)
+        if (l.localGroup) {
+          const placements = [
+            [l.x + 7, l.y + 3], [l.x + 7, l.y - 12], [l.x + 7, l.y + 18],
+            [l.x - tw - 7, l.y + 3], [l.x - tw - 7, l.y - 12], [l.x - tw - 7, l.y + 18],
+            [l.x + 18, l.y - 25], [l.x + 18, l.y + 31],
+            [l.x - tw - 18, l.y - 25], [l.x - tw - 18, l.y + 31],
+          ]
+          const inBounds = ([x, y]: number[]) => {
+            const candidate = boxAt(x, y)
+            return candidate[0] >= 2 && candidate[1] >= 2 && candidate[2] <= w - 2 && candidate[3] <= h - 2
+          }
+          const placement = placements.find(([x, y]) => inBounds([x, y]) && !overlaps(boxAt(x, y))) ?? placements.find(inBounds)
+          if (placement) [labelX, labelY] = placement
+          b = boxAt(labelX, labelY)
+        } else if (overlaps(b)) continue
         boxes.push(b)
-        hits.push({ c: l.c, x: l.x, y: l.y, box: [l.x - 6, b[1], b[2], b[3]] })
+        hits.push({ c: l.c, x: l.x, y: l.y, box: [Math.min(l.x - 6, b[0]), b[1], Math.max(l.x + 6, b[2]), b[3]] })
         labelCtx.strokeStyle = 'rgba(2, 5, 13, 0.85)'
-        labelCtx.strokeText(l.c.id, l.x + 6, l.y + 3)
-        labelCtx.fillStyle = `#${TYPE_RGB[l.c.type].toString(16).padStart(6, '0')}c0`
-        labelCtx.fillText(l.c.id, l.x + 6, l.y + 3)
+        labelCtx.strokeText(l.c.id, labelX, labelY)
+        labelCtx.fillStyle = `#${typeRGB[l.c.type].toString(16).padStart(6, '0')}c0`
+        labelCtx.fillText(l.c.id, labelX, labelY)
       }
     }
     // Kliknięcie (bez przeciągania) w podpis lub kropkę wybiera obiekt.
@@ -658,7 +796,10 @@ export default function Space3D() {
       return best
     }
     let down: [number, number] | null = null
-    const onDown = (e: PointerEvent) => (down = [e.clientX, e.clientY])
+    const onDown = (e: PointerEvent) => {
+      down = [e.clientX, e.clientY]
+      renderer.domElement.focus({ preventScroll: true })
+    }
     const onUp = (e: PointerEvent) => {
       if (down && Math.hypot(e.clientX - down[0], e.clientY - down[1]) < 5) {
         const c = hitAt(e)
@@ -666,7 +807,62 @@ export default function Space3D() {
       }
       down = null
     }
+    const lookEuler = new THREE.Euler(0, 0, 0, 'YXZ')
+    const onRightLookDown = (e: PointerEvent) => {
+      if (e.button !== 2) return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      stopFly()
+      controls.autoRotate = false
+      renderer.domElement.focus({ preventScroll: true })
+      lookEuler.setFromQuaternion(camera.quaternion, 'YXZ')
+      rightLook = {
+        pointerId: e.pointerId,
+        x: e.clientX,
+        y: e.clientY,
+        distance: camera.position.distanceTo(controls.target),
+        yaw: lookEuler.y,
+        pitch: lookEuler.x,
+        position: camera.position.clone(),
+      }
+      renderer.domElement.setPointerCapture(e.pointerId)
+    }
+    const onRightLookMove = (e: PointerEvent) => {
+      if (!rightLook || e.pointerId !== rightLook.pointerId) return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      rightLook.yaw -= (e.clientX - rightLook.x) * 0.003
+      rightLook.pitch = THREE.MathUtils.clamp(rightLook.pitch - (e.clientY - rightLook.y) * 0.003, -Math.PI / 2 + 0.01, Math.PI / 2 - 0.01)
+      rightLook.x = e.clientX
+      rightLook.y = e.clientY
+      lookEuler.set(rightLook.pitch, rightLook.yaw, 0, 'YXZ')
+      camera.position.copy(rightLook.position)
+      camera.quaternion.setFromEuler(lookEuler)
+      controls.target.copy(rightLook.position).addScaledVector(camera.getWorldDirection(new THREE.Vector3()), rightLook.distance)
+    }
+    const onRightLookEnd = (e: PointerEvent) => {
+      if (!rightLook || e.pointerId !== rightLook.pointerId) return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      const look = rightLook
+      rightLook = null
+      const damping = controls.enableDamping
+      controls.enableDamping = false
+      controls.update()
+      camera.position.copy(look.position)
+      lookEuler.set(look.pitch, look.yaw, 0, 'YXZ')
+      camera.quaternion.setFromEuler(lookEuler)
+      controls.target.copy(look.position).addScaledVector(camera.getWorldDirection(new THREE.Vector3()), look.distance)
+      controls.update()
+      controls.enableDamping = damping
+    }
+    const onContextMenu = (e: MouseEvent) => e.preventDefault()
     const onMove = (e: PointerEvent) => (renderer.domElement.style.cursor = !e.buttons && hitAt(e) ? 'pointer' : '')
+    renderer.domElement.addEventListener('pointerdown', onRightLookDown, true)
+    renderer.domElement.addEventListener('pointermove', onRightLookMove, true)
+    renderer.domElement.addEventListener('pointerup', onRightLookEnd, true)
+    renderer.domElement.addEventListener('pointercancel', onRightLookEnd, true)
+    renderer.domElement.addEventListener('contextmenu', onContextMenu)
     renderer.domElement.addEventListener('pointerdown', onDown)
     renderer.domElement.addEventListener('pointerup', onUp)
     renderer.domElement.addEventListener('pointermove', onMove)
@@ -687,6 +883,15 @@ export default function Space3D() {
       cancelAnimationFrame(raf)
       ro.disconnect()
       document.removeEventListener('visibilitychange', onVis)
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+      window.removeEventListener('blur', clearPressedKeys)
+      renderer.domElement.removeEventListener('mousedown', onMouseDown)
+      renderer.domElement.removeEventListener('pointerdown', onRightLookDown, true)
+      renderer.domElement.removeEventListener('pointermove', onRightLookMove, true)
+      renderer.domElement.removeEventListener('pointerup', onRightLookEnd, true)
+      renderer.domElement.removeEventListener('pointercancel', onRightLookEnd, true)
+      renderer.domElement.removeEventListener('contextmenu', onContextMenu)
       scene.traverse((obj) => {
         if (obj instanceof THREE.Sprite) {
           obj.material.map?.dispose()
@@ -697,7 +902,15 @@ export default function Space3D() {
       renderer.domElement.remove()
       labels.remove()
     }
-  }, [o, dist, scale, outOfScale, withDistance, select])
+  }, [o, dist, scale, outOfScale, withDistance, select, constellations, typeRGB])
+
+  useEffect(() => {
+    if (constellationGroupRef.current) constellationGroupRef.current.visible = showConstellations
+  }, [showConstellations])
+
+  useEffect(() => {
+    constellationGroupRef.current?.children.forEach((c) => { c.visible = constellationChoice === 'all' || constellationChoice === c.name })
+  }, [constellationChoice])
 
   useEffect(() => {
     const bg = bgRef.current
@@ -729,20 +942,44 @@ export default function Space3D() {
         <button className={`toggle-chip${scale === 'galaxy' ? ' on' : ''}`} onClick={() => setScaleChoice('galaxy')}>Droga Mleczna</button>
         <button className={`toggle-chip${scale === 'universe' ? ' on' : ''}`} onClick={() => setScaleChoice('universe')}>Wszechświat lokalny</button>
       </div>
-      <div className="sky-hud bl" style={{ maxWidth: 520, lineHeight: 1.6, fontSize: 10 }}>
-        {dist === null
-          ? 'Wikidata nie podaje odległości tego obiektu - pokazany jest tylko kierunek ze Słońca.'
-          : outOfScale
-            ? `Obiekt (${fmtDistance(dist)}) leży poza zasięgiem tej skali - pokazany jest tylko kierunek ze Słońca. Jego położenie: Wszechświat lokalny.`
-          : scale === 'galaxy'
-            ? `Skala liniowa, 1 j. = 1000 lś. Punkty: ${withDistance.filter((c) => c.distLy! < GALACTIC_LIMIT_LY).length} obiektów katalogu z odległością.`
-            : 'Skala odległości logarytmiczna. Modele Grupy Lokalnej zachowują proporcje rozmiarów względem Drogi Mlecznej; pozostałe galaktyki to białe punkty.'}
-        <br />
-        Odległości: Wikidata (mediana wartości). Morfologia: NED, NASA, NAOJ. Modele poglądowe.
-        {scale === 'galaxy' && <> Ziemia poza skalą; orientacja osi J2000, obrót poglądowy.</>}
+      <div className="scale-info-control">
+        <button
+          className="scale-info-button"
+          title="Informacje o skali"
+          aria-label="Informacje o skali"
+          aria-expanded={scaleInfoOpen}
+          aria-controls="scale-info-popover"
+          onClick={() => setScaleInfoOpen((open) => !open)}
+        >i</button>
+        {scaleInfoOpen && (
+          <div id="scale-info-popover" className="scale-info-popover" role="note" aria-label="Opis skali i źródła danych">
+            <p>{dist === null
+              ? 'Wikidata nie podaje odległości tego obiektu - pokazany jest tylko kierunek ze Słońca.'
+              : outOfScale
+                ? `Obiekt (${fmtDistance(dist)}) leży poza zasięgiem tej skali - pokazany jest tylko kierunek ze Słońca. Jego położenie: Wszechświat lokalny.`
+                : scale === 'galaxy'
+                  ? `Skala liniowa, 1 j. = 1000 lś. Punkty: ${withDistance.filter((c) => c.distLy! < GALACTIC_LIMIT_LY).length} obiektów katalogu z odległością.`
+                  : 'Skala odległości logarytmiczna. Modele Grupy Lokalnej zachowują proporcje rozmiarów względem Drogi Mlecznej; pozostałe galaktyki to punkty w kolorach typów obiektów.'}</p>
+            <p>Odległości: Wikidata (mediana wartości). Morfologia: NED, NASA, NAOJ. Modele poglądowe.{scale === 'galaxy' && ' Ziemia poza skalą; orientacja osi J2000, obrót poglądowy.'}</p>
+            {scale === 'galaxy' && showConstellations && <p>Cyjanowe linie: gwiazdozbiory (Stellarium). Odległości gwiazd: szacunki z paralaks Hipparcosa (CDS I/239); brak dodatniej paralaksy przerywa linię.</p>}
+          </div>
+        )}
       </div>
       {scale === 'galaxy' && (
-        <div ref={filterRef} className="sky-hud br">
+        <div ref={filterRef} className="sky-hud br" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 6, maxWidth: 'calc(100% - 24px)' }}>
+          {showConstellations && (
+            <select className="control constellation-select" aria-label="Gwiazdozbiór w przestrzeni 3D" style={{ width: 'auto', maxWidth: '100%' }} value={constellationChoice} onChange={(e) => setConstellationChoice(e.target.value)}>
+              <option value="all">Wszystkie gwiazdozbiory</option>
+              {constellations?.constellations.slice().sort((a, b) => (CONSTELLATION_PL[a.abbr] ?? a.abbr).localeCompare(CONSTELLATION_PL[b.abbr] ?? b.abbr, 'pl')).map((c) => <option key={c.abbr} value={c.abbr}>{CONSTELLATION_PL[c.abbr] ?? c.abbr}</option>)}
+            </select>
+          )}
+          <button
+            className={`toggle-chip${showConstellations ? ' on' : ''}`}
+            disabled={!constellations}
+            aria-pressed={showConstellations}
+            title={constellationError ? 'Nie udało się wczytać gwiazdozbiorów' : !constellations ? 'Ładowanie gwiazdozbiorów…' : 'Pokaż gwiazdy i cienkie cyjanowe linie w przestrzeni Drogi Mlecznej'}
+            onClick={() => setShowConstellations((v) => !v)}
+          >Gwiazdozbiory 3D{constellationError ? ' — błąd danych' : ''}</button>
           <button className={`toggle-chip${filterOpen ? ' on' : ''}`} onClick={() => setFilterOpen((v) => !v)} aria-expanded={filterOpen}>
             Obiekty {shownCount}/{typeCounts.length} <ChevronDown size={12} />
           </button>
@@ -755,7 +992,7 @@ export default function Space3D() {
               {typeCounts.map(({ type, count }) => (
                 <label key={type}>
                   <input type="checkbox" checked={!hiddenTypes.includes(type)} onChange={() => setHiddenTypes((h) => (h.includes(type) ? h.filter((t) => t !== type) : [...h, type]))} />
-                  <span className="dot" style={{ background: `#${TYPE_RGB[type].toString(16).padStart(6, '0')}` }} />
+                  <span className="dot" style={{ background: `#${typeRGB[type].toString(16).padStart(6, '0')}` }} />
                   {TYPE_INFO[type].plural}
                   <span className="faint">{count}</span>
                 </label>

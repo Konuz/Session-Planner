@@ -17,7 +17,7 @@ import {
   type Mat3,
   type Vec3,
 } from '../lib/astro'
-import { annotationDepthOf, displayName, TYPE_INFO, type DSO, type ObjectType } from '../lib/catalog'
+import { annotationDepthOf, DEFAULT_ANNOTATION_COLORS, displayName, TYPE_INFO, type DSO, type ObjectType } from '../lib/catalog'
 import { horizonAltitude, type HorizonPoint } from '../lib/horizon'
 import { altitudeTrack, nightGrid } from '../lib/night'
 import { loadOutlines, pointInPolygon, polygonArea, type Outline } from '../lib/outlines'
@@ -410,6 +410,7 @@ export function SkyDome({ playing = false }: Props) {
   const setDepth = useStore((s) => s.setAnnotationDepth)
   const showLabels = useStore((s) => s.showLabels)
   const showAnnotations = useStore((s) => s.showAnnotations)
+  const annotationColors = useStore((s) => s.annotationColors)
   const findPulse = useStore((s) => s.findPulse)
   const plan = useStore((s) => s.plan)
   const select = useStore((s) => s.select)
@@ -475,15 +476,12 @@ export function SkyDome({ playing = false }: Props) {
     () => (catalog ?? []).filter((o) => o.majArcmin > 0 && !o.catalogs.includes('M')).map((o) => ({ o, v: unitVector(o.raDeg, o.decDeg), depth: annotationDepthOf(o) })),
     [catalog],
   )
-  // Kolory typów z tokenów CSS (canvas nie czyta zmiennych CSS).
+  // Kolory typów (canvas nie czyta zmiennych CSS).
   const typeColors = useMemo(() => {
-    const cs = typeof document !== 'undefined' ? getComputedStyle(document.documentElement) : null
     const out = {} as Record<ObjectType, string>
-    for (const [type, info] of Object.entries(TYPE_INFO) as [ObjectType, { color: string }][]) {
-      out[type] = cs?.getPropertyValue(info.color.slice(4, -1)).trim() || '#a0afc8'
-    }
+    for (const type of Object.keys(TYPE_INFO) as ObjectType[]) out[type] = annotationColors[type] ?? DEFAULT_ANNOTATION_COLORS[type]
     return out
-  }, [])
+  }, [annotationColors])
   /** Klucz obiektu konturu: wspólny dla poziomów 1 i 2 tego samego obiektu. */
   const outlineKey = (k: number) => outlineObjects?.[k]?.id ?? outlines?.[k].id ?? ''
   const planObjects = useMemo(() => (catalog ? plan.map((p) => catalog[p.objectIndex]).filter(Boolean) : []), [catalog, plan])
@@ -663,7 +661,7 @@ export function SkyDome({ playing = false }: Props) {
         const hov = key === hoverKey
         const faint = o.level === 1 && !sel && !hov
         // Mgławice ciemne w kolorze typu DN, pozostałe kontury w kolorze mgławic emisyjnych.
-        const tint = typeColors[o.dark ? 'DN' : 'EN']
+        const tint = outlineObjects?.[k] ? typeColors[outlineObjects[k]!.type] : typeColors[o.dark ? 'DN' : 'EN']
         ctx.fillStyle = sel ? 'rgba(0, 224, 255, 0.08)' : withAlpha(tint, hov ? 0.13 : faint ? 0.05 : 0.08)
         ctx.strokeStyle = sel ? 'rgba(0, 224, 255, 0.85)' : withAlpha(tint, hov ? 0.9 : faint ? 0.25 : 0.45)
         for (const ring of o.rings) {
@@ -698,7 +696,7 @@ export function SkyDome({ playing = false }: Props) {
         const ol = outlines[l.k]
         labelList.push({
           dso, c: l.c, top: l.top, r: l.r, prio: 1, minR: fullDome ? 8 : 5, hov, name: ol.name ?? undefined,
-          color: ol.dark ? withAlpha(typeColors.DN, hov ? 0.95 : 0.7) : hov ? 'rgba(255, 210, 220, 0.95)' : 'rgba(255, 178, 192, 0.62)',
+          color: withAlpha(typeColors[dso.type], hov ? 0.95 : 0.62),
         })
       }
     }
@@ -1217,12 +1215,19 @@ export function SkyDome({ playing = false }: Props) {
   useEffect(() => {
     const el = stageRef.current
     if (!el) return
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button === 1) e.preventDefault()
+    }
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
       setFovRef.current(viewRef.current.fovDeg * Math.exp(e.deltaY * 0.0015))
     }
+    el.addEventListener('mousedown', onMouseDown)
     el.addEventListener('wheel', onWheel, { passive: false })
-    return () => el.removeEventListener('wheel', onWheel)
+    return () => {
+      el.removeEventListener('mousedown', onMouseDown)
+      el.removeEventListener('wheel', onWheel)
+    }
   }, [])
 
   const hovered = hoverCon && sky ? sky.byAbbr.get(hoverCon.abbr) : null

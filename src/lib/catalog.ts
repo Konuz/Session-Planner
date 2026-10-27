@@ -2,6 +2,11 @@
 
 export type ObjectType = 'G' | 'GG' | 'EN' | 'RN' | 'DN' | 'PN' | 'SNR' | 'OC' | 'GC' | 'CN' | 'X'
 
+export const DEFAULT_ANNOTATION_COLORS: Record<ObjectType, string> = {
+  G: '#38194c', GG: '#38194c', EN: '#941e43', RN: '#e54f29', DN: '#f88f05', PN: '#e54f29',
+  SNR: '#f88f05', OC: '#ffd03b', GC: '#ffd03b', CN: '#941e43', X: '#99a1af',
+}
+
 export interface DSO {
   /** Indeks w katalogu (stały w obrębie wersji danych). */
   i: number

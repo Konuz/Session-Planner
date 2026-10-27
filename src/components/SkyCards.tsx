@@ -1,7 +1,7 @@
 import { CircleDot, CloudMoon, Droplets, Eye, Gauge, Ruler, Settings, Telescope, Thermometer, Wind, Camera, Check } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { angularDistanceDeg, bodyAltAz, computeOptics, moonInfo, moonJ2000, riseSetMs, sampling } from '../lib/astro'
-import { TYPE_INFO } from '../lib/catalog'
+import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO } from '../lib/catalog'
 import { fmtDate, fmtDeg, fmtDistance, fmtNum, fmtSize, fmtTime } from '../lib/format'
 import { darkWindow, nightPhases } from '../lib/night'
 import { skyRating, weatherAt } from '../lib/services'
@@ -16,6 +16,7 @@ import { CONSTELLATION_PL } from '../lib/constellations'
 export function ObjectCard({ onDetails }: { onDetails: () => void }) {
   const o = useSelected()
   const plan = useStore((s) => s.plan)
+  const annotationColors = useStore((s) => s.annotationColors)
   const addToPlan = useStore((s) => s.addToPlan)
   const setTab = useStore((s) => s.setTab)
   const inPlan = o ? plan.some((p) => p.objectIndex === o.i) : false
@@ -33,7 +34,7 @@ export function ObjectCard({ onDetails }: { onDetails: () => void }) {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <span className="chip" style={{ color: TYPE_INFO[o.type].color }}>
+            <span className="chip" style={{ color: annotationColors[o.type] ?? DEFAULT_ANNOTATION_COLORS[o.type] }}>
               {TYPE_INFO[o.type].label}
             </span>
             {o.aliases.slice(0, 2).map((a) => (

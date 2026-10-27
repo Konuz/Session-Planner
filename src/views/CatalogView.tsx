@@ -1,11 +1,11 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { CalendarCheck, RotateCcw, Search } from 'lucide-react'
+import { CalendarCheck, Palette, RotateCcw, Search } from 'lucide-react'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { ObjectDetails } from '../components/ObjectDetails'
 import { Range } from '../components/Range'
 import { ScrambleText } from '../components/ScrambleText'
 import { Thumb } from '../components/Thumb'
-import { CATALOGS, displayName, matchesFilter, searchScore, TYPE_INFO, EMPTY_FILTER, type DSO, type ObjectType } from '../lib/catalog'
+import { CATALOGS, DEFAULT_ANNOTATION_COLORS, displayName, matchesFilter, searchScore, TYPE_INFO, EMPTY_FILTER, type DSO, type ObjectType } from '../lib/catalog'
 import { CONSTELLATION_PL } from '../lib/constellations'
 import { fmtDuration, fmtNum, fmtSize, fmtTime } from '../lib/format'
 import { useCatalog, useCatalogVisibility } from '../state/data'
@@ -23,9 +23,44 @@ const SORTS = [
 
 const designationKey = (id: string) => id.replace(/\d+/g, (d) => d.padStart(6, '0'))
 
+function AnnotationColorSettings() {
+  const [open, setOpen] = useState(false)
+  const colors = useStore((s) => s.annotationColors)
+  const setColor = useStore((s) => s.setAnnotationColor)
+  const resetColors = useStore((s) => s.resetAnnotationColors)
+
+  return (
+    <div className="annotation-color-settings">
+      <button className="button ghost small" title="Ustaw kolory adnotacji" aria-label="Ustaw kolory adnotacji" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+        <Palette size={13} />
+      </button>
+      {open && (
+        <div className="popover annotation-color-popover" role="group" aria-label="Kolory adnotacji">
+          <div className="annotation-color-header">
+            <span className="label">Kolory adnotacji</span>
+            <button className="button small" onClick={resetColors}>Domyślne</button>
+          </div>
+          {(Object.keys(TYPE_INFO) as ObjectType[]).map((type) => (
+            <label className="annotation-color-row" key={type}>
+              <span>{TYPE_INFO[type].label}</span>
+              <input
+                aria-label={`Kolor adnotacji: ${TYPE_INFO[type].label}`}
+                type="color"
+                value={colors[type] ?? DEFAULT_ANNOTATION_COLORS[type]}
+                onChange={(event) => setColor(type, event.target.value)}
+              />
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function CatalogView() {
   const { catalog, error } = useCatalog()
   const vis = useCatalogVisibility()
+  const annotationColors = useStore((s) => s.annotationColors)
   const filter = useStore((s) => s.filter)
   const setFilter = useStore((s) => s.setFilter)
   const sortBy = useStore((s) => s.sortBy)
@@ -112,6 +147,7 @@ export default function CatalogView() {
       <aside className="card catalog-filters">
         <h2 className="panel-title">Filtry <span className="spacer" />
           <button className="button ghost small" onClick={() => { setFilter(EMPTY_FILTER); setQuery('') }} title="Wyczyść filtry"><RotateCcw size={13} /></button>
+          <AnnotationColorSettings />
         </h2>
         <div className="filter-group search-box">
           <Search size={15} />
@@ -132,7 +168,7 @@ export default function CatalogView() {
           <div className="chips">
             {TYPES.map((t) => (
               <button key={t} className={`toggle-chip${filter.types.includes(t) ? ' on' : ''}`} onClick={() => setFilter({ types: toggleIn(filter.types, t) })}>
-                <span className="dot" style={{ background: TYPE_INFO[t].color }} /> {TYPE_INFO[t].plural}
+                <span className="dot" style={{ background: annotationColors[t] ?? DEFAULT_ANNOTATION_COLORS[t] }} /> {TYPE_INFO[t].plural}
               </button>
             ))}
           </div>
@@ -190,6 +226,7 @@ export default function CatalogView() {
                     <CatalogCard
                       key={o.i}
                       o={o}
+                      typeColor={annotationColors[o.type] ?? DEFAULT_ANNOTATION_COLORS[o.type]}
                       selected={o.i === selectedIndex}
                       inPlan={inPlan}
                       hours={hours}
@@ -222,6 +259,7 @@ export default function CatalogView() {
 
 interface CardProps {
   o: DSO
+  typeColor: string
   selected: boolean
   inPlan: boolean
   hours: number | null
@@ -233,7 +271,7 @@ interface CardProps {
 }
 
 /** Karta obiektu jak karta galerii konuzastro.pl: narożniki, ramka w cyjanie i rozszyfrowanie nazwy po najechaniu myszą. */
-const CatalogCard = memo(function CatalogCard({ o, selected, inPlan, hours, maxAlt, bestMs, minAlt, tz, onOpen }: CardProps) {
+const CatalogCard = memo(function CatalogCard({ o, typeColor, selected, inPlan, hours, maxAlt, bestMs, minAlt, tz, onOpen }: CardProps) {
   const [hover, setHover] = useState(false)
   return (
     <button
@@ -250,7 +288,7 @@ const CatalogCard = memo(function CatalogCard({ o, selected, inPlan, hours, maxA
       <div className="body">
         <div className="title">
           <b><ScrambleText text={o.id} trigger={hover} /></b>
-          <span className="type-label" style={{ color: TYPE_INFO[o.type].color }}>{TYPE_INFO[o.type].short}</span>
+          <span className="type-label" style={{ color: typeColor }}>{TYPE_INFO[o.type].short}</span>
         </div>
         <div className="name"><ScrambleText text={displayName(o) || CONSTELLATION_PL[o.con] || ''} trigger={hover} /></div>
         <div className="meta">

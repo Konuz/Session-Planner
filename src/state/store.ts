@@ -1,7 +1,7 @@
 // Stan aplikacji (Zustand). Preferencje, sprzęt, horyzont i plan zapisują się w localStorage.
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { EMPTY_FILTER, type CatalogFilter } from '../lib/catalog'
+import { EMPTY_FILTER, type CatalogFilter, type ObjectType } from '../lib/catalog'
 import type { HorizonPoint } from '../lib/horizon'
 import { nightDateOf } from '../lib/night'
 import { planExposures, type Exposure } from '../lib/exposures'
@@ -125,6 +125,7 @@ interface State {
   annotationDepth: number
   showLabels: boolean
   showAnnotations: boolean
+  annotationColors: Partial<Record<ObjectType, string>>
   /** Licznik „znajdź obiekt”: zmiana uruchamia animację na kopule. */
   findPulse: number
 
@@ -151,6 +152,8 @@ interface State {
   setFilter(patch: Partial<CatalogFilter>): void
   setSort(s: State['sortBy']): void
   setAnnotationDepth(depth: number): void
+  setAnnotationColor(type: ObjectType, color: string): void
+  resetAnnotationColors(): void
   toggle(key: 'showLines' | 'showTracks' | 'showArt' | 'showOutlines' | 'showLabels' | 'showAnnotations' | 'onlyVisible'): void
 }
 
@@ -182,6 +185,7 @@ export const useStore = create<State>()(
       annotationDepth: 0,
       showLabels: true,
       showAnnotations: true,
+      annotationColors: {},
       findPulse: 0,
 
       setTab: (tab, catalogPlanMode) => set({ tab, catalogPlanMode: tab === 'catalog' ? catalogPlanMode ?? null : null }),
@@ -279,6 +283,8 @@ export const useStore = create<State>()(
       setFilter: (patch) => set((s) => ({ filter: { ...s.filter, ...patch } })),
       setSort: (sortBy) => set({ sortBy }),
       setAnnotationDepth: (annotationDepth) => set({ annotationDepth }),
+      setAnnotationColor: (type, color) => set((s) => ({ annotationColors: { ...s.annotationColors, [type]: color } })),
+      resetAnnotationColors: () => set({ annotationColors: {} }),
       toggle: (key) => set((s) => ({ [key]: !s[key] }) as Partial<State>),
     }),
     {
@@ -304,6 +310,7 @@ export const useStore = create<State>()(
         annotationDepth: s.annotationDepth,
         showLabels: s.showLabels,
         showAnnotations: s.showAnnotations,
+        annotationColors: s.annotationColors,
       }),
       // Noc zawsze startuje od bieżącej daty w strefie zapisanej lokalizacji.
       onRehydrateStorage: () => (state) => {
