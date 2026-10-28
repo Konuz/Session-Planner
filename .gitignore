@@ -12,3 +12,6 @@ scripts/.cache
 output/
 public/icons/version-a/
 public/icons/version-b/
+
+# Lokalne dane analizy konturów ciemnych mgławic
+/research/dark-nebula-contours/
