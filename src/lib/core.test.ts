@@ -269,23 +269,40 @@ describe('kontury mgławic', () => {
     for (const o of data.objects) for (const ring of o.rings) expect(ring.length).toBeGreaterThanOrEqual(6)
   })
 
-  it('outlines.json: mgławice ciemne z nazwami i wspólnymi oznaczeniami, bez wykluczonych', () => {
+  it('outlines.json: mgławice ciemne z nazwami i wspólnymi oznaczeniami', () => {
     const data = JSON.parse(readFileSync(new URL('../../public/data/outlines.json', import.meta.url), 'utf8')) as {
       objects: { id: string; dark?: number; name?: string; also?: string[] }[]
     }
     const dark = new Map(data.objects.filter((o) => o.dark === 1).map((o) => [o.id, o]))
-    expect(dark.size).toBe(26)
+    expect(dark.size).toBe(25)
     expect(dark.get('LDN 1235')?.name).toBe('Shark')
     expect(dark.get('LDN 1251')?.name).toBe('Rotten Fish')
     expect(dark.get('LDN 1082')?.also).toEqual(['B 150'])
-    expect(dark.get('LDN 1355')?.also).toEqual(['LDN 1357'])
+    expect(dark.get('LDN 1355')?.also).toEqual(['LDN 1357', 'LDN 1358', 'vdB 9'])
     expect(dark.get('vdB 141')?.also).toEqual(['Sh2-136'])
     expect(dark.get('vdB 141')?.name).toBe('Ghost')
     // Jasna mgławica z tym samym źródłem konturów: bez dark, rysowana jak jasne.
     const vulture = data.objects.find((o) => o.id === 'LBN 777')
     expect(vulture?.dark).toBeUndefined()
     expect(vulture?.also).toEqual(['LBN 775', 'LDN 1489', 'LDN 1491', 'B 207'])
-    for (const id of ['LDN 935', 'LDN 886', 'B 347', 'B 150']) expect(dark.has(id)).toBe(false)
+    for (const id of ['LDN 935', 'LDN 886', 'B 347']) expect(dark.has(id)).toBe(true)
+    expect(dark.has('B 150')).toBe(false)
+  })
+
+  it('outlines.json: zaakceptowane kompleksy mają trzy warstwy i wspólne oznaczenia', () => {
+    const data = JSON.parse(readFileSync(new URL('../../public/data/outlines.json', import.meta.url), 'utf8')) as {
+      objects: { id: string; level: number; also?: string[]; rings: number[][] }[]
+    }
+    for (const id of ['LDN 1355', 'B 168', 'B 72', 'LDN 935', 'LDN 886', 'B 347', 'LDN 1448', 'NGC 1333', 'NGC 7023']) {
+      const layers = data.objects.filter((o) => o.id === id)
+      expect(layers.map((o) => o.level).sort(), id).toEqual([1, 2, 3])
+      expect(layers.every((o) => o.rings.length > 0), id).toBe(true)
+    }
+    const aliases = (id: string) => data.objects.find((o) => o.id === id)?.also ?? []
+    expect(aliases('LDN 1448')).toContain('LDN 1451')
+    expect(aliases('LDN 1448')).toContain('LDN 1455')
+    expect(aliases('NGC 1333')).toContain('LDN 1450')
+    expect(aliases('NGC 7023')).toContain('LDN 1174')
   })
 })
 

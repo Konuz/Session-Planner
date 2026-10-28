@@ -500,20 +500,20 @@ async function buildOutlines() {
   }
   console.log(`outlines: pierścienie regionów: ${assigned.join(' ')}`)
 
-  // Mgławice ciemne (LDN, B) z scripts/data/dark-outlines.json: kontury wybrane ręcznie (Planck 857 GHz jako
-  // podpowiedź dla SAM 3 na zdjęciach referencyjnych z AstroBin). Plik jest danymi źródłowymi w repozytorium,
-  // bo tego kroku nie da się powtórzyć bez GPU i sieci. Jeden kontur może mieć kilka oznaczeń (also). Tą samą
-  // metodą powstają kontury jasnych mgławic bez obrysu w OpenNGC (bright: true, np. LBN 777), rysowane jak jasne.
+  // Własne kontury: oryginalne obrysy SAM oraz zaakceptowane warstwy obłoków z map pyłu i ekstynkcji.
+  // Jeden obiekt może mieć kilka poziomów i oznaczeń; replace usuwa wcześniejszy kontur OpenNGC tego obiektu.
   const darkPath = join(ROOT, 'scripts', 'data', 'dark-outlines.json')
   let darkCount = 0
   if (existsSync(darkPath)) {
     const dark = JSON.parse(readFileSync(darkPath, 'utf8')) as {
-      objects: { id: string; also: string[]; name: string | null; bright?: boolean; rings: [number, number][][] }[]
+      objects: { id: string; also: string[]; name: string | null; bright?: boolean; replace?: boolean; level?: 1 | 2 | 3; rings: [number, number][][] }[]
     }
+    const replaced = new Set(dark.objects.filter((d) => d.replace).map((d) => d.id))
+    for (let i = objects.length - 1; i >= 0; i--) if (replaced.has(objects[i].id)) objects.splice(i, 1)
     for (const d of dark.objects) {
       const rings = d.rings.map((ring) => ring.flatMap(([ra, dec]) => [r(ra, 4), r(dec, 4)]))
       points += rings.reduce((s, ring) => s + ring.length / 2, 0)
-      objects.push({ id: d.id, level: 2, ...(d.bright ? {} : { dark: 1 }), ...(d.also.length ? { also: d.also } : {}), ...(d.name ? { name: d.name } : {}), rings })
+      objects.push({ id: d.id, level: d.level ?? 2, ...(d.bright ? {} : { dark: 1 }), ...(d.also.length ? { also: d.also } : {}), ...(d.name ? { name: d.name } : {}), rings })
       if (!d.bright) darkCount++
     }
   }
@@ -527,7 +527,7 @@ async function buildOutlines() {
         credit: 'OpenNGC, Mattia Verga; obrysy na DSS2 w Aladin (CDS, Strasbourg)',
         changes: `Poziom 2 (bez niego 3, potem 1) oraz poziom 1 regionów i obrysów o promieniu ≥ ${LARGE_LV1_DEG}°; pierścienie regionów przypisane do największej mgławicy katalogu w środku; uproszczone do ${SIMPLIFY_DEG}°, zaokrąglone do 0,001°.`,
       },
-      darkSource: 'Mgławice ciemne (dark: 1): kontury z map Planck 857 GHz (ESA, przez NASA SkyView) dopasowane SAM 3 (Meta) do zdjęć z AstroBin; wybór ręczny. Zdjęcia nie są publikowane.',
+      darkSource: 'Kontury własne: wcześniejsze obrysy SAM 3 oraz zaakceptowane warstwy wyznaczone z map DSS, Planck, IRIS i atlasu Dobashiego; źródła i metoda poszczególnych obiektów w scripts/data/dark-outlines.json.',
       objects,
     }),
   )
