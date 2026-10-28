@@ -5,6 +5,9 @@ import { ChevronDown } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js'
+import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js'
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
 import { galacticVector } from '../lib/astro'
 import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO, type DSO, type ObjectType } from '../lib/catalog'
 import { useCatalog, useSelected } from '../state/data'
@@ -45,7 +48,9 @@ const LOCAL_GROUP_SHAPES: Record<string, GalaxyProfile> = {
 }
 
 type Scale = 'galaxy' | 'universe'
-type Constellations3D = { constellations: { abbr: string; lines: ([number, number, number] | null)[][] }[] }
+type ConstellationStar = { raDeg: number; decDeg: number; distLy: number; name: string }
+type StarNameLayout = { group: THREE.Group; anchors: { position: THREE.Vector3; sprite: THREE.Sprite }[]; connectors: THREE.BufferAttribute }
+type Constellations3D = { constellations: { abbr: string; lines: ([number, number, number] | null)[][]; stars?: ConstellationStar[] }[] }
 
 // Suwak liczby galaktyk (skala Wszechświat lokalny): górna granica odległości na każdym poziomie.
 const GALAXY_LEVELS = [
@@ -309,7 +314,7 @@ function domeMaterial(): THREE.ShaderMaterial {
   })
 }
 
-function textSprite(text: string, color = '#e6edf7', scale = 1): THREE.Sprite {
+function textSprite(text: string, color = '#e6edf7', scale = 1, outlined = false): THREE.Sprite {
   const c = document.createElement('canvas')
   const ctx = c.getContext('2d')!
   ctx.font = '600 44px ui-monospace, Consolas, monospace'
@@ -319,12 +324,49 @@ function textSprite(text: string, color = '#e6edf7', scale = 1): THREE.Sprite {
   ctx.font = '600 44px ui-monospace, Consolas, monospace'
   ctx.fillStyle = color
   ctx.textBaseline = 'middle'
+  if (outlined) {
+    ctx.strokeStyle = '#02050d'
+    ctx.lineWidth = 8
+    ctx.lineJoin = 'round'
+    ctx.strokeText(text, 10, 34)
+  }
   ctx.fillText(text, 10, 34)
   const tex = new THREE.CanvasTexture(c)
   tex.colorSpace = THREE.SRGBColorSpace
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false, transparent: true }))
   s.scale.set((w / 64) * 2.2 * scale, 2.2 * scale, 1)
   return s
+}
+
+function fixedSizeTextSprite(sprite: THREE.Sprite, sprites: THREE.Sprite[]) {
+  sprite.userData.fixedPixelHeight = 14
+  sprite.userData.aspectRatio = sprite.scale.x / sprite.scale.y
+  sprites.push(sprite)
+}
+
+function addStarNameLabels(group: THREE.Group, stars: ConstellationStar[], sprites: THREE.Sprite[]): StarNameLayout {
+  const anchors: StarNameLayout['anchors'] = []
+  const points = new Float32Array(stars.length * 6)
+  const geometry = new THREE.BufferGeometry()
+  const connectors = new THREE.BufferAttribute(points, 3)
+  connectors.setUsage(THREE.DynamicDrawUsage)
+  geometry.setAttribute('position', connectors)
+  const leaderLines = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: 0x858b93, transparent: true, opacity: 0.7, depthWrite: false }))
+  leaderLines.frustumCulled = false
+  leaderLines.renderOrder = 1
+  leaderLines.userData.starNameConnector = true
+  group.add(leaderLines)
+  for (const star of stars) {
+    const sprite = textSprite(star.name, '#e6edf7', 1, true)
+    fixedSizeTextSprite(sprite, sprites)
+    sprite.userData.fixedPixelHeight = 20
+    sprite.renderOrder = 2
+    const starPosition = position(star, star.distLy, 'galaxy')
+    sprite.position.copy(starPosition)
+    group.add(sprite)
+    anchors.push({ position: starPosition, sprite })
+  }
+  return { group, anchors, connectors }
 }
 
 /** Przepisuje do bufora tylko punkty niewyłączonych rodzajów i ogranicza do nich zakres rysowania. */
@@ -359,7 +401,10 @@ export default function Space3D() {
   const [showConstellations, setShowConstellations] = useState(false)
   const showConstellationsRef = useRef(showConstellations)
   showConstellationsRef.current = showConstellations
+  const [showStarNames, setShowStarNames] = useState(false)
   const constellationGroupRef = useRef<THREE.Group | null>(null)
+  const screenTextSpritesRef = useRef<THREE.Sprite[]>([])
+  const starNameLayoutsRef = useRef<StarNameLayout[]>([])
   const [constellations, setConstellations] = useState<Constellations3D | null>(null)
   const [constellationError, setConstellationError] = useState(false)
   const filterRef = useRef<HTMLDivElement>(null)
@@ -432,6 +477,8 @@ export default function Space3D() {
     controls.autoRotateSpeed = 0.35
     const disposables: { dispose(): void }[] = [renderer, controls]
     constellationGroupRef.current = null
+    screenTextSpritesRef.current = []
+    starNameLayoutsRef.current = []
     const stars = galaxyTexture()
     disposables.push(stars)
 
@@ -448,7 +495,12 @@ export default function Space3D() {
     const k = span / 40
     // Promień znaczników: najwyżej 15% odległości Słońce–obiekt, żeby kule i pierścień nigdy na siebie nie nachodziły.
     const mr = sep > 0 ? Math.min(0.5 * k, sep * 0.15) : 0.5 * k
-    const label = (text: string, color: string, size: number) => textSprite(text, color, size * k)
+    const label = (text: string, color: string, size: number) => {
+      const sprite = textSprite(text, color, size * k)
+      fixedSizeTextSprite(sprite, screenTextSpritesRef.current)
+      sprite.renderOrder = 2
+      return sprite
+    }
     // Kreski w skali kadru (jak etykiety): na ekranie podobnej wielkości przy każdej odległości.
     const dashes = { dashSize: 0.25 * k, gapSize: 0.18 * k }
 
@@ -483,12 +535,13 @@ export default function Space3D() {
 
     let milkyWayMaterial: THREE.PointsMaterial | undefined
     const localGalaxyModels: THREE.Points[] = []
+    const constellationPoints: { group: THREE.Group; position: THREE.Vector3 }[] = []
     if (scale === 'galaxy') {
       if (constellations) {
         const group = new THREE.Group()
-        const material = new THREE.LineBasicMaterial({ color: 0x00e0ff, transparent: true, opacity: 0.65, depthWrite: false })
+        const material = new LineMaterial({ color: 0x00e0ff, linewidth: 1.6, transparent: true, opacity: 0.9, depthWrite: false })
         const dot = dotTexture()
-        const starMaterial = new THREE.PointsMaterial({ color: 0xc5f7ff, size: 3, sizeAttenuation: false, map: dot, transparent: true, depthWrite: false })
+        const starMaterial = new THREE.PointsMaterial({ color: 0xc5f7ff, size: 5, sizeAttenuation: false, map: dot, transparent: true, depthWrite: false })
         disposables.push(material, starMaterial, dot)
         for (const c of constellations.constellations) {
           const segments: number[] = []
@@ -508,11 +561,21 @@ export default function Space3D() {
           const figure = new THREE.Group()
           figure.name = c.abbr
           figure.visible = constellationChoiceRef.current === 'all' || constellationChoiceRef.current === c.abbr
-          const geometry = new THREE.BufferGeometry()
-          geometry.setAttribute('position', new THREE.Float32BufferAttribute(segments, 3))
-          figure.add(new THREE.LineSegments(geometry, material))
+          for (const point of points.values()) constellationPoints.push({ group: figure, position: point })
+          const geometry = new LineSegmentsGeometry().setPositions(segments)
+          figure.add(new LineSegments2(geometry, material))
           const starGeometry = new THREE.BufferGeometry().setFromPoints([...points.values()])
           figure.add(new THREE.Points(starGeometry, starMaterial))
+          const nameGroup = new THREE.Group()
+          nameGroup.name = 'star-names'
+          nameGroup.visible = showStarNames
+          nameGroup.userData.stars = c.stars ?? []
+          nameGroup.userData.labelsAdded = false
+          if (showStarNames) {
+            starNameLayoutsRef.current.push(addStarNameLabels(nameGroup, c.stars ?? [], screenTextSpritesRef.current))
+            nameGroup.userData.labelsAdded = true
+          }
+          figure.add(nameGroup)
           group.add(figure)
           disposables.push(geometry, starGeometry)
         }
@@ -563,7 +626,7 @@ export default function Space3D() {
       // Tekstura: https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg
       const map = new THREE.TextureLoader().load(`${import.meta.env.BASE_URL}textures/earth.webp`)
       map.colorSpace = THREE.SRGBColorSpace
-      earth = new THREE.Mesh(new THREE.SphereGeometry(mr * 1.35, 48, 32), new THREE.MeshPhongMaterial({ map, shininess: 12, specular: 0x233344 }))
+      earth = new THREE.Mesh(new THREE.SphereGeometry(mr * 0.7, 48, 32), new THREE.MeshPhongMaterial({ map, shininess: 12, specular: 0x233344 }))
       const axis = new THREE.Group()
       axis.position.copy(sunPos)
       // Biegun ziemski J2000: l = 122,932°, b = 27,128°; płaszczyzna Galaktyki to XZ.
@@ -634,8 +697,10 @@ export default function Space3D() {
     const moveKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight'])
     const stopFly = () => (flying = false)
     const onKeyDown = (e: KeyboardEvent) => {
-      if (document.activeElement !== renderer.domElement || !moveKeys.has(e.code) || e.altKey || e.ctrlKey || e.metaKey) return
+      const active = document.activeElement
+      if ((active !== renderer.domElement && active !== filterRef.current?.querySelector('.constellation-select')) || !moveKeys.has(e.code) || e.altKey || e.ctrlKey || e.metaKey) return
       e.preventDefault()
+      renderer.domElement.focus({ preventScroll: true })
       pressedKeys.add(e.code)
       stopFly()
       controls.autoRotate = false
@@ -645,6 +710,13 @@ export default function Space3D() {
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup', onKeyUp)
     window.addEventListener('blur', clearPressedKeys)
+    const textWorldPosition = new THREE.Vector3()
+    const textCameraPosition = new THREE.Vector3()
+    const nameScreenPosition = new THREE.Vector3()
+    const earthScreenPosition = new THREE.Vector3()
+    const starScreenPosition = new THREE.Vector3()
+    const cameraUp = new THREE.Vector3()
+    const leaderEnd = new THREE.Vector3()
     controls.addEventListener('start', () => {
       stopFly()
       controls.autoRotate = false
@@ -679,6 +751,27 @@ export default function Space3D() {
         }
       }
       if (!rightLook) controls.update()
+      if (earth) {
+        camera.updateMatrixWorld()
+        textCameraPosition.copy(sunPos).applyMatrix4(camera.matrixWorldInverse)
+        const depth = -textCameraPosition.z
+        const width = renderer.domElement.clientWidth
+        const height = Math.max(1, renderer.domElement.clientHeight)
+        const unitsPerPixel = 2 * depth * Math.tan(THREE.MathUtils.degToRad(camera.getEffectiveFOV()) / 2) / height
+        earthScreenPosition.copy(sunPos).project(camera)
+        // Ziemia jest znacznikiem: promień do 16 px, z odstępem od widocznych gwiazd.
+        let radiusPixels = 16
+        if (showConstellationsRef.current) {
+          for (const star of constellationPoints) {
+            if (!star.group.visible) continue
+            starScreenPosition.copy(star.position).project(camera)
+            if (starScreenPosition.z < -1 || starScreenPosition.z > 1) continue
+            const gap = Math.hypot((starScreenPosition.x - earthScreenPosition.x) * width / 2, (starScreenPosition.y - earthScreenPosition.y) * height / 2)
+            radiusPixels = Math.min(radiusPixels, Math.max(0, gap - 7))
+          }
+        }
+        earth.scale.setScalar(depth > 0 ? Math.min(1, radiusPixels * unitsPerPixel / (mr * 0.7)) : 1)
+      }
       if (milkyWayMaterial) {
         // Przy zbliżeniu gwiazdy pozostają widoczne, a z daleka nie zlewają się w jasną plamę.
         const close = 1 - THREE.MathUtils.smoothstep(camera.position.distanceTo(controls.target), 20, 100)
@@ -692,6 +785,53 @@ export default function Space3D() {
         const material = model.material as THREE.PointsMaterial
         material.size = 2.4 + close * 0.8
         material.opacity = 0.1 + close * 0.18
+      }
+      const textViewportHeight = renderer.domElement.clientHeight
+      if (textViewportHeight > 0 && screenTextSpritesRef.current.length) {
+        camera.updateMatrixWorld()
+        const fovScale = Math.tan(THREE.MathUtils.degToRad(camera.getEffectiveFOV()) / 2)
+        for (const sprite of screenTextSpritesRef.current) {
+          let visible = sprite.visible
+          for (let parent = sprite.parent; visible && parent; parent = parent.parent) visible = parent.visible
+          if (!visible) continue
+          textCameraPosition.copy(sprite.getWorldPosition(textWorldPosition)).applyMatrix4(camera.matrixWorldInverse)
+          const depth = -textCameraPosition.z
+          if (depth <= 0) continue
+          const height = 2 * depth * fovScale * (sprite.userData.fixedPixelHeight as number) / textViewportHeight
+          sprite.scale.set(height * (sprite.userData.aspectRatio as number), height, 1)
+        }
+        cameraUp.set(0, 1, 0).applyQuaternion(camera.quaternion).normalize()
+        const nameBoxes: { left: number; right: number; top: number; bottom: number }[] = []
+        for (const layout of starNameLayoutsRef.current) {
+          if (!layout.group.visible || !layout.group.parent?.visible || !layout.group.parent.parent?.visible) continue
+          for (let i = 0; i < layout.anchors.length; i++) {
+            const anchor = layout.anchors[i]
+            textCameraPosition.copy(anchor.position).applyMatrix4(camera.matrixWorldInverse)
+            const depth = -textCameraPosition.z
+            if (depth <= 0) continue
+            nameScreenPosition.copy(anchor.position).project(camera)
+            const height = 2 * depth * fovScale * (anchor.sprite.userData.fixedPixelHeight as number) / textViewportHeight
+            const pixelHeight = anchor.sprite.userData.fixedPixelHeight as number
+            const halfWidth = pixelHeight * (anchor.sprite.userData.aspectRatio as number) / 2
+            const x = (nameScreenPosition.x + 1) * renderer.domElement.clientWidth / 2
+            const y = (1 - nameScreenPosition.y) * textViewportHeight / 2
+            const box = { left: x - halfWidth - 2, right: x + halfWidth + 2, top: y - pixelHeight - 6, bottom: y - 4 }
+            const overlaps = () => nameBoxes.some((b) => box.left < b.right && box.right > b.left && box.top < b.bottom && box.bottom > b.top)
+            while (y - box.bottom < 48 && overlaps()) {
+              box.top -= pixelHeight + 2
+              box.bottom -= pixelHeight + 2
+            }
+            anchor.sprite.visible = box.top >= 0 && box.bottom <= textViewportHeight && box.right >= 0 && box.left <= renderer.domElement.clientWidth && !overlaps()
+            if (anchor.sprite.visible) nameBoxes.push(box)
+            anchor.sprite.scale.set(height * (anchor.sprite.userData.aspectRatio as number), height, 1)
+            const gap = 2 * depth * fovScale * (y - box.bottom) / textViewportHeight
+            leaderEnd.copy(anchor.position).addScaledVector(cameraUp, anchor.sprite.visible ? gap : 0)
+            anchor.sprite.position.copy(leaderEnd).addScaledVector(cameraUp, height / 2)
+            layout.connectors.setXYZ(i * 2, anchor.position.x, anchor.position.y, anchor.position.z)
+            layout.connectors.setXYZ(i * 2 + 1, leaderEnd.x, leaderEnd.y, leaderEnd.z)
+          }
+          layout.connectors.needsUpdate = true
+        }
       }
       renderer.render(scene, camera)
       drawLabels()
@@ -897,7 +1037,14 @@ export default function Space3D() {
           obj.material.map?.dispose()
           obj.material.dispose()
         }
+        if (obj instanceof THREE.LineSegments && obj.userData.starNameConnector) {
+          obj.geometry.dispose()
+          if (Array.isArray(obj.material)) obj.material.forEach((material) => material.dispose())
+          else obj.material.dispose()
+        }
       })
+      screenTextSpritesRef.current = []
+      starNameLayoutsRef.current = []
       disposables.forEach((d) => d.dispose())
       renderer.domElement.remove()
       labels.remove()
@@ -911,6 +1058,18 @@ export default function Space3D() {
   useEffect(() => {
     constellationGroupRef.current?.children.forEach((c) => { c.visible = constellationChoice === 'all' || constellationChoice === c.name })
   }, [constellationChoice])
+
+  useEffect(() => {
+    constellationGroupRef.current?.children.forEach((c) => {
+      const names = c.getObjectByName('star-names')
+      if (!names) return
+      if (showStarNames && !names.userData.labelsAdded) {
+        starNameLayoutsRef.current.push(addStarNameLabels(names as THREE.Group, names.userData.stars as ConstellationStar[], screenTextSpritesRef.current))
+        names.userData.labelsAdded = true
+      }
+      names.visible = showStarNames
+    })
+  }, [showStarNames])
 
   useEffect(() => {
     const bg = bgRef.current
@@ -968,16 +1127,19 @@ export default function Space3D() {
       {scale === 'galaxy' && (
         <div ref={filterRef} className="sky-hud br" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 6, maxWidth: 'calc(100% - 24px)' }}>
           {showConstellations && (
-            <select className="control constellation-select" aria-label="Gwiazdozbiór w przestrzeni 3D" style={{ width: 'auto', maxWidth: '100%' }} value={constellationChoice} onChange={(e) => setConstellationChoice(e.target.value)}>
-              <option value="all">Wszystkie gwiazdozbiory</option>
-              {constellations?.constellations.slice().sort((a, b) => (CONSTELLATION_PL[a.abbr] ?? a.abbr).localeCompare(CONSTELLATION_PL[b.abbr] ?? b.abbr, 'pl')).map((c) => <option key={c.abbr} value={c.abbr}>{CONSTELLATION_PL[c.abbr] ?? c.abbr}</option>)}
-            </select>
+            <>
+              <select className="control constellation-select" aria-label="Gwiazdozbiór w przestrzeni 3D" style={{ width: 'auto', maxWidth: '100%' }} value={constellationChoice} onChange={(e) => setConstellationChoice(e.target.value)}>
+                <option value="all">Wszystkie gwiazdozbiory</option>
+                {constellations?.constellations.slice().sort((a, b) => (CONSTELLATION_PL[a.abbr] ?? a.abbr).localeCompare(CONSTELLATION_PL[b.abbr] ?? b.abbr, 'pl')).map((c) => <option key={c.abbr} value={c.abbr}>{CONSTELLATION_PL[c.abbr] ?? c.abbr}</option>)}
+              </select>
+              <button className={`toggle-chip${showStarNames ? ' on' : ''}`} aria-pressed={showStarNames} onClick={() => setShowStarNames((v) => !v)} title="Pokaż nazwy gwiazd z widocznych gwiazdozbiorów">Nazwy gwiazd</button>
+            </>
           )}
           <button
             className={`toggle-chip${showConstellations ? ' on' : ''}`}
             disabled={!constellations}
             aria-pressed={showConstellations}
-            title={constellationError ? 'Nie udało się wczytać gwiazdozbiorów' : !constellations ? 'Ładowanie gwiazdozbiorów…' : 'Pokaż gwiazdy i cienkie cyjanowe linie w przestrzeni Drogi Mlecznej'}
+            title={constellationError ? 'Nie udało się wczytać gwiazdozbiorów' : !constellations ? 'Ładowanie gwiazdozbiorów…' : 'Pokaż gwiazdy i cyjanowe linie w przestrzeni Drogi Mlecznej'}
             onClick={() => setShowConstellations((v) => !v)}
           >Gwiazdozbiory 3D{constellationError ? ' — błąd danych' : ''}</button>
           <button className={`toggle-chip${filterOpen ? ' on' : ''}`} onClick={() => setFilterOpen((v) => !v)} aria-expanded={filterOpen}>

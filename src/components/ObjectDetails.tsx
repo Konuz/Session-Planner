@@ -1,7 +1,7 @@
 import { ExternalLink, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { angularDistanceDeg, galactic, moonInfo, moonJ2000 } from '../lib/astro'
-import { DEFAULT_ANNOTATION_COLORS, displayName, TYPE_INFO } from '../lib/catalog'
+import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO } from '../lib/catalog'
 import { CONSTELLATION_PL } from '../lib/constellations'
 import { fmtDec, fmtDeg, fmtDistance, fmtDuration, fmtNum, fmtRa, fmtSize, fmtTime } from '../lib/format'
 import { altitudeTrack, nightGrid, visibility } from '../lib/night'
@@ -9,6 +9,7 @@ import { astrobinSearchUrl, fetchWikiSummary, type WikiSummary } from '../lib/se
 import { useNight, useSelected, useSite } from '../state/data'
 import { useStore } from '../state/store'
 import { Thumb } from './Thumb'
+import { FavoriteButton } from './FavoriteButton'
 
 export function ObjectDetails({ onClose }: { onClose: () => void }) {
   const o = useSelected()
@@ -95,23 +96,20 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
         <div style={{ padding: 22 }}>
           <h2 className="object-name" style={{ margin: 0, width: 'fit-content', fontWeight: 400 }}>
             <span className="id">{o.id}</span>
-            {displayName(o) && (
-              <>
-                <span className="sep">·</span>
-                <span>{displayName(o)}</span>
-              </>
-            )}
           </h2>
-          <div style={{ margin: '10px 0 6px' }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
             <span className="chip" style={{ color: annotationColors[o.type] ?? DEFAULT_ANNOTATION_COLORS[o.type] }}>{TYPE_INFO[o.type].label}</span>
+            {o.aliases.map((alias) => (
+              <span key={alias} className="chip" style={{ color: 'var(--text-dim)' }}>{alias}</span>
+            ))}
           </div>
-          {o.aliases.length > 0 && <div className="dim mono" style={{ fontSize: 12 }}>{o.aliases.join(' · ')}</div>}
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '16px 0' }}>
             <button className="button primary" onClick={() => go('dome')}>Pokaż na niebie</button>
             <button className="button" onClick={() => go('framing')}>Kadruj</button>
             <button className="button" onClick={() => go('3d')}>Pozycja 3D</button>
             <button className="button" onClick={() => { addToPlan(o.i, o.id); onClose(); setTab('planner') }}>Do planu</button>
+            <FavoriteButton objectId={o.id} showLabel />
             {astrobin?.key === o.i && (
               <a className="button" href={astrobin.url} target="_blank" rel="noreferrer" title="Zdjęcia z AstroBin wyróżnione jako IOTD lub Top Pick">
                 AstroBin

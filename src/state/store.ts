@@ -114,6 +114,7 @@ interface State {
   horizon: HorizonPoint[]
   framing: Framing
   plan: PlanItem[]
+  favoriteIds: string[]
   filter: CatalogFilter
   sortBy: 'best' | 'alt' | 'hours' | 'mag' | 'size' | 'name'
   onlyVisible: boolean
@@ -149,6 +150,8 @@ interface State {
   updatePlan(key: string, patch: Partial<PlanItem>): void
   removeFromPlan(key: string): void
   movePlan(key: string, delta: number): void
+  toggleFavorite(id: string): void
+  clearFavorites(): void
   setFilter(patch: Partial<CatalogFilter>): void
   setSort(s: State['sortBy']): void
   setAnnotationDepth(depth: number): void
@@ -175,6 +178,7 @@ export const useStore = create<State>()(
       horizon: [],
       framing: { raDeg: null, decDeg: null, paDeg: 0 },
       plan: [],
+      favoriteIds: [],
       filter: EMPTY_FILTER,
       sortBy: 'best',
       onlyVisible: false,
@@ -280,6 +284,8 @@ export const useStore = create<State>()(
           ;[plan[i], plan[j]] = [plan[j], plan[i]]
           return { plan }
         }),
+      toggleFavorite: (id) => set((s) => ({ favoriteIds: s.favoriteIds.includes(id) ? s.favoriteIds.filter((value) => value !== id) : [...s.favoriteIds, id] })),
+      clearFavorites: () => set({ favoriteIds: [] }),
       setFilter: (patch) => set((s) => ({ filter: { ...s.filter, ...patch } })),
       setSort: (sortBy) => set({ sortBy }),
       setAnnotationDepth: (annotationDepth) => set({ annotationDepth }),
@@ -300,6 +306,7 @@ export const useStore = create<State>()(
         minAltDeg: s.minAltDeg,
         horizon: s.horizon,
         plan: s.plan,
+        favoriteIds: s.favoriteIds,
         filter: s.filter,
         sortBy: s.sortBy,
         onlyVisible: s.onlyVisible,

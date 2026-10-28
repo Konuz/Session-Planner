@@ -1,10 +1,11 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { CalendarCheck, Palette, RotateCcw, Search } from 'lucide-react'
+import { CalendarCheck, Heart, Palette, RotateCcw, Search, Trash2 } from 'lucide-react'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { ObjectDetails } from '../components/ObjectDetails'
 import { Range } from '../components/Range'
 import { ScrambleText } from '../components/ScrambleText'
 import { Thumb } from '../components/Thumb'
+import { FavoriteButton } from '../components/FavoriteButton'
 import { CATALOGS, DEFAULT_ANNOTATION_COLORS, displayName, matchesFilter, searchScore, TYPE_INFO, EMPTY_FILTER, type DSO, type ObjectType } from '../lib/catalog'
 import { CONSTELLATION_PL } from '../lib/constellations'
 import { fmtDuration, fmtNum, fmtSize, fmtTime } from '../lib/format'
@@ -75,6 +76,10 @@ export default function CatalogView() {
   const catalogPlanMode = useStore((s) => s.catalogPlanMode)
   const selectedIndex = useStore((s) => s.selectedIndex)
   const plan = useStore((s) => s.plan)
+  const favoriteIds = useStore((s) => s.favoriteIds)
+  const clearFavorites = useStore((s) => s.clearFavorites)
+  const [onlyFavorites, setOnlyFavorites] = useState(false)
+  const clearDialogRef = useRef<HTMLDialogElement>(null)
   const tz = useStore((s) => s.location.timeZone)
   const [details, setDetails] = useState(false)
   const [query, setQuery] = useState(filter.query)
@@ -94,6 +99,7 @@ export default function CatalogView() {
     if (!catalog) return []
     const out: DSO[] = []
     for (const o of catalog) {
+      if (onlyFavorites && !favoriteIds.includes(o.id)) continue
       if (!matchesFilter(o, filter)) continue
       if (onlyVisible && vis && vis.hours[o.i] < 1) continue
       out.push(o)
@@ -116,7 +122,7 @@ export default function CatalogView() {
       case 'size': return out.sort((x, y) => y.majArcmin - x.majArcmin)
       case 'name': return out.sort((x, y) => designationKey(x.id).localeCompare(designationKey(y.id)))
     }
-  }, [catalog, filter, sortBy, onlyVisible, vis])
+  }, [catalog, filter, sortBy, onlyVisible, vis, onlyFavorites, favoriteIds])
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(1000)
@@ -137,7 +143,7 @@ export default function CatalogView() {
   }, [rowH, virt])
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0 })
-  }, [filter, sortBy, onlyVisible])
+  }, [filter, sortBy, onlyVisible, onlyFavorites])
 
   const toggleIn = <T,>(arr: T[], v: T) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v])
   const constellations = useMemo(() => Object.entries(CONSTELLATION_PL).sort((a, b) => a[1].localeCompare(b[1], 'pl')), [])
@@ -208,13 +214,17 @@ export default function CatalogView() {
           <span className="dim" style={{ fontSize: 13 }}>z {catalog?.length.toLocaleString('pl-PL') ?? '…'}</span>
           {!vis && catalog && <span className="dim mono" style={{ fontSize: 11 }}>· liczenie widoczności…</span>}
           <span style={{ flex: 1 }} />
+          {onlyFavorites && <button className="button ghost icon-button" style={{ color: 'var(--bad)' }} title="Wyczyść ulubione" aria-label="Wyczyść ulubione" disabled={favoriteIds.length === 0} onClick={() => clearDialogRef.current?.showModal()}><Trash2 size={17} aria-hidden="true" /></button>}
+          <button className={`button small${onlyFavorites ? ' active' : ''}`} aria-pressed={onlyFavorites} onClick={() => setOnlyFavorites((value) => !value)}>
+            <Heart size={14} fill={onlyFavorites ? 'currentColor' : 'none'} /> Ulubione ({favoriteIds.length})
+          </button>
           <select className="control" value={sortBy} onChange={(e) => setSort(e.target.value as typeof sortBy)} aria-label="Sortowanie" disabled={!!filter.query}>
             {SORTS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
         </div>
         {error && <div className="card empty">Nie udało się wczytać katalogu: {error}</div>}
         <div ref={scrollRef} className="catalog-scroll">
-          {catalog && list.length === 0 && <div className="empty">Brak obiektów spełniających filtry.</div>}
+          {catalog && list.length === 0 && <div className="empty">{onlyFavorites ? favoriteIds.length === 0 ? 'Nie masz jeszcze ulubionych. Dodaj obiekt sercem na zdjęciu lub w jego szczegółach.' : 'Brak ulubionych pasujących do filtrów.' : 'Brak obiektów spełniających filtry.'}</div>}
           <div style={{ height: virt.getTotalSize(), position: 'relative' }}>
             {virt.getVirtualItems().map((row) => (
               <div key={row.key} className="obj-grid-row" style={{ position: 'absolute', top: 0, left: 0, right: 0, transform: `translateY(${row.start}px)`, gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
@@ -252,6 +262,16 @@ export default function CatalogView() {
           </div>
         </div>
       </section>
+      <dialog ref={clearDialogRef} className="favorites-confirm" aria-labelledby="clear-favorites-title" aria-describedby="clear-favorites-description">
+        <form method="dialog">
+          <h2 id="clear-favorites-title"><Trash2 size={18} aria-hidden="true" /> Wyczyścić ulubione?</h2>
+          <p id="clear-favorites-description">Usuniesz wszystkie obiekty z listy ulubionych ({favoriteIds.length}). Obiekty pozostaną w katalogu i planie obserwacji.</p>
+          <div className="favorites-confirm-actions">
+            <button className="button" autoFocus>Anuluj</button>
+            <button className="button favorite-remove" onClick={clearFavorites}>Usuń wszystkie</button>
+          </div>
+        </form>
+      </dialog>
       {details && <ObjectDetails onClose={() => setDetails(false)} />}
     </div>
   )
@@ -274,13 +294,14 @@ interface CardProps {
 const CatalogCard = memo(function CatalogCard({ o, typeColor, selected, inPlan, hours, maxAlt, bestMs, minAlt, tz, onOpen }: CardProps) {
   const [hover, setHover] = useState(false)
   return (
-    <button
+    <div
       className={`obj-card corners${selected ? ' selected' : ''}`}
-      onClick={onOpen}
       onPointerEnter={(e) => e.pointerType === 'mouse' && setHover(true)}
       onPointerLeave={() => setHover(false)}
     >
       <Thumb object={o} />
+      <FavoriteButton objectId={o.id} />
+      <button type="button" className="obj-card-open" aria-label={`Otwórz ${o.id}`} onClick={onOpen} />
       {inPlan && <span className="in-plan" title="W planie"><CalendarCheck size={14} /></span>}
       <div className="vis-bar" title={hours !== null ? `${fmtDuration(hours)} powyżej ${minAlt}°` : ''}>
         <div style={{ width: `${Math.min(100, ((hours ?? 0) / 10) * 100)}%`, background: (hours ?? 0) >= 3 ? 'var(--accent)' : (hours ?? 0) >= 1 ? 'var(--warn)' : 'var(--text-faint)' }} />
@@ -300,6 +321,6 @@ const CatalogCard = memo(function CatalogCard({ o, typeColor, selected, inPlan, 
           <span>{bestMs !== null && hours ? fmtTime(bestMs, tz) : ''}</span>
         </div>
       </div>
-    </button>
+    </div>
   )
 })

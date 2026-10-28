@@ -212,6 +212,7 @@ async function buildSky() {
   const stars = JSON.parse(await cached('d3c-stars.6.json', `${D3C}/stars.6.json`)) as {
     features: { id: number; properties: { mag: number; bv: string }; geometry: { coordinates: [number, number] } }[]
   }
+  const starNames = JSON.parse(await cached('d3c-starnames.json', `${D3C}/starnames.json`)) as Record<number, { name?: string; bayer?: string; flam?: string; c?: string }>
   const labels = JSON.parse(await cached('d3c-constellations.json', `${D3C}/constellations.json`)) as {
     features: { id: string; properties: { rank: string }; geometry: { coordinates: [number, number] } }[]
   }
@@ -260,15 +261,26 @@ async function buildSky() {
   }
   if (!distances.size) throw new Error('Brak paralaks Hipparcosa dla gwiazdozbiorów 3D')
   writeFileSync(join(OUT, 'constellations3d.json'), JSON.stringify({
-    source: 'Hipparcos I/239 (CDS); linie: Stellarium modern (CC BY-SA 4.0)',
-    constellations: modern.constellations.map((c) => ({
-      abbr: c.id.split(' ')[2],
-      lines: c.lines.map((line) => line.map((hip) => {
-        const star = byHip.get(hip)
-        const dist = distances.get(hip)
-        return star && dist ? [r(star[0], 3), r(star[1], 3), r(dist, 2)] : null
-      })),
-    })),
+    source: 'Nazwy: d3-celestial (BSD); odległości: Hipparcos I/239 (CDS); linie: Stellarium modern (CC BY-SA 4.0)',
+    constellations: modern.constellations.map((c) => {
+      const abbr = c.id.split(' ')[2]
+      return {
+        abbr,
+        lines: c.lines.map((line) => line.map((hip) => {
+          const star = byHip.get(hip)
+          const dist = distances.get(hip)
+          return star && dist ? [r(star[0], 3), r(star[1], 3), r(dist, 2)] : null
+        })),
+        stars: [...new Set(c.lines.flat())].flatMap((hip) => {
+          const star = byHip.get(hip)
+          const dist = distances.get(hip)
+          const names = starNames[hip]
+          if (names?.c && names.c !== abbr) return []
+          const name = names?.name?.trim() || (names?.bayer ? `${names.bayer} ${abbr}` : names?.flam ? `${names.flam} ${abbr}` : '')
+          return star && dist && name ? [{ raDeg: r(star[0], 3), decDeg: r(star[1], 3), distLy: r(dist, 2), name }] : []
+        }),
+      }
+    }),
   }))
 
   // Gwiazdy: [ra, dec, mag, b-v, hip] posortowane od najjaśniejszej.

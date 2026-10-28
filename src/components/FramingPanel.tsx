@@ -1,7 +1,8 @@
 // Kadrowanie: zdjęcie DSS2 wokół obiektu w rzucie TAN i prostokąt matrycy z obrotem (PA od N przez E).
-import { Crosshair, RotateCw } from 'lucide-react'
+import { RotateCw } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { computeOptics } from '../lib/astro'
+import { parseDecCoordinate, parseRaCoordinate } from '../lib/coordinates'
 import { fmtDec, fmtNum, fmtRa } from '../lib/format'
 import { frameCorners, gnomonic, gnomonicInverse, pixelToTangent, tangentToPixel } from '../lib/framing'
 import { getSkyImage } from '../lib/thumbs'
@@ -24,6 +25,9 @@ export function FramingPanel() {
   const [img, setImg] = useState<{ key: string; url: string } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [zoom, setZoom] = useState(1)
+  const [coordinateInput, setCoordinateInput] = useState({ ra: '', dec: '' })
+  const [coordinateError, setCoordinateError] = useState<string | null>(null)
+  const [photoCenter, setPhotoCenter] = useState<{ objectIndex: number; raDeg: number; decDeg: number } | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const drag = useRef<{ kind: 'move' | 'rotate'; startX: number; startY: number; startCenter: { xi: number; eta: number }; startPa: number } | null>(null)
 
@@ -35,21 +39,33 @@ export function FramingPanel() {
   const objDeg = o ? o.majArcmin / 60 : 0
   const baseFov = Math.min(30, Math.max(0.3, diag * 1.6, objDeg * 1.4))
   const imageFov = Math.round((baseFov / zoom) * 1000) / 1000
-  const imageKey = o ? `${o.i}:${imageFov}:${layer}` : ''
+  const center = o ? { raDeg: framing.raDeg ?? o.raDeg, decDeg: framing.decDeg ?? o.decDeg } : null
+  const imageRa = o ? (photoCenter?.objectIndex === o.i ? photoCenter.raDeg : center?.raDeg ?? o.raDeg) : null
+  const imageDec = o ? (photoCenter?.objectIndex === o.i ? photoCenter.decDeg : center?.decDeg ?? o.decDeg) : null
+  const imageKey = o ? `${o.i}:${imageRa}:${imageDec}:${imageFov}:${layer}` : ''
 
   useEffect(() => {
-    if (!o) return
+    if (o && center) setPhotoCenter({ objectIndex: o.i, raDeg: center.raDeg, decDeg: center.decDeg })
+  }, [o?.i])
+
+  useEffect(() => {
+    if (!center) return
+    setCoordinateInput({ ra: fmtRa(center.raDeg), dec: fmtDec(center.decDeg) })
+    setCoordinateError(null)
+  }, [center?.raDeg, center?.decDeg])
+
+  useEffect(() => {
+    if (!o || imageRa === null || imageDec === null) return
     const ctrl = new AbortController()
     setErr(null)
-    getSkyImage(o.raDeg, o.decDeg, imageFov, SIZE, ctrl.signal, layer === 'red' ? 'CDS/P/DSS2/red' : 'CDS/P/DSS2/color')
+    getSkyImage(imageRa, imageDec, imageFov, SIZE, ctrl.signal, layer === 'red' ? 'CDS/P/DSS2/red' : 'CDS/P/DSS2/color')
       .then((url) => setImg({ key: imageKey, url }))
       .catch((e: Error) => e.name !== 'AbortError' && setErr('Nie udało się pobrać zdjęcia (CDS hips2fits)'))
     return () => ctrl.abort()
-  }, [o, imageFov, layer, imageKey])
+  }, [o, imageRa, imageDec, imageFov, layer, imageKey])
 
-  if (!o) return <div className="sky-stage empty" style={{ display: 'grid', placeItems: 'center' }}>Wybierz obiekt, aby kadrować.</div>
+  if (!o || !center) return <div className="sky-stage empty" style={{ display: 'grid', placeItems: 'center' }}>Wybierz obiekt, aby kadrować.</div>
 
-  const center = { raDeg: framing.raDeg ?? o.raDeg, decDeg: framing.decDeg ?? o.decDeg }
   const offset = gnomonic(o, center)
   const corners = frameCorners(offset, optics.fovWdeg, optics.fovHdeg, framing.paDeg).map((c) => tangentToPixel(c, imageFov, SIZE))
   const centerPx = tangentToPixel(offset, imageFov, SIZE)
@@ -58,6 +74,18 @@ export function FramingPanel() {
   const ratio = objDeg / Math.max(optics.fovWdeg, optics.fovHdeg)
   const coverage = ratio > 1 ? `większy niż kadr (mozaika ×${Math.ceil(ratio)})` : `${Math.round(ratio * 100)}% boku`
   const planItem = plan.find((p) => p.objectIndex === o.i)
+
+  const applyCoordinates = () => {
+    const raDeg = parseRaCoordinate(coordinateInput.ra)
+    const decDeg = parseDecCoordinate(coordinateInput.dec)
+    if (raDeg === null || decDeg === null) {
+      setCoordinateError('Nieprawidłowe współrzędne. Sprawdź format i zakres RA/Dec.')
+      return
+    }
+    setCoordinateError(null)
+    setPhotoCenter({ objectIndex: o.i, raDeg, decDeg })
+    setFraming({ raDeg, decDeg })
+  }
 
   const toSvg = (e: React.PointerEvent) => {
     const r = svgRef.current!.getBoundingClientRect()
@@ -150,16 +178,37 @@ export function FramingPanel() {
         </div>
         <div className="field">
           <span className="label">Środek kadru (J2000)</span>
-          <span className="mono" style={{ fontSize: 12.5 }}>RA {fmtRa(center.raDeg)}</span>
-          <span className="mono" style={{ fontSize: 12.5 }}>Dec {fmtDec(center.decDeg)}</span>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+            <input
+              className="control figures"
+              aria-label="RA środka kadru"
+              placeholder="05h 34m 32s"
+              style={{ minWidth: 0, padding: '0 6px', fontSize: 11 }}
+              value={coordinateInput.ra}
+              onChange={(e) => { setCoordinateInput((v) => ({ ...v, ra: e.target.value })); setCoordinateError(null) }}
+              onKeyDown={(e) => e.key === 'Enter' && applyCoordinates()}
+            />
+            <input
+              className="control figures"
+              aria-label="Dec środka kadru"
+              placeholder="−05° 23′ 28″"
+              style={{ minWidth: 0, padding: '0 6px', fontSize: 11 }}
+              value={coordinateInput.dec}
+              onChange={(e) => { setCoordinateInput((v) => ({ ...v, dec: e.target.value })); setCoordinateError(null) }}
+              onKeyDown={(e) => e.key === 'Enter' && applyCoordinates()}
+            />
+          </div>
+          <span className="dim" style={{ fontSize: 10.5 }}>RA: hh:mm:ss lub stopnie · Dec: ±dd:mm:ss lub stopnie</span>
+          {coordinateError && <span role="alert" style={{ color: 'var(--warn)', fontSize: 11 }}>{coordinateError}</span>}
+          <button className="button small" onClick={applyCoordinates}>Ustaw współrzędne</button>
         </div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          <button className="button small" onClick={() => setFraming({ raDeg: null, decDeg: null })}><Crosshair size={13} /> Wyśrodkuj</button>
-          <button className="button small" onClick={() => setFraming({ paDeg: (framing.paDeg + 90) % 360 })}><RotateCw size={13} /> +90°</button>
+        <div className="framing-button-row">
+          <button className="button small" onClick={() => { setPhotoCenter({ objectIndex: o.i, raDeg: o.raDeg, decDeg: o.decDeg }); setFraming({ raDeg: null, decDeg: null }) }}>Wyśrodkuj</button>
+          <button className="button small" onClick={() => setFraming({ paDeg: (framing.paDeg - 90 + 360) % 360 })}><RotateCw size={13} /> +90°</button>
         </div>
         <div className="field">
           <span className="label">Warstwa</span>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div className="framing-button-row">
             <button className={`toggle-chip${layer === 'red' ? ' on' : ''}`} onClick={() => setLayer('red')}>Czarno-biała</button>
             <button className={`toggle-chip${layer === 'color' ? ' on' : ''}`} onClick={() => setLayer('color')}>Kolor</button>
           </div>
