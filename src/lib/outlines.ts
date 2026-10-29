@@ -4,6 +4,8 @@ import { DEG, unitVector, type Vec3 } from './astro'
 export interface OutlineRing {
   /** Wierzchołki jako wektory jednostkowe J2000. */
   points: Vec3[]
+  /** Wewnętrzne prześwity, które nie należą do wypełnionego obłoku. */
+  holes: Vec3[][]
   centre: Vec3
   /** Największa odległość kątowa wierzchołka od środka. */
   radiusDeg: number
@@ -26,7 +28,7 @@ export interface Outline {
 }
 
 /** Pierścień [ra, dec, ra, dec, …] w stopniach → wektory, środek i promień kątowy. */
-export function prepareRing(flat: number[]): OutlineRing {
+export function prepareRing(flat: number[], holes: number[][] = []): OutlineRing {
   const points: Vec3[] = []
   let x = 0, y = 0, z = 0
   for (let i = 0; i + 1 < flat.length; i += 2) {
@@ -40,7 +42,11 @@ export function prepareRing(flat: number[]): OutlineRing {
   const centre: Vec3 = [x / n, y / n, z / n]
   let minDot = 1
   for (const v of points) minDot = Math.min(minDot, v[0] * centre[0] + v[1] * centre[1] + v[2] * centre[2])
-  return { points, centre, radiusDeg: Math.acos(Math.max(-1, Math.min(1, minDot))) / DEG }
+  return { points, holes: holes.map((ring) => {
+    const vectors: Vec3[] = []
+    for (let i = 0; i + 1 < ring.length; i += 2) vectors.push(unitVector(ring[i], ring[i + 1]))
+    return vectors
+  }), centre, radiusDeg: Math.acos(Math.max(-1, Math.min(1, minDot))) / DEG }
 }
 
 let pending: Promise<Outline[]> | null = null
@@ -50,7 +56,7 @@ export function loadOutlines(): Promise<Outline[]> {
     .then((res) => {
       if (!res.ok) throw new Error(`Nie udało się wczytać konturów mgławic (HTTP ${res.status})`)
       return res.json() as Promise<{
-        objects: { id: string; level: 1 | 2 | 3; region?: string; dark?: number; name?: string; also?: string[]; rings: number[][] }[]
+        objects: { id: string; level: 1 | 2 | 3; region?: string; dark?: number; name?: string; also?: string[]; rings: number[][]; holes?: number[][][] }[]
       }>
     })
     .then((data) =>
@@ -61,7 +67,7 @@ export function loadOutlines(): Promise<Outline[]> {
         dark: o.dark === 1,
         name: o.name ?? null,
         also: o.also ?? [],
-        rings: o.rings.map(prepareRing),
+        rings: o.rings.map((ring, i) => prepareRing(ring, o.holes?.[i])),
       })),
     )
   return pending
@@ -76,6 +82,11 @@ export function pointInPolygon(pts: readonly [number, number][], x: number, y: n
     if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside
   }
   return inside
+}
+
+/** Punkt należy do obrysu, jeżeli nie znajduje się w jego prześwicie. */
+export function pointInOutline(pts: readonly [number, number][], holes: readonly (readonly [number, number][])[], x: number, y: number): boolean {
+  return pointInPolygon(pts, x, y) && !holes.some((hole) => pointInPolygon(hole, x, y))
 }
 
 /** Pole wielokąta na ekranie (wzór sznurowadłowy, bez znaku). */

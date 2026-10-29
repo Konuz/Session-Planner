@@ -506,14 +506,15 @@ async function buildOutlines() {
   let darkCount = 0
   if (existsSync(darkPath)) {
     const dark = JSON.parse(readFileSync(darkPath, 'utf8')) as {
-      objects: { id: string; also: string[]; name: string | null; bright?: boolean; replace?: boolean; level?: 1 | 2 | 3; rings: [number, number][][] }[]
+      objects: { id: string; also: string[]; name: string | null; bright?: boolean; replace?: boolean; level?: 1 | 2 | 3; rings: [number, number][][]; holes?: [number, number][][][] }[]
     }
     const replaced = new Set(dark.objects.filter((d) => d.replace).map((d) => d.id))
     for (let i = objects.length - 1; i >= 0; i--) if (replaced.has(objects[i].id)) objects.splice(i, 1)
     for (const d of dark.objects) {
       const rings = d.rings.map((ring) => ring.flatMap(([ra, dec]) => [r(ra, 4), r(dec, 4)]))
+      const holes = d.holes?.map((group) => group.map((ring) => ring.flatMap(([ra, dec]) => [r(ra, 4), r(dec, 4)])))
       points += rings.reduce((s, ring) => s + ring.length / 2, 0)
-      objects.push({ id: d.id, level: d.level ?? 2, ...(d.bright ? {} : { dark: 1 }), ...(d.also.length ? { also: d.also } : {}), ...(d.name ? { name: d.name } : {}), rings })
+      objects.push({ id: d.id, level: d.level ?? 2, ...(d.bright ? {} : { dark: 1 }), ...(d.also.length ? { also: d.also } : {}), ...(d.name ? { name: d.name } : {}), rings, ...(holes ? { holes } : {}) })
       if (!d.bright) darkCount++
     }
   }

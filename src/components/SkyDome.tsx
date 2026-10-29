@@ -20,7 +20,7 @@ import {
 import { annotationDepthOf, DEFAULT_ANNOTATION_COLORS, displayName, TYPE_INFO, type DSO, type ObjectType } from '../lib/catalog'
 import { horizonAltitude, type HorizonPoint } from '../lib/horizon'
 import { altitudeTrack, nightGrid } from '../lib/night'
-import { loadOutlines, pointInPolygon, polygonArea, type Outline } from '../lib/outlines'
+import { loadOutlines, pointInOutline, polygonArea, type Outline } from '../lib/outlines'
 import { affineFrom3, FULL_DOME, makeProjector, type Projector, type View } from '../lib/projection'
 import { loadMilkyWay, loadSky, type MilkyWay, type SkyData } from '../lib/sky'
 import { useCatalog, useNight, useSelected, useSite, useTime } from '../state/data'
@@ -387,7 +387,7 @@ export function SkyDome({ playing = false }: Props) {
   // Obiekt pod kursorem (to samo, co wybrałoby kliknięcie): podświetlenie zwłaszcza małych obiektów bez konturu.
   const [hoverObj, setHoverObj] = useState<DSO | null>(null)
   const depthHits = useRef<{ dso: DSO; c: [number, number]; r: number }[]>([])
-  const outlineHits = useRef<{ k: number; pts: [number, number][]; area: number }[]>([])
+  const outlineHits = useRef<{ k: number; pts: [number, number][]; holes: [number, number][][]; area: number }[]>([])
   const [hoverCon, setHoverCon] = useState<{ abbr: string; x: number; y: number; since: number } | null>(null)
   const [, setFrame] = useState(0)
   const anim = useRef<{ from: View; to: View; start: number; dur: number } | null>(null)
@@ -670,13 +670,19 @@ export function SkyDome({ playing = false }: Props) {
           const c = proj.eq(ring.centre)
           if (c ? c[0] < -2 * r || c[1] < -2 * r || c[0] > size.w + 2 * r || c[1] > size.h + 2 * r : ring.radiusDeg < 60) continue
           const pts = ring.points.map((v) => proj.eq(v))
+          const holes = ring.holes.map((hole) => hole.map((v) => proj.eq(v)))
           ctx.beginPath()
           polyline(ctx, pts, size)
-          if (pts.every((q) => q !== null)) {
+          if (pts.every((q) => q !== null) && holes.every((hole) => hole.every((q) => q !== null))) {
             ctx.closePath()
-            ctx.fill()
+            for (const hole of holes) {
+              polyline(ctx, hole, size)
+              ctx.closePath()
+            }
+            ctx.fill('evenodd')
             const full = pts as [number, number][]
-            outlineHits.current.push({ k, pts: full, area: polygonArea(full) })
+            const fullHoles = holes as [number, number][][]
+            outlineHits.current.push({ k, pts: full, holes: fullHoles, area: polygonArea(full) - fullHoles.reduce((sum, hole) => sum + polygonArea(hole), 0) })
             outlined.add(key)
             const prev = best.get(key)
             const better = !prev || (prev.faint && o.level !== 1) || (prev.faint === (o.level === 1) && r > prev.r)
@@ -1152,7 +1158,7 @@ export function SkyDome({ playing = false }: Props) {
   const outlineAt = (x: number, y: number): number | null => {
     let best: { k: number; area: number } | null = null
     for (const h of outlineHits.current) {
-      if ((!best || h.area < best.area) && pointInPolygon(h.pts, x, y)) best = h
+      if ((!best || h.area < best.area) && pointInOutline(h.pts, h.holes, x, y)) best = h
     }
     return best?.k ?? null
   }

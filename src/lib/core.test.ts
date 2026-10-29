@@ -7,7 +7,7 @@ import { frameCorners, gnomonic, gnomonicInverse, pixelToTangent, tangentToPixel
 import { exportHorizon, horizonAltitude, parseHorizon } from './horizon'
 import { darkWindow, nightDateOf, nightPhases, phaseAt, zonedMidnightMs } from './night'
 import { formatDec, formatPa, formatRa, ninaCsv } from './nina'
-import { pointInPolygon, polygonArea, prepareRing } from './outlines'
+import { pointInOutline, pointInPolygon, polygonArea, prepareRing } from './outlines'
 import { affineFrom3, FULL_DOME, makeProjector } from './projection'
 import { autoSchedule, localTimeToMs, overlaps } from './planner'
 import { astrobinSearchUrl } from './services'
@@ -274,12 +274,12 @@ describe('kontury mgławic', () => {
       objects: { id: string; dark?: number; name?: string; also?: string[] }[]
     }
     const dark = new Map(data.objects.filter((o) => o.dark === 1).map((o) => [o.id, o]))
-    expect(dark.size).toBe(25)
+    expect(dark.size).toBe(34)
     expect(dark.get('LDN 1235')?.name).toBe('Shark')
     expect(dark.get('LDN 1251')?.name).toBe('Rotten Fish')
     expect(dark.get('LDN 1082')?.also).toEqual(['B 150'])
     expect(dark.get('LDN 1355')?.also).toEqual(['LDN 1357', 'LDN 1358', 'vdB 9'])
-    expect(dark.get('vdB 141')?.also).toEqual(['Sh2-136'])
+    expect(dark.get('vdB 141')?.also).toEqual(['Sh2-136', 'LDN 1177'])
     expect(dark.get('vdB 141')?.name).toBe('Ghost')
     // Jasna mgławica z tym samym źródłem konturów: bez dark, rysowana jak jasne.
     const vulture = data.objects.find((o) => o.id === 'LBN 777')
@@ -293,7 +293,7 @@ describe('kontury mgławic', () => {
     const data = JSON.parse(readFileSync(new URL('../../public/data/outlines.json', import.meta.url), 'utf8')) as {
       objects: { id: string; level: number; also?: string[]; rings: number[][] }[]
     }
-    for (const id of ['LDN 1355', 'B 168', 'B 72', 'LDN 935', 'LDN 886', 'B 347', 'LDN 1448', 'NGC 1333', 'NGC 7023']) {
+    for (const id of ['LDN 1355', 'B 168', 'B 72', 'LDN 935', 'LDN 886', 'B 347', 'LDN 1448', 'NGC 1333', 'NGC 7023', 'B 22', 'LBN 437', 'vdB 141', 'LDN 1503', 'LDN 800', 'LDN 1317', 'LDN 1089', 'LDN 717', 'LDN 1245', 'LDN 1295', 'LDN 1296']) {
       const layers = data.objects.filter((o) => o.id === id)
       expect(layers.map((o) => o.level).sort(), id).toEqual([1, 2, 3])
       expect(layers.every((o) => o.rings.length > 0), id).toBe(true)
@@ -303,6 +303,26 @@ describe('kontury mgławic', () => {
     expect(aliases('LDN 1448')).toContain('LDN 1455')
     expect(aliases('NGC 1333')).toContain('LDN 1450')
     expect(aliases('NGC 7023')).toContain('LDN 1174')
+    expect(aliases('LDN 800')).toEqual(['LDN 803', 'LDN 804', 'LDN 799', 'LDN 806', 'LDN 807', 'LDN 808'])
+    expect(aliases('LDN 1317')).toContain('LDN 1313')
+    expect(aliases('LDN 1503')).toContain('B 23')
+  })
+
+  it('prześwity nie są wypełniane ani wybierane jako część obrysu', () => {
+    const outer: [number, number][] = [[0, 0], [10, 0], [10, 10], [0, 10]]
+    const hole: [number, number][] = [[3, 3], [7, 3], [7, 7], [3, 7]]
+    expect(pointInOutline(outer, [hole], 1, 1)).toBe(true)
+    expect(pointInOutline(outer, [hole], 5, 5)).toBe(false)
+    expect(pointInOutline(outer, [hole], 11, 5)).toBe(false)
+    const data = JSON.parse(readFileSync(new URL('../../public/data/outlines.json', import.meta.url), 'utf8')) as {
+      objects: { id: string; level: number; rings: number[][]; holes?: number[][][] }[]
+    }
+    for (const id of ['LBN 437', 'LDN 1317']) {
+      const o = data.objects.find((entry) => entry.id === id && entry.level === 1)!
+      expect(o.rings).toHaveLength(1)
+      expect(o.holes?.[0]).toHaveLength(1)
+      expect(prepareRing(o.rings[0], o.holes?.[0]).holes).toHaveLength(1)
+    }
   })
 })
 
