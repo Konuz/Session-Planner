@@ -343,7 +343,8 @@ input[type='checkbox']:checked::after {
   color: var(--text);
   transition: border-color 0.15s var(--ease-std);
 }
-.picker-button:hover { border-color: var(--accent); }
+.picker-button { position: relative; }
+.picker-button:hover, .picker-button[aria-expanded='true'] { border-color: var(--accent); z-index: 1; }
 .picker-button svg { color: var(--accent); }
 .home-link { font: 11px var(--mono); letter-spacing: 0.12em; color: var(--text-dim); text-transform: uppercase; display: flex; align-items: center; gap: 6px; }
 .home-link:hover { color: var(--accent); text-decoration: none; }

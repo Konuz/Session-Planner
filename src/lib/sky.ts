@@ -7,11 +7,8 @@ export interface Constellation {
   /** [ra, dec, ranga] położenia etykiety. */
   label: [number, number, number] | null
   lines: [number, number][][]
-  /**
-   * Ilustracja 384×384 px: kotwice [x, y, ra, dec] do transformacji afinicznej; `mask` (wielokąty w pikselach
-   * ilustracji) ogranicza rysunek do jego części.
-   */
-  art: { file: string; anchors: [number, number, number, number][]; mask?: [number, number][][] } | null
+  /** Ilustracja 384×384 px: kotwice [x, y, ra, dec] do transformacji afinicznej. */
+  art: { file: string; anchors: [number, number, number, number][] } | null
 }
 
 export interface SkyData {
@@ -21,12 +18,6 @@ export interface SkyData {
   constellations: Constellation[]
   byAbbr: Map<string, Constellation>
 }
-
-/** Węże na ilustracji Wężownika (Oph.webp, 384 px): ogon z pętlą wokół bioder oraz szyja z głową. */
-const SERPENS_MASK: [number, number][][] = [
-  [[0, 124], [70, 125], [124, 145], [129, 180], [121, 209], [136, 226], [170, 212], [235, 224], [280, 209], [301, 199], [326, 180], [331, 212.5], [300, 236], [270, 261], [225, 279], [180, 281], [145, 274], [114, 261], [98, 235], [89, 206], [59, 199], [53, 166], [29, 151], [0, 146]],
-  [[299, 201], [306, 165], [303, 125], [313, 90], [311, 55], [314, 25], [330, 5], [352.5, 0], [384, 0], [373, 15], [358, 47.5], [354, 87.5], [342, 125], [350, 156], [339, 193], [331, 212.5]],
-]
 
 let pending: Promise<SkyData> | null = null
 
@@ -39,10 +30,6 @@ export function loadSky(): Promise<SkyData> {
     .then((data) => {
       const stars = new Float32Array(data.stars.length * 4)
       data.stars.forEach((s, i) => stars.set([s[0], s[1], s[2], s[3]], i * 4))
-      // Wąż nie ma własnej ilustracji: to wąż z rysunku Wężownika (ogon, pętla przy biodrach, głowa).
-      const oph = data.constellations.find((c) => c.abbr === 'Oph')
-      const ser = data.constellations.find((c) => c.abbr === 'Ser')
-      if (oph?.art && ser && !ser.art) ser.art = { ...oph.art, mask: SERPENS_MASK }
       return {
         stars,
         starCount: data.stars.length,

@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { RefreshCw, ZoomIn, ZoomOut } from 'lucide-react'
 import {
   bodyAltAz,
+  computeOptics,
   constellationOf,
   DEG,
   horizontalMatrix,
@@ -18,6 +19,7 @@ import {
   type Vec3,
 } from '../lib/astro'
 import { annotationDepthOf, DEFAULT_ANNOTATION_COLORS, displayName, TYPE_INFO, type DSO, type ObjectType } from '../lib/catalog'
+import { frameCorners, gnomonicInverse } from '../lib/framing'
 import { horizonAltitude, type HorizonPoint } from '../lib/horizon'
 import { altitudeTrack, nightGrid } from '../lib/night'
 import { loadOutlines, pointInOutline, polygonArea, type Outline } from '../lib/outlines'
@@ -412,6 +414,8 @@ export function SkyDome({ playing = false }: Props) {
   const showAnnotations = useStore((s) => s.showAnnotations)
   const annotationColors = useStore((s) => s.annotationColors)
   const findPulse = useStore((s) => s.findPulse)
+  const equipment = useStore((s) => s.equipment)
+  const framing = useStore((s) => s.framing)
   const plan = useStore((s) => s.plan)
   const select = useStore((s) => s.select)
   const tz = useStore((s) => s.location.timeZone)
@@ -1002,15 +1006,6 @@ export function SkyDome({ playing = false }: Props) {
             lc.imageSmoothingQuality = 'high'
             lc.globalAlpha = alpha * easeInOut(k)
             lc.setTransform(m[0] * dpr, m[1] * dpr, m[2] * dpr, m[3] * dpr, m[4] * dpr, m[5] * dpr)
-            if (c.art.mask) {
-              // Część ilustracji (np. Wąż z rysunku Wężownika): maska w pikselach ilustracji.
-              lc.beginPath()
-              for (const poly of c.art.mask) {
-                poly.forEach(([x, y], i) => (i ? lc.lineTo(x, y) : lc.moveTo(x, y)))
-                lc.closePath()
-              }
-              lc.clip()
-            }
             lc.drawImage(src, 0, 0, 384, 384)
             lc.restore()
             if (groundCanvas) {
@@ -1066,8 +1061,6 @@ export function SkyDome({ playing = false }: Props) {
         const r = Math.max(7, (ellipse?.r ?? 3.5) + 4)
         ctx.save()
         ctx.strokeStyle = 'rgba(230, 251, 255, 0.95)'
-        ctx.shadowColor = '#00e0ff'
-        ctx.shadowBlur = 10
         ctx.lineWidth = 1.5
         ctx.beginPath()
         ctx.arc(p[0], p[1], r, 0, Math.PI * 2)
@@ -1083,37 +1076,49 @@ export function SkyDome({ playing = false }: Props) {
         const now = performance.now()
         const k = Math.max(0, Math.min(1, (now - lockStart.current) / 900))
         const e = 1 - (1 - k) ** 3
-        const r = 9 + (1 - e) * 40
         ctx.save()
         ctx.strokeStyle = '#00e0ff'
-        ctx.shadowColor = '#00e0ff'
-        ctx.shadowBlur = 12
         ctx.lineWidth = 1.5
         ctx.globalAlpha = 0.4 + 0.6 * e
+        // Pole widzenia zestawu (jak w kadrowaniu: środek i PA z `framing`) z małym krzyżykiem w środku.
+        const optics = computeOptics({ apertureMm: equipment.apertureMm, focalLengthMm: equipment.focalLengthMm, reducer: equipment.reducer, widthPx: equipment.widthPx, heightPx: equipment.heightPx, pixelUm: equipment.pixelUm, binning: equipment.binning })
+        const fc = { raDeg: framing.raDeg ?? selected.raDeg, decDeg: framing.decDeg ?? selected.decDeg }
+        const fp = proj.eq(unitVector(fc.raDeg, fc.decDeg))
+        const corners = frameCorners({ xi: 0, eta: 0 }, optics.fovWdeg, optics.fovHdeg, framing.paDeg)
+          .map((c) => {
+            const q = gnomonicInverse(fc, c)
+            return proj.eq(unitVector(q.raDeg, q.decDeg))
+          })
+        const frameOk = fp !== null && corners.every((c) => c !== null)
+        const frameDiag = frameOk ? Math.hypot(corners[0]![0] - corners[2]![0], corners[0]![1] - corners[2]![1]) : 0
+        if (frameOk && frameDiag >= 18) {
+          // Animacja namierzania: ramka zwęża się do właściwego rozmiaru.
+          const s = 1 + (1 - e) * 1.5
+          ctx.beginPath()
+          corners.forEach((c, i) => {
+            const x = fp[0] + (c![0] - fp[0]) * s
+            const y = fp[1] + (c![1] - fp[1]) * s
+            if (i) ctx.lineTo(x, y)
+            else ctx.moveTo(x, y)
+          })
+          ctx.closePath()
+          ctx.stroke()
+        }
+        // Krzyżyk w środku (przy dużym pomniejszeniu, gdy ramka jest za mała, zostaje sam).
+        const cx = frameOk ? fp[0] : p[0]
+        const cy = frameOk ? fp[1] : p[1]
         ctx.beginPath()
-        ctx.arc(p[0], p[1], r, 0, Math.PI * 2)
+        ctx.moveTo(cx - 6, cy)
+        ctx.lineTo(cx + 6, cy)
+        ctx.moveTo(cx, cy - 6)
+        ctx.lineTo(cx, cy + 6)
         ctx.stroke()
-        // Kreski celownika.
-        for (let i = 0; i < 4; i++) {
-          const a = (i * Math.PI) / 2 + (1 - e) * Math.PI
-          ctx.beginPath()
-          ctx.moveTo(p[0] + Math.cos(a) * (r + 4), p[1] + Math.sin(a) * (r + 4))
-          ctx.lineTo(p[0] + Math.cos(a) * (r + 12), p[1] + Math.sin(a) * (r + 12))
-          ctx.stroke()
-        }
-        if (k > 0 && k < 1) {
-          ctx.globalAlpha = 1 - k
-          ctx.beginPath()
-          ctx.arc(p[0], p[1], 9 + k * 60, 0, Math.PI * 2)
-          ctx.stroke()
-        }
-        ctx.restore()
         ctx.font = '600 13px ui-monospace, Consolas, monospace'
         ctx.fillStyle = '#e6fbff'
         ctx.fillText(selected.id, p[0] + 16, p[1] + 26)
         const h = vecToHorizontal(mulVec(horMatrix, unitVector(selected.raDeg, selected.decDeg)))
         if (h.altDeg < horizonAltitude(horizon, h.azDeg)) {
-          ctx.font = '11px system-ui, sans-serif'
+          ctx.font = '11px Inter, sans-serif'
           ctx.fillStyle = 'rgba(245, 165, 36, 0.9)'
           ctx.fillText('pod horyzontem', p[0] + 16, p[1] + 41)
         }

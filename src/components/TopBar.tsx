@@ -177,27 +177,52 @@ const rowStyle: React.CSSProperties = {
   fontSize: 13,
 }
 
+const MONTHS = Array.from({ length: 12 }, (_, i) => new Intl.DateTimeFormat('pl-PL', { month: 'long', timeZone: 'UTC' }).format(Date.UTC(2000, i, 1)))
+const daysInMonth = (y: number, m: number) => new Date(Date.UTC(y, m, 0)).getUTCDate()
+
 function DatePicker() {
   const date = useStore((s) => s.nightDate)
   const setDate = useStore((s) => s.setNightDate)
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useOutside(ref, () => setOpen(false))
   const [y, m, d] = date.split('-').map(Number)
+  const pick = (year: number, month: number, day: number) =>
+    setDate(`${year}-${String(month).padStart(2, '0')}-${String(Math.min(day, daysInMonth(year, month))).padStart(2, '0')}`)
   const label = new Intl.DateTimeFormat('pl-PL', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(Date.UTC(y, m - 1, d))
   return (
     <div style={{ display: 'flex', alignItems: 'center' }}>
       <button className="picker-button icon-button" style={{ justifyContent: 'center' }} title="Poprzednia noc" onClick={() => setDate(addDays(date, -1))}>
         ‹
       </button>
-      <label className="picker-button" style={{ position: 'relative', borderLeft: 0, borderRight: 0 }} title="Noc obserwacyjna (data wieczoru)">
-        <CalendarDays size={16} />
-        <span className="figures">{label}</span>
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => e.target.value && setDate(e.target.value)}
-          style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }}
-          aria-label="Data nocy"
-        />
-      </label>
+      <div ref={ref} style={{ position: 'relative', margin: '0 -1px' }}>
+        <button className="picker-button" onClick={() => setOpen((o) => !o)} aria-expanded={open} title="Noc obserwacyjna (data wieczoru)">
+          <CalendarDays size={16} />
+          <span className="figures">{label}</span>
+        </button>
+        {open && (
+          <div className="popover" style={{ width: 'auto' }}>
+            <div className="label" style={{ marginBottom: 8 }}>Noc obserwacyjna</div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <select className="control figures" aria-label="Dzień" value={d} onChange={(e) => pick(y, m, Number(e.target.value))}>
+                {Array.from({ length: daysInMonth(y, m) }, (_, i) => (
+                  <option key={i + 1} value={i + 1}>{i + 1}</option>
+                ))}
+              </select>
+              <select className="control" aria-label="Miesiąc" value={m} onChange={(e) => pick(y, Number(e.target.value), d)}>
+                {MONTHS.map((name, i) => (
+                  <option key={name} value={i + 1}>{name}</option>
+                ))}
+              </select>
+              <select className="control figures" aria-label="Rok" value={y} onChange={(e) => pick(Number(e.target.value), m, d)}>
+                {Array.from({ length: 21 }, (_, i) => y - 10 + i).map((year) => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+      </div>
       <button className="picker-button icon-button" style={{ justifyContent: 'center' }} title="Następna noc" onClick={() => setDate(addDays(date, 1))}>
         ›
       </button>
