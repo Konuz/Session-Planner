@@ -274,7 +274,7 @@ describe('kontury mgławic', () => {
       objects: { id: string; dark?: number; name?: string; also?: string[] }[]
     }
     const dark = new Map(data.objects.filter((o) => o.dark === 1).map((o) => [o.id, o]))
-    expect(dark.size).toBe(34)
+    expect(dark.size).toBe(35)
     expect(dark.get('LDN 1235')?.name).toBe('Shark')
     expect(dark.get('LDN 1251')?.name).toBe('Rotten Fish')
     expect(dark.get('LDN 1082')?.also).toEqual(['B 150'])
