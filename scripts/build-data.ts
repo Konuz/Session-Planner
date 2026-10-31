@@ -456,9 +456,10 @@ async function buildOutlines() {
     files.get(m[1])!.set(Number(m[2]), name)
   }
 
-  // Mgławice katalogu (zbudowanego wyżej): [id, …, typ, RA, Dec, wymiar a, …].
+  // Mgławice katalogu (zbudowanego wyżej): [id, …, typ, RA, Dec, wymiar a, …]. Bez ciemnych: obrysy OpenNGC
+  // to jasne mgławice, a pierścień przypisany do LDN dostałby kolor pyłu (jak Cygnus#6 → LDN 900).
   const catalogRows = (JSON.parse(readFileSync(join(OUT, 'catalog.json'), 'utf8')) as { rows: [string, string, string, string, string, number, number, number][] }).rows
-  const nebulae = catalogRows.filter((row) => ['EN', 'RN', 'DN', 'SNR', 'CN'].includes(row[4]))
+  const nebulae = catalogRows.filter((row) => ['EN', 'RN', 'SNR', 'CN'].includes(row[4]))
   const assigned: string[] = []
 
   const objects = []

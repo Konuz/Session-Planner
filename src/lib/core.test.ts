@@ -274,13 +274,13 @@ describe('kontury mgławic', () => {
       objects: { id: string; dark?: number; name?: string; also?: string[] }[]
     }
     const dark = new Map(data.objects.filter((o) => o.dark === 1).map((o) => [o.id, o]))
-    expect(dark.size).toBe(50)
-    expect(dark.get('LDN 1235')?.name).toBe('Shark')
-    expect(dark.get('LDN 1251')?.name).toBe('Rotten Fish')
+    expect(dark.size).toBe(65)
+    expect(dark.get('LDN 1235')?.name).toBe('Shark Nebula')
+    expect(dark.get('LDN 1251')?.name).toBe('Rotten Fish Nebula')
     expect(dark.get('LDN 1082')?.also).toEqual(['B 150'])
     expect(dark.get('LDN 1355')?.also).toEqual(['LDN 1357', 'LDN 1358', 'vdB 9'])
     expect(dark.get('vdB 141')?.also).toEqual(['Sh2-136', 'LDN 1177'])
-    expect(dark.get('vdB 141')?.name).toBe('Ghost')
+    expect(dark.get('vdB 141')?.name).toBe('Ghost Nebula')
     // Jasna mgławica z tym samym źródłem konturów: bez dark, rysowana jak jasne.
     const vulture = data.objects.find((o) => o.id === 'LBN 777')
     expect(vulture?.dark).toBeUndefined()
@@ -293,7 +293,7 @@ describe('kontury mgławic', () => {
     const data = JSON.parse(readFileSync(new URL('../../public/data/outlines.json', import.meta.url), 'utf8')) as {
       objects: { id: string; level: number; also?: string[]; rings: number[][] }[]
     }
-    for (const id of ['LDN 1355', 'B 168', 'B 72', 'LDN 935', 'LDN 886', 'B 347', 'LDN 1448', 'NGC 1333', 'NGC 7023', 'B 22', 'LBN 437', 'vdB 141', 'LDN 1503', 'LDN 800', 'LDN 1317', 'LDN 1089', 'LDN 717', 'LDN 1245', 'LDN 1295', 'LDN 1296']) {
+    for (const id of ['LDN 1355', 'B 168', 'B 72', 'LDN 935', 'LDN 886', 'B 347', 'LDN 1448', 'LDN 1450', 'LDN 1174', 'B 22', 'LBN 437', 'vdB 141', 'LDN 1503', 'LDN 800', 'LDN 1317', 'LDN 1089', 'LDN 717', 'LDN 1245', 'LDN 1295', 'LDN 1296']) {
       const layers = data.objects.filter((o) => o.id === id)
       expect(layers.map((o) => o.level).sort(), id).toEqual([1, 2, 3])
       expect(layers.every((o) => o.rings.length > 0), id).toBe(true)
@@ -301,8 +301,10 @@ describe('kontury mgławic', () => {
     const aliases = (id: string) => data.objects.find((o) => o.id === id)?.also ?? []
     expect(aliases('LDN 1448')).toContain('LDN 1451')
     expect(aliases('LDN 1448')).toContain('LDN 1455')
-    expect(aliases('NGC 1333')).toContain('LDN 1450')
-    expect(aliases('NGC 7023')).toContain('LDN 1174')
+    expect(aliases('LDN 1450')).toEqual(['B 205'])
+    expect(data.objects.filter((o) => o.id === 'NGC 1333').map((o) => o.level)).toEqual([2])
+    expect(aliases('LDN 1174')).toEqual(['LDN 1172', 'LDN 1170', 'LDN 1173'])
+    expect(data.objects.filter((o) => o.id === 'NGC 7023').map((o) => o.level)).toEqual([2])
     expect(aliases('LDN 800')).toEqual(['LDN 803', 'LDN 804', 'LDN 799', 'LDN 806', 'LDN 807', 'LDN 808'])
     expect(aliases('LDN 1317')).toContain('LDN 1313')
     expect(aliases('LDN 1503')).toContain('B 23')
