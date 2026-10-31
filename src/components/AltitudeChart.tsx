@@ -9,7 +9,7 @@ import { horizonAltitude } from '../lib/horizon'
 import { altitudeTrack, darkWindow, nightGrid, visibility } from '../lib/night'
 import { useNight, useSelected, useSite, useTime, useWeather } from '../state/data'
 import { useStore } from '../state/store'
-import { moonPhaseImageIndex, moonPhaseImageSrc } from './MoonDisc'
+import { MoonDisc } from './MoonDisc'
 
 const H = 250
 const PAD = { l: 44, r: 14, t: 30, b: 34 }
@@ -266,17 +266,9 @@ export function AltitudeChart({ object, slot, title = 'Widoczność obiektu', to
           <line x1={x(cursorT)} x2={x(cursorT)} y1={PAD.t} y2={H - PAD.b} stroke={hoverT !== null ? 'rgba(255,255,255,0.6)' : '#00e0ff'} strokeWidth="1" />
           {cursorAlt !== null && <circle cx={x(cursorT)} cy={y(cursorAlt)} r="4" fill="#fff" />}
           {moonCursorInRange && moonCursorLineY !== null && (
-            <image
-              href={moonPhaseImageSrc(moonPhaseImageIndex(moonCursor.info.phaseDeg))}
-              x={x(cursorT) - 9}
-              y={moonCursorLineY - 9}
-              width="18"
-              height="18"
-              preserveAspectRatio="xMidYMid meet"
-              pointerEvents="none"
-            >
-              <title>{`Księżyc · ${moonCursor.info.name}`}</title>
-            </image>
+            <g pointerEvents="none">
+              <MoonDisc illumination={moonCursor.info.illumination} waxing={moonCursor.info.waxing} phaseName={moonCursor.info.name} size={18} x={x(cursorT) - 9} y={moonCursorLineY - 9} />
+            </g>
           )}
           <g transform={`translate(${Math.min(width - 110, Math.max(PAD.l, x(cursorT) + 6))}, ${H - PAD.b - 22})`}>
             <rect width="100" height="18" fill="rgba(0,0,0,0.75)" stroke="rgba(0,224,255,0.4)" />

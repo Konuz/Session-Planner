@@ -58,7 +58,7 @@ export const CATALOGS: { id: string; label: string; title: string }[] = [
   { id: 'SNR', label: 'SNR', title: 'Green: pozostałości po supernowych' },
 ]
 
-function catalogOf(designation: string): string | null {
+export function catalogOf(designation: string): string | null {
   if (/^M \d/.test(designation)) return 'M'
   if (/^NGC /.test(designation)) return 'NGC'
   if (/^IC /.test(designation)) return 'IC'
@@ -114,12 +114,13 @@ export function displayName(o: DSO): string {
   return o.namePl || o.namesEn[0] || ''
 }
 
-/** Najmniejsza głębia adnotacji kopuły, przy której obiekt dostaje elipsę: 1: NGC/IC/Caldwell (i Messier),
- *  2: Sharpless, Barnard, van den Bergh, 3: pozostałe (LBN, LDN, SNR). Liczy się najpopularniejszy katalog obiektu. */
-export function annotationDepthOf(o: Pick<DSO, 'catalogs'>): 1 | 2 | 3 {
-  if (o.catalogs.some((c) => c === 'M' || c === 'NGC' || c === 'IC' || c === 'C')) return 1
-  if (o.catalogs.some((c) => c === 'Sh2' || c === 'B' || c === 'vdB')) return 2
-  return 3
+/** Grupy przełączników katalogów kopuły od najpopularniejszej; „other”: Caldwell bez NGC/IC i katalogi spoza listy. */
+export const SKY_GROUPS = ['M', 'NGC', 'IC', 'Sh2', 'B', 'vdB', 'LBN', 'LDN', 'SNR', 'other'] as const
+export type SkyGroup = (typeof SKY_GROUPS)[number]
+
+/** Grupa obiektu na kopule: liczy się najpopularniejszy katalog obiektu (M 42 = NGC 1976 należy do M). */
+export function skyGroupOf(o: Pick<DSO, 'catalogs'>): SkyGroup {
+  return SKY_GROUPS.find((g) => o.catalogs.includes(g)) ?? 'other'
 }
 
 export interface CatalogFilter {

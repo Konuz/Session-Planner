@@ -18,7 +18,7 @@ import {
   type Mat3,
   type Vec3,
 } from '../lib/astro'
-import { annotationDepthOf, DEFAULT_ANNOTATION_COLORS, displayName, TYPE_INFO, type DSO, type ObjectType } from '../lib/catalog'
+import { catalogOf, DEFAULT_ANNOTATION_COLORS, displayName, skyGroupOf, TYPE_INFO, type DSO, type ObjectType } from '../lib/catalog'
 import { frameCorners, gnomonicInverse } from '../lib/framing'
 import { horizonAltitude, type HorizonPoint } from '../lib/horizon'
 import { altitudeTrack, nightGrid } from '../lib/night'
@@ -27,16 +27,8 @@ import { affineFrom3, FULL_DOME, makeProjector, type Projector, type View } from
 import { loadMilkyWay, loadSky, type MilkyWay, type SkyData } from '../lib/sky'
 import { useCatalog, useNight, useSelected, useSite, useTime } from '../state/data'
 import { useStore } from '../state/store'
-import { MoonDisc, moonPhaseImageIndex } from './MoonDisc'
+import { MoonDisc } from './MoonDisc'
 import { Range } from './Range'
-
-// Opis kroków suwaka głębi adnotacji (podpowiedź i czytnik ekranu).
-const DEPTH_TITLES = [
-  'Głębia 0: tylko kontury mgławic',
-  'Głębia 1: + obiekty NGC, IC i Caldwella',
-  'Głębia 2: + Sharpless, Barnard, van den Bergh',
-  'Głębia 3: + LBN, LDN i pozostałości po supernowych',
-]
 
 /** Stos warstw (cztery romby): kontur = mniej adnotacji, wypełnienie = więcej. */
 export function LayersIcon({ filled }: { filled: boolean }) {
@@ -180,6 +172,21 @@ function createStarGL(canvas: HTMLCanvasElement, sky: SkyData): StarGL | null {
 function withAlpha(hex: string, a: number): string {
   const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex)
   return m ? `rgba(${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}, ${a})` : `rgba(160, 175, 200, ${a})`
+}
+
+/** Jaśniejszy odcień tej samej barwy (podświetlenie pod kursorem): pełne nasycenie, jasność +25%;
+ *  barwy buraczkowe/różowe (320–360°) przesunięte na czerwień, żeby podświetlenie nie wychodziło różowe. */
+function brighter(hex: string, a: number, dl = 0.25): string {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex)
+  if (!m) return `rgba(215, 222, 235, ${a})`
+  const [r, g, b] = [m[1], m[2], m[3]].map((s) => parseInt(s, 16) / 255)
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min
+  let h = d === 0 ? 0 : max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4
+  h *= 60
+  if (h >= 320) h = 356
+  const L = Math.min(0.66, l + dl), C = (1 - Math.abs(2 * L - 1)), X = C * (1 - Math.abs(((h / 60) % 2) - 1)), o = L - C / 2
+  const [R, G, B] = h < 60 ? [C, X, 0] : h < 120 ? [X, C, 0] : h < 180 ? [0, C, X] : h < 240 ? [0, X, C] : h < 300 ? [X, 0, C] : [C, 0, X]
+  return `rgba(${Math.round((R + o) * 255)}, ${Math.round((G + o) * 255)}, ${Math.round((B + o) * 255)}, ${a})`
 }
 
 // ---------- Postacie gwiazdozbiorów ----------
@@ -408,8 +415,8 @@ export function SkyDome({ playing = false }: Props) {
   const showTracks = useStore((s) => s.showTracks)
   const showArt = useStore((s) => s.showArt)
   const showOutlines = useStore((s) => s.showOutlines)
-  const annotationDepth = Math.min(3, useStore((s) => s.annotationDepth))
-  const setDepth = useStore((s) => s.setAnnotationDepth)
+  const showEllipses = useStore((s) => s.showEllipses)
+  const skyGroups = useStore((s) => s.skyGroups)
   const showLabels = useStore((s) => s.showLabels)
   const showAnnotations = useStore((s) => s.showAnnotations)
   const annotationColors = useStore((s) => s.annotationColors)
@@ -429,9 +436,10 @@ export function SkyDome({ playing = false }: Props) {
     if (showOutlines && !outlines) loadOutlines().then(setOutlines).catch((e) => console.error('Kopuła: kontury mgławic', e))
   }, [showOutlines, outlines])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = stageRef.current
     if (!el) return
+    setSize({ w: Math.max(200, el.clientWidth), h: Math.max(200, el.clientHeight) })
     const ro = new ResizeObserver(([e]) => setSize({ w: Math.max(200, e.contentRect.width), h: Math.max(200, e.contentRect.height) }))
     ro.observe(el)
     return () => ro.disconnect()
@@ -461,7 +469,7 @@ export function SkyDome({ playing = false }: Props) {
   const grid = useMemo(() => nightGrid(night, site, 10), [night, site])
   const track = useMemo(() => (selected ? altitudeTrack(selected, grid) : []), [selected, grid])
   const moonTrack = useMemo(() => grid.times.map((t) => ({ t, ...bodyAltAz('moon', t, site) })), [grid, site])
-  const messier = useMemo(() => (catalog ? catalog.filter((o) => o.catalogs.includes('M')) : []), [catalog])
+  const messier = useMemo(() => (catalog && skyGroups.M ? catalog.filter((o) => o.catalogs.includes('M')) : []), [catalog, skyGroups.M])
   // Obiekty katalogu po oznaczeniu głównym, potem po aliasach.
   const catalogById = useMemo(() => {
     if (!catalog) return null
@@ -475,9 +483,9 @@ export function SkyDome({ playing = false }: Props) {
     () => (outlines && catalogById ? outlines.map((o) => (o.region ? null : catalogById.get(o.id) ?? null)) : null),
     [outlines, catalogById],
   )
-  // Obiekty dla suwaka głębi: z wymiarem, bez Messiera (ma własne znaczniki), z wektorem liczonym raz.
+  // Obiekty z elipsą: z wymiarem, bez Messiera (ma własne znaczniki), z wektorem liczonym raz.
   const depthObjects = useMemo(
-    () => (catalog ?? []).filter((o) => o.majArcmin > 0 && !o.catalogs.includes('M')).map((o) => ({ o, v: unitVector(o.raDeg, o.decDeg), depth: annotationDepthOf(o) })),
+    () => (catalog ?? []).filter((o) => o.majArcmin > 0 && !o.catalogs.includes('M')).map((o) => ({ o, v: unitVector(o.raDeg, o.decDeg), group: skyGroupOf(o) })),
     [catalog],
   )
   // Kolory typów (canvas nie czyta zmiennych CSS).
@@ -660,14 +668,21 @@ export function SkyDome({ playing = false }: Props) {
       // Największy widoczny pierścień obiektu, z poziomu 2/3 przed poziomem 1.
       const best = new Map<string, { k: number; c: [number, number]; top: [number, number]; r: number; faint: boolean }>()
       outlines.forEach((o, k) => {
+        if (!skyGroups[skyGroupOf(outlineObjects?.[k] ?? { catalogs: [catalogOf(o.id) ?? ''] })]) return
         const key = outlineKey(k)
         const sel = selIds ? selIds.has(o.id) || o.also.some((a) => selIds.has(a)) : false
         const hov = key === hoverKey
-        const faint = o.level === 1 && !sel && !hov
-        // Mgławice ciemne w kolorze typu DN, pozostałe kontury w kolorze mgławic emisyjnych.
-        const tint = outlineObjects?.[k] ? typeColors[outlineObjects[k]!.type] : typeColors[o.dark ? 'DN' : 'EN']
-        ctx.fillStyle = sel ? 'rgba(0, 224, 255, 0.08)' : withAlpha(tint, hov ? 0.13 : faint ? 0.05 : 0.08)
-        ctx.strokeStyle = sel ? 'rgba(0, 224, 255, 0.85)' : withAlpha(tint, hov ? 0.9 : faint ? 0.25 : 0.45)
+        // Kontury z OpenNGC (wszystko poza mgławicami ciemnymi) w kolorze dawnego podświetlenia, stopniowanym poziomem
+        // (1: słaby zasięg najciemniej, 3: jasne jądro najjaśniej); pod kursorem jaśniejsza czerwień.
+        const ngc = !o.dark
+        const lv = o.level === 1 ? 0 : o.level === 3 ? 2 : 1
+        const faint = o.level === 1 && !sel && !hov && !ngc
+        // Welon jest pozostałością po supernowej, ale jego obrysy używają koloru mgławic emisyjnych.
+        const tint = o.id === 'NGC 6960' || o.id === 'NGC 6992'
+          ? typeColors.EN
+          : outlineObjects?.[k] ? typeColors[outlineObjects[k]!.type] : typeColors[o.dark ? 'DN' : 'EN']
+        ctx.fillStyle = sel ? 'rgba(0, 224, 255, 0.08)' : ngc ? (hov ? brighter(tint, 0.18) : withAlpha(tint, [0.05, 0.09, 0.13][lv])) : withAlpha(tint, hov ? 0.13 : faint ? 0.05 : 0.08)
+        ctx.strokeStyle = sel ? 'rgba(0, 224, 255, 0.85)' : ngc ? (hov ? brighter(tint, 1) : withAlpha(tint, [0.4, 0.65, 0.9][lv])) : withAlpha(tint, hov ? 0.9 : faint ? 0.25 : 0.45)
         for (const ring of o.rings) {
           const r = ring.radiusDeg * pxPerDeg
           if (r < 2) continue
@@ -700,22 +715,24 @@ export function SkyDome({ playing = false }: Props) {
       })
       for (const [key, l] of best) {
         const dso = outlineObjects![l.k]!
-        // Obiekty Messiera przy polu < 90° mają już własną etykietę przy znaczniku.
-        if (view.fovDeg < 90 && dso.catalogs.includes('M')) continue
+        // Obiekty Messiera przy polu < 90° mają już własną etykietę przy znaczniku (o ile znaczniki M są włączone).
+        if (view.fovDeg < 90 && skyGroups.M && dso.catalogs.includes('M')) continue
         const hov = key === hoverKey
         const ol = outlines[l.k]
+        // Podpis w kolorze konturu (Welon: barwa mgławic emisyjnych, jak jego obrys).
+        const lt = ol.id === 'NGC 6960' || ol.id === 'NGC 6992' ? typeColors.EN : typeColors[dso.type]
         labelList.push({
           dso, c: l.c, top: l.top, r: l.r, prio: 1, minR: fullDome ? 8 : 5, hov, name: ol.name ?? undefined,
-          color: withAlpha(typeColors[dso.type], hov ? 0.95 : 0.62),
+          color: !ol.dark ? (hov ? brighter(lt, 1) : withAlpha(lt, 0.95)) : withAlpha(lt, hov ? 0.95 : 0.62),
         })
       }
     }
 
-    // Głębia adnotacji: elipsy obiektów katalogu (wymiary i kąt pozycyjny), od NGC/IC po LBN/LDN według suwaka.
+    // Elipsy obiektów katalogu (wymiary i kąt pozycyjny) z włączonych grup katalogów.
     // Elipsy mniejsze niż 1,5 px pomijane, więc przy oddaleniu zostają tylko duże obiekty.
-    if (annotationDepth > 0) {
+    if (showEllipses) {
       for (const d of depthObjects) {
-        if (d.depth > annotationDepth || outlined.has(d.o.id)) continue
+        if (!skyGroups[d.group] || outlined.has(d.o.id)) continue
         const a0 = (d.o.majArcmin / 120) * pxPerDeg
         if (a0 < 1.5) continue
         // Małe obiekty (jak B 33) powiększone do co najmniej 3 px, żeby dało się je zobaczyć i trafić.
@@ -739,7 +756,9 @@ export function SkyDome({ playing = false }: Props) {
         const sel = selected?.i === d.o.i
         const hov = hoverDepth?.i === d.o.i
         const color = typeColors[d.o.type]
-        ctx.strokeStyle = sel ? 'rgba(0, 224, 255, 0.85)' : withAlpha(color, hov ? 0.95 : 0.5)
+        const ngc = d.o.catalogs.some((c) => c === 'NGC' || c === 'IC' || c === 'LBN')
+        const tone = (a: number) => (ngc ? (hov ? brighter(color, 1) : withAlpha(color, 0.95)) : withAlpha(color, hov ? 0.95 : a))
+        ctx.strokeStyle = sel ? 'rgba(0, 224, 255, 0.85)' : tone(0.5)
         ctx.setLineDash(sel || hov ? [] : [3, 3])
         ctx.beginPath()
         ctx.ellipse(c[0], c[1], a, b, rot, 0, Math.PI * 2)
@@ -747,7 +766,7 @@ export function SkyDome({ playing = false }: Props) {
         depthHits.current.push({ dso: d.o, c, r: a })
         if (!sel) {
           const top: [number, number] = [c[0], c[1] - Math.hypot(a * Math.sin(rot), b * Math.cos(rot))]
-          labelList.push({ dso: d.o, c, top, r: a, prio: 2, minR: fullDome ? 10 : 3.5, hov, color: withAlpha(color, hov ? 0.95 : 0.7) })
+          labelList.push({ dso: d.o, c, top, r: a, prio: 2, minR: fullDome ? 10 : 3.5, hov, color: tone(0.7) })
         }
       }
       ctx.setLineDash([])
@@ -772,7 +791,8 @@ export function SkyDome({ playing = false }: Props) {
     // Przełącznik „Opisy”: bez podpisów konturów i elips.
     for (const l of showAnnotations ? labelList : []) {
       if (l.r < l.minR && !l.hov) continue
-      const name = l.r >= 40 ? displayName(l.dso) || l.name || '' : ''
+      // Kontury: nazwa zawsze (też małe, jak Irys w LDN 1174); elipsy dopiero od 40 px. Na kopule nazwy angielskie.
+      const name = l.prio === 1 || l.r >= 40 ? l.dso.namesEn[0] || l.name || '' : ''
       const text = name ? l.dso.id + ' · ' + name : l.dso.id
       const w = ctx.measureText(text).width
       // Mały kształt: etykieta z prawej (jak przy znacznikach Messiera); duży: nad najwyższym punktem. Gdy miejsce
@@ -816,7 +836,7 @@ export function SkyDome({ playing = false }: Props) {
         const p = proj.eq(lv)
         if (!p) continue
         const hovered = hoverCon?.abbr === c.abbr
-        ctx.font = hovered ? '600 13px system-ui, sans-serif' : '12px system-ui, sans-serif'
+        ctx.font = hovered ? '600 13px Inter, sans-serif' : '12px Inter, sans-serif'
         ctx.fillStyle = hovered ? 'rgba(0, 224, 255, 0.95)' : 'rgba(190, 205, 230, 0.55)'
         ctx.fillText(c.pl, p[0], p[1])
       }
@@ -1027,7 +1047,7 @@ export function SkyDome({ playing = false }: Props) {
     }
 
     // Kierunki świata.
-    ctx.font = '600 14px system-ui, sans-serif'
+    ctx.font = '600 14px Inter, sans-serif'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     for (const [label, az] of [['N', 0], ['E', 90], ['S', 180], ['W', 270]] as const) {
@@ -1299,8 +1319,8 @@ export function SkyDome({ playing = false }: Props) {
             pointerEvents: 'none',
           }}
         >
-          <MoonDisc phaseIndex={moonPhaseImageIndex(moon.info.phaseDeg)} phaseName={moon.info.name} size={moonMarkerSize} />
-          <span style={{ color: 'rgba(220, 225, 235, 0.7)', font: '11px system-ui, sans-serif', whiteSpace: 'nowrap' }}>Księżyc</span>
+          <MoonDisc illumination={moon.info.illumination} waxing={moon.info.waxing} phaseName={moon.info.name} size={moonMarkerSize} />
+          <span style={{ color: 'rgba(220, 225, 235, 0.7)', font: '11px Inter, sans-serif', whiteSpace: 'nowrap' }}>Księżyc</span>
         </div>
       )}
       {hoverCon && !drag.current && (hoveredOutline ? (
@@ -1349,19 +1369,6 @@ export function SkyDome({ playing = false }: Props) {
           <ZoomIn size={14} aria-hidden />
         </div>
         </div>
-        <label className="zoom-slider" title={DEPTH_TITLES[annotationDepth]}>
-          <LayersIcon filled={false} />
-          <Range
-            min={0}
-            max={3}
-            step={1}
-            value={annotationDepth}
-            onChange={(e) => setDepth(Number(e.target.value))}
-            aria-label="Głębia adnotacji kopuły"
-            aria-valuetext={DEPTH_TITLES[annotationDepth]}
-          />
-          <LayersIcon filled />
-        </label>
       </div>
     </div>
   )

@@ -1,6 +1,6 @@
 // Przygotowuje grafiki interfejsu w public/icons z obrazów źródłowych (domyślnie folder icons/ w katalogu głównym):
 // - telescope.webp: kadr teleskopu (zanikanie krawędzi robi CSS),
-// - moon.webp: baza Księżyca do wygenerowania obrazów poszczególnych faz przez build-moon-phases.ts,
+// - moon.webp: baza Księżyca do wygenerowania tekstury pełni przez build-moon-phases.ts,
 // - tab-<id>-on.webp / tab-<id>-off.webp: ikony zakładek z jednego arkusza (świecące = aktywna, srebrne = nieaktywna)
 //   z kanałem alfa wyliczonym z jasności względem ciemnego tła arkusza.
 //

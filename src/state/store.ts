@@ -1,7 +1,7 @@
 // Stan aplikacji (Zustand). Preferencje, sprzęt, horyzont i plan zapisują się w localStorage.
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { EMPTY_FILTER, type CatalogFilter, type ObjectType } from '../lib/catalog'
+import { EMPTY_FILTER, type CatalogFilter, type ObjectType, SKY_GROUPS, type SkyGroup } from '../lib/catalog'
 import type { HorizonPoint } from '../lib/horizon'
 import { nightDateOf } from '../lib/night'
 import { planExposures, type Exposure } from '../lib/exposures'
@@ -107,6 +107,9 @@ interface State {
   /** Kursor czasu [ms UTC]; null = środek nocy / teraz. */
   timeMs: number | null
   selectedIndex: number | null
+  /** Historia wybranych obiektów w tej sesji (bez zapisu) i pozycja w niej dla strzałek ‹ ›. */
+  history: number[]
+  historyPos: number
   equipment: Equipment
   savedTelescopes: SavedTelescope[]
   savedCameras: SavedCamera[]
@@ -122,8 +125,10 @@ interface State {
   showTracks: boolean
   showArt: boolean
   showOutlines: boolean
-  /** Głębia adnotacji kopuły: 0: tylko kontury, 1: + NGC/IC, 2: + Sh2, Barnard, vdB, 3: + LBN, LDN, SNR. */
-  annotationDepth: number
+  /** Elipsy obiektów katalogu (wymiary i kąt pozycyjny) na kopule. */
+  showEllipses: boolean
+  /** Grupy katalogów widoczne na kopule (znaczniki, elipsy i kontury). */
+  skyGroups: Record<SkyGroup, boolean>
   showLabels: boolean
   showAnnotations: boolean
   annotationColors: Partial<Record<ObjectType, string>>
@@ -138,6 +143,8 @@ interface State {
   setNightDate(date: string): void
   setTime(t: number | null): void
   select(index: number | null, find?: boolean): void
+  /** Poprzedni (-1) albo następny (+1) obiekt z historii, z animacją „znajdź obiekt”. */
+  stepHistory(delta: number): void
   setEquipment(patch: Partial<Equipment>): void
   addTelescope(): void
   removeTelescope(): void
@@ -154,10 +161,10 @@ interface State {
   clearFavorites(): void
   setFilter(patch: Partial<CatalogFilter>): void
   setSort(s: State['sortBy']): void
-  setAnnotationDepth(depth: number): void
+  toggleSkyGroup(group: SkyGroup): void
   setAnnotationColor(type: ObjectType, color: string): void
   resetAnnotationColors(): void
-  toggle(key: 'showLines' | 'showTracks' | 'showArt' | 'showOutlines' | 'showLabels' | 'showAnnotations' | 'onlyVisible'): void
+  toggle(key: 'showLines' | 'showTracks' | 'showArt' | 'showOutlines' | 'showEllipses' | 'showLabels' | 'showAnnotations' | 'onlyVisible'): void
 }
 
 export const useStore = create<State>()(
@@ -171,6 +178,8 @@ export const useStore = create<State>()(
       nightDate: nightDateOf(Date.now(), HOME.timeZone),
       timeMs: null,
       selectedIndex: null,
+      history: [],
+      historyPos: -1,
       equipment: DEFAULT_EQUIPMENT,
       savedTelescopes: [],
       savedCameras: [],
@@ -186,7 +195,8 @@ export const useStore = create<State>()(
       showTracks: true,
       showArt: true,
       showOutlines: true,
-      annotationDepth: 0,
+      showEllipses: false,
+      skyGroups: Object.fromEntries(SKY_GROUPS.map((g) => [g, true])) as Record<SkyGroup, boolean>,
       showLabels: true,
       showAnnotations: true,
       annotationColors: {},
@@ -200,11 +210,30 @@ export const useStore = create<State>()(
       setNightDate: (nightDate) => set({ nightDate, timeMs: null }),
       setTime: (timeMs) => set({ timeMs }),
       select: (selectedIndex, find = true) =>
-        set((s) => ({
-          selectedIndex,
-          framing: { raDeg: null, decDeg: null, paDeg: s.framing.paDeg },
-          findPulse: find ? s.findPulse + 1 : s.findPulse,
-        })),
+        set((s) => {
+          // Nowy wybór ucina historię „do przodu” jak w przeglądarce; obiekt zapisany z poprzedniej wizyty otwiera historię.
+          let history = s.history.slice(0, s.historyPos + 1)
+          if (!history.length && s.selectedIndex !== null) history = [s.selectedIndex]
+          if (selectedIndex !== null && history[history.length - 1] !== selectedIndex) history = [...history, selectedIndex]
+          return {
+            selectedIndex,
+            history,
+            historyPos: history.length - 1,
+            framing: { raDeg: null, decDeg: null, paDeg: s.framing.paDeg },
+            findPulse: find ? s.findPulse + 1 : s.findPulse,
+          }
+        }),
+      stepHistory: (delta) =>
+        set((s) => {
+          const historyPos = s.historyPos + delta
+          if (historyPos < 0 || historyPos >= s.history.length) return s
+          return {
+            historyPos,
+            selectedIndex: s.history[historyPos],
+            framing: { raDeg: null, decDeg: null, paDeg: s.framing.paDeg },
+            findPulse: s.findPulse + 1,
+          }
+        }),
       setEquipment: (patch) => set((s) => {
         const equipment = { ...s.equipment, ...patch }
         return {
@@ -288,7 +317,7 @@ export const useStore = create<State>()(
       clearFavorites: () => set({ favoriteIds: [] }),
       setFilter: (patch) => set((s) => ({ filter: { ...s.filter, ...patch } })),
       setSort: (sortBy) => set({ sortBy }),
-      setAnnotationDepth: (annotationDepth) => set({ annotationDepth }),
+      toggleSkyGroup: (group) => set((s) => ({ skyGroups: { ...s.skyGroups, [group]: !s.skyGroups[group] } })),
       setAnnotationColor: (type, color) => set((s) => ({ annotationColors: { ...s.annotationColors, [type]: color } })),
       resetAnnotationColors: () => set({ annotationColors: {} }),
       toggle: (key) => set((s) => ({ [key]: !s[key] }) as Partial<State>),
@@ -314,15 +343,23 @@ export const useStore = create<State>()(
         showTracks: s.showTracks,
         showArt: s.showArt,
         showOutlines: s.showOutlines,
-        annotationDepth: s.annotationDepth,
+        showEllipses: s.showEllipses,
+        skyGroups: s.skyGroups,
         showLabels: s.showLabels,
         showAnnotations: s.showAnnotations,
         annotationColors: s.annotationColors,
       }),
+      // Grupy katalogów dopisane po zapisie stanu startują włączone.
+      merge: (persisted, current) => {
+        const p = persisted as Partial<State> | undefined
+        return { ...current, ...p, skyGroups: { ...current.skyGroups, ...p?.skyGroups } }
+      },
       // Noc zawsze startuje od bieżącej daty w strefie zapisanej lokalizacji.
       onRehydrateStorage: () => (state) => {
         if (state) queueMicrotask(() => {
           useStore.setState({ nightDate: nightDateOf(Date.now(), state.location.timeZone) })
+          // Dawny suwak głębi powyżej 0 oznaczał widoczne elipsy.
+          if ((state as { annotationDepth?: number }).annotationDepth) useStore.setState({ showEllipses: true })
           if (state.equipment.telescopeId === 'gso-newton-150-600') useStore.getState().setEquipment({
             telescopeId: DEFAULT_EQUIPMENT.telescopeId,
             telescopeName: DEFAULT_EQUIPMENT.telescopeName,

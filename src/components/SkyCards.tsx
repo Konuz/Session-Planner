@@ -7,7 +7,7 @@ import { darkWindow, nightPhases } from '../lib/night'
 import { skyRating, weatherAt } from '../lib/services'
 import { useNight, useSelected, useSite, useTime, useWeather } from '../state/data'
 import { useStore } from '../state/store'
-import { MoonDisc, moonPhaseImageIndex } from './MoonDisc'
+import { MoonDisc } from './MoonDisc'
 import { ObjectSearch } from './ObjectSearch'
 import { ScrambleText } from './ScrambleText'
 import { Thumb } from './Thumb'
@@ -19,6 +19,9 @@ export function ObjectCard({ onDetails }: { onDetails: () => void }) {
   const annotationColors = useStore((s) => s.annotationColors)
   const addToPlan = useStore((s) => s.addToPlan)
   const setTab = useStore((s) => s.setTab)
+  const canBack = useStore((s) => s.historyPos > 0)
+  const canForward = useStore((s) => s.historyPos < s.history.length - 1)
+  const stepHistory = useStore((s) => s.stepHistory)
   const inPlan = o ? plan.some((p) => p.objectIndex === o.i) : false
   return (
     <section className="card">
@@ -31,6 +34,10 @@ export function ObjectCard({ onDetails }: { onDetails: () => void }) {
           <div className="object-head">
             <div className="object-name">
               <span className="id"><ScrambleText text={o.id} /></span>
+            </div>
+            <div className="history-nav">
+              <button className="picker-button icon-button" title="Poprzedni obiekt" aria-label="Poprzedni obiekt" disabled={!canBack} onClick={() => stepHistory(-1)}>‹</button>
+              <button className="picker-button icon-button" title="Następny obiekt" aria-label="Następny obiekt" disabled={!canForward} onClick={() => stepHistory(1)}>›</button>
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -89,7 +96,7 @@ export function MoonCard() {
   return (
     <section className="card">
       <div className="moon-row">
-        <MoonDisc phaseIndex={moonPhaseImageIndex(info.phaseDeg)} phaseName={info.name} size={80} />
+        <MoonDisc illumination={info.illumination} waxing={info.waxing} phaseName={info.name} size={80} />
         <div>
           <div style={{ font: '700 14px var(--sans)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Księżyc</div>
           <div style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 4 }}>

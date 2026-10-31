@@ -1,4 +1,4 @@
-// Tworzy osiem stałych obrazów faz z jednej tarczy Księżyca.
+// Tworzy teksturę pełni (moon-full.webp) z jednej tarczy Księżyca; fazy cieniuje na bieżąco MoonDisc.
 // Uruchom po build-assets: node scripts/build-moon-phases.ts
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -9,16 +9,7 @@ const SIZE = 512
 const SOURCE = join(ROOT, 'public', 'icons', 'moon.webp')
 const FULL_REFERENCE = join(ROOT, 'scripts', 'moon-full-reference.webp')
 const OUT = join(ROOT, 'public', 'icons', 'moon-phases')
-const PHASES = [
-  { name: 'new', illumination: 0, waxing: true },
-  { name: 'waxing-crescent', illumination: 0.146, waxing: true },
-  { name: 'first-quarter', illumination: 0.5, waxing: true },
-  { name: 'waxing-gibbous', illumination: 0.854, waxing: true },
-  { name: 'full', illumination: 1, waxing: false },
-  { name: 'waning-gibbous', illumination: 0.854, waxing: false },
-  { name: 'last-quarter', illumination: 0.5, waxing: false },
-  { name: 'waning-crescent', illumination: 0.146, waxing: false },
-] as const
+const PHASES = [{ name: 'full', illumination: 1, waxing: false }] as const
 
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n))
 const smoothstep = (a: number, b: number, x: number) => {

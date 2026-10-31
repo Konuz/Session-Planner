@@ -32,7 +32,8 @@
   --t-snr: #f88f05;
   --pin: #22c55e; /* green-500: pinezka celu jak na mapie nieba konuzastro.pl */
   --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
-  --sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --sans: 'Inter', sans-serif;
+  --display: 'Exo 2', sans-serif;
   --gap: 14px;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   /* Domyślna krzywa przejść Tailwinda, używana przez konuzastro.pl. */
@@ -106,7 +107,7 @@ select option, select optgroup { background-color: var(--card-solid); color: var
   margin: 0 0 12px;
   padding-bottom: 10px;
   border-bottom: 1px solid var(--border);
-  font: 700 14px/1.2 var(--sans);
+  font: 700 14px/1.2 var(--display);
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
@@ -199,6 +200,9 @@ select option, select optgroup { background-color: var(--card-solid); color: var
 .control:focus { border-color: var(--accent); background-color: rgba(11, 13, 23, 0.5); }
 .control::placeholder { color: #364153; font-family: var(--mono); }
 select.control { padding-right: 28px; appearance: none; background: #000 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6' fill='%2399A1AF'/%3E%3C/svg%3E") no-repeat right 10px center; }
+input[type='number'] { -moz-appearance: textfield; appearance: textfield; }
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button { margin: 0; -webkit-appearance: none; }
 /* Suwaki z ostrymi narożnikami: cienki prostokątny tor i kwadratowy uchwyt. */
 input[type='range'] { -webkit-appearance: none; appearance: none; height: 16px; margin: 0; background: transparent; cursor: pointer; }
 input[type='range']::-webkit-slider-runnable-track { height: 4px; background: linear-gradient(to right, var(--accent-dim) var(--fill, 0%), var(--border-strong) 0); border-radius: 0; }
@@ -366,7 +370,7 @@ input[type='checkbox']:checked::after {
 .panel-title .annotation-color-settings { margin: 0; }
 .popover.annotation-color-popover { width: 260px; max-height: none; overflow: visible; padding: 10px 12px; color: var(--text); letter-spacing: 0; }
 .annotation-color-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
-.annotation-color-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 27px; font-size: 12px; color: var(--text-2); }
+.annotation-color-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 27px; font-size: 8px; font-family: var(--sans); font-weight: 400; color: var(--text-2); }
 .annotation-color-row input { width: 32px; height: 20px; padding: 0; border: 1px solid var(--border-strong); background: transparent; cursor: pointer; }
 .type-filter label { display: flex; align-items: center; gap: 8px; padding: 3px 0; cursor: pointer; }
 .type-filter label:first-child { padding-bottom: 6px; margin-bottom: 4px; border-bottom: 1px solid var(--border); }
@@ -434,6 +438,12 @@ input[type='checkbox']:checked::after {
 .object-name { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; min-width: 0; font-size: 20px; padding: 3px 10px; border: 1px solid var(--text); }
 .object-name .id { font: 700 20px var(--mono); }
 .object-name .sep { color: var(--text-faint); }
+/* Strzałki historii wybranych obiektów, z prawej na wysokości nazwy (jak przełącznik nocy w nagłówku). */
+.history-nav { display: flex; gap: 4px; align-self: stretch; flex: none; }
+/* Cyjanowe jak przyciski ikon na konuzastro.pl: cyjanowa ramka i znak, po najechaniu pełny cyjan z czarnym znakiem. */
+.history-nav .picker-button { min-height: 0; height: 100%; width: 32px; justify-content: center; font-size: 16px; color: var(--accent); border-color: var(--accent); transition: background 0.15s var(--ease-std), color 0.15s var(--ease-std); }
+.history-nav .picker-button:not(:disabled):hover { background: var(--accent); color: #000; }
+.history-nav .picker-button:disabled { color: var(--text-faint); cursor: default; border-color: var(--border); z-index: 0; }
 .object-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .facts { display: grid; grid-template-columns: auto 1fr; gap: 9px 14px; margin: 12px 0 4px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 13.5px; }
 .facts dt { display: flex; align-items: center; gap: 10px; color: var(--text-dim); }
@@ -496,6 +506,18 @@ input[type='checkbox']:checked::after {
 .sky-toolbar .switch .track { width: 30px; height: 16px; }
 .sky-toolbar .switch .track::after { width: 10px; height: 10px; }
 .sky-toolbar .switch.on .track::after { left: 16px; }
+/* Lista rozwijana warstw kopuły: otwiera się w górę nad paskiem narzędzi. */
+.layers-menu { position: relative; margin-left: auto; }
+.layers-menu .button { display: inline-flex; align-items: center; gap: 6px; }
+.popover.layers-popover { top: auto; bottom: calc(100% + 6px); left: 0; right: auto; width: 220px; padding: 10px 12px; display: grid; gap: 8px; }
+/* Nagłówek zwijanej sekcji: etykieta, licznik włączonych i strzałka (obrócona po rozwinięciu). */
+.layers-section { display: flex; align-items: center; gap: 8px; width: 100%; padding: 2px 0; background: none; border: 0; color: var(--text-2); font: 10px var(--mono); cursor: pointer; text-align: left; }
+.layers-section .label { flex: 1; }
+.layers-section:hover .label, .layers-section:hover svg { color: var(--accent); }
+.layers-section svg { color: var(--text-dim); transform: rotate(-90deg); transition: transform 0.2s var(--ease-std); }
+.layers-section svg.open { transform: none; }
+.layers-popover .switch + .layers-section { margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--border); }
+.layers-popover .layers-section + .layers-section { padding-top: 8px; border-top: 1px solid var(--border); }
 .depth-slider { display: inline-flex; align-items: center; gap: 6px; font: 10px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-2); cursor: pointer; }
 .depth-slider input { width: 64px; accent-color: var(--accent); }
 .depth-slider b { min-width: 1ch; color: var(--accent); font-weight: 600; }
@@ -585,14 +607,15 @@ input[type='checkbox']:checked::after {
 .progress div { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); box-shadow: 0 0 10px var(--accent); transition: width 0.6s var(--ease); }
 
 /* ---------- Katalog ---------- */
-.catalog-layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: var(--gap); align-items: start; }
+.catalog-layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: var(--gap); align-items: stretch; }
 .catalog-filters { position: sticky; top: 90px; max-height: calc(100vh - 110px); overflow: auto; }
 .filter-group { margin-bottom: 16px; }
 .filter-group .label { display: block; margin-bottom: 8px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .catalog-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
 .catalog-plan-prompt { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; padding: 12px 14px; border: 1px solid var(--border-strong); background: var(--card); font-size: 13px; }
-.catalog-scroll { height: calc(100vh - 175px); overflow: auto; scrollbar-gutter: stable; contain: strict; }
+.catalog-layout > section { display: flex; flex-direction: column; min-width: 0; }
+.catalog-scroll { flex: 1 1 auto; min-height: 0; height: calc(100vh - 175px); overflow: auto; scrollbar-gutter: stable; contain: strict; }
 .favorites-confirm { width: min(420px, calc(100% - 32px)); margin: auto; padding: 24px; border: 1px solid var(--border-strong); background: var(--card-solid); color: var(--text); }
 .favorites-confirm::backdrop { background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(6px); }
 .favorites-confirm h2 { display: flex; align-items: center; gap: 10px; margin: 0; font: 600 16px var(--mono); }
@@ -641,8 +664,8 @@ input[type='checkbox']:checked::after {
   animation: shimmer 1.4s linear infinite;
 }
 @keyframes shimmer { to { background-position: 200% 0; } }
-.vis-bar { height: 3px; background: var(--border); }
-.vis-bar div { height: 100%; }
+.vis-bar { height: 6px; background: #171927; }
+.vis-bar div { height: 100%; background: linear-gradient(90deg, #00d5e8, #2865ff); }
 
 /* ---------- Tabele i formularze ---------- */
 .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
@@ -695,7 +718,7 @@ input[type='checkbox']:checked::after {
 /* Prawa kolumna Nieba: karta pogody rośnie, żeby dół karty zestawu zrównał się z dołem kopuły. */
 .sky-grid > div.col:nth-of-type(2) > .card:first-child { flex: 1; min-height: 0; }
 .sky-grid > div.col:first-child > .card:last-child { flex: 1; min-height: 0; }
-/* Prawy dolny róg kopuły: suwak powiększenia, pod nim suwak głębi (ta sama szerokość). */
+/* Prawy dolny róg kopuły: suwak powiększenia. */
 .hud-stack { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .hud-stack .zoom-slider { width: 212px; justify-content: space-between; }
 .hud-stack .zoom-slider input { width: auto; flex: 1; }

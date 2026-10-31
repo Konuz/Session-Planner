@@ -43,9 +43,9 @@ function AnnotationColorSettings() {
           </div>
           {(Object.keys(TYPE_INFO) as ObjectType[]).map((type) => (
             <label className="annotation-color-row" key={type}>
-              <span>{TYPE_INFO[type].label}</span>
+              <span>{TYPE_INFO[type].plural}</span>
               <input
-                aria-label={`Kolor adnotacji: ${TYPE_INFO[type].label}`}
+                aria-label={`Kolor adnotacji: ${TYPE_INFO[type].plural}`}
                 type="color"
                 value={colors[type] ?? DEFAULT_ANNOTATION_COLORS[type]}
                 onChange={(event) => setColor(type, event.target.value)}
@@ -304,7 +304,7 @@ const CatalogCard = memo(function CatalogCard({ o, typeColor, selected, inPlan, 
       <button type="button" className="obj-card-open" aria-label={`Otwórz ${o.id}`} onClick={onOpen} />
       {inPlan && <span className="in-plan" title="W planie"><CalendarCheck size={14} /></span>}
       <div className="vis-bar" title={hours !== null ? `${fmtDuration(hours)} powyżej ${minAlt}°` : ''}>
-        <div style={{ width: `${Math.min(100, ((hours ?? 0) / 10) * 100)}%`, background: (hours ?? 0) >= 3 ? 'var(--accent)' : (hours ?? 0) >= 1 ? 'var(--warn)' : 'var(--text-faint)' }} />
+        <div style={{ width: `${Math.min(100, ((hours ?? 0) / 10) * 100)}%` }} />
       </div>
       <div className="body">
         <div className="title">

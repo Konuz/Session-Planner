@@ -1,12 +1,15 @@
-import { Pause, Play, RotateCcw } from 'lucide-react'
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { ChevronDown, Pause, Play, RotateCcw } from 'lucide-react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { AltitudeChart } from '../components/AltitudeChart'
 import { FramingPanel } from '../components/FramingPanel'
 import { ObjectDetails } from '../components/ObjectDetails'
 import { MoonCard, ObjectCard, OpticsCard, WeatherCard } from '../components/SkyCards'
-import { SkyDome } from '../components/SkyDome'
+import { LayersIcon, SkyDome } from '../components/SkyDome'
+import { useOutside } from '../components/TopBar'
 import { fmtTime } from '../lib/format'
 import { useCatalog, useNight, useTime } from '../state/data'
+import type { SkyGroup } from '../lib/catalog'
 import { useStore, type CenterMode } from '../state/store'
 
 const Space3D = lazy(() => import('../components/Space3D'))
@@ -17,6 +20,77 @@ function Switch({ on, onClick, label }: { on: boolean; onClick: () => void; labe
       <span className="track" />
       <span>{label}</span>
     </button>
+  )
+}
+
+type LayerKey = 'showLines' | 'showLabels' | 'showArt' | 'showOutlines' | 'showEllipses' | 'showAnnotations' | 'showTracks'
+
+const LAYERS: { key: LayerKey; label: string }[] = [
+  { key: 'showLines', label: 'Linie' },
+  { key: 'showLabels', label: 'Nazwy gwiazdozbiorów' },
+  { key: 'showArt', label: 'Postacie' },
+  { key: 'showOutlines', label: 'Kontury' },
+  { key: 'showEllipses', label: 'Okręgi obiektów' },
+  { key: 'showAnnotations', label: 'Opisy' },
+  { key: 'showTracks', label: 'Tory' },
+]
+
+// Kolejność jak w SKY_GROUPS: od najpopularniejszego katalogu.
+const GROUPS: { id: SkyGroup; label: string }[] = [
+  { id: 'M', label: 'Messier' },
+  { id: 'NGC', label: 'NGC' },
+  { id: 'IC', label: 'IC' },
+  { id: 'Sh2', label: 'Sharpless (Sh2)' },
+  { id: 'B', label: 'Barnard (B)' },
+  { id: 'vdB', label: 'van den Bergh (vdB)' },
+  { id: 'LBN', label: 'LBN' },
+  { id: 'LDN', label: 'LDN' },
+  { id: 'SNR', label: 'Pozostałości SN (SNR)' },
+  { id: 'other', label: 'Inne' },
+]
+
+/** Nagłówek zwijanej sekcji listy warstw z licznikiem włączonych przełączników. */
+function Section({ title, on, total, open, onToggle, children }: { title: string; on: number; total: number; open: boolean; onToggle: () => void; children: React.ReactNode }) {
+  return (
+    <>
+      <button className="layers-section" aria-expanded={open} onClick={onToggle}>
+        <span className="label">{title}</span>
+        <span className="dim">{on}/{total}</span>
+        <ChevronDown size={12} className={open ? 'open' : undefined} />
+      </button>
+      {open && children}
+    </>
+  )
+}
+
+/** Lista rozwijana warstw kopuły: zwijane sekcje przełączników warstw i grup katalogów. */
+function LayersMenu() {
+  const [open, setOpen] = useState(false)
+  // Rozwinięte sekcje pamiętane, dopóki otwarty jest widok kopuły (lista obiektów domyślnie zwinięta).
+  const [sections, setSections] = useState({ layers: true, objects: false })
+  const ref = useRef<HTMLDivElement>(null)
+  const close = useCallback(() => setOpen(false), [])
+  useOutside(ref, close)
+  const layers = useStore(useShallow((s) => LAYERS.map(({ key }) => s[key])))
+  const groups = useStore((s) => s.skyGroups)
+  const toggle = useStore((s) => s.toggle)
+  const toggleGroup = useStore((s) => s.toggleSkyGroup)
+  return (
+    <div className="layers-menu" ref={ref}>
+      <button className={`button small${open ? ' active' : ''}`} aria-expanded={open} aria-haspopup="true" onClick={() => setOpen(!open)}>
+        <LayersIcon filled={false} /> Warstwy <ChevronDown size={12} />
+      </button>
+      {open && (
+        <div className="popover layers-popover" role="group" aria-label="Warstwy kopuły">
+          <Section title="Warstwy" on={layers.filter(Boolean).length} total={LAYERS.length} open={sections.layers} onToggle={() => setSections({ ...sections, layers: !sections.layers })}>
+            {LAYERS.map(({ key, label }, i) => <Switch key={key} on={layers[i]} onClick={() => toggle(key)} label={label} />)}
+          </Section>
+          <Section title="Obiekty" on={GROUPS.filter(({ id }) => groups[id]).length} total={GROUPS.length} open={sections.objects} onToggle={() => setSections({ ...sections, objects: !sections.objects })}>
+            {GROUPS.map(({ id, label }) => <Switch key={id} on={groups[id]} onClick={() => toggleGroup(id)} label={label} />)}
+          </Section>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -55,10 +129,6 @@ function usePlayback() {
 export function SkyView() {
   const mode = useStore((s) => s.centerMode)
   const setMode = useStore((s) => s.setCenterMode)
-  const showLines = useStore((s) => s.showLines)
-  const showTracks = useStore((s) => s.showTracks)
-  const showArt = useStore((s) => s.showArt)
-  const showOutlines = useStore((s) => s.showOutlines)
   const showAnnotations = useStore((s) => s.showAnnotations)
   const toggle = useStore((s) => s.toggle)
   const setTime = useStore((s) => s.setTime)
@@ -109,13 +179,7 @@ export function SkyView() {
                   <RotateCcw size={14} />
                 </button>
                 <span className="mono" style={{ fontSize: 12, minWidth: 44 }}>{fmtTime(time, tz)}</span>
-                <span className="toolbar-group">
-                  <Switch on={showLines} onClick={() => toggle('showLines')} label="Linie" />
-                  <Switch on={showArt} onClick={() => toggle('showArt')} label="Postacie" />
-                  <Switch on={showOutlines} onClick={() => toggle('showOutlines')} label="Kontury" />
-                  <Switch on={showAnnotations} onClick={() => toggle('showAnnotations')} label="Opisy" />
-                  <Switch on={showTracks} onClick={() => toggle('showTracks')} label="Tory" />
-                </span>
+                <LayersMenu />
               </div>
             )}
           </div>

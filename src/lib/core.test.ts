@@ -2,7 +2,7 @@ import { Horizon, MakeTime, Observer, RotateVector, Rotation_EQJ_EQD, SphereFrom
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { altAz, computeOptics, DEG, galactic, hourAngleDeg, horizontalMatrix, moonInfo, nextTransitMs, vecToEquatorial, type Site } from './astro'
-import { annotationDepthOf, matchesFilter, normalizeQuery, parseCatalog, searchScore, EMPTY_FILTER } from './catalog'
+import { matchesFilter, normalizeQuery, parseCatalog, searchScore, skyGroupOf, EMPTY_FILTER } from './catalog'
 import { frameCorners, gnomonic, gnomonicInverse, pixelToTangent, tangentToPixel } from './framing'
 import { exportHorizon, horizonAltitude, parseHorizon } from './horizon'
 import { darkWindow, nightDateOf, nightPhases, phaseAt, zonedMidnightMs } from './night'
@@ -222,12 +222,15 @@ describe('katalog', () => {
     expect(searchScore(cat[2], 'NGC6888')).toBe(1)
   })
 
-  it('głębia adnotacji według katalogu', () => {
-    expect(annotationDepthOf({ catalogs: ['NGC', 'LBN'] })).toBe(1)
-    expect(annotationDepthOf({ catalogs: ['Sh2', 'LBN'] })).toBe(2)
-    expect(annotationDepthOf({ catalogs: ['B'] })).toBe(2)
-    expect(annotationDepthOf({ catalogs: ['LDN'] })).toBe(3)
-    expect(cat.map(annotationDepthOf)).toEqual([1, 3, 1])
+  it('grupa katalogu kopuły według najpopularniejszego katalogu', () => {
+    expect(skyGroupOf({ catalogs: ['NGC', 'M'] })).toBe('M')
+    expect(skyGroupOf({ catalogs: ['Sh2', 'NGC', 'LBN'] })).toBe('NGC')
+    expect(skyGroupOf({ catalogs: ['IC', 'LBN'] })).toBe('IC')
+    expect(skyGroupOf({ catalogs: ['Sh2', 'LBN'] })).toBe('Sh2')
+    expect(skyGroupOf({ catalogs: ['LDN', 'B'] })).toBe('B')
+    expect(skyGroupOf({ catalogs: ['C'] })).toBe('other')
+    expect(skyGroupOf({ catalogs: [] })).toBe('other')
+    expect(cat.map(skyGroupOf)).toEqual(['M', 'LDN', 'NGC'])
   })
 
   it('pole miniatury', () => {
