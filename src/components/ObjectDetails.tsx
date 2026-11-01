@@ -154,7 +154,7 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
             <a href={aladin} target="_blank" rel="noreferrer">Aladin Lite <ExternalLink size={11} /></a>
           </div>
           <p className="faint" style={{ fontSize: 11, marginTop: 18 }}>
-            Dane: OpenNGC (CC BY-SA 4.0), kontury mgławic: OpenNGC outlines (CC BY-SA 4.0, obrysy na DSS2 w Aladin, CDS), mgławic ciemnych: mapy Planck 857 GHz (ESA, NASA SkyView) dopasowane SAM 3 (Meta) do zdjęć z AstroBin, katalogi VizieR/CDS, odległości i artykuły: Wikidata (CC0), opisy: Wikipedia (CC BY-SA), zdjęcia: AstroBin API użytkownika Konuz lub DSS2 przez CDS hips2fits.
+            Dane: OpenNGC (CC BY-SA 4.0), kontury mgławic: OpenNGC outlines (CC BY-SA 4.0, obrysy na DSS2 w Aladin, CDS), mgławic ciemnych: mapy Planck 857 GHz (ESA, NASA SkyView) dopasowane SAM 3 (Meta) do zdjęć z AstroBin, katalogi VizieR/CDS, odległości i artykuły: Wikidata (CC0), opisy: Wikipedia (CC BY-SA), zdjęcia: AstroBin API użytkownika Konuz lub kafelki HiPS (ESA ESASky, MAST/STScI): Digitized Sky Survey (STScI/NASA; Palomar Observatory/Caltech, UK Schmidt Telescope/AAO) i Pan-STARRS1 (PS1 Surveys).
           </p>
         </div>
       </aside>

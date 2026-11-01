@@ -5,12 +5,21 @@ import { computeOptics } from '../lib/astro'
 import { parseDecCoordinate, parseRaCoordinate } from '../lib/coordinates'
 import { fmtDec, fmtNum, fmtRa } from '../lib/format'
 import { frameCorners, gnomonic, gnomonicInverse, pixelToTangent, tangentToPixel } from '../lib/framing'
-import { getSkyImage } from '../lib/thumbs'
+import { SURVEYS } from '../lib/hips'
+import { getSkyImage, type SkyImageOptions } from '../lib/thumbs'
 import { useSelected } from '../state/data'
 import { useStore } from '../state/store'
 import { Range } from './Range'
 
 const SIZE = 800
+const IMAGE_ERROR = 'Nie udało się złożyć zdjęcia z kafelków HiPS'
+
+type Layer = 'red' | 'color' | 'ps1'
+const LAYERS: Record<Layer, Required<Pick<SkyImageOptions, 'survey' | 'mode'>>> = {
+  red: { survey: 'dss2', mode: 'red' },
+  color: { survey: 'dss2', mode: 'color' },
+  ps1: { survey: 'ps1', mode: 'color' },
+}
 
 export function FramingPanel() {
   const o = useSelected()
@@ -21,8 +30,8 @@ export function FramingPanel() {
   const setTab = useStore((s) => s.setTab)
   const updatePlan = useStore((s) => s.updatePlan)
   const plan = useStore((s) => s.plan)
-  const [layer, setLayer] = useState<'red' | 'color'>('red')
-  const [img, setImg] = useState<{ key: string; url: string } | null>(null)
+  const [layer, setLayer] = useState<Layer>('red')
+  const [img, setImg] = useState<{ key: string; url: string; sharp: boolean } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [zoom, setZoom] = useState(1)
   const [coordinateInput, setCoordinateInput] = useState({ ra: '', dec: '' })
@@ -54,13 +63,28 @@ export function FramingPanel() {
     setCoordinateError(null)
   }, [center?.raDeg, center?.decDeg])
 
+  const ps1Covered = imageDec !== null && imageDec >= SURVEYS.ps1.minDecDeg
+
+  useEffect(() => {
+    if (layer === 'ps1' && !ps1Covered) setLayer('color')
+  }, [layer, ps1Covered])
+
   useEffect(() => {
     if (!o || imageRa === null || imageDec === null) return
     const ctrl = new AbortController()
+    const opts = LAYERS[layer]
     setErr(null)
-    getSkyImage(imageRa, imageDec, imageFov, SIZE, ctrl.signal, { mode: layer })
-      .then((url) => setImg({ key: imageKey, url }))
-      .catch((e: Error) => e.name !== 'AbortError' && setErr('Nie udało się pobrać zdjęcia (CDS hips2fits)'))
+    // Najpierw miękki podgląd (rząd grubszy o 2, mały transfer), ostry obraz dopiero po nim; podgląd nie zastępuje ostrego.
+    let previewFailed = false
+    getSkyImage(imageRa, imageDec, imageFov, SIZE, ctrl.signal, { ...opts, coarser: 2 })
+      .then((url) => setImg((prev) => (prev?.key === imageKey && prev.sharp ? prev : { key: imageKey, url, sharp: false })))
+      .catch((e: Error) => {
+        if (e.name === 'AbortError') throw e
+        previewFailed = true
+      })
+      .then(() => getSkyImage(imageRa, imageDec, imageFov, SIZE, ctrl.signal, opts))
+      .then((url) => setImg({ key: imageKey, url, sharp: true }))
+      .catch((e: Error) => e.name !== 'AbortError' && previewFailed && setErr(IMAGE_ERROR))
     return () => ctrl.abort()
   }, [o, imageRa, imageDec, imageFov, layer, imageKey])
 
@@ -112,9 +136,9 @@ export function FramingPanel() {
       <div style={{ position: 'relative', display: 'grid', placeItems: 'center', overflow: 'hidden', padding: 12 }}>
         <div style={{ position: 'relative', height: '100%', aspectRatio: '1', maxWidth: '100%' }}>
           {img?.key === imageKey ? (
-            <img src={img.url} alt={`${o.id}, DSS2`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', filter: layer === 'red' ? 'grayscale(1) contrast(1.15)' : undefined, animation: 'fade-in .5s' }} onError={() => {
+            <img src={img.url} alt={`${o.id}, ${SURVEYS[LAYERS[layer].survey].label}`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', animation: 'fade-in .5s' }} onError={() => {
               setImg(null)
-              setErr('Nie udało się pobrać zdjęcia (CDS hips2fits ani NASA SkyView)')
+              setErr(IMAGE_ERROR)
             }} />
           ) : (
             <div className="thumb" style={{ position: 'absolute', inset: 0 }}>
@@ -163,7 +187,9 @@ export function FramingPanel() {
             <text x="18" y="34" fill="#fff" fontSize="22" fontFamily="var(--mono)">N ↑</text>
             <text x="18" y="62" fill="#fff" fontSize="22" fontFamily="var(--mono)">← E</text>
             <text x={SIZE - 18} y={SIZE - 20} fill="rgba(255,255,255,0.6)" fontSize="13" textAnchor="end" fontFamily="var(--mono)">
-              pole zdjęcia {fmtNum(imageFov, 2)}° · DSS2 {layer === 'red' ? 'czerwony' : 'kolor'} · CDS hips2fits
+              pole zdjęcia {fmtNum(imageFov, 2)}° · {SURVEYS[LAYERS[layer].survey].label}
+              {layer === 'red' ? ' czerwony' : layer === 'color' ? ' kolor' : ''} · {SURVEYS[LAYERS[layer].survey].credit}
+              {img?.key === imageKey && !img.sharp ? ' · podgląd' : ''}
             </text>
           </svg>
         </div>
@@ -214,6 +240,7 @@ export function FramingPanel() {
           <div className="framing-button-row">
             <button className={`toggle-chip${layer === 'red' ? ' on' : ''}`} onClick={() => setLayer('red')}>Czarno-biała</button>
             <button className={`toggle-chip${layer === 'color' ? ' on' : ''}`} onClick={() => setLayer('color')}>Kolor</button>
+            <button className={`toggle-chip${layer === 'ps1' ? ' on' : ''}`} onClick={() => setLayer('ps1')} disabled={!ps1Covered} title={ps1Covered ? undefined : 'PanSTARRS obejmuje niebo na północ od −30°'}>PanSTARRS</button>
           </div>
         </div>
         <div className="field">
