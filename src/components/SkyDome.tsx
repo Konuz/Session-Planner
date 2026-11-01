@@ -387,6 +387,8 @@ export function SkyDome({ playing = false }: Props) {
   const stageRef = useRef<HTMLDivElement>(null)
   const glRef = useRef<HTMLCanvasElement>(null)
   const overlayRef = useRef<HTMLCanvasElement>(null)
+  const moonRef = useRef<HTMLDivElement>(null)
+  const moonMask = useRef<HTMLCanvasElement | null>(null)
   const [sky, setSky] = useState<SkyData | null>(null)
   const [milkyWay, setMilkyWay] = useState<MilkyWay | null>(null)
   const [outlines, setOutlines] = useState<Outline[] | null>(null)
@@ -567,7 +569,7 @@ export function SkyDome({ playing = false }: Props) {
   const dpr = Math.min(2, typeof devicePixelRatio === 'number' ? devicePixelRatio : 1)
   const radius = Math.min(size.w, size.h) / 2 - 18
   const proj = useMemo(() => makeProjector(horMatrix, view, size.w / 2, size.h / 2, radius), [horMatrix, view, size, radius])
-  const moonPoint = moon.altDeg > -2 ? proj.hor(horizontalToVec({ altDeg: moon.altDeg, azDeg: moon.azDeg })) : null
+  const moonPoint = proj.hor(horizontalToVec({ altDeg: moon.altDeg, azDeg: moon.azDeg }))
 
   // ---------- Rysowanie ----------
   // Canvas i znacznik Księżyca w DOM muszą trafić na ekran w tej samej klatce.
@@ -988,6 +990,21 @@ export function SkyDome({ playing = false }: Props) {
     // horyzontem). W przeciwieństwie do wielokątów po rzucie działa poprawnie przy każdym przybliżeniu i rozmiarze.
     ctx.save()
     drawGround(ctx, proj, horizon, size.w, size.h, view.fovDeg, radius)
+    // Nakładka DOM Księżyca dostaje tę samą maskę gruntu co postacie, w swoim lokalnym układzie.
+    if (moonRef.current && moonPoint && groundCanvas) {
+      const mask = moonMask.current ??= document.createElement('canvas')
+      mask.width = Math.ceil(moonRef.current.offsetWidth * dpr)
+      mask.height = Math.ceil(moonRef.current.offsetHeight * dpr)
+      const mc = mask.getContext('2d')!
+      mc.fillStyle = '#fff'
+      mc.fillRect(0, 0, mask.width, mask.height)
+      mc.globalCompositeOperation = 'destination-out'
+      mc.setTransform(dpr, 0, 0, dpr, -(moonPoint[0] - moonMarkerSize / 2) * dpr, -(moonPoint[1] - moonMarkerSize / 2) * dpr)
+      mc.imageSmoothingEnabled = true
+      // Jak dla postaci: dwa przejścia usuwają również półprzezroczysty cień pod gruntem.
+      for (let i = 0; i < 2; i++) mc.drawImage(groundCanvas, 0, 0, groundCanvas.width * GROUND_STEP, groundCanvas.height * GROUND_STEP)
+      moonRef.current.style.maskImage = `url(${mask.toDataURL()})`
+    }
     ctx.strokeStyle = horizon.length ? 'rgba(245, 165, 36, 0.55)' : 'rgba(0, 224, 255, 0.35)'
     ctx.lineWidth = 1.2
     ctx.beginPath()
@@ -1335,6 +1352,7 @@ export function SkyDome({ playing = false }: Props) {
       />
       {moonPoint && (
         <div
+          ref={moonRef}
           style={{
             position: 'absolute',
             left: 0,
@@ -1344,6 +1362,8 @@ export function SkyDome({ playing = false }: Props) {
             alignItems: 'center',
             gap: 5,
             pointerEvents: 'none',
+            maskSize: '100% 100%',
+            maskRepeat: 'no-repeat',
           }}
         >
           <MoonDisc illumination={moon.info.illumination} waxing={moon.info.waxing} phaseName={moon.info.name} size={moonMarkerSize} />
