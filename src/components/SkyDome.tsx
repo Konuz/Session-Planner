@@ -9,6 +9,7 @@ import {
   DEG,
   horizontalMatrix,
   horizontalToVec,
+  hourAngleDeg,
   moonInfo,
   mulVec,
   transpose,
@@ -1117,28 +1118,44 @@ export function SkyDome({ playing = false }: Props) {
         ctx.lineWidth = 1.5
         ctx.globalAlpha = 0.4 + 0.6 * e
         // Pole widzenia zestawu (jak w kadrowaniu: środek i PA z `framing`) z małym krzyżykiem w środku.
+        // Montaż EQ trzyma PA na niebie, więc ramka obraca się razem z niebem; po górowaniu (meridian flip)
+        // kamera jest odwrócona o 180°, co widać po znaczniku górnej krawędzi matrycy.
         const optics = computeOptics({ apertureMm: equipment.apertureMm, focalLengthMm: equipment.focalLengthMm, reducer: equipment.reducer, widthPx: equipment.widthPx, heightPx: equipment.heightPx, pixelUm: equipment.pixelUm, binning: equipment.binning })
         const fc = { raDeg: framing.raDeg ?? selected.raDeg, decDeg: framing.decDeg ?? selected.decDeg }
         const fp = proj.eq(unitVector(fc.raDeg, fc.decDeg))
-        const corners = frameCorners({ xi: 0, eta: 0 }, optics.fovWdeg, optics.fovHdeg, framing.paDeg)
+        const pa = framing.paDeg + (hourAngleDeg(fc, time, site) > 0 ? 180 : 0)
+        const corners = frameCorners({ xi: 0, eta: 0 }, optics.fovWdeg, optics.fovHdeg, pa)
           .map((c) => {
             const q = gnomonicInverse(fc, c)
             return proj.eq(unitVector(q.raDeg, q.decDeg))
           })
         const frameOk = fp !== null && corners.every((c) => c !== null)
         const frameDiag = frameOk ? Math.hypot(corners[0]![0] - corners[2]![0], corners[0]![1] - corners[2]![1]) : 0
-        if (frameOk && frameDiag >= 18) {
-          // Animacja namierzania: ramka zwęża się do właściwego rozmiaru.
-          const s = 1 + (1 - e) * 1.5
+        if (frameOk && frameDiag > 0) {
+          // Rzut stereograficzny zmniejsza ramkę ku zenitowi: przy dużym pomniejszeniu powiększamy ją do 18 px przekątnej
+          // (kształt i obrót zostają), zamiast ją chować. Animacja namierzania: ramka zwęża się do właściwego rozmiaru.
+          const s = Math.max(1, 18 / frameDiag) * (1 + (1 - e) * 1.5)
+          const pts = corners.map((c) => [fp[0] + (c![0] - fp[0]) * s, fp[1] + (c![1] - fp[1]) * s] as const)
           ctx.beginPath()
-          corners.forEach((c, i) => {
-            const x = fp[0] + (c![0] - fp[0]) * s
-            const y = fp[1] + (c![1] - fp[1]) * s
+          pts.forEach(([x, y], i) => {
             if (i) ctx.lineTo(x, y)
             else ctx.moveTo(x, y)
           })
           ctx.closePath()
           ctx.stroke()
+          // Znacznik górnej krawędzi matrycy (narożniki 0 i 1): trójkąt na zewnątrz ramki.
+          const mx = (pts[0][0] + pts[1][0]) / 2
+          const my = (pts[0][1] + pts[1][1]) / 2
+          const ol = Math.hypot(mx - fp[0], my - fp[1]) || 1
+          const ox = (mx - fp[0]) / ol
+          const oy = (my - fp[1]) / ol
+          ctx.fillStyle = '#00e0ff'
+          ctx.beginPath()
+          ctx.moveTo(mx + ox * 6, my + oy * 6)
+          ctx.lineTo(mx - oy * 4, my + ox * 4)
+          ctx.lineTo(mx + oy * 4, my - ox * 4)
+          ctx.closePath()
+          ctx.fill()
         }
         // Krzyżyk w środku (przy dużym pomniejszeniu, gdy ramka jest za mała, zostaje sam).
         const cx = frameOk ? fp[0] : p[0]
