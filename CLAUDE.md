@@ -13,8 +13,8 @@ Stos: React 19 + Vite 8 + TypeScript 6 (strict), Zustand (stan i localStorage), 
 
 ## Architektura
 
-- `src/lib/`: czysta logika bez Reacta: `astro.ts` (jedyny import astronomy-engine; macierze J2000 → horyzont, Słońce, Księżyc, optyka, współrzędne galaktyczne), `night.ts` (fazy zmierzchu, ciemne okno, tory i widoczność), `projection.ts` (rzut stereograficzny kopuły, N u góry, E po lewej), `framing.ts` (TAN, narożniki kadru), `horizon.ts`, `nina.ts` (CSV Telescopius dla N.I.N.A.), `planner.ts`, `catalog.ts`, `sky.ts`, `thumbs.ts` (kolejka hips2fits + Cache Storage), `services.ts` (Open-Meteo, geokodowanie, Wikipedia).
-- `src/workers/visibility.worker.ts`: widoczność 16,5 tys. obiektów w nocy.
+- `src/lib/`: czysta logika bez Reacta: `astro.ts` (jedyny import astronomy-engine; macierze J2000 → horyzont, Słońce, Księżyc, optyka, współrzędne galaktyczne), `night.ts` (fazy zmierzchu, ciemne okno, tory i widoczność), `projection.ts` (rzut stereograficzny kopuły, N u góry, E po lewej), `framing.ts` (TAN, narożniki kadru), `horizon.ts`, `nina.ts` (CSV Telescopius dla N.I.N.A.), `planner.ts`, `catalog.ts`, `sky.ts`, `thumbs.ts` (kolejka obrazów + Cache Storage), `healpix.ts`, `hips.ts` (przeglądy, lustra, rzut TAN z kafelków), `hipsTiles.ts` (lustra, limit czasu, Cache Storage), `services.ts` (Open-Meteo, geokodowanie, Wikipedia).
+- `src/workers/visibility.worker.ts`: widoczność 16,5 tys. obiektów w nocy; `hips.worker.ts`: składanie obrazów nieba z kafelków HiPS.
 - `src/state/store.ts` (Zustand, persist) i `src/state/data.ts` (katalog, noc, czas, widoczność, pogoda jako hooki).
 - `src/components/`: `SkyDome` (gwiazdy w WebGL2 + nakładka 2D: linie, kontury mgławic z podpisami, elipsy obiektów i grupy katalogów M/NGC/IC/pozostałe z listy „Warstwy”, postacie gwiazdozbiorów przy najechaniu, horyzont, tor, animacja „znajdź obiekt”), `AltitudeChart`, `FramingPanel`, `Space3D` (lazy), karty widoku Niebo, `ObjectDetails`.
 - `src/views/`: Niebo, Katalog, Planer, Sprzęt, Horyzont (wszystkie oprócz Nieba ładowane leniwie).

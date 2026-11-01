@@ -106,5 +106,6 @@ export function getSkyImage(raDeg: number, decDeg: number, fovDeg: number, sizeP
 }
 
 export function getThumb(o: DSO, signal?: AbortSignal): Promise<string> {
-  return getSkyImage(o.raDeg, o.decDeg, thumbFovDeg(o), 128, signal, { coarser: 1 })
+  // Rząd grubszy o 2: 12 miniatur ok. 820 KB zamiast 1,24 MB (o 3 widać już romby pikseli HEALPix).
+  return getSkyImage(o.raDeg, o.decDeg, thumbFovDeg(o), 128, signal, { coarser: 2 })
 }
