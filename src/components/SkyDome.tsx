@@ -913,6 +913,7 @@ export function SkyDome({ playing = false }: Props) {
       }
       ctx.stroke()
       ctx.setLineDash([])
+      ctx.font = '10px ui-monospace, Consolas, monospace'
       for (const { p, t } of moonPoints) {
         const local = new Date(t).toLocaleTimeString('pl-PL', { timeZone: tz, hour: '2-digit', minute: '2-digit' })
         if (Number(local.slice(3, 5)) >= 10) continue
