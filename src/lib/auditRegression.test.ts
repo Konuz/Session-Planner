@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MakeTime, RotateVector, Rotation_EQJ_EQD, SiderealTime, SphereFromVector, Vector } from 'astronomy-engine'
 import { altAz, hourAngleDeg, nextTransitMs } from './astro'
 import { nightPhases, visibility, type AltSample } from './night'
-import { fetchWeather, skyRating, weatherAt, type WeatherHour } from './services'
+import { fetchWeather, seeingEstimate, skyRating, weatherAt, type WeatherHour } from './services'
 import { fmtNum } from './format'
 
 const site = { latDeg: 51.09, lonDeg: 17.29, elevationM: 130 }
@@ -62,7 +62,7 @@ describe('górowanie względem niezależnego obrotu astronomy-engine', () => {
 })
 
 describe('braki prognozy', () => {
-  const hour: WeatherHour = { t: start, cloud: 0, cloudLow: 0, cloudMid: 0, cloudHigh: 0, humidity: 40, temp: 10, dew: 0, wind: 5, visibilityKm: 20 }
+  const hour: WeatherHour = { t: start, cloud: 0, cloudLow: 0, cloudMid: 0, cloudHigh: 0, humidity: 40, temp: 10, dew: 0, wind: 5, visibilityKm: 20, jetKmh: 50 }
   it('null zachmurzenia nie oznacza dobrych warunków', () => {
     expect(skyRating({ ...hour, cloud: null } as unknown as WeatherHour)).toBeNull()
     expect(fmtNum(null as unknown as number)).toBe('-')
@@ -76,6 +76,22 @@ describe('braki prognozy', () => {
     vi.stubGlobal('fetch', async () => new Response(JSON.stringify({ hourly: h })))
     expect(await fetchWeather(51, 17)).toEqual([])
     expect(JSON.parse(setItem.mock.calls[0][1]).data).toEqual([])
+  })
+  it('brak wiatrów wysokich nie odrzuca godziny, a seeing jest wtedy nieznany', async () => {
+    const h: Record<string, unknown> = { time: [start / 1000] }
+    for (const key of ['cloud_cover', 'cloud_cover_low', 'cloud_cover_mid', 'cloud_cover_high', 'relative_humidity_2m', 'temperature_2m', 'dew_point_2m', 'wind_speed_10m', 'visibility']) h[key] = [10]
+    h.wind_speed_250hPa = [null]
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn() })
+    vi.stubGlobal('fetch', async () => new Response(JSON.stringify({ hourly: h })))
+    const [hour] = await fetchWeather(51, 17)
+    expect(hour.cloud).toBe(10)
+    expect(hour.jetKmh).toBeNull()
+    expect(seeingEstimate(hour.jetKmh)).toBeNull()
+  })
+  it('seeing: progi prądu strumieniowego', () => {
+    expect(seeingEstimate(40)).toEqual({ arcsec: 1.4, label: 'dobry' })
+    expect(seeingEstimate(100)?.label).toBe('średni')
+    expect(seeingEstimate(160)?.label).toBe('zły')
   })
   it('nie zastępuje brakującej godziny pogodą sprzed godziny ani ze starego cache', async () => {
     expect(weatherAt([hour, { ...hour, t: start + 2 * 3_600_000 }], start + 3_600_000)).toBeNull()

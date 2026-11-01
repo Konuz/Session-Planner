@@ -1,10 +1,10 @@
-import { CircleDot, CloudMoon, Droplets, Eye, Gauge, Ruler, Settings, Telescope, Thermometer, Wind, Camera, Check } from 'lucide-react'
+import { CircleDot, CloudMoon, Droplets, Eye, Gauge, Ruler, Settings, Sparkles, Telescope, Thermometer, Wind, Camera, Check } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { angularDistanceDeg, bodyAltAz, computeOptics, moonInfo, moonJ2000, riseSetMs, sampling } from '../lib/astro'
 import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO } from '../lib/catalog'
 import { fmtDate, fmtDeg, fmtDistance, fmtNum, fmtSize, fmtTime } from '../lib/format'
 import { darkWindow, nightPhases } from '../lib/night'
-import { skyRating, weatherAt } from '../lib/services'
+import { seeingEstimate, skyRating, weatherAt } from '../lib/services'
 import { useNight, useSelected, useSite, useTime, useWeather } from '../state/data'
 import { useStore } from '../state/store'
 import { MoonDisc } from './MoonDisc'
@@ -166,6 +166,7 @@ export function WeatherCard() {
   const nightHours = hours.filter((x) => x.t >= night.startMs && x.t <= night.endMs)
   const isNight = night.sunset !== null && time > night.sunset && (night.sunrise === null || time < night.sunrise)
   const rating = h ? skyRating(h) : null
+  const seeing = h ? seeingEstimate(h.jetKmh) : null
   const tz = useStore((s) => s.location.timeZone)
   const week = useMemo(() => {
     const [year, month, day] = night.date.split('-').map(Number)
@@ -217,6 +218,10 @@ export function WeatherCard() {
               <Droplets size={15} /> <span>Wilgotność</span> <span className="v">{Math.round(h.humidity)}%</span>
               <Thermometer size={15} /> <span>Punkt rosy</span> <span className="v">{fmtNum(h.dew, 0)}°C</span>
               <Wind size={15} /> <span>Wiatr</span> <span className="v">{Math.round(h.wind)} km/h</span>
+              <Sparkles size={15} /> <span title="Szacunek z wiatru prądu strumieniowego (300–200 hPa), nie pomiar">Seeing</span>
+              <span className="v" title={h.jetKmh !== null ? `Prąd strumieniowy ${Math.round(h.jetKmh)} km/h` : undefined} style={{ whiteSpace: 'nowrap', color: seeing ? (seeing.label === 'dobry' ? 'var(--ok)' : seeing.label === 'średni' ? 'var(--warn)' : 'var(--bad)') : undefined }}>
+                {seeing ? `~${fmtNum(seeing.arcsec, 1)}″ · ${seeing.label}` : '-'}
+              </span>
             </div>
           </div>
           {nightHours.length > 0 && (

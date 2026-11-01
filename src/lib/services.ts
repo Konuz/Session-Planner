@@ -33,6 +33,8 @@ export interface WeatherHour {
   dew: number
   wind: number
   visibilityKm: number
+  /** Najsilniejszy wiatr na 300/250/200 hPa (prąd strumieniowy) [km/h]; null, gdy model go nie podał. */
+  jetKmh: number | null
 }
 
 const weatherFields = ['t', 'cloud', 'cloudLow', 'cloudMid', 'cloudHigh', 'humidity', 'temp', 'dew', 'wind', 'visibilityKm'] as const
@@ -40,11 +42,13 @@ const finiteNumber = (v: unknown): v is number => typeof v === 'number' && Numbe
 const validWeatherHour = (h: WeatherHour) => h && weatherFields.every((k) => finiteNumber(h[k]))
 
 export async function fetchWeather(lat: number, lon: number): Promise<WeatherHour[]> {
-  const key = `wx:${lat.toFixed(2)},${lon.toFixed(2)}`
+  const key = `wx2:${lat.toFixed(2)},${lon.toFixed(2)}`
   const cached = readCache<WeatherHour[]>(key, 30 * 60_000)
   if (Array.isArray(cached) && cached.every(validWeatherHour)) return cached
   const vars = 'cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,temperature_2m,dew_point_2m,wind_speed_10m,visibility'
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=${vars}&forecast_days=8&timezone=UTC&timeformat=unixtime`
+  // Wiatry wysokie osobno: ich brak nie może odrzucać całej godziny pogody.
+  const jetVars = ['wind_speed_300hPa', 'wind_speed_250hPa', 'wind_speed_200hPa']
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=${vars},${jetVars.join(',')}&forecast_days=8&timezone=UTC&timeformat=unixtime`
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Pogoda niedostępna (HTTP ${res.status})`)
   const j = await res.json()
@@ -64,6 +68,7 @@ export async function fetchWeather(lat: number, lon: number): Promise<WeatherHou
     dew: h.dew_point_2m[i],
     wind: h.wind_speed_10m[i],
     visibilityKm: h.visibility[i] / 1000,
+    jetKmh: jetVars.map((k) => h[k]?.[i]).filter(finiteNumber).reduce<number | null>((m, v) => Math.max(m ?? 0, v), null),
     }]
   })
   writeCache(key, data)
@@ -90,6 +95,17 @@ export function skyRating(h: WeatherHour): { label: string; score: number } | nu
   score = Math.max(0, Math.min(100, score))
   const label = score >= 80 ? 'bardzo dobre' : score >= 60 ? 'dobre' : score >= 35 ? 'przeciętne' : 'złe'
   return { label, score }
+}
+
+/**
+ * Szacunek seeingu z prądu strumieniowego (heurystyka, nie pomiar): silny wiatr na wysokości 9–12 km
+ * oznacza turbulencję i rozmyte gwiazdy. Progi w km/h do dostrojenia z obserwacji.
+ */
+export function seeingEstimate(jetKmh: number | null): { arcsec: number; label: 'dobry' | 'średni' | 'zły' } | null {
+  if (jetKmh === null || !finiteNumber(jetKmh)) return null
+  const arcsec = 0.8 + 0.015 * jetKmh
+  const label = jetKmh < 70 ? 'dobry' : jetKmh <= 125 ? 'średni' : 'zły'
+  return { arcsec, label }
 }
 
 // ---------- Geokodowanie ----------
