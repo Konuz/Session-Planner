@@ -3,7 +3,7 @@ import { getAstroBinPhoto } from '../lib/astrobin'
 import { getSkyImage, getThumb } from '../lib/thumbs'
 import type { DSO } from '../lib/catalog'
 
-/** Czarno-biała miniatura ładowana dopiero, gdy element pojawi się na ekranie. */
+/** Miniatura (DSS2 kolor) ładowana dopiero, gdy element pojawi się na ekranie. */
 export function Thumb({ object, className = 'thumb', style, fovDeg, sizePx, preferAstroBin = false }: { object: DSO; className?: string; style?: React.CSSProperties; fovDeg?: number; sizePx?: number; preferAstroBin?: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
   const [src, setSrc] = useState<{ key: string; url: string; astroBin?: { galleryUrl: string; title: string } } | null>(null)

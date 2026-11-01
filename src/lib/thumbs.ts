@@ -102,7 +102,7 @@ function pump() {
 
 /** Adres obiektu blob z obrazem nieba (z pamięci, z Cache Storage albo złożony z kafelków). */
 export function getSkyImage(raDeg: number, decDeg: number, fovDeg: number, sizePx: number, signal?: AbortSignal, opts: SkyImageOptions = {}): Promise<string> {
-  const { survey = 'dss2', mode = 'red', coarser = 0 } = opts
+  const { survey = 'dss2', mode = 'color', coarser = 0 } = opts
   const key = `/thumb/${survey}/${mode}/${coarser}/${raDeg.toFixed(4)}/${decDeg.toFixed(4)}/${fovDeg}/${sizePx}`
   if (signal?.aborted) return Promise.reject(abortError())
   const known = memory.get(key)
@@ -118,6 +118,6 @@ export function getSkyImage(raDeg: number, decDeg: number, fovDeg: number, sizeP
 }
 
 export function getThumb(o: DSO, signal?: AbortSignal): Promise<string> {
-  // Rząd grubszy o 2: 12 miniatur ok. 820 KB zamiast 1,24 MB (o 3 widać już romby pikseli HEALPix).
-  return getSkyImage(o.raDeg, o.decDeg, thumbFovDeg(o), 128, signal, { coarser: 2 })
+  // 224 px (rozmiar karty katalogu) z rzędem grubszym o 1: bez rombów pikseli HEALPix; 12 miniatur ok. 2 MB.
+  return getSkyImage(o.raDeg, o.decDeg, thumbFovDeg(o), 224, signal, { coarser: 1 })
 }

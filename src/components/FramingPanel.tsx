@@ -35,7 +35,7 @@ export function FramingPanel() {
   const setTab = useStore((s) => s.setTab)
   const updatePlan = useStore((s) => s.updatePlan)
   const plan = useStore((s) => s.plan)
-  const [layer, setLayer] = useState<Layer>('red')
+  const [layer, setLayer] = useState<Layer>('color')
   const [img, setImg] = useState<{ key: string; url: string; sharp: boolean } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [zoom, setZoom] = useState(1)

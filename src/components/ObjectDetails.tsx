@@ -75,7 +75,7 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
   const w = wiki?.key === o.i ? wiki.data : undefined
   const simbad = `https://simbad.cds.unistra.fr/simbad/sim-id?Ident=${encodeURIComponent(o.aliases.find((a) => /^(NGC|IC|M) /.test(a)) ?? o.id)}`
   const aladin = `https://aladin.cds.unistra.fr/AladinLite/?target=${o.raDeg.toFixed(4)}%20${o.decDeg.toFixed(4)}&fov=${Math.max(0.3, (o.majArcmin / 60) * 3).toFixed(2)}&survey=CDS%2FP%2FDSS2%2Fcolor`
-  const go = (mode: 'dome' | 'framing' | '3d') => {
+  const go = (mode: 'dome' | '3d') => {
     setMode(mode)
     setTab('sky')
     if (mode === 'dome') select(o.i, true)
@@ -106,7 +106,6 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '16px 0' }}>
             <button className="button primary" onClick={() => go('dome')}>Pokaż na niebie</button>
-            <button className="button" onClick={() => go('framing')}>Kadruj</button>
             <button className="button" onClick={() => go('3d')}>Pozycja 3D</button>
             <button className="button" onClick={() => { addToPlan(o.i, o.id); onClose(); setTab('planner') }}>Do planu</button>
             <FavoriteButton objectId={o.id} showLabel />

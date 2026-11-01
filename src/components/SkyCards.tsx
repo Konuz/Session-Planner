@@ -19,6 +19,7 @@ export function ObjectCard({ onDetails }: { onDetails: () => void }) {
   const annotationColors = useStore((s) => s.annotationColors)
   const addToPlan = useStore((s) => s.addToPlan)
   const setTab = useStore((s) => s.setTab)
+  const setCenterMode = useStore((s) => s.setCenterMode)
   const canBack = useStore((s) => s.historyPos > 0)
   const canForward = useStore((s) => s.historyPos < s.history.length - 1)
   const stepHistory = useStore((s) => s.stepHistory)
@@ -63,6 +64,9 @@ export function ObjectCard({ onDetails }: { onDetails: () => void }) {
           <div className="object-actions">
             <button className="button small" onClick={onDetails}>
               Szczegóły obiektu
+            </button>
+            <button className="button small" onClick={() => setCenterMode('framing')}>
+              Kadruj
             </button>
             <button className={`button small${inPlan ? ' active' : ''}`} onClick={() => { addToPlan(o.i, o.id); setTab('planner') }} disabled={inPlan}>
               {inPlan && <Check size={13} />} {inPlan ? 'W planie' : 'Do planu'}

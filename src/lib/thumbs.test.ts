@@ -83,12 +83,12 @@ describe('miniatury', () => {
     await expect(b).resolves.toMatch(/^blob:/)
   })
 
-  it('domyślnie DSS2 czarno-białe; getThumb prosi o 128 px i rząd grubszy o 2', async () => {
+  it('domyślnie DSS2 kolor; getThumb prosi o 224 px i rząd grubszy o 1', async () => {
     const { getSkyImage, getThumb } = await import('./thumbs')
     await getSkyImage(10, 20, 3, 800)
-    expect(FakeWorker.posted[0]).toMatchObject({ survey: 'dss2', mode: 'red', coarser: 0, sizePx: 800 })
+    expect(FakeWorker.posted[0]).toMatchObject({ survey: 'dss2', mode: 'color', coarser: 0, sizePx: 800 })
     await getThumb({ raDeg: 1, decDeg: 2, majArcmin: 10 } as DSO)
-    expect(FakeWorker.posted[1]).toMatchObject({ sizePx: 128, coarser: 2, fovDeg: 0.283 })
+    expect(FakeWorker.posted[1]).toMatchObject({ sizePx: 224, coarser: 1, fovDeg: 0.283 })
   })
 
   it('błąd workera odrzuca obietnicę', async () => {

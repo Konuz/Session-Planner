@@ -6,7 +6,7 @@ Każda linia ma dowód: test (T), sprawdzenie w przeglądarce przy 1440 px (P) a
 
 | # | Wymaganie | Dowód | Stan |
 |---|-----------|-------|------|
-| 1 | Miniatury obiektów w katalogu, czarno-białe, pobierane i buforowane | P + S (Cache Storage, drugi raz bez sieci) | ☑ |
+| 1 | Miniatury obiektów w katalogu, kolorowe (DSS2 kolor), pobierane i buforowane | P + S (Cache Storage, drugi raz bez sieci) | ☑ |
 | 2 | Wybór i konfiguracja teleskopu, kamery i reduktora; pole widzenia | T (`equipment`) + P | ☑ |
 | 3 | Kadrowanie (prostokąt matrycy na zdjęciu, obrót, przesuwanie) | T (`framing`) + P | ☑ |
 | 4 | Przejście obiektu po kopule (tor na nocy) | P | ☑ |
@@ -34,3 +34,4 @@ Wszystkie punkty zrealizowane i sprawdzone (22 testy Vitest, build, zrzuty Playw
 - Miniatury i kadr: kafelki HiPS DSS2 i PanSTARRS z luster ESA, MAST, CASDA i CDS, składane w workerze (`hips.worker.ts`); wcześniej hips2fits (CDS), który 31.10–1.11.2026 nie odpowiadał. Pomiary 1.11.2026 (wersja produkcyjna, pusta pamięć podręczna):
   - szybkie łącze: ostry kadr 0,8 s, po przeładowaniu 0,07 s, 12 miniatur katalogu 0,55 s, przy awarii ESA kadr 1,6 s; przeciąganie kadru bez długich zadań;
   - wolne łącze (2 Mbit/s, 150 ms): podgląd kadru 2,6 s, ostry 4,9 s; 15 widocznych miniatur 4,5 s (604 KB), czyli powyżej celu 3 s.
+  - 1.11.2026: miniatury kolorowe, 224 px z rzędem grubszym o 1 (wcześniej 128 px, grubszy o 2: widoczne romby pikseli HEALPix); transfer 12 miniatur ok. 1,5× większy, więc na wolnym łączu będą wolniejsze niż powyższe 4,5 s (niezmierzone); szybkie łącze: 15 miniatur 2,2 s.
