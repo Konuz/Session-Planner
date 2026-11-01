@@ -58,7 +58,7 @@ export function FramingPanel() {
     if (!o || imageRa === null || imageDec === null) return
     const ctrl = new AbortController()
     setErr(null)
-    getSkyImage(imageRa, imageDec, imageFov, SIZE, ctrl.signal, layer === 'red' ? 'CDS/P/DSS2/red' : 'CDS/P/DSS2/color')
+    getSkyImage(imageRa, imageDec, imageFov, SIZE, ctrl.signal, { mode: layer })
       .then((url) => setImg({ key: imageKey, url }))
       .catch((e: Error) => e.name !== 'AbortError' && setErr('Nie udało się pobrać zdjęcia (CDS hips2fits)'))
     return () => ctrl.abort()
