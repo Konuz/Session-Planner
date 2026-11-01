@@ -219,8 +219,9 @@ export function WeatherCard() {
               <Thermometer size={15} /> <span>Punkt rosy</span> <span className="v">{fmtNum(h.dew, 0)}°C</span>
               <Wind size={15} /> <span>Wiatr</span> <span className="v">{Math.round(h.wind)} km/h</span>
               <Sparkles size={15} /> <span title="Szacunek z wiatru prądu strumieniowego (300–200 hPa), nie pomiar">Seeing</span>
-              <span className="v" title={h.jetKmh !== null ? `Prąd strumieniowy ${Math.round(h.jetKmh)} km/h` : undefined} style={{ whiteSpace: 'nowrap', color: seeing ? (seeing.label === 'dobry' ? 'var(--ok)' : seeing.label === 'średni' ? 'var(--warn)' : 'var(--bad)') : undefined }}>
-                {seeing ? `~${fmtNum(seeing.arcsec, 1)}″ · ${seeing.label}` : '-'}
+              {/* Ocena (dobry/średni/zły) tylko kolorem wartości; słownie w dymku. */}
+              <span className="v" title={seeing && h.jetKmh !== null ? `Seeing ${seeing.label} · prąd strumieniowy ${Math.round(h.jetKmh)} km/h` : undefined} style={{ color: seeing ? (seeing.label === 'dobry' ? 'var(--ok)' : seeing.label === 'średni' ? 'var(--warn)' : 'var(--bad)') : undefined }}>
+                {seeing ? `~${fmtNum(seeing.arcsec, 1)}″` : '-'}
               </span>
             </div>
           </div>
