@@ -1,15 +1,17 @@
 // Kadrowanie: zdjęcie DSS2 wokół obiektu w rzucie TAN i prostokąt matrycy z obrotem (PA od N przez E).
-import { RotateCw } from 'lucide-react'
+import { ChartColumn, RotateCw } from 'lucide-react'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { computeOptics } from '../lib/astro'
 import { parseDecCoordinate, parseRaCoordinate } from '../lib/coordinates'
 import { fmtDec, fmtNum, fmtRa } from '../lib/format'
 import { frameCorners, gnomonic, gnomonicInverse, mosaicOffsets, pixelToTangent, tangentToPixel, type Mosaic } from '../lib/framing'
 import { SURVEYS } from '../lib/hips'
+import { isDefaultLevels, normalizeLevels, tableValues } from '../lib/stretch'
 import { getSkyImage, type SkyImageOptions } from '../lib/thumbs'
 import { useSelected } from '../state/data'
 import { useStore } from '../state/store'
 import { Range } from './Range'
+import { StretchDialog } from './StretchDialog'
 
 const SIZE = 800
 const IMAGE_ERROR = 'Nie udało się złożyć zdjęcia z kafelków HiPS'
@@ -18,6 +20,8 @@ const MAX_PANELS_PER_SIDE = 5
 // Uchwyt obrotu w proporcji do kadru: promień ≈ 3,3% krótszego boku (nie mniej niż 6 jednostek, żeby dało się go chwycić).
 const HANDLE_R = 0.033
 const HANDLE_MIN_R = 6
+// Stały identyfikator filtra (useId daje znaki psujące url(#…)); okno kadrowania jest jedno.
+const STRETCH_FILTER_ID = 'framing-stretch'
 
 type Layer = 'red' | 'color' | 'ps1'
 const LAYERS: Record<Layer, Required<Pick<SkyImageOptions, 'survey' | 'mode'>>> = {
@@ -35,6 +39,8 @@ export function FramingPanel() {
   const setTab = useStore((s) => s.setTab)
   const updatePlan = useStore((s) => s.updatePlan)
   const plan = useStore((s) => s.plan)
+  const storedStretch = useStore((s) => s.framingStretch)
+  const setFramingStretch = useStore((s) => s.setFramingStretch)
   const [layer, setLayer] = useState<Layer>('color')
   const [img, setImg] = useState<{ key: string; url: string; sharp: boolean } | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -43,6 +49,9 @@ export function FramingPanel() {
   const [coordinateError, setCoordinateError] = useState<string | null>(null)
   const [photoCenter, setPhotoCenter] = useState<{ objectIndex: number; raDeg: number; decDeg: number } | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
+  const imgRef = useRef<HTMLImageElement>(null)
+  const stretchButtonRef = useRef<HTMLButtonElement>(null)
+  const [stretchOpen, setStretchOpen] = useState(false)
   const drag = useRef<{ kind: 'move' | 'rotate'; startX: number; startY: number; startCenter: { xi: number; eta: number }; startPa: number } | null>(null)
 
   const optics = useMemo(
@@ -62,6 +71,10 @@ export function FramingPanel() {
   const imageRa = o ? (photoCenter?.objectIndex === o.i ? photoCenter.raDeg : center?.raDeg ?? o.raDeg) : null
   const imageDec = o ? (photoCenter?.objectIndex === o.i ? photoCenter.decDeg : center?.decDeg ?? o.decDeg) : null
   const imageKey = o ? `${o.i}:${imageRa}:${imageDec}:${imageFov}:${layer}` : ''
+  const levels = normalizeLevels(storedStretch[layer])
+  const stretched = !isDefaultLevels(levels)
+  const pointsKey = JSON.stringify(levels.points ?? [])
+  const stretchTable = useMemo(() => (stretched ? tableValues(levels) : ''), [stretched, levels.black, levels.white, levels.gamma, pointsKey])
 
   useEffect(() => {
     if (o && center) setPhotoCenter({ objectIndex: o.i, raDeg: center.raDeg, decDeg: center.decDeg })
@@ -160,7 +173,7 @@ export function FramingPanel() {
         {/* Kwadrat wpisany w kolumnę: krótszy z wymiarów, żeby szeroki kadr nie chował się za panelem ustawień. */}
         <div style={{ position: 'relative', width: 'min(100cqw, 100cqh)', aspectRatio: '1' }}>
           {img?.key === imageKey ? (
-            <img src={img.url} alt={`${o.id}, ${SURVEYS[LAYERS[layer].survey].label}`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', animation: 'fade-in .5s' }} onError={() => {
+            <img ref={imgRef} src={img.url} alt={`${o.id}, ${SURVEYS[LAYERS[layer].survey].label}`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', animation: 'fade-in .5s', filter: stretched ? `url(#${STRETCH_FILTER_ID})` : undefined }} onError={() => {
               setImg(null)
               setErr(IMAGE_ERROR)
             }} />
@@ -168,6 +181,18 @@ export function FramingPanel() {
             <div className="thumb" style={{ position: 'absolute', inset: 0 }}>
               <div className="ph">{err ?? 'POBIERANIE ZDJĘCIA'}</div>
             </div>
+          )}
+          {/* Poziomy jako filtr SVG tylko na zdjęciu: nakładka kadru zostaje ostra, kafelki nie są przeliczane. */}
+          {stretched && (
+            <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
+              <filter id={STRETCH_FILTER_ID} colorInterpolationFilters="sRGB">
+                <feComponentTransfer>
+                  <feFuncR type="table" tableValues={stretchTable} />
+                  <feFuncG type="table" tableValues={stretchTable} />
+                  <feFuncB type="table" tableValues={stretchTable} />
+                </feComponentTransfer>
+              </filter>
+            </svg>
           )}
           <svg
             ref={svgRef}
@@ -220,8 +245,19 @@ export function FramingPanel() {
               pole zdjęcia {fmtNum(imageFov, 2)}° · {SURVEYS[LAYERS[layer].survey].label}
               {layer === 'red' ? ' czerwony' : layer === 'color' ? ' kolor' : ''} · {SURVEYS[LAYERS[layer].survey].credit}
               {img?.key === imageKey && !img.sharp ? ' · podgląd' : ''}
+              {stretched ? ' · rozciągnięte' : ''}
             </text>
           </svg>
+          <button
+            ref={stretchButtonRef}
+            className={`button small icon-button framing-stretch-button${stretched ? ' on' : ''}`}
+            title="Histogram i poziomy zdjęcia"
+            aria-label="Histogram i poziomy zdjęcia"
+            aria-haspopup="dialog"
+            onClick={() => setStretchOpen(true)}
+          >
+            <ChartColumn size={15} aria-hidden="true" />
+          </button>
         </div>
       </div>
       <div style={{ borderLeft: '1px solid var(--border)', padding: 14, display: 'flex', flexDirection: 'column', gap: 12, overflow: 'auto' }}>
@@ -315,6 +351,15 @@ export function FramingPanel() {
         </button>
         <p className="dim" style={{ fontSize: 11.5, margin: 0 }}>Przeciągnij prostokąt, aby przesunąć kadr; uchwyt nad kadrem obraca go. Powiększenie zmienia suwak.</p>
       </div>
+      <StretchDialog
+        open={stretchOpen}
+        onClose={() => setStretchOpen(false)}
+        anchorRef={stretchButtonRef}
+        imgRef={imgRef}
+        imgUrl={img?.key === imageKey ? img.url : null}
+        levels={levels}
+        onChange={(l) => setFramingStretch(layer, l && !isDefaultLevels(l) ? l : null)}
+      />
     </div>
   )
 }
