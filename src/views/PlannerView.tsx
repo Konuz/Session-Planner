@@ -2,7 +2,8 @@ import { ArrowDown, ArrowUp, Download, FileText, Trash2, Wand2, Crosshair, Alert
 import { useMemo, useState } from 'react'
 import { AltitudeChart } from '../components/AltitudeChart'
 import { Thumb } from '../components/Thumb'
-import { angularDistanceDeg, moonJ2000 } from '../lib/astro'
+import { angularDistanceDeg, computeOptics, moonJ2000 } from '../lib/astro'
+import { mosaicCenters } from '../lib/framing'
 import { displayName, TYPE_INFO, type DSO } from '../lib/catalog'
 import { exposureSeconds, fitExposures, planExposures, validExposure, type Exposure } from '../lib/exposures'
 import { fmtDec, fmtDeg, fmtDuration, fmtRa, fmtTime } from '../lib/format'
@@ -87,17 +88,25 @@ export default function PlannerView() {
   const chartRow = rows[chartIndex]
   const chartSlot = slots[chartIndex]
   const saveExposures = (r: Row, exposures: Exposure[]) => updatePlan(r.item.key, { exposures, filters: exposures.map((e) => e.filter).join(', ') })
-  const exportTargets = rows.map((r, i) => ({
-    name: displayName(r.o) ? `${r.o.id} ${displayName(r.o)}` : r.o.id,
-    type: TYPE_INFO[r.o.type].label,
-    raDeg: r.item.framing.raDeg ?? r.o.raDeg,
-    decDeg: r.item.framing.decDeg ?? r.o.decDeg,
-    paDeg: r.item.framing.paDeg,
-    exposures: r.exposures,
-    startMs: slots[i]?.startMs ?? null,
-    endMs: slots[i]?.endMs ?? null,
-    note: r.item.note,
-  }))
+  const optics = computeOptics({ apertureMm: equipment.apertureMm, focalLengthMm: equipment.focalLengthMm, reducer: equipment.reducer, widthPx: equipment.widthPx, heightPx: equipment.heightPx, pixelUm: equipment.pixelUm, binning: equipment.binning })
+  // Mozaika: każdy panel to osobny cel („Panel k”) ze wspólnym PA, jak w planie mozaiki Telescopius.
+  const exportTargets = rows.flatMap((r, i) => {
+    const name = displayName(r.o) ? `${r.o.id} ${displayName(r.o)}` : r.o.id
+    const center = { raDeg: r.item.framing.raDeg ?? r.o.raDeg, decDeg: r.item.framing.decDeg ?? r.o.decDeg }
+    const mosaic = r.item.framing.mosaic
+    const panels = mosaic && mosaic.cols * mosaic.rows > 1 ? mosaicCenters(center, optics.fovWdeg, optics.fovHdeg, r.item.framing.paDeg, mosaic) : [center]
+    return panels.map((p, k) => ({
+      name: panels.length > 1 ? `${name} Panel ${k + 1}` : name,
+      type: TYPE_INFO[r.o.type].label,
+      raDeg: p.raDeg,
+      decDeg: p.decDeg,
+      paDeg: r.item.framing.paDeg,
+      exposures: r.exposures,
+      startMs: slots[i]?.startMs ?? null,
+      endMs: slots[i]?.endMs ?? null,
+      note: r.item.note,
+    }))
+  })
   const exportCsv = () => {
     const csv = exportFormat === 'exposures' ? exposureCsv(exportTargets, tz)
       : exportFormat === 'scheduler' ? schedulerCsv(exportTargets) : ninaCsv(exportTargets)

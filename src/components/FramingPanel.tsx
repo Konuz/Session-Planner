@@ -1,10 +1,10 @@
 // Kadrowanie: zdjęcie DSS2 wokół obiektu w rzucie TAN i prostokąt matrycy z obrotem (PA od N przez E).
 import { RotateCw } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { computeOptics } from '../lib/astro'
 import { parseDecCoordinate, parseRaCoordinate } from '../lib/coordinates'
 import { fmtDec, fmtNum, fmtRa } from '../lib/format'
-import { frameCorners, gnomonic, gnomonicInverse, pixelToTangent, tangentToPixel } from '../lib/framing'
+import { frameCorners, gnomonic, gnomonicInverse, mosaicOffsets, pixelToTangent, tangentToPixel, type Mosaic } from '../lib/framing'
 import { SURVEYS } from '../lib/hips'
 import { getSkyImage, type SkyImageOptions } from '../lib/thumbs'
 import { useSelected } from '../state/data'
@@ -13,6 +13,11 @@ import { Range } from './Range'
 
 const SIZE = 800
 const IMAGE_ERROR = 'Nie udało się złożyć zdjęcia z kafelków HiPS'
+const DEFAULT_MOSAIC: Mosaic = { cols: 1, rows: 1, overlapPct: 15 }
+const MAX_PANELS_PER_SIDE = 5
+// Uchwyt obrotu w proporcji do kadru: promień ≈ 3,3% krótszego boku (nie mniej niż 6 jednostek, żeby dało się go chwycić).
+const HANDLE_R = 0.033
+const HANDLE_MIN_R = 6
 
 type Layer = 'red' | 'color' | 'ps1'
 const LAYERS: Record<Layer, Required<Pick<SkyImageOptions, 'survey' | 'mode'>>> = {
@@ -44,7 +49,12 @@ export function FramingPanel() {
     () => computeOptics({ apertureMm: eq.apertureMm, focalLengthMm: eq.focalLengthMm, reducer: eq.reducer, widthPx: eq.widthPx, heightPx: eq.heightPx, pixelUm: eq.pixelUm, binning: eq.binning }),
     [eq],
   )
-  const diag = Math.hypot(optics.fovWdeg, optics.fovHdeg)
+  const mosaic = framing.mosaic ?? DEFAULT_MOSAIC
+  // Obrys całej mozaiki: n paneli zachodzących o zakładkę (w płaszczyźnie stycznej).
+  const spanDeg = (fovDeg: number, n: number) => (2 * Math.atan(Math.tan((fovDeg / 2) * (Math.PI / 180)) * (1 + (n - 1) * (1 - mosaic.overlapPct / 100))) * 180) / Math.PI
+  const mosaicW = spanDeg(optics.fovWdeg, mosaic.cols)
+  const mosaicH = spanDeg(optics.fovHdeg, mosaic.rows)
+  const diag = Math.hypot(mosaicW, mosaicH)
   const objDeg = o ? o.majArcmin / 60 : 0
   const baseFov = Math.min(30, Math.max(0.3, diag * 1.6, objDeg * 1.4))
   const imageFov = Math.round((baseFov / zoom) * 1000) / 1000
@@ -91,12 +101,25 @@ export function FramingPanel() {
   if (!o || !center) return <div className="sky-stage empty" style={{ display: 'grid', placeItems: 'center' }}>Wybierz obiekt, aby kadrować.</div>
 
   const offset = gnomonic(o, center)
-  const corners = frameCorners(offset, optics.fovWdeg, optics.fovHdeg, framing.paDeg).map((c) => tangentToPixel(c, imageFov, SIZE))
+  const corners = frameCorners(offset, mosaicW, mosaicH, framing.paDeg).map((c) => tangentToPixel(c, imageFov, SIZE))
+  const panelCount = mosaic.cols * mosaic.rows
+  const panels = panelCount > 1
+    ? mosaicOffsets(offset, optics.fovWdeg, optics.fovHdeg, framing.paDeg, mosaic).map((t) => ({
+        center: tangentToPixel(t, imageFov, SIZE),
+        corners: frameCorners(t, optics.fovWdeg, optics.fovHdeg, framing.paDeg).map((c) => tangentToPixel(c, imageFov, SIZE)),
+      }))
+    : []
   const centerPx = tangentToPixel(offset, imageFov, SIZE)
   const topMid: [number, number] = [(corners[0][0] + corners[1][0]) / 2, (corners[0][1] + corners[1][1]) / 2]
   const handle: [number, number] = [topMid[0] + (topMid[0] - centerPx[0]) * 0.18, topMid[1] + (topMid[1] - centerPx[1]) * 0.18]
-  const ratio = objDeg / Math.max(optics.fovWdeg, optics.fovHdeg)
-  const coverage = ratio > 1 ? `większy niż kadr (mozaika ×${Math.ceil(ratio)})` : `${Math.round(ratio * 100)}% boku`
+  const shortSide = (c: [number, number][]) => Math.min(Math.hypot(c[1][0] - c[0][0], c[1][1] - c[0][1]), Math.hypot(c[3][0] - c[0][0], c[3][1] - c[0][1]))
+  const handleR = Math.max(HANDLE_MIN_R, shortSide(corners) * HANDLE_R)
+  const panelFont = panels.length ? Math.min(28, Math.max(10, shortSide(panels[0].corners) * 0.14)) : 0
+  const ratio = objDeg / Math.max(mosaicW, mosaicH)
+  const coverage = ratio > 1
+    ? `większy niż ${panelCount > 1 ? 'mozaika' : 'kadr'} (potrzeba ok. ×${Math.ceil(objDeg / Math.max(optics.fovWdeg, optics.fovHdeg))})`
+    : `${Math.round(ratio * 100)}% boku`
+  const setMosaic = (patch: Partial<Mosaic>) => setFraming({ mosaic: { ...mosaic, ...patch } })
   const planItem = plan.find((p) => p.objectIndex === o.i)
 
   const applyCoordinates = () => {
@@ -168,11 +191,17 @@ export function FramingPanel() {
                 drag.current = { kind: 'move', startX: x, startY: y, startCenter: offset, startPa: framing.paDeg }
               }}
             />
+            {panels.map((p, k) => (
+              <g key={k} style={{ pointerEvents: 'none' }}>
+                <polygon points={p.corners.map((c) => c.join(',')).join(' ')} fill="none" stroke="#00e0ff" strokeOpacity="0.7" strokeWidth="1.2" strokeDasharray="6 4" />
+                <text x={p.center[0]} y={p.center[1]} fill="#00e0ff" fillOpacity="0.85" fontSize={panelFont} textAnchor="middle" dominantBaseline="central" fontFamily="var(--mono)">{k + 1}</text>
+              </g>
+            ))}
             <line x1={topMid[0]} y1={topMid[1]} x2={handle[0]} y2={handle[1]} stroke="#00e0ff" strokeWidth="2" />
             <circle
               cx={handle[0]}
               cy={handle[1]}
-              r="14"
+              r={handleR}
               fill="#0a222e"
               stroke="#00e0ff"
               strokeWidth="2"
@@ -234,6 +263,33 @@ export function FramingPanel() {
         <div className="framing-button-row">
           <button className="button small" onClick={() => { setPhotoCenter({ objectIndex: o.i, raDeg: o.raDeg, decDeg: o.decDeg }); setFraming({ raDeg: null, decDeg: null }) }}>Wyśrodkuj</button>
           <button className="button small" onClick={() => setFraming({ paDeg: (framing.paDeg - 90 + 360) % 360 })}><RotateCw size={13} /> +90°</button>
+        </div>
+        <div className="field">
+          <span className="label">Mozaika (kolumny × wiersze)</span>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            {(['cols', 'rows'] as const).map((k, i) => (
+              <Fragment key={k}>
+                {i > 0 && <span className="dim">×</span>}
+                <input
+                  className="control figures"
+                  aria-label={k === 'cols' ? 'Kolumny mozaiki' : 'Wiersze mozaiki'}
+                  type="number"
+                  min={1}
+                  max={MAX_PANELS_PER_SIDE}
+                  style={{ width: 56 }}
+                  value={mosaic[k]}
+                  onChange={(e) => setMosaic({ [k]: Math.min(MAX_PANELS_PER_SIDE, Math.max(1, Math.round(Number(e.target.value) || 1))) })}
+                />
+              </Fragment>
+            ))}
+            <span className="dim" style={{ fontSize: 11 }}>{panelCount > 1 ? `${panelCount} paneli` : 'jeden kadr'}</span>
+          </div>
+          {panelCount > 1 && (
+            <>
+              <span className="label">Zakładka {mosaic.overlapPct}%</span>
+              <Range min={0} max={50} step={5} value={mosaic.overlapPct} onChange={(e) => setMosaic({ overlapPct: Number(e.target.value) })} />
+            </>
+          )}
         </div>
         <div className="field">
           <span className="label">Warstwa</span>

@@ -47,6 +47,40 @@ export function frameCorners(offset: TangentPoint, fovWdeg: number, fovHdeg: num
   }))
 }
 
+export interface Mosaic {
+  cols: number
+  rows: number
+  /** Zakładka sąsiednich paneli [% boku]. */
+  overlapPct: number
+}
+
+/**
+ * Środki paneli mozaiki w płaszczyźnie stycznej [rad] wokół `offset`, w siatce obróconej o PA jak `frameCorners`;
+ * kolejność wierszami od lewego górnego panelu (przy PA 0: N u góry, E po lewej).
+ */
+export function mosaicOffsets(offset: TangentPoint, fovWdeg: number, fovHdeg: number, paDeg: number, m: Mosaic): TangentPoint[] {
+  const k = 1 - m.overlapPct / 100
+  const sx = 2 * Math.tan((fovWdeg / 2) * DEG) * k
+  const sy = 2 * Math.tan((fovHdeg / 2) * DEG) * k
+  const pa = paDeg * DEG
+  const up = { xi: Math.sin(pa), eta: Math.cos(pa) }
+  const right = { xi: -Math.cos(pa), eta: Math.sin(pa) }
+  const out: TangentPoint[] = []
+  for (let r = 0; r < m.rows; r++) {
+    for (let c = 0; c < m.cols; c++) {
+      const u = (c - (m.cols - 1) / 2) * sx
+      const v = ((m.rows - 1) / 2 - r) * sy
+      out.push({ xi: offset.xi + u * right.xi + v * up.xi, eta: offset.eta + u * right.eta + v * up.eta })
+    }
+  }
+  return out
+}
+
+/** Środki paneli mozaiki J2000 dla kadru o środku `center`. */
+export function mosaicCenters(center: Equatorial, fovWdeg: number, fovHdeg: number, paDeg: number, m: Mosaic): Equatorial[] {
+  return mosaicOffsets({ xi: 0, eta: 0 }, fovWdeg, fovHdeg, paDeg, m).map((t) => gnomonicInverse(center, t))
+}
+
 /** Punkt płaszczyzny stycznej → piksel zdjęcia hips2fits (TAN, N u góry, E po lewej). */
 export function tangentToPixel(p: TangentPoint, imageFovDeg: number, sizePx: number): [number, number] {
   // hips2fits: skala = 2·tan(fov/2)/W [rad/px] w rzucie TAN.

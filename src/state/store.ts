@@ -2,6 +2,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { EMPTY_FILTER, type CatalogFilter, type ObjectType, SKY_GROUPS, type SkyGroup } from '../lib/catalog'
+import type { Mosaic } from '../lib/framing'
 import type { HorizonPoint } from '../lib/horizon'
 import { nightDateOf } from '../lib/night'
 import { planExposures, type Exposure } from '../lib/exposures'
@@ -79,6 +80,8 @@ export interface Framing {
   raDeg: number | null
   decDeg: number | null
   paDeg: number
+  /** Siatka paneli; brak = jeden kadr. */
+  mosaic?: Mosaic
 }
 
 export interface PlanItem {
