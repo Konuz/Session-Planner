@@ -6,6 +6,7 @@ import type { Mosaic } from '../lib/framing'
 import type { HorizonPoint } from '../lib/horizon'
 import { nightDateOf } from '../lib/night'
 import { planExposures, type Exposure } from '../lib/exposures'
+import type { Levels } from '../lib/stretch'
 
 export interface Location {
   name: string
@@ -119,6 +120,8 @@ interface State {
   minAltDeg: number
   horizon: HorizonPoint[]
   framing: Framing
+  /** Rozciągnięcie zdjęcia kadru (poziomy) osobno dla każdej warstwy; brak wpisu = bez zmian. */
+  framingStretch: Record<string, Levels>
   plan: PlanItem[]
   favoriteIds: string[]
   filter: CatalogFilter
@@ -156,6 +159,8 @@ interface State {
   setMinAlt(v: number): void
   setHorizon(points: HorizonPoint[]): void
   setFraming(patch: Partial<Framing>): void
+  /** null przywraca domyślne poziomy warstwy. */
+  setFramingStretch(layer: string, levels: Levels | null): void
   addToPlan(index: number, id: string): void
   updatePlan(key: string, patch: Partial<PlanItem>): void
   removeFromPlan(key: string): void
@@ -189,6 +194,7 @@ export const useStore = create<State>()(
       minAltDeg: 25,
       horizon: [],
       framing: { raDeg: null, decDeg: null, paDeg: 0 },
+      framingStretch: {},
       plan: [],
       favoriteIds: [],
       filter: EMPTY_FILTER,
@@ -284,6 +290,11 @@ export const useStore = create<State>()(
       setMinAlt: (minAltDeg) => set({ minAltDeg }),
       setHorizon: (horizon) => set({ horizon }),
       setFraming: (patch) => set((s) => ({ framing: { ...s.framing, ...patch } })),
+      setFramingStretch: (layer, levels) => set((s) => {
+        const rest = { ...s.framingStretch }
+        delete rest[layer]
+        return { framingStretch: levels ? { ...rest, [layer]: levels } : rest }
+      }),
       addToPlan: (objectIndex, objectId) =>
         set((s) =>
           s.plan.some((p) => p.objectIndex === objectIndex)
@@ -337,6 +348,7 @@ export const useStore = create<State>()(
         savedCameras: s.savedCameras,
         minAltDeg: s.minAltDeg,
         horizon: s.horizon,
+        framingStretch: s.framingStretch,
         plan: s.plan,
         favoriteIds: s.favoriteIds,
         filter: s.filter,
@@ -352,10 +364,10 @@ export const useStore = create<State>()(
         showAnnotations: s.showAnnotations,
         annotationColors: s.annotationColors,
       }),
-      // Grupy katalogów dopisane po zapisie stanu startują włączone.
+      // Grupy katalogów dopisane po zapisie stanu startują włączone; stan sprzed poziomów kadru dostaje pusty obiekt.
       merge: (persisted, current) => {
         const p = persisted as Partial<State> | undefined
-        return { ...current, ...p, skyGroups: { ...current.skyGroups, ...p?.skyGroups } }
+        return { ...current, ...p, skyGroups: { ...current.skyGroups, ...p?.skyGroups }, framingStretch: { ...p?.framingStretch } }
       },
       // Noc zawsze startuje od bieżącej daty w strefie zapisanej lokalizacji.
       onRehydrateStorage: () => (state) => {
