@@ -139,7 +139,8 @@ export function FramingPanel() {
     : []
   const centerPx = tangentToPixel(offset, imageFov, SIZE)
   const topMid: [number, number] = [(corners[0][0] + corners[1][0]) / 2, (corners[0][1] + corners[1][1]) / 2]
-  const handle: [number, number] = [topMid[0] + (topMid[0] - centerPx[0]) * 0.18, topMid[1] + (topMid[1] - centerPx[1]) * 0.18]
+  const upLen = Math.hypot(topMid[0] - centerPx[0], topMid[1] - centerPx[1]) || 1
+  const up: [number, number] = [(topMid[0] - centerPx[0]) / upLen, (topMid[1] - centerPx[1]) / upLen]
   const shortSide = (c: [number, number][]) => Math.min(Math.hypot(c[1][0] - c[0][0], c[1][1] - c[0][1]), Math.hypot(c[3][0] - c[0][0], c[3][1] - c[0][1]))
   const handleR = Math.max(HANDLE_MIN_R, shortSide(corners) * HANDLE_R)
   const panelFont = panels.length ? Math.min(28, Math.max(10, shortSide(panels[0].corners) * 0.14)) : 0
@@ -267,14 +268,18 @@ export function FramingPanel() {
                 <text x={p.center[0]} y={p.center[1]} fill="#00e0ff" fillOpacity="0.85" fontSize={panelFont} textAnchor="middle" dominantBaseline="central" fontFamily="var(--mono)">{k + 1}</text>
               </g>
             ))}
-            <line x1={topMid[0]} y1={topMid[1]} x2={handle[0]} y2={handle[1]} stroke="#00e0ff" strokeWidth="2" />
-            <circle
-              cx={handle[0]}
-              cy={handle[1]}
-              r={handleR}
-              fill="#0a222e"
-              stroke="#00e0ff"
-              strokeWidth="2"
+            {/* Uchwyt obrotu: trójkąt na górnej krawędzi matrycy, jak znacznik kadru na kopule. */}
+            <polygon
+              points={[
+                [topMid[0] + up[0] * handleR * 1.5, topMid[1] + up[1] * handleR * 1.5],
+                [topMid[0] - up[1] * handleR, topMid[1] + up[0] * handleR],
+                [topMid[0] + up[1] * handleR, topMid[1] - up[0] * handleR],
+              ].map((c) => c.join(',')).join(' ')}
+              fill="#00e0ff"
+              // Przezroczysty obrys powiększa pole chwytania małego trójkąta.
+              stroke="transparent"
+              strokeWidth={handleR * 2}
+              strokeLinejoin="round"
               style={{ cursor: 'grab' }}
               onPointerDown={(e) => {
                 ;(e.target as Element).setPointerCapture(e.pointerId)
