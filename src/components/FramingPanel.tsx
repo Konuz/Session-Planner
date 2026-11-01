@@ -1,5 +1,5 @@
 // Kadrowanie: zdjęcie DSS2 wokół obiektu w rzucie TAN i prostokąt matrycy z obrotem (PA od N przez E).
-import { ChartColumn, RotateCw } from 'lucide-react'
+import { ChartColumn, Eye, EyeOff, RotateCw } from 'lucide-react'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { computeOptics } from '../lib/astro'
 import { parseDecCoordinate, parseRaCoordinate } from '../lib/coordinates'
@@ -52,6 +52,8 @@ export function FramingPanel() {
   const imgRef = useRef<HTMLImageElement>(null)
   const stretchButtonRef = useRef<HTMLButtonElement>(null)
   const [stretchOpen, setStretchOpen] = useState(false)
+  // Ukrycie nakładki kadru (prostokąt, mozaika, uchwyt), żeby lepiej widzieć zdjęcie, np. przy pracy z histogramem.
+  const [frameVisible, setFrameVisible] = useState(true)
   const drag = useRef<{ kind: 'move' | 'rotate'; startX: number; startY: number; startCenter: { xi: number; eta: number }; startPa: number } | null>(null)
 
   const optics = useMemo(
@@ -202,9 +204,12 @@ export function FramingPanel() {
             onPointerUp={() => (drag.current = null)}
             onPointerLeave={() => (drag.current = null)}
           >
-            <g stroke="rgba(255,255,255,0.25)" strokeWidth="1">
-              <path d={`M${SIZE / 2 - 10} ${SIZE / 2}h20M${SIZE / 2} ${SIZE / 2 - 10}v20`} />
-            </g>
+            {frameVisible && (
+              <g stroke="rgba(255,255,255,0.25)" strokeWidth="1">
+                <path d={`M${SIZE / 2 - 10} ${SIZE / 2}h20M${SIZE / 2} ${SIZE / 2 - 10}v20`} />
+              </g>
+            )}
+            {frameVisible && (<>
             <polygon
               points={corners.map((c) => c.join(',')).join(' ')}
               fill="rgba(0,224,255,0.06)"
@@ -239,6 +244,7 @@ export function FramingPanel() {
               }}
             />
             <circle cx={centerPx[0]} cy={centerPx[1]} r="4" fill="#00e0ff" />
+            </>)}
             <text x="18" y="34" fill="#fff" fontSize="22" fontFamily="var(--mono)">N ↑</text>
             <text x="18" y="62" fill="#fff" fontSize="22" fontFamily="var(--mono)">← E</text>
             <text x={SIZE - 18} y={SIZE - 20} fill="rgba(255,255,255,0.6)" fontSize="13" textAnchor="end" fontFamily="var(--mono)">
@@ -249,12 +255,22 @@ export function FramingPanel() {
             </text>
           </svg>
           <button
+            className={`button small icon-button framing-eye-button${frameVisible ? '' : ' on'}`}
+            title={frameVisible ? 'Ukryj pole kadru' : 'Pokaż pole kadru'}
+            aria-label={frameVisible ? 'Ukryj pole kadru' : 'Pokaż pole kadru'}
+            aria-pressed={!frameVisible}
+            data-keeps-stretch
+            onClick={() => setFrameVisible((v) => !v)}
+          >
+            {frameVisible ? <Eye size={15} aria-hidden="true" /> : <EyeOff size={15} aria-hidden="true" />}
+          </button>
+          <button
             ref={stretchButtonRef}
-            className={`button small icon-button framing-stretch-button${stretched ? ' on' : ''}`}
+            className={`button small icon-button framing-stretch-button${stretchOpen || stretched ? ' on' : ''}`}
             title="Histogram i poziomy zdjęcia"
             aria-label="Histogram i poziomy zdjęcia"
             aria-haspopup="dialog"
-            onClick={() => setStretchOpen(true)}
+            onClick={() => setStretchOpen((v) => !v)}
           >
             <ChartColumn size={15} aria-hidden="true" />
           </button>

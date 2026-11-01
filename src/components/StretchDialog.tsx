@@ -3,7 +3,6 @@
 import { ChartColumn } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from 'react'
 import { baseAt, baseInverse, gammaToSlider, histogram, isDefaultLevels, makeTransfer, MAX_POINTS, MIN_POINT_GAP, sliderToGamma, type CurvePoint, type Levels } from '../lib/stretch'
-import { CloseButton } from './CloseButton'
 import { Range } from './Range'
 
 // Wykres w jednostkach logicznych (oś X: wejście 0–255, oś Y: wyjście 0–1), rysowany w podwójnej rozdzielczości.
@@ -48,7 +47,12 @@ export function StretchDialog({ open, onClose, anchorRef, imgRef, imgUrl, levels
       if (dlg.open) dlg.close()
       return
     }
-    if (!dlg.open) dlg.showModal()
+    if (!dlg.open) {
+      // Bez trybu modalnego: przyciski nad zdjęciem (np. ukrycie kadru) działają przy otwartym oknie.
+      dlg.show()
+      // Fokus na samym oknie, nie na pierwszym suwaku (bez ramki fokusu przy otwarciu myszą).
+      dlg.focus()
+    }
     const place = () => {
       const a = anchorRef.current?.getBoundingClientRect()
       const d = dialogRef.current?.getBoundingClientRect()
@@ -65,6 +69,23 @@ export function StretchDialog({ open, onClose, anchorRef, imgRef, imgUrl, levels
     addEventListener('resize', place)
     return () => removeEventListener('resize', place)
   }, [open, anchorRef, bins])
+
+  // Zamykanie: kliknięcie poza oknem (oprócz przycisku histogramu, który sam przełącza, i elementów z `data-keeps-stretch`) albo Esc.
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Element | null
+      if (!t || dialogRef.current?.contains(t) || anchorRef.current?.contains(t) || t.closest('[data-keeps-stretch]')) return
+      onClose()
+    }
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    document.addEventListener('pointerdown', onDown, true)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open, onClose, anchorRef])
 
   // Piksele czytane z niezmienionego obrazu (filtr SVG działa tylko przy wyświetlaniu).
   useEffect(() => {
@@ -208,18 +229,13 @@ export function StretchDialog({ open, onClose, anchorRef, imgRef, imgUrl, levels
     <dialog
       ref={dialogRef}
       className="stretch-dialog"
+      tabIndex={-1}
       aria-labelledby="stretch-title"
       style={pos ?? { visibility: 'hidden' }}
       onClose={onClose}
-      onClick={(e) => {
-        // Kliknięcie w tło poza oknem zamyka je (cel to sam <dialog>, a punkt leży poza jego prostokątem).
-        const r = e.currentTarget.getBoundingClientRect()
-        if (e.target === e.currentTarget && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) onClose()
-      }}
     >
       <div className="stretch-head">
         <h2 id="stretch-title"><ChartColumn size={16} aria-hidden="true" /> Poziomy zdjęcia</h2>
-        <CloseButton onClick={onClose} />
       </div>
       <canvas
         ref={canvasRef}
