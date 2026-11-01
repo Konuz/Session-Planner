@@ -9,7 +9,7 @@
 // - milkyway.png: jasność Drogi Mlecznej w siatce RA/Dec co 0,5° (kontury d3-celestial, BSD), rozmyta.
 //
 // Uruchom: node scripts/build-data.ts   (Node ≥ 23 uruchamia TypeScript bez kompilacji)
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import sharp from 'sharp'
 
@@ -583,8 +583,36 @@ async function buildMilkyWay() {
   console.log(`milkyway: ${W}×${H}, piksele z pasem: ${levels.filter((n) => n > 0).length}`)
 }
 
+// Dane testu geometrii kafelków HiPS (src/lib/hips.real.test.ts): kafelki DSS2 rzędu 7 z ESA i wzorce SkyView DSS2 red.
+const HIPS_FIELDS: { name: string; ra: number; dec: number; tiles: number[] }[] = [
+  { name: 'm27', ra: 299.9016, dec: 22.721, tiles: [51927, 51932, 51933, 51935, 52104] },
+  { name: 'ngc188', ra: 12.11, dec: 85.255, tiles: [16301, 16306, 16307, 16312, 16313] },
+  { name: 'ngc253', ra: 11.888, dec: -25.288, tiles: [66615, 66621, 66658, 66664] },
+  { name: 'ngc7814', ra: 0.8125, dec: 16.145, tiles: [78789, 78791, 78797, 78802, 78808] },
+  { name: 'ngc2070', ra: 84.676, dec: -69.101, tiles: [132377, 132378, 132379, 132382] },
+]
+
+async function buildHipsFixtures() {
+  mkdirSync(join(CACHE, 'hips'), { recursive: true })
+  // SkyView zwraca czasem stronę HTML zamiast obrazu: plik bez nagłówka JPEG (FF D8) pobieramy ponownie.
+  const jpeg = async (name: string, url: string) => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const buf = await cachedBinary(name, url)
+      if (buf[0] === 0xff && buf[1] === 0xd8) return
+      rmSync(join(CACHE, name))
+    }
+    throw new Error(`${url}: brak obrazu JPEG`)
+  }
+  for (const f of HIPS_FIELDS) {
+    for (const n of f.tiles) await jpeg(`hips/dss2-7-${n}.jpg`, `https://cdn.skies.esac.esa.int/DSSColor/Norder7/Dir${Math.floor(n / 10000) * 10000}/Npix${n}.jpg`)
+    await jpeg(`hips/skyview-${f.name}.jpg`, `https://skyview.gsfc.nasa.gov/current/cgi/runquery.pl?Survey=DSS2+Red&Position=${f.ra},${f.dec}&Size=0.4&Pixels=300&Return=JPG&Scaling=Linear`)
+  }
+  console.log(`hips: ${HIPS_FIELDS.reduce((s, f) => s + f.tiles.length, 0)} kafelków, ${HIPS_FIELDS.length} wzorców`)
+}
+
 const only = process.argv[2]
 if (!only || only === 'catalog') await buildCatalog()
 if (!only || only === 'sky') await buildSky()
 if (!only || only === 'outlines') await buildOutlines()
 if (!only || only === 'milkyway') await buildMilkyWay()
+if (only === 'hips') await buildHipsFixtures()
