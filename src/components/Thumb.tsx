@@ -43,12 +43,12 @@ export function Thumb({ object, className = 'thumb', style, fovDeg, sizePx, pref
     }
   }, [object, key, fovDeg, sizePx, preferAstroBin])
 
-  const current = src?.key === key ? src.url : null
+  const current = src?.key === key && failed !== key ? src.url : null
   return (
     <div ref={ref} className={className} style={style}>
       {current ? (
         <>
-          <img src={current} alt={`${object.id}, ${src?.astroBin ? 'zdjęcie użytkownika Konuz z AstroBin' : 'zdjęcie DSS2'}`} style={src?.astroBin ? { filter: 'none', objectFit: 'contain' } : undefined} loading="lazy" decoding="async" />
+          <img src={current} alt={`${object.id}, ${src?.astroBin ? 'zdjęcie użytkownika Konuz z AstroBin' : 'zdjęcie DSS2'}`} style={src?.astroBin ? { filter: 'none', objectFit: 'contain' } : undefined} loading="lazy" decoding="async" onError={() => setFailed(key)} />
           {src?.key === key && src.astroBin && (
             <a className="button" href={src.astroBin.galleryUrl} target="_blank" rel="noreferrer" title={src.astroBin.title} style={{ position: 'absolute', left: 8, bottom: 8, zIndex: 2, fontSize: 10, padding: '5px 7px' }}>
               AstroBin · Konuz

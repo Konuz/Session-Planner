@@ -112,7 +112,10 @@ export function FramingPanel() {
       <div style={{ position: 'relative', display: 'grid', placeItems: 'center', overflow: 'hidden', padding: 12 }}>
         <div style={{ position: 'relative', height: '100%', aspectRatio: '1', maxWidth: '100%' }}>
           {img?.key === imageKey ? (
-            <img src={img.url} alt={`${o.id}, DSS2`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', filter: layer === 'red' ? 'grayscale(1) contrast(1.15)' : undefined, animation: 'fade-in .5s' }} />
+            <img src={img.url} alt={`${o.id}, DSS2`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', filter: layer === 'red' ? 'grayscale(1) contrast(1.15)' : undefined, animation: 'fade-in .5s' }} onError={() => {
+              setImg(null)
+              setErr('Nie udało się pobrać zdjęcia (CDS hips2fits ani NASA SkyView)')
+            }} />
           ) : (
             <div className="thumb" style={{ position: 'absolute', inset: 0 }}>
               <div className="ph">{err ?? 'POBIERANIE ZDJĘCIA'}</div>

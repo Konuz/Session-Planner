@@ -5,6 +5,7 @@ import type { DSO } from './catalog'
 const CACHE_NAME = 'tracker-thumbs-v1'
 const SERVERS = ['alaskybis', 'alasky']
 const MAX_PARALLEL = 5
+const TIMEOUT_MS = 8000
 
 /** Pole wycinka [°]: obiekt zajmuje ok. 60% kadru, od 0,2° do 4°. */
 export function thumbFovDeg(o: Pick<DSO, 'majArcmin'>): number {
@@ -45,6 +46,8 @@ async function run(job: Job) {
     // Zapytanie z asekuracją: drugi serwer startuje, gdy pierwszy nie odpowie w 2,5 s albo zwróci błąd.
     const ctrl = new AbortController()
     job.signal?.addEventListener('abort', () => ctrl.abort())
+    // Limit całego zapytania: przy niedostępnym serwerze połączenie wisi ok. 21 s i zajmuje miejsce w kolejce.
+    const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS)
     const attempt = async (url: string, delayMs: number, previous?: Promise<Blob>) => {
       if (delayMs) await Promise.race([new Promise((r) => setTimeout(r, delayMs)), previous?.catch(() => undefined)])
       if (ctrl.signal.aborted) throw new DOMException('aborted', 'AbortError')
@@ -64,6 +67,8 @@ async function run(job: Job) {
       // Ostatnie źródło: NASA SkyView (bez CORS, więc bez Cache Storage; tylko pamięć HTTP przeglądarki).
       if (job.fallback && !job.signal?.aborted) job.resolve(job.fallback)
       else job.reject(e instanceof AggregateError ? e.errors[0] : e)
+    } finally {
+      clearTimeout(timer)
     }
   } finally {
     active--
@@ -87,7 +92,8 @@ function pump() {
 export function getSkyImage(raDeg: number, decDeg: number, fovDeg: number, sizePx: number, signal?: AbortSignal, hips?: string): Promise<string> {
   const key = `/thumb/${hips ?? 'dss2r'}/${raDeg.toFixed(4)}/${decDeg.toFixed(4)}/${fovDeg}/${sizePx}`
   const known = memory.get(key)
-  if (known) return known
+  // Wspólne zapytanie mógł przerwać inny odbiorca (np. podwójny efekt w StrictMode): wtedy zaczynamy od nowa.
+  if (known) return known.catch((e: Error) => (e.name === 'AbortError' && !signal?.aborted ? getSkyImage(raDeg, decDeg, fovDeg, sizePx, signal, hips) : Promise.reject(e)))
   const promise = new Promise<string>((resolve, reject) => {
     const fallback = `https://skyview.gsfc.nasa.gov/current/cgi/runquery.pl?Survey=dss2r&Position=${raDeg.toFixed(4)},${decDeg.toFixed(4)}&Size=${fovDeg}&Pixels=${sizePx}&Return=JPG`
     queue.push({ key, urls: SERVERS.map((s) => hips2fitsUrl(s, raDeg, decDeg, fovDeg, sizePx, hips)), fallback, resolve, reject, signal })
