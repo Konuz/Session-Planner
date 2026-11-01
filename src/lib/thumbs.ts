@@ -1,9 +1,10 @@
-// Obrazy nieba składane w workerze z kafelków HiPS (DSS2, PanSTARRS) z kilku luster: kolejka z ograniczoną
-// liczbą zadań i zapis gotowych obrazów w Cache Storage (drugi raz bez sieci).
+// Obrazy nieba składane w workerze. Wspólne są tylko trwające pobrania Blobów;
+// URL należy do wyświetlającego komponentu, a gotowe obrazy do ograniczonego Cache Storage.
 import type { DSO } from './catalog'
 import type { HipsCancel, HipsReply, HipsRequest, ImageMode, SurveyId } from './hips'
+import { imageCache } from './imageCache'
 
-const CACHE_NAME = 'tracker-thumbs-v2'
+const cache = imageCache('tracker-thumbs-v2', 128)
 const MAX_PARALLEL = 5
 
 /** Pole wycinka [°]: obiekt zajmuje ok. 60% kadru, od 0,2° do 4°. */
@@ -18,36 +19,24 @@ export interface SkyImageOptions {
   coarser?: number
 }
 
-type Job = { key: string; req: Omit<HipsRequest, 'id'>; resolve: (url: string) => void; reject: (e: unknown) => void; signal?: AbortSignal }
-
+type Consumer = { resolve: (blob: Blob) => void; reject: (e: unknown) => void; cleanup: () => void }
+type Job = { key: string; req: Omit<HipsRequest, 'id'>; consumers: Set<Consumer>; cancel?: () => void }
 const queue: Job[] = []
-const memory = new Map<string, Promise<string>>()
-const pending = new Map<number, { resolve: (reply: { blob: Blob; complete: boolean }) => void; reject: (e: Error) => void }>()
+const inFlight = new Map<string, Job>()
+const pending = new Map<number, { resolve: (reply: HipsReply) => void; reject: (e: Error) => void }>()
 let active = 0
 let lastId = 0
-let cachePromise: Promise<Cache | null> | null = null
 let hipsWorker: Worker | null = null
-
 const abortError = () => new DOMException('aborted', 'AbortError')
-
-const openCache = () =>
-  (cachePromise ??=
-    'caches' in globalThis
-      ? (caches.delete('tracker-thumbs-v1'), caches.open(CACHE_NAME).catch(() => null))
-      : Promise.resolve(null))
 
 function worker(): Worker {
   if (!hipsWorker) {
     hipsWorker = new Worker(new URL('../workers/hips.worker.ts', import.meta.url), { type: 'module' })
     hipsWorker.onmessage = (e: MessageEvent<HipsReply>) => {
       const reply = e.data
-      const p = pending.get(reply.id)
-      if (!p) return // zadanie przerwane: wynik idzie do kosza
+      pending.get(reply.id)?.resolve(reply)
       pending.delete(reply.id)
-      if ('error' in reply) p.reject(new Error(reply.error))
-      else p.resolve(reply)
     }
-    // Worker nie wczytał się albo padł (np. po aktualizacji PWA): odrzucamy zadania, następne tworzy nowy worker.
     hipsWorker.onerror = () => {
       hipsWorker?.terminate()
       hipsWorker = null
@@ -61,63 +50,69 @@ function worker(): Worker {
 async function run(job: Job) {
   active++
   try {
-    const cache = await openCache()
-    const hit = cache && (await cache.match(job.key))
-    if (job.signal?.aborted) return job.reject(abortError())
-    if (hit) return job.resolve(URL.createObjectURL(await hit.blob()))
-    const { blob, complete } = await new Promise<{ blob: Blob; complete: boolean }>((resolve, reject) => {
-      const id = ++lastId
-      pending.set(id, { resolve, reject })
+    let blob = await cache.get(job.key)
+    if (!job.consumers.size) return
+    if (!blob) {
       const w = worker()
-      job.signal?.addEventListener('abort', () => {
-        if (!pending.delete(id)) return
-        w.postMessage({ cancel: id } satisfies HipsCancel)
-        reject(abortError())
+      const id = ++lastId
+      const reply = await new Promise<HipsReply>((resolve, reject) => {
+        pending.set(id, { resolve, reject })
+        job.cancel = () => w.postMessage({ cancel: id } satisfies HipsCancel)
+        try { w.postMessage({ id, ...job.req } satisfies HipsRequest) } catch (e) { pending.delete(id); reject(e) }
       })
-      w.postMessage({ id, ...job.req } satisfies HipsRequest)
-    })
-    // Obraz z dziurą po chwilowym błędzie kafelka zostaje tylko w pamięci sesji; następna sesja spróbuje ponownie.
-    if (complete) await cache?.put(job.key, new Response(blob, { headers: { 'Content-Type': 'image/jpeg' } }))
-    if (job.signal?.aborted) return job.reject(abortError())
-    job.resolve(URL.createObjectURL(blob))
+      job.cancel = undefined
+      if ('cancelled' in reply) return
+      if ('error' in reply) throw new Error(reply.error)
+      blob = reply.blob
+      if (reply.complete) await cache.put(job.key, blob)
+    }
+    for (const c of job.consumers) c.resolve(blob)
   } catch (e) {
-    job.reject(e)
+    for (const c of job.consumers) c.reject(e)
   } finally {
+    for (const c of job.consumers) c.cleanup()
+    job.consumers.clear()
+    if (inFlight.get(job.key) === job) inFlight.delete(job.key)
     active--
     pump()
   }
 }
 
 function pump() {
-  while (active < MAX_PARALLEL && queue.length) {
-    // Najnowsze żądania (to, co użytkownik właśnie widzi) idą pierwsze.
-    const job = queue.pop()!
-    if (job.signal?.aborted) {
-      job.reject(abortError())
-      continue
-    }
-    void run(job)
-  }
+  while (active < MAX_PARALLEL && queue.length) void run(queue.pop()!)
 }
 
-/** Adres obiektu blob z obrazem nieba (z pamięci, z Cache Storage albo złożony z kafelków). */
-export function getSkyImage(raDeg: number, decDeg: number, fovDeg: number, sizePx: number, signal?: AbortSignal, opts: SkyImageOptions = {}): Promise<string> {
+/** Każdy odbiorca może się wycofać; ostatni anuluje render, slot zwalnia dopiero odpowiedź workera. */
+export function getSkyImage(raDeg: number, decDeg: number, fovDeg: number, sizePx: number, signal?: AbortSignal, opts: SkyImageOptions = {}): Promise<Blob> {
   const { survey = 'dss2', mode = 'color', coarser = 0 } = opts
   const key = `/thumb/${survey}/${mode}/${coarser}/${raDeg.toFixed(4)}/${decDeg.toFixed(4)}/${fovDeg}/${sizePx}`
   if (signal?.aborted) return Promise.reject(abortError())
-  const known = memory.get(key)
-  // Wspólne zapytanie mógł przerwać inny odbiorca (np. podwójny efekt w StrictMode): wtedy zaczynamy od nowa.
-  if (known) return known.catch((e: Error) => (e.name === 'AbortError' && !signal?.aborted ? getSkyImage(raDeg, decDeg, fovDeg, sizePx, signal, opts) : Promise.reject(e)))
-  const promise = new Promise<string>((resolve, reject) => {
-    queue.push({ key, req: { raDeg, decDeg, fovDeg, sizePx, survey, mode, coarser }, resolve, reject, signal })
+  let job = inFlight.get(key)
+  if (!job) {
+    job = { key, req: { raDeg, decDeg, fovDeg, sizePx, survey, mode, coarser }, consumers: new Set() }
+    inFlight.set(key, job)
+    queue.push(job)
+  }
+  const shared = job
+  return new Promise<Blob>((resolve, reject) => {
+    const abort = () => {
+      shared.consumers.delete(consumer)
+      consumer.cleanup()
+      reject(abortError())
+      if (shared.consumers.size) return
+      if (inFlight.get(key) === shared) inFlight.delete(key)
+      const queued = queue.indexOf(shared)
+      if (queued >= 0) queue.splice(queued, 1)
+      shared.cancel?.()
+    }
+    const consumer: Consumer = { resolve, reject, cleanup: () => signal?.removeEventListener('abort', abort) }
+    shared.consumers.add(consumer)
+    signal?.addEventListener('abort', abort, { once: true })
     pump()
   })
-  memory.set(key, promise)
-  promise.catch(() => memory.delete(key))
-  return promise
 }
 
-export function getThumb(o: DSO, signal?: AbortSignal): Promise<string> {
+export function getThumb(o: DSO, signal?: AbortSignal): Promise<Blob> {
   // 224 px (rozmiar karty katalogu) z rzędem grubszym o 1: bez rombów pikseli HEALPix; 12 miniatur ok. 2 MB.
   return getSkyImage(o.raDeg, o.decDeg, thumbFovDeg(o), 224, signal, { coarser: 1 })
 }

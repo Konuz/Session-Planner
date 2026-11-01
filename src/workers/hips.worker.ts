@@ -4,14 +4,16 @@ import { fetchTile } from '../lib/hipsTiles'
 
 // Zadania anulowane przez stronę: kafelki dalej trafiają do Cache Storage, ale bez dekodowania i malowania.
 const cancelled = new Set<number>()
+const running = new Set<number>()
 
 async function decode(blob: Blob): Promise<TilePixels> {
   const bitmap = await createImageBitmap(blob)
-  const canvas = new OffscreenCanvas(512, 512)
-  const ctx = canvas.getContext('2d')!
-  ctx.drawImage(bitmap, 0, 0)
-  bitmap.close()
-  return { data: ctx.getImageData(0, 0, 512, 512).data }
+  try {
+    const canvas = new OffscreenCanvas(512, 512)
+    const ctx = canvas.getContext('2d')!
+    ctx.drawImage(bitmap, 0, 0)
+    return { data: ctx.getImageData(0, 0, 512, 512).data }
+  } finally { bitmap.close() }
 }
 
 async function render(req: HipsRequest): Promise<HipsReply | null> {
@@ -37,13 +39,15 @@ async function render(req: HipsRequest): Promise<HipsReply | null> {
 self.onmessage = (e: MessageEvent<HipsRequest | HipsCancel>) => {
   const msg = e.data
   if ('cancel' in msg) {
-    cancelled.add(msg.cancel)
+    if (running.has(msg.cancel)) cancelled.add(msg.cancel)
     return
   }
+  running.add(msg.id)
   render(msg)
     .catch((err: Error): HipsReply => ({ id: msg.id, error: err.message }))
     .then((reply) => {
-      cancelled.delete(msg.id)
-      if (reply) self.postMessage(reply)
+      const aborted = cancelled.delete(msg.id)
+      running.delete(msg.id)
+      self.postMessage(aborted || !reply ? { id: msg.id, cancelled: true } satisfies HipsReply : reply)
     })
 }

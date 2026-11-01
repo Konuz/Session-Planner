@@ -9,30 +9,27 @@ import { useStore } from './store'
 
 // ---------- Katalog (wczytany raz) ----------
 
-let catalog: DSO[] | null = null
-let catalogError: string | null = null
+let catalogSnapshot: { catalog: DSO[] | null; error: string | null } = { catalog: null, error: null }
 const listeners = new Set<() => void>()
 let started = false
+const subscribeCatalog = (l: () => void) => {
+  listeners.add(l)
+  return () => { listeners.delete(l) }
+}
+const getCatalogSnapshot = () => catalogSnapshot
 
 function startCatalog() {
   if (started) return
   started = true
   loadCatalog()
-    .then((c) => (catalog = c))
-    .catch((e: Error) => (catalogError = e.message))
+    .then((catalog) => { catalogSnapshot = { catalog, error: null } })
+    .catch((e: Error) => { catalogSnapshot = { catalog: null, error: e.message } })
     .finally(() => listeners.forEach((l) => l()))
 }
 
 export function useCatalog(): { catalog: DSO[] | null; error: string | null } {
-  startCatalog()
-  const snapshot = useSyncExternalStore(
-    (l) => {
-      listeners.add(l)
-      return () => listeners.delete(l)
-    },
-    () => catalog,
-  )
-  return { catalog: snapshot, error: catalogError }
+  useEffect(startCatalog, [])
+  return useSyncExternalStore(subscribeCatalog, getCatalogSnapshot)
 }
 
 export function useSelected(): DSO | null {

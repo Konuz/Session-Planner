@@ -108,4 +108,12 @@ describe('kafelki z luster', () => {
     expect(f).toHaveBeenCalledTimes(1)
     expect(a).toBe(b)
   })
+
+  it.each(['open', 'match', 'put'])('awaria cache.%s nie niszczy pobranego kafelka', async (operation) => {
+    const fail = async () => { throw new DOMException('full', 'QuotaExceededError') }
+    vi.stubGlobal('caches', { open: operation === 'open' ? fail : async () => ({ match: operation === 'match' ? fail : async () => undefined, keys: async () => [], delete: async () => true, put: fail }) })
+    stubFetch(() => image)
+    const { fetchTile } = await import('./hipsTiles')
+    expect((await fetchTile(SURVEYS.dss2, 7, 1)).size).toBe(500)
+  })
 })

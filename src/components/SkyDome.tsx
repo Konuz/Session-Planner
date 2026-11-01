@@ -93,7 +93,7 @@ void main() {
   float r = dot(c, c);
   if (r > 1.0) discard;
   float d = sqrt(r);
-  float a = smoothstep(1.0, 0.0, d);
+  float a = 1.0 - smoothstep(0.0, 1.0, d);
   float halo = (exp(-r * 3.2) - exp(-r * 16.0)) * 0.18;
   a = (a * a * 0.75 + exp(-r * 18.0) * 0.5 + halo) * v_alpha;
   outColor = vec4(v_color * a, a);
@@ -447,14 +447,26 @@ export function SkyDome({ playing = false }: Props) {
 
   useEffect(() => {
     if (!sky || !glRef.current) return
-    try {
-      starGL.current = createStarGL(glRef.current, sky)
-    } catch (e) {
-      console.error('Kopuła: WebGL niedostępny', e)
+    const canvas = glRef.current
+    const init = () => {
+      try {
+        starGL.current = createStarGL(canvas, sky)
+      } catch (e) {
+        console.error('Kopuła: WebGL niedostępny', e)
+        starGL.current = null
+      }
+      setFrame((f) => f + 1)
+    }
+    const lost = (e: Event) => {
+      e.preventDefault()
       starGL.current = null
     }
-    setFrame((f) => f + 1)
+    canvas.addEventListener('webglcontextlost', lost)
+    canvas.addEventListener('webglcontextrestored', init)
+    init()
     return () => {
+      canvas.removeEventListener('webglcontextlost', lost)
+      canvas.removeEventListener('webglcontextrestored', init)
       starGL.current?.dispose()
       starGL.current = null
     }
@@ -496,7 +508,10 @@ export function SkyDome({ playing = false }: Props) {
   }, [annotationColors])
   /** Klucz obiektu konturu: wspólny dla poziomów 1 i 2 tego samego obiektu. */
   const outlineKey = (k: number) => outlineObjects?.[k]?.id ?? outlines?.[k].id ?? ''
-  const planObjects = useMemo(() => (catalog ? plan.map((p) => catalog[p.objectIndex]).filter(Boolean) : []), [catalog, plan])
+  const planObjects = useMemo(() => plan.flatMap((p) => {
+    const o = catalogById?.get(p.objectId)
+    return o ? [o] : []
+  }), [catalogById, plan])
 
   // Animacja „znajdź obiekt”: przelot widoku do obiektu i namierzanie.
   useEffect(() => {

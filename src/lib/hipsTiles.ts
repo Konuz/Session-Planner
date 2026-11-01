@@ -2,17 +2,15 @@
 // zapis w Cache Storage. Bez AbortSignal: kafelek zawsze kończy się wynikiem albo limitem, więc przerwanie
 // jednego obrazu nie psuje drugiego, który czeka na ten sam kafelek.
 import { tileUrl, type Survey, type SurveyId } from './hips'
+import { imageCache } from './imageCache'
 
 export const TILE_TIMEOUT_MS = 3000
 // Treść liczona osobno: na słabym łączu kafelek ładuje się dłużej niż 3 s, choć lustro działa.
 const BODY_TIMEOUT_MS = 30000
-const CACHE_NAME = 'tracker-hips-v1'
+const cache = imageCache('tracker-hips-v1', 512)
 
 const failed = new Map<SurveyId, Set<string>>()
 const inFlight = new Map<string, Promise<Blob>>()
-let cachePromise: Promise<Cache | null> | null = null
-
-const openCache = () => (cachePromise ??= 'caches' in globalThis ? caches.open(CACHE_NAME).catch(() => null) : Promise.resolve(null))
 
 function mirrorOrder(survey: Survey): string[] {
   const bad = failed.get(survey.id) ?? new Set()
@@ -46,9 +44,8 @@ async function tryMirror(url: string): Promise<Blob | 'missing' | 'failed'> {
 }
 
 async function load(survey: Survey, order: number, npix: number, key: string): Promise<Blob> {
-  const cache = await openCache()
-  const hit = cache && (await cache.match(key))
-  if (hit) return hit.blob()
+  const hit = await cache.get(key)
+  if (hit) return hit
   for (const mirror of mirrorOrder(survey)) {
     const result = await tryMirror(tileUrl(mirror, order, npix))
     if (result === 'missing') continue
@@ -56,7 +53,7 @@ async function load(survey: Survey, order: number, npix: number, key: string): P
       demote(survey, mirror)
       continue
     }
-    await cache?.put(key, new Response(result, { headers: { 'Content-Type': 'image/jpeg' } }))
+    await cache.put(key, result)
     return result
   }
   throw new Error('brak kafelka')

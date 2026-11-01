@@ -43,7 +43,7 @@ export const SURVEYS: Record<SurveyId, Survey> = {
 
 export type HipsRequest = { id: number; raDeg: number; decDeg: number; fovDeg: number; sizePx: number; survey: SurveyId; mode: ImageMode; coarser: number }
 /** `complete`: wszystkie kafelki przyszły; obraz z dziurą po chwilowym błędzie nie trafia do Cache Storage. */
-export type HipsReply = { id: number; blob: Blob; complete: boolean } | { id: number; error: string }
+export type HipsReply = { id: number; blob: Blob; complete: boolean } | { id: number; error: string } | { id: number; cancelled: true }
 export type HipsCancel = { cancel: number }
 
 export function tileUrl(base: string, order: number, npix: number): string {

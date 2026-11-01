@@ -231,7 +231,7 @@ export default function CatalogView() {
                 {list.slice(row.index * cols, row.index * cols + cols).map((o) => {
                   const hours = vis ? vis.hours[o.i] : null
                   const maxAlt = vis ? vis.maxAlt[o.i] : null
-                  const inPlan = plan.some((p) => p.objectIndex === o.i)
+                  const inPlan = plan.some((p) => p.objectId === o.id)
                   return (
                     <CatalogCard
                       key={o.i}

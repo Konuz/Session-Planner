@@ -23,7 +23,7 @@ export function ObjectCard({ onDetails }: { onDetails: () => void }) {
   const canBack = useStore((s) => s.historyPos > 0)
   const canForward = useStore((s) => s.historyPos < s.history.length - 1)
   const stepHistory = useStore((s) => s.stepHistory)
-  const inPlan = o ? plan.some((p) => p.objectIndex === o.i) : false
+  const inPlan = o ? plan.some((p) => p.objectId === o.id) : false
   return (
     <section className="card">
       <ObjectSearch />
@@ -172,7 +172,8 @@ export function WeatherCard() {
       const phases = nightPhases(date, site, tz)
       const [start, end] = darkWindow(phases)
       const samples = hours.filter((x) => x.t >= start && x.t <= end)
-      const score = samples.length ? samples.reduce((sum, x) => sum + skyRating(x).score, 0) / samples.length : null
+      const ratings = samples.map(skyRating).filter((r) => r !== null)
+      const score = ratings.length ? ratings.reduce((sum, r) => sum + r.score, 0) / ratings.length : null
       return {
         date,
         label: fmtDate(phases.startMs, tz, { weekday: 'short', day: 'numeric', month: 'short' }),

@@ -35,17 +35,25 @@ export interface WeatherHour {
   visibilityKm: number
 }
 
+const weatherFields = ['t', 'cloud', 'cloudLow', 'cloudMid', 'cloudHigh', 'humidity', 'temp', 'dew', 'wind', 'visibilityKm'] as const
+const finiteNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+const validWeatherHour = (h: WeatherHour) => h && weatherFields.every((k) => finiteNumber(h[k]))
+
 export async function fetchWeather(lat: number, lon: number): Promise<WeatherHour[]> {
   const key = `wx:${lat.toFixed(2)},${lon.toFixed(2)}`
   const cached = readCache<WeatherHour[]>(key, 30 * 60_000)
-  if (cached) return cached
+  if (Array.isArray(cached) && cached.every(validWeatherHour)) return cached
   const vars = 'cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,temperature_2m,dew_point_2m,wind_speed_10m,visibility'
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=${vars}&forecast_days=8&timezone=UTC&timeformat=unixtime`
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Pogoda niedostępna (HTTP ${res.status})`)
   const j = await res.json()
   const h = j.hourly
-  const data: WeatherHour[] = h.time.map((t: number, i: number) => ({
+  if (!Array.isArray(h?.time)) throw new Error('Nieprawidłowa prognoza')
+  const data: WeatherHour[] = h.time.flatMap((t: unknown, i: number) => {
+    // Null musi zostać odrzucony przed konwersją jednostek (null / 1000 daje 0).
+    if (!finiteNumber(t) || !vars.split(',').every((k) => finiteNumber(h[k]?.[i]))) return []
+    return [{
     t: t * 1000,
     cloud: h.cloud_cover[i],
     cloudLow: h.cloud_cover_low[i],
@@ -56,21 +64,24 @@ export async function fetchWeather(lat: number, lon: number): Promise<WeatherHou
     dew: h.dew_point_2m[i],
     wind: h.wind_speed_10m[i],
     visibilityKm: h.visibility[i] / 1000,
-  }))
+    }]
+  })
   writeCache(key, data)
   return data
 }
 
 export function weatherAt(hours: readonly WeatherHour[], t: number): WeatherHour | null {
   if (!hours.length || t < hours[0].t - 3_600_000 || t > hours[hours.length - 1].t + 3_600_000) return null
-  return hours.reduce((best, h) => (Math.abs(h.t - t) < Math.abs(best.t - t) ? h : best))
+  const best = hours.reduce((best, h) => (Math.abs(h.t - t) < Math.abs(best.t - t) ? h : best))
+  return validWeatherHour(best) && Math.abs(best.t - t) <= 1_800_000 ? best : null
 }
 
 /**
  * Ocena warunków (wyliczona, nie pomiar przejrzystości): zachmurzenie ma wagę główną, wysoka wilgotność
  * i mała różnica temperatury i punktu rosy obniżają ocenę.
  */
-export function skyRating(h: WeatherHour): { label: string; score: number } {
+export function skyRating(h: WeatherHour): { label: string; score: number } | null {
+  if (!validWeatherHour(h)) return null
   let score = 100 - h.cloud
   if (h.humidity > 85) score -= 20
   else if (h.humidity > 70) score -= 8

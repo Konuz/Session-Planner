@@ -12,6 +12,7 @@ import { useSelected } from '../state/data'
 import { useStore } from '../state/store'
 import { Range } from './Range'
 import { StretchDialog } from './StretchDialog'
+import { useObjectUrl } from './useObjectUrl'
 
 const SIZE = 800
 const IMAGE_ERROR = 'Nie udało się złożyć zdjęcia z kafelków HiPS'
@@ -43,7 +44,8 @@ export function FramingPanel() {
   const setFramingStretch = useStore((s) => s.setFramingStretch)
   const [layer, setLayer] = useState<Layer>('color')
   // Zdjęcie z miejscem, które pokazuje: po przesunięciu nieba poprzednie zostaje widoczne, przesunięte, do czasu wczytania nowego.
-  const [img, setImg] = useState<{ key: string; url: string; sharp: boolean; raDeg: number; decDeg: number; fovDeg: number; layer: Layer } | null>(null)
+  const [img, setImg] = useState<{ key: string; blob: Blob; sharp: boolean; raDeg: number; decDeg: number; fovDeg: number; layer: Layer } | null>(null)
+  const imageUrl = useObjectUrl(img?.blob ?? null)
   // Bieżące przeciąganie zdjęcia [jednostki SVG]; null, gdy nie przeciągamy.
   const [pan, setPan] = useState<[number, number] | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -106,13 +108,13 @@ export function FramingPanel() {
     let previewFailed = false
     const where = { raDeg: imageRa, decDeg: imageDec, fovDeg: imageFov, layer }
     getSkyImage(imageRa, imageDec, imageFov, SIZE, ctrl.signal, { ...opts, coarser: 2 })
-      .then((url) => !ctrl.signal.aborted && setImg((prev) => (prev?.key === imageKey && prev.sharp ? prev : { key: imageKey, url, sharp: false, ...where })))
+      .then((blob) => !ctrl.signal.aborted && setImg((prev) => (prev?.key === imageKey && prev.sharp ? prev : { key: imageKey, blob, sharp: false, ...where })))
       .catch((e: Error) => {
         if (e.name === 'AbortError') throw e
         previewFailed = true
       })
       .then(() => getSkyImage(imageRa, imageDec, imageFov, SIZE, ctrl.signal, opts))
-      .then((url) => !ctrl.signal.aborted && setImg({ key: imageKey, url, sharp: true, ...where }))
+      .then((blob) => !ctrl.signal.aborted && setImg({ key: imageKey, blob, sharp: true, ...where }))
       .catch((e: Error) => e.name !== 'AbortError' && previewFailed && setErr(IMAGE_ERROR))
     return () => ctrl.abort()
   }, [o, imageRa, imageDec, imageFov, layer, imageKey])
@@ -146,7 +148,7 @@ export function FramingPanel() {
     ? `większy niż ${panelCount > 1 ? 'mozaika' : 'kadr'} (potrzeba ok. ×${Math.ceil(objDeg / Math.max(optics.fovWdeg, optics.fovHdeg))})`
     : `${Math.round(ratio * 100)}% boku`
   const setMosaic = (patch: Partial<Mosaic>) => setFraming({ mosaic: { ...mosaic, ...patch } })
-  const planItem = plan.find((p) => p.objectIndex === o.i)
+  const planItem = plan.find((p) => p.objectId === o.id)
 
   const applyCoordinates = () => {
     const raDeg = parseRaCoordinate(coordinateInput.ra)
@@ -201,8 +203,8 @@ export function FramingPanel() {
       <div style={{ position: 'relative', display: 'grid', placeItems: 'center', overflow: 'hidden', padding: 12, containerType: 'size' }}>
         {/* Kwadrat wpisany w kolumnę: krótszy z wymiarów, żeby szeroki kadr nie chował się za panelem ustawień. */}
         <div style={{ position: 'relative', width: 'min(100cqw, 100cqh)', aspectRatio: '1' }}>
-          {shown ? (
-            <img ref={imgRef} src={shown.url} alt={`${o.id}, ${SURVEYS[LAYERS[layer].survey].label}`} draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', animation: 'fade-in .5s', transform: shiftX || shiftY ? `translate(${(shiftX / SIZE) * 100}%, ${(shiftY / SIZE) * 100}%)` : undefined, filter: stretched ? `url(#${STRETCH_FILTER_ID})` : undefined }} onError={() => {
+          {shown && imageUrl ? (
+            <img ref={imgRef} src={imageUrl} alt={`${o.id}, ${SURVEYS[LAYERS[layer].survey].label}`} draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', animation: 'fade-in .5s', transform: shiftX || shiftY ? `translate(${(shiftX / SIZE) * 100}%, ${(shiftY / SIZE) * 100}%)` : undefined, filter: stretched ? `url(#${STRETCH_FILTER_ID})` : undefined }} onError={() => {
               setImg(null)
               setErr(IMAGE_ERROR)
             }} />
@@ -409,7 +411,7 @@ export function FramingPanel() {
         onClose={() => setStretchOpen(false)}
         anchorRef={stretchButtonRef}
         imgRef={imgRef}
-        imgUrl={img?.key === imageKey ? img.url : null}
+        imgUrl={img?.key === imageKey ? imageUrl : null}
         levels={levels}
         onChange={(l) => setFramingStretch(layer, l && !isDefaultLevels(l) ? l : null)}
       />

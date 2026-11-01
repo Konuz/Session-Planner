@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "preview": "vite preview",
+    "start": "node --env-file-if-exists=.env.local server/index.ts",
     "build:data": "node scripts/build-data.ts"
   },
   "dependencies": {

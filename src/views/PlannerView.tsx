@@ -42,15 +42,17 @@ export default function PlannerView() {
   const [chartTargetKey, setChartTargetKey] = useState<string | null>(null)
   const [darkStart, darkEnd] = darkWindow(night)
   const grid = useMemo(() => nightGrid(night, site, 5), [night, site])
+  const catalogById = useMemo(() => new Map((catalog ?? []).map((o) => [o.id, o])), [catalog])
+  const missingItems = catalog ? plan.filter((item) => !catalogById.has(item.objectId)) : []
   const rows: Row[] = useMemo(() => {
     if (!catalog) return []
     return plan.flatMap((item) => {
-      const o = catalog[item.objectIndex]
+      const o = catalogById.get(item.objectId)
       if (!o) return []
       const track = altitudeTrack(o, grid)
       return [{ item, o, track, vis: visibility(o, track, night, site, minAlt, horizon), exposures: planExposures(item) }]
     })
-  }, [catalog, plan, grid, night, site, minAlt, horizon])
+  }, [catalog, catalogById, plan, grid, night, site, minAlt, horizon])
 
   const auto = useMemo(
     () => autoSchedule(rows.map((r) => ({ key: r.item.key, bestMs: r.vis.bestMs, usableStart: r.vis.windowStart, usableEnd: r.vis.windowEnd })), darkStart, darkEnd),
@@ -122,9 +124,9 @@ export default function PlannerView() {
       ...rows.map((r, i) => {
         const s = slots[i]
         return [
-          `${i + 1}. ${exportTargets[i].name} (${TYPE_INFO[r.o.type].label})`,
+          `${i + 1}. ${r.o.id}${displayName(r.o) ? ` ${displayName(r.o)}` : ''} (${TYPE_INFO[r.o.type].label})`,
           `   Okno: ${s ? `${fmtTime(s.startMs, tz)}–${fmtTime(s.endMs, tz)}` : 'brak'}`,
-          `   Środek: RA ${fmtRa(exportTargets[i].raDeg)}, Dec ${fmtDec(exportTargets[i].decDeg)}, PA ${r.item.framing.paDeg}°`,
+          `   Środek: RA ${fmtRa(r.item.framing.raDeg ?? r.o.raDeg)}, Dec ${fmtDec(r.item.framing.decDeg ?? r.o.decDeg)}, PA ${r.item.framing.paDeg}°`,
           `   Górowanie: ${fmtTime(r.vis.transitMs, tz)} na ${fmtDeg(r.vis.transitAlt)}`,
           ...r.exposures.map((e) => `   ${e.filter}: ${e.count} × ${e.seconds} s = ${fmtDuration(e.count * e.seconds / 3600)}`),
           ...(r.item.note ? [`   Notatka: ${r.item.note}`] : []),
@@ -152,6 +154,10 @@ export default function PlannerView() {
           <div><span className="label">Kontrola planu</span><strong className={warningCount ? 'planner-warn' : ''}>{warningCount ? `${warningCount} do sprawdzenia` : rows.length ? 'Bez uwag' : 'Dodaj cele'}</strong><small>Widoczność, okna i ekspozycje</small></div>
         </div>
       </section>
+      {missingItems.length > 0 && <section className="card" role="alert">
+        <p>Niektórych celów brakuje w katalogu lub ich stary zapis nie zawiera ID. Ustawienia pozostają w planie; te cele są pomijane w obliczeniach i eksporcie.</p>
+        {missingItems.map((item) => <div key={item.key}>{item.objectId || 'Cel ze starego zapisu'} <button className="button small" onClick={() => removeFromPlan(item.key)}>Usuń z planu</button></div>)}
+      </section>}
       {rows.length === 0 ? (
         <section className="card empty">Plan jest pusty. Wybierz „Dodaj jeden” lub „Dodaj kilka”, a następnie kliknij obiekty w katalogu.</section>
       ) : (

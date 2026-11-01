@@ -8,11 +8,13 @@ type Reply = HipsReply | 'crash' | 'never'
 class FakeWorker {
   static posted: (HipsRequest | { cancel: number })[] = []
   static created = 0
+  static instance: FakeWorker
   static reply: (msg: HipsRequest) => Reply = (msg) => ({ id: msg.id, blob: new Blob([new Uint8Array(500)]), complete: true })
   onmessage: ((e: MessageEvent<HipsReply>) => void) | null = null
   onerror: ((e: Event) => void) | null = null
   constructor() {
     FakeWorker.created++
+    FakeWorker.instance = this
   }
   terminate() {}
   postMessage(msg: HipsRequest | { cancel: number }) {
@@ -35,7 +37,7 @@ describe('miniatury', () => {
 
   it('niepełny obraz (kafelek nie przyszedł) nie trafia do Cache Storage', async () => {
     const put = vi.fn(async () => undefined)
-    vi.stubGlobal('caches', { open: async () => ({ match: async () => undefined, put }), delete: async () => true })
+    vi.stubGlobal('caches', { open: async () => ({ match: async () => undefined, keys: async () => [], put }), delete: async () => true })
     FakeWorker.reply = (msg) => ({ id: msg.id, blob: new Blob([new Uint8Array(500)]), complete: msg.raDeg === 1 })
     const { getSkyImage } = await import('./thumbs')
     await getSkyImage(2, 20, 3, 800)
@@ -49,7 +51,7 @@ describe('miniatury', () => {
     const { getSkyImage } = await import('./thumbs')
     await expect(getSkyImage(10, 20, 3, 800)).rejects.toThrow()
     FakeWorker.reply = (msg) => ({ id: msg.id, blob: new Blob([new Uint8Array(500)]), complete: true })
-    await expect(getSkyImage(11, 20, 3, 800)).resolves.toMatch(/^blob:/)
+    await expect(getSkyImage(11, 20, 3, 800)).resolves.toBeInstanceOf(Blob)
     expect(FakeWorker.created).toBe(2)
   })
 
@@ -80,7 +82,7 @@ describe('miniatury', () => {
     first.abort()
     const b = getSkyImage(83.82, -5.39, 1, 100, new AbortController().signal)
     await expect(a).rejects.toThrow()
-    await expect(b).resolves.toMatch(/^blob:/)
+    await expect(b).resolves.toBeInstanceOf(Blob)
   })
 
   it('domyślnie DSS2 kolor; getThumb prosi o 224 px i rząd grubszy o 1', async () => {
@@ -95,5 +97,49 @@ describe('miniatury', () => {
     FakeWorker.reply = (msg) => ({ id: msg.id, error: 'brak kafelków' })
     const { getSkyImage } = await import('./thumbs')
     await expect(getSkyImage(10, 20, 3, 800)).rejects.toThrow('brak kafelków')
+  })
+
+  it('anulowanie jednego odbiorcy nie anuluje obrazu drugiemu i nie tworzy współdzielonych URL', async () => {
+    FakeWorker.reply = () => 'never'
+    const create = vi.spyOn(URL, 'createObjectURL')
+    const { getSkyImage } = await import('./thumbs')
+    const ctrl = new AbortController()
+    const a = getSkyImage(1, 2, 3, 224, ctrl.signal)
+    const b = getSkyImage(1, 2, 3, 224)
+    await vi.waitFor(() => expect(FakeWorker.posted.length).toBe(1))
+    ctrl.abort()
+    await expect(a).rejects.toThrow('aborted')
+    expect(FakeWorker.posted.length).toBe(1)
+    const id = (FakeWorker.posted[0] as HipsRequest).id
+    FakeWorker.instance.onmessage?.({ data: { id, blob: new Blob(['image']), complete: true } } as MessageEvent<HipsReply>)
+    expect(await (await b).text()).toBe('image')
+    expect(create).not.toHaveBeenCalled()
+    create.mockRestore()
+  })
+
+  it('anulowane zadania trzymają pięć slotów do potwierdzenia końca pracy', async () => {
+    FakeWorker.reply = () => 'never'
+    const { getSkyImage } = await import('./thumbs')
+    const controllers = Array.from({ length: 5 }, () => new AbortController())
+    const first = controllers.map((ctrl, i) => getSkyImage(i, 2, 3, 224, ctrl.signal).catch((e: Error) => e.name))
+    await vi.waitFor(() => expect(FakeWorker.posted.length).toBe(5))
+    controllers.forEach((c) => c.abort())
+    expect(await Promise.all(first)).toEqual(Array(5).fill('AbortError'))
+    const next = getSkyImage(99, 2, 3, 224)
+    await new Promise((r) => setTimeout(r, 10))
+    expect(FakeWorker.posted.filter((m) => !('cancel' in m))).toHaveLength(5)
+    const id = (FakeWorker.posted[0] as HipsRequest).id
+    FakeWorker.instance.onmessage?.({ data: { id, cancelled: true } } as MessageEvent<HipsReply>)
+    await vi.waitFor(() => expect(FakeWorker.posted.filter((m) => !('cancel' in m))).toHaveLength(6))
+    const last = FakeWorker.posted.at(-1) as HipsRequest
+    FakeWorker.instance.onmessage?.({ data: { id: last.id, blob: new Blob(['next']), complete: true } } as MessageEvent<HipsReply>)
+    expect(await (await next).text()).toBe('next')
+  })
+
+  it.each(['match', 'put'])('błąd cache.%s nie odrzuca gotowego obrazu', async (op) => {
+    const fail = async () => { throw new DOMException('full', 'QuotaExceededError') }
+    vi.stubGlobal('caches', { open: async () => ({ match: op === 'match' ? fail : async () => undefined, keys: async () => [], delete: async () => true, put: fail }) })
+    const { getSkyImage } = await import('./thumbs')
+    await expect(getSkyImage(10, 20, 3, 800)).resolves.toBeInstanceOf(Blob)
   })
 })

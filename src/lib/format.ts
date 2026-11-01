@@ -36,6 +36,7 @@ export function fmtDec(decDeg: number): string {
 }
 
 export function fmtNum(v: number, digits = 1): string {
+  if (v == null || !Number.isFinite(v)) return '-'
   return v.toLocaleString('pl-PL', { minimumFractionDigits: digits, maximumFractionDigits: digits })
 }
 

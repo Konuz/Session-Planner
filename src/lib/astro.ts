@@ -118,7 +118,8 @@ export function altAz(eq: Equatorial, timeMs: number, site: Site): Horizontal {
 
 /** Kąt godzinny [°] w (−180, 180]; 0 = górowanie (przejście przez południk). */
 export function hourAngleDeg(eq: Equatorial, timeMs: number, site: Site): number {
-  const ha = normDeg(lstDeg(timeMs, site.lonDeg) - eq.raDeg)
+  const ofDate = vecToEquatorial(mulVec(precessionMatrix(timeMs), unitVector(eq.raDeg, eq.decDeg)))
+  const ha = normDeg(lstDeg(timeMs, site.lonDeg) - ofDate.raDeg)
   return ha > 180 ? ha - 360 : ha
 }
 
@@ -126,13 +127,13 @@ export function hourAngleDeg(eq: Equatorial, timeMs: number, site: Site): number
 export function nextTransitMs(eq: Equatorial, startMs: number, site: Site): number {
   // Doba gwiazdowa = 23 h 56 min 4 s; HA rośnie 15,041°/h.
   const rate = 360 / 86_164_090.5
-  const ha0 = normDeg(lstDeg(startMs, site.lonDeg) - eq.raDeg)
+  const ha0 = normDeg(hourAngleDeg(eq, startMs, site))
   let t = startMs + ((360 - ha0) % 360) / rate
   // Doprecyzowanie: poprawka ze znakiem, żeby drobne przestrzelenie nie dodało całej doby.
-  for (let i = 0; i < 2; i++) {
-    const ha = normDeg(lstDeg(t, site.lonDeg) - eq.raDeg)
-    const delta = ha > 180 ? 360 - ha : -ha
-    t += delta / rate
+  for (let i = 0; i < 4; i++) t -= hourAngleDeg(eq, t, site) / rate
+  if (t < startMs) {
+    t += 360 / rate
+    for (let i = 0; i < 4; i++) t -= hourAngleDeg(eq, t, site) / rate
   }
   return t
 }

@@ -43,8 +43,8 @@ self.onmessage = (e: MessageEvent<VisibilityRequest>) => {
   const best = new Float64Array(n)
   const sinMin = Math.sin(minAltDeg * DEG)
   const customHorizon = horizon.length > 0
-  const stepH = STEP_MS / 3_600_000
-  for (let t = darkStart; t <= darkEnd; t += STEP_MS) {
+  for (let t = darkStart; ; t = Math.min(t + STEP_MS, darkEnd)) {
+    const stepH = Math.max(0, Math.min(STEP_MS, darkEnd - t)) / 3_600_000
     const m = horizontalMatrix(t, site)
     for (let i = 0; i < n; i++) {
       const z = m[6] * ux[i] + m[7] * uy[i] + m[8] * uz[i]
@@ -62,6 +62,7 @@ self.onmessage = (e: MessageEvent<VisibilityRequest>) => {
       }
       hours[i] += stepH
     }
+    if (t >= darkEnd) break
   }
   const result: VisibilityResult = { id, maxAlt, hours, best }
   ;(self as unknown as Worker).postMessage(result, [maxAlt.buffer, hours.buffer, best.buffer])

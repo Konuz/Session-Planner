@@ -1,6 +1,6 @@
 // Stan aplikacji (Zustand). Preferencje, sprzęt, horyzont i plan zapisują się w localStorage.
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist, type PersistStorage } from 'zustand/middleware'
 import { EMPTY_FILTER, type CatalogFilter, type ObjectType, SKY_GROUPS, type SkyGroup } from '../lib/catalog'
 import type { Mosaic } from '../lib/framing'
 import type { HorizonPoint } from '../lib/horizon'
@@ -175,6 +175,27 @@ interface State {
   toggle(key: 'showLines' | 'showTracks' | 'showArt' | 'showOutlines' | 'showEllipses' | 'showLabels' | 'showAnnotations' | 'onlyVisible'): void
 }
 
+// Porównanie pól przed JSON.stringify: zmiany czasu i kadru nie serializują planu w każdej klatce.
+let lastSaved: Partial<State> | null = null
+const storage: PersistStorage<Partial<State>> = {
+  getItem(name) {
+    try {
+      const raw = localStorage.getItem(name)
+      return raw ? JSON.parse(raw) : null
+    } catch { return null }
+  },
+  setItem(name, value) {
+    const keys = Object.keys(value.state) as (keyof State)[]
+    if (lastSaved && keys.every((k) => Object.is(lastSaved![k], value.state[k]))) return
+    lastSaved = value.state
+    try { localStorage.setItem(name, JSON.stringify(value)) } catch { /* Stan pozostaje w pamięci; ponowimy przy następnej zmianie preferencji. */ }
+  },
+  removeItem(name) {
+    lastSaved = null
+    try { localStorage.removeItem(name) } catch { /* Magazyn może być niedostępny. */ }
+  },
+}
+
 export const useStore = create<State>()(
   persist(
     (set) => ({
@@ -297,7 +318,7 @@ export const useStore = create<State>()(
       }),
       addToPlan: (objectIndex, objectId) =>
         set((s) =>
-          s.plan.some((p) => p.objectIndex === objectIndex)
+          s.plan.some((p) => p.objectId === objectId)
             ? s
             : {
                 plan: [
@@ -338,6 +359,7 @@ export const useStore = create<State>()(
     }),
     {
       name: 'konuzastro-tracker',
+      storage,
       version: 1,
       partialize: (s) => ({
         location: s.location,

@@ -1,6 +1,7 @@
 // Noc obserwacyjna: granice faz zmierzchu, próbki wysokości obiektu, górowanie i okna widoczności.
 import {
   DAY_MS,
+  altAz,
   HOUR_MS,
   horizontalMatrix,
   mulVec,
@@ -166,22 +167,27 @@ export function visibility(
   let usable = 0
   let windowStart: number | null = null
   let windowEnd: number | null = null
-  const step = track.length > 1 ? track[1].t - track[0].t : 0
-  for (const s of track) {
-    if (s.t < darkStart || s.t > darkEnd) continue
-    if (s.alt > maxAlt) {
+  let windowClosed = false
+  for (let i = 0; i < track.length; i++) {
+    const s = track[i]
+    if (s.t >= darkStart && s.t <= darkEnd && s.alt > maxAlt) {
       maxAlt = s.alt
       bestMs = s.t
     }
+    const start = Math.max(s.t, darkStart)
+    const end = Math.min(track[i + 1]?.t ?? s.t, darkEnd)
+    if (end <= start) continue
     const ok = s.alt >= minAltDeg && s.alt >= horizonAltitude(horizon, s.az)
     if (ok) {
-      usable += step
-      if (windowStart === null) windowStart = s.t
-      if (windowEnd === null || windowEnd >= s.t - step) windowEnd = s.t
-    }
+      usable += end - start
+      if (!windowClosed) {
+        windowStart ??= start
+        windowEnd = end
+      }
+    } else if (windowStart !== null) windowClosed = true
   }
   const transit = nextTransitMs(eq, n.startMs, site)
   const transitMs = transit <= n.endMs ? transit : null
-  const transitAlt = 90 - Math.abs(site.latDeg - eq.decDeg)
+  const transitAlt = altAz(eq, transit, site).altDeg
   return { maxAlt, bestMs, transitMs, transitAlt, hoursUsable: usable / HOUR_MS, windowStart, windowEnd }
 }

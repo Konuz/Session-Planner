@@ -2,13 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import { getAstroBinPhoto } from '../lib/astrobin'
 import { getSkyImage, getThumb } from '../lib/thumbs'
 import type { DSO } from '../lib/catalog'
+import { useObjectUrl } from './useObjectUrl'
 
 /** Miniatura (DSS2 kolor) ładowana dopiero, gdy element pojawi się na ekranie. */
 export function Thumb({ object, className = 'thumb', style, fovDeg, sizePx, preferAstroBin = false }: { object: DSO; className?: string; style?: React.CSSProperties; fovDeg?: number; sizePx?: number; preferAstroBin?: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
-  const [src, setSrc] = useState<{ key: string; url: string; astroBin?: { galleryUrl: string; title: string } } | null>(null)
+  const [src, setSrc] = useState<{ key: string; url?: string; blob?: Blob; astroBin?: { galleryUrl: string; title: string } } | null>(null)
   const [failed, setFailed] = useState<string | null>(null)
   const key = `${object.i}:${fovDeg ?? ''}:${sizePx ?? ''}:${preferAstroBin}`
+  const blobUrl = useObjectUrl(src?.key === key && failed !== key ? src.blob ?? null : null)
 
   useEffect(() => {
     const el = ref.current
@@ -22,6 +24,7 @@ export function Thumb({ object, className = 'thumb', style, fovDeg, sizePx, pref
         if (preferAstroBin) {
           try {
             const photo = await getAstroBinPhoto(object.id, ctrl.signal)
+            if (ctrl.signal.aborted) return
             if (photo) {
               setSrc({ key, url: photo.imageUrl, astroBin: { galleryUrl: photo.galleryUrl, title: photo.title } })
               return
@@ -30,8 +33,8 @@ export function Thumb({ object, className = 'thumb', style, fovDeg, sizePx, pref
             if (e instanceof Error && e.name === 'AbortError') return
           }
         }
-        const url = fovDeg ? await getSkyImage(object.raDeg, object.decDeg, fovDeg, sizePx ?? 400, ctrl.signal) : await getThumb(object, ctrl.signal)
-        setSrc({ key, url })
+        const blob = fovDeg ? await getSkyImage(object.raDeg, object.decDeg, fovDeg, sizePx ?? 400, ctrl.signal) : await getThumb(object, ctrl.signal)
+        if (!ctrl.signal.aborted) setSrc({ key, blob })
       }
       load().catch((e: Error) => e.name !== 'AbortError' && setFailed(key))
     }
@@ -43,7 +46,7 @@ export function Thumb({ object, className = 'thumb', style, fovDeg, sizePx, pref
     }
   }, [object, key, fovDeg, sizePx, preferAstroBin])
 
-  const current = src?.key === key && failed !== key ? src.url : null
+  const current = src?.key === key && failed !== key ? src.url ?? blobUrl : null
   return (
     <div ref={ref} className={className} style={style}>
       {current ? (
