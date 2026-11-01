@@ -1,4 +1,4 @@
-import { ExternalLink, X } from 'lucide-react'
+import { ExternalLink } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { angularDistanceDeg, galactic, moonInfo, moonJ2000 } from '../lib/astro'
 import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO } from '../lib/catalog'
@@ -8,6 +8,7 @@ import { altitudeTrack, nightGrid, visibility } from '../lib/night'
 import { astrobinSearchUrl, fetchWikiSummary, type WikiSummary } from '../lib/services'
 import { useNight, useSelected, useSite } from '../state/data'
 import { useStore } from '../state/store'
+import { CloseButton } from './CloseButton'
 import { Thumb } from './Thumb'
 import { FavoriteButton } from './FavoriteButton'
 
@@ -88,9 +89,7 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
       <aside className="drawer" role="dialog" aria-label={`Szczegóły ${o.id}`}>
         <div style={{ position: 'relative' }}>
           <Thumb object={o} className="thumb" style={{ aspectRatio: '16 / 9' }} fovDeg={Math.min(4, Math.max(0.3, (Math.max(o.majArcmin, 3) * 2.6) / 60))} sizePx={560} preferAstroBin />
-          <button className="close-button" style={{ position: 'absolute', top: 16, right: 16, zIndex: 4 }} onClick={onClose} aria-label="Zamknij">
-            <X size={17} />
-          </button>
+          <CloseButton onClick={onClose} style={{ position: 'absolute', top: 16, right: 16, zIndex: 4 }} />
         </div>
         <p className="faint" style={{ fontSize: 10, margin: '7px 22px 0' }}>This product uses the AstroBin API but is not endorsed or certified by AstroBin.</p>
         <div style={{ padding: 22 }}>

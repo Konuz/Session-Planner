@@ -50,6 +50,7 @@ export function FramingPanel() {
   const [photoCenter, setPhotoCenter] = useState<{ objectIndex: number; raDeg: number; decDeg: number } | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const imgRef = useRef<HTMLImageElement>(null)
+  const stretchButtonRef = useRef<HTMLButtonElement>(null)
   const [stretchOpen, setStretchOpen] = useState(false)
   const drag = useRef<{ kind: 'move' | 'rotate'; startX: number; startY: number; startCenter: { xi: number; eta: number }; startPa: number } | null>(null)
 
@@ -72,7 +73,8 @@ export function FramingPanel() {
   const imageKey = o ? `${o.i}:${imageRa}:${imageDec}:${imageFov}:${layer}` : ''
   const levels = normalizeLevels(storedStretch[layer])
   const stretched = !isDefaultLevels(levels)
-  const stretchTable = useMemo(() => (stretched ? tableValues(levels) : ''), [stretched, levels.black, levels.white, levels.gamma])
+  const pointsKey = JSON.stringify(levels.points ?? [])
+  const stretchTable = useMemo(() => (stretched ? tableValues(levels) : ''), [stretched, levels.black, levels.white, levels.gamma, pointsKey])
 
   useEffect(() => {
     if (o && center) setPhotoCenter({ objectIndex: o.i, raDeg: center.raDeg, decDeg: center.decDeg })
@@ -247,6 +249,7 @@ export function FramingPanel() {
             </text>
           </svg>
           <button
+            ref={stretchButtonRef}
             className={`button small icon-button framing-stretch-button${stretched ? ' on' : ''}`}
             title="Histogram i poziomy zdjęcia"
             aria-label="Histogram i poziomy zdjęcia"
@@ -351,6 +354,7 @@ export function FramingPanel() {
       <StretchDialog
         open={stretchOpen}
         onClose={() => setStretchOpen(false)}
+        anchorRef={stretchButtonRef}
         imgRef={imgRef}
         imgUrl={img?.key === imageKey ? img.url : null}
         levels={levels}

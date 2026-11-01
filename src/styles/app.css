@@ -622,17 +622,16 @@ input[type='checkbox']:checked::after {
 .favorites-confirm h2 svg { color: var(--accent); flex: none; }
 .favorites-confirm p { margin: 16px 0 24px; color: var(--text-2); font-size: 13px; line-height: 1.6; }
 .favorites-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
-/* Poziomy zdjęcia kadru: przycisk w prawym górnym rogu zdjęcia i okno bez przyciemnienia tła (podgląd na żywo). */
+/* Poziomy zdjęcia kadru: przycisk w prawym górnym rogu zdjęcia i okno pod nim bez przyciemnienia tła (podgląd na żywo). */
 .framing-stretch-button { position: absolute; top: 8px; right: 8px; width: 30px; background: rgba(0, 0, 0, 0.6); }
 .framing-stretch-button.on { background: var(--accent-bg); box-shadow: 0 0 0 1px var(--accent), 0 0 8px var(--accent-dim); }
-.stretch-dialog { position: fixed; inset: auto 16px 16px auto; width: min(320px, calc(100% - 32px)); margin: 0; padding: 16px; display: none; flex-direction: column; gap: 12px; border: 1px solid var(--border-strong); background: var(--card-solid); color: var(--text); }
+.stretch-dialog { position: fixed; inset: auto; width: min(320px, calc(100% - 32px)); margin: 0; padding: 14px; display: none; flex-direction: column; gap: 10px; overflow: auto; border: 1px solid var(--border-strong); background: var(--card-solid); color: var(--text); }
 .stretch-dialog[open] { display: flex; }
 .stretch-dialog::backdrop { background: transparent; }
 .stretch-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .stretch-head h2 { display: flex; align-items: center; gap: 8px; margin: 0; font: 600 14px var(--mono); }
 .stretch-head h2 svg { color: var(--accent); }
-.stretch-head .icon-button { width: 28px; }
-.stretch-dialog .stretch-hist { position: static; display: block; width: 100%; height: auto; aspect-ratio: 256 / 110; background: var(--bg); border: 1px solid var(--border); image-rendering: pixelated; }
+.stretch-dialog .stretch-hist { position: static; display: block; width: 100%; height: auto; aspect-ratio: 256 / 160; background: var(--bg); border: 1px solid var(--border); cursor: crosshair; touch-action: none; }
 .stretch-dialog .label b { color: var(--text); font-weight: 400; margin-left: 6px; }
 .obj-grid-row { display: grid; gap: var(--gap); padding-bottom: var(--gap); }
 .obj-card {
