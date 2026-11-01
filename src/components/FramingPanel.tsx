@@ -42,7 +42,10 @@ export function FramingPanel() {
   const storedStretch = useStore((s) => s.framingStretch)
   const setFramingStretch = useStore((s) => s.setFramingStretch)
   const [layer, setLayer] = useState<Layer>('color')
-  const [img, setImg] = useState<{ key: string; url: string; sharp: boolean } | null>(null)
+  // Zdjęcie z miejscem, które pokazuje: po przesunięciu nieba poprzednie zostaje widoczne, przesunięte, do czasu wczytania nowego.
+  const [img, setImg] = useState<{ key: string; url: string; sharp: boolean; raDeg: number; decDeg: number; fovDeg: number; layer: Layer } | null>(null)
+  // Bieżące przeciąganie zdjęcia [jednostki SVG]; null, gdy nie przeciągamy.
+  const [pan, setPan] = useState<[number, number] | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [zoom, setZoom] = useState(1)
   const [coordinateInput, setCoordinateInput] = useState({ ra: '', dec: '' })
@@ -54,7 +57,7 @@ export function FramingPanel() {
   const [stretchOpen, setStretchOpen] = useState(false)
   // Ukrycie nakładki kadru (prostokąt, mozaika, uchwyt), żeby lepiej widzieć zdjęcie, np. przy pracy z histogramem.
   const [frameVisible, setFrameVisible] = useState(true)
-  const drag = useRef<{ kind: 'move' | 'rotate'; startX: number; startY: number; startCenter: { xi: number; eta: number }; startPa: number } | null>(null)
+  const drag = useRef<{ kind: 'move' | 'rotate' | 'pan'; startX: number; startY: number; startCenter: { xi: number; eta: number }; startPa: number } | null>(null)
 
   const optics = useMemo(
     () => computeOptics({ apertureMm: eq.apertureMm, focalLengthMm: eq.focalLengthMm, reducer: eq.reducer, widthPx: eq.widthPx, heightPx: eq.heightPx, pixelUm: eq.pixelUm, binning: eq.binning }),
@@ -101,21 +104,29 @@ export function FramingPanel() {
     setErr(null)
     // Najpierw miękki podgląd (rząd grubszy o 2, mały transfer), ostry obraz dopiero po nim; podgląd nie zastępuje ostrego.
     let previewFailed = false
+    const where = { raDeg: imageRa, decDeg: imageDec, fovDeg: imageFov, layer }
     getSkyImage(imageRa, imageDec, imageFov, SIZE, ctrl.signal, { ...opts, coarser: 2 })
-      .then((url) => !ctrl.signal.aborted && setImg((prev) => (prev?.key === imageKey && prev.sharp ? prev : { key: imageKey, url, sharp: false })))
+      .then((url) => !ctrl.signal.aborted && setImg((prev) => (prev?.key === imageKey && prev.sharp ? prev : { key: imageKey, url, sharp: false, ...where })))
       .catch((e: Error) => {
         if (e.name === 'AbortError') throw e
         previewFailed = true
       })
       .then(() => getSkyImage(imageRa, imageDec, imageFov, SIZE, ctrl.signal, opts))
-      .then((url) => !ctrl.signal.aborted && setImg({ key: imageKey, url, sharp: true }))
+      .then((url) => !ctrl.signal.aborted && setImg({ key: imageKey, url, sharp: true, ...where }))
       .catch((e: Error) => e.name !== 'AbortError' && previewFailed && setErr(IMAGE_ERROR))
     return () => ctrl.abort()
   }, [o, imageRa, imageDec, imageFov, layer, imageKey])
 
   if (!o || !center) return <div className="sky-stage empty" style={{ display: 'grid', placeItems: 'center' }}>Wybierz obiekt, aby kadrować.</div>
 
-  const offset = gnomonic(o, center)
+  // Płaszczyzna styczna wokół środka zdjęcia (nie obiektu): po przesunięciu zdjęcia oba środki się różnią.
+  const imgCenter = { raDeg: imageRa!, decDeg: imageDec! }
+  const offset = gnomonic(imgCenter, center)
+  // Ostatnie zdjęcie tej warstwy i pola, przesunięte o różnicę środków i bieżące przeciąganie.
+  const shown = img && img.layer === layer && img.fovDeg === imageFov ? img : null
+  const shownAt = shown ? tangentToPixel(gnomonic(imgCenter, shown), imageFov, SIZE) : [SIZE / 2, SIZE / 2]
+  const shiftX = shownAt[0] - SIZE / 2 + (pan?.[0] ?? 0)
+  const shiftY = shownAt[1] - SIZE / 2 + (pan?.[1] ?? 0)
   const corners = frameCorners(offset, mosaicW, mosaicH, framing.paDeg).map((c) => tangentToPixel(c, imageFov, SIZE))
   const panelCount = mosaic.cols * mosaic.rows
   const panels = panelCount > 1
@@ -157,10 +168,12 @@ export function FramingPanel() {
     const d = drag.current
     if (!d) return
     const [px, py] = toSvg(e)
-    if (d.kind === 'move') {
+    if (d.kind === 'pan') {
+      setPan([px - d.startX, py - d.startY])
+    } else if (d.kind === 'move') {
       const start = tangentToPixel(d.startCenter, imageFov, SIZE)
       const t = pixelToTangent(start[0] + px - d.startX, start[1] + py - d.startY, imageFov, SIZE)
-      const c = gnomonicInverse(o, t)
+      const c = gnomonicInverse(imgCenter, t)
       setFraming({ raDeg: c.raDeg, decDeg: c.decDeg })
     } else {
       // Kąt od „góry” (N) przeciwnie do ruchu wskazówek na obrazie (E po lewej): PA rośnie ku E.
@@ -169,13 +182,27 @@ export function FramingPanel() {
     }
   }
 
+  // Koniec przeciągania zdjęcia: niebo przesunięte pod nieruchomym na ekranie kadrem, więc nowe są środki zdjęcia i kadru.
+  const endDrag = () => {
+    const d = drag.current
+    drag.current = null
+    if (d?.kind !== 'pan' || !pan) return
+    setPan(null)
+    const [dx, dy] = pan
+    if (Math.hypot(dx, dy) < 3) return
+    const view = gnomonicInverse(imgCenter, pixelToTangent(SIZE / 2 - dx, SIZE / 2 - dy, imageFov, SIZE))
+    const frame = gnomonicInverse(imgCenter, pixelToTangent(centerPx[0] - dx, centerPx[1] - dy, imageFov, SIZE))
+    setPhotoCenter({ objectIndex: o.i, raDeg: view.raDeg, decDeg: view.decDeg })
+    setFraming({ raDeg: frame.raDeg, decDeg: frame.decDeg })
+  }
+
   return (
     <div className="sky-stage" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 230px', background: '#000' }}>
       <div style={{ position: 'relative', display: 'grid', placeItems: 'center', overflow: 'hidden', padding: 12, containerType: 'size' }}>
         {/* Kwadrat wpisany w kolumnę: krótszy z wymiarów, żeby szeroki kadr nie chował się za panelem ustawień. */}
         <div style={{ position: 'relative', width: 'min(100cqw, 100cqh)', aspectRatio: '1' }}>
-          {img?.key === imageKey ? (
-            <img ref={imgRef} src={img.url} alt={`${o.id}, ${SURVEYS[LAYERS[layer].survey].label}`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', animation: 'fade-in .5s', filter: stretched ? `url(#${STRETCH_FILTER_ID})` : undefined }} onError={() => {
+          {shown ? (
+            <img ref={imgRef} src={shown.url} alt={`${o.id}, ${SURVEYS[LAYERS[layer].survey].label}`} draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', animation: 'fade-in .5s', transform: shiftX || shiftY ? `translate(${(shiftX / SIZE) * 100}%, ${(shiftY / SIZE) * 100}%)` : undefined, filter: stretched ? `url(#${STRETCH_FILTER_ID})` : undefined }} onError={() => {
               setImg(null)
               setErr(IMAGE_ERROR)
             }} />
@@ -199,10 +226,20 @@ export function FramingPanel() {
           <svg
             ref={svgRef}
             viewBox={`0 0 ${SIZE} ${SIZE}`}
-            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', touchAction: 'none' }}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', touchAction: 'none', userSelect: 'none', cursor: pan ? 'grabbing' : 'grab' }}
+            onPointerDown={(e) => {
+              // Kadr i uchwyt ustawiły już swoje przeciąganie; w pozostałym miejscu przeciąga się zdjęcie.
+              if (drag.current) return
+              e.currentTarget.setPointerCapture(e.pointerId)
+              const [x, y] = toSvg(e)
+              drag.current = { kind: 'pan', startX: x, startY: y, startCenter: offset, startPa: framing.paDeg }
+              setPan([0, 0])
+            }}
+            // Przeciąganie (zdjęcia, kadru, uchwytu) nie zaczyna zaznaczania tekstu na stronie.
+            onMouseDown={(e) => e.preventDefault()}
             onPointerMove={onMove}
-            onPointerUp={() => (drag.current = null)}
-            onPointerLeave={() => (drag.current = null)}
+            onPointerUp={endDrag}
+            onPointerLeave={endDrag}
           >
             {frameVisible && (
               <g stroke="rgba(255,255,255,0.25)" strokeWidth="1">
@@ -243,14 +280,14 @@ export function FramingPanel() {
                 drag.current = { kind: 'rotate', startX: x, startY: y, startCenter: offset, startPa: framing.paDeg }
               }}
             />
-            <circle cx={centerPx[0]} cy={centerPx[1]} r="4" fill="#00e0ff" />
+            <circle cx={centerPx[0]} cy={centerPx[1]} r="4" fill="#00e0ff" style={{ pointerEvents: 'none' }} />
             </>)}
             <text x="18" y="34" fill="#fff" fontSize="22" fontFamily="var(--mono)">N ↑</text>
             <text x="18" y="62" fill="#fff" fontSize="22" fontFamily="var(--mono)">← E</text>
             <text x={SIZE - 18} y={SIZE - 20} fill="rgba(255,255,255,0.6)" fontSize="13" textAnchor="end" fontFamily="var(--mono)">
               pole zdjęcia {fmtNum(imageFov, 2)}° · {SURVEYS[LAYERS[layer].survey].label}
               {layer === 'red' ? ' czerwony' : layer === 'color' ? ' kolor' : ''} · {SURVEYS[LAYERS[layer].survey].credit}
-              {img?.key === imageKey && !img.sharp ? ' · podgląd' : ''}
+              {img?.key === imageKey ? (img.sharp ? '' : ' · podgląd') : shown ? ' · wczytywanie' : ''}
               {stretched ? ' · rozciągnięte' : ''}
             </text>
           </svg>
@@ -365,7 +402,7 @@ export function FramingPanel() {
         >
           {planItem ? 'Zapisz kadr w planie' : 'Dodaj do planu'}
         </button>
-        <p className="dim" style={{ fontSize: 11.5, margin: 0 }}>Przeciągnij prostokąt, aby przesunąć kadr; uchwyt nad kadrem obraca go. Powiększenie zmienia suwak.</p>
+        <p className="dim" style={{ fontSize: 11.5, margin: 0 }}>Przeciągnij prostokąt, aby przesunąć kadr, albo zdjęcie, aby przesunąć niebo pod kadrem; uchwyt nad kadrem obraca go. Powiększenie zmienia suwak.</p>
       </div>
       <StretchDialog
         open={stretchOpen}
