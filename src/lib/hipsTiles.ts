@@ -4,6 +4,8 @@
 import { tileUrl, type Survey, type SurveyId } from './hips'
 
 export const TILE_TIMEOUT_MS = 3000
+// Treść liczona osobno: na słabym łączu kafelek ładuje się dłużej niż 3 s, choć lustro działa.
+const BODY_TIMEOUT_MS = 30000
 const CACHE_NAME = 'tracker-hips-v1'
 
 const failed = new Map<SurveyId, Set<string>>()
@@ -27,9 +29,11 @@ function demote(survey: Survey, mirror: string) {
 /** 'ok' z obrazem, 'missing' przy 404 (bez degradacji), 'failed' przy limicie czasu, błędzie sieci, 5xx albo nie-obrazie. */
 async function tryMirror(url: string): Promise<Blob | 'missing' | 'failed'> {
   const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), TILE_TIMEOUT_MS)
+  let timer = setTimeout(() => ctrl.abort(), TILE_TIMEOUT_MS)
   try {
     const res = await fetch(url, { signal: ctrl.signal })
+    clearTimeout(timer)
+    timer = setTimeout(() => ctrl.abort(), BODY_TIMEOUT_MS)
     if (res.status === 404) return 'missing'
     if (!res.ok || !(res.headers.get('Content-Type') ?? '').startsWith('image/')) return 'failed'
     const blob = await res.blob()

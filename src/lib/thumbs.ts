@@ -1,7 +1,7 @@
 // Obrazy nieba składane w workerze z kafelków HiPS (DSS2, PanSTARRS) z kilku luster: kolejka z ograniczoną
 // liczbą zadań i zapis gotowych obrazów w Cache Storage (drugi raz bez sieci).
 import type { DSO } from './catalog'
-import type { HipsReply, HipsRequest, ImageMode, SurveyId } from './hips'
+import type { HipsCancel, HipsReply, HipsRequest, ImageMode, SurveyId } from './hips'
 
 const CACHE_NAME = 'tracker-thumbs-v2'
 const MAX_PARALLEL = 5
@@ -22,7 +22,7 @@ type Job = { key: string; req: Omit<HipsRequest, 'id'>; resolve: (url: string) =
 
 const queue: Job[] = []
 const memory = new Map<string, Promise<string>>()
-const pending = new Map<number, { resolve: (blob: Blob) => void; reject: (e: Error) => void }>()
+const pending = new Map<number, { resolve: (reply: { blob: Blob; complete: boolean }) => void; reject: (e: Error) => void }>()
 let active = 0
 let lastId = 0
 let cachePromise: Promise<Cache | null> | null = null
@@ -45,7 +45,14 @@ function worker(): Worker {
       if (!p) return // zadanie przerwane: wynik idzie do kosza
       pending.delete(reply.id)
       if ('error' in reply) p.reject(new Error(reply.error))
-      else p.resolve(reply.blob)
+      else p.resolve(reply)
+    }
+    // Worker nie wczytał się albo padł (np. po aktualizacji PWA): odrzucamy zadania, następne tworzy nowy worker.
+    hipsWorker.onerror = () => {
+      hipsWorker?.terminate()
+      hipsWorker = null
+      for (const p of pending.values()) p.reject(new Error('worker obrazów przestał działać'))
+      pending.clear()
     }
   }
   return hipsWorker
@@ -56,18 +63,22 @@ async function run(job: Job) {
   try {
     const cache = await openCache()
     const hit = cache && (await cache.match(job.key))
-    if (hit) return job.resolve(URL.createObjectURL(await hit.blob()))
     if (job.signal?.aborted) return job.reject(abortError())
-    const blob = await new Promise<Blob>((resolve, reject) => {
+    if (hit) return job.resolve(URL.createObjectURL(await hit.blob()))
+    const { blob, complete } = await new Promise<{ blob: Blob; complete: boolean }>((resolve, reject) => {
       const id = ++lastId
       pending.set(id, { resolve, reject })
+      const w = worker()
       job.signal?.addEventListener('abort', () => {
-        pending.delete(id)
+        if (!pending.delete(id)) return
+        w.postMessage({ cancel: id } satisfies HipsCancel)
         reject(abortError())
       })
-      worker().postMessage({ id, ...job.req } satisfies HipsRequest)
+      w.postMessage({ id, ...job.req } satisfies HipsRequest)
     })
-    await cache?.put(job.key, new Response(blob, { headers: { 'Content-Type': 'image/jpeg' } }))
+    // Obraz z dziurą po chwilowym błędzie kafelka zostaje tylko w pamięci sesji; następna sesja spróbuje ponownie.
+    if (complete) await cache?.put(job.key, new Response(blob, { headers: { 'Content-Type': 'image/jpeg' } }))
+    if (job.signal?.aborted) return job.reject(abortError())
     job.resolve(URL.createObjectURL(blob))
   } catch (e) {
     job.reject(e)
@@ -93,6 +104,7 @@ function pump() {
 export function getSkyImage(raDeg: number, decDeg: number, fovDeg: number, sizePx: number, signal?: AbortSignal, opts: SkyImageOptions = {}): Promise<string> {
   const { survey = 'dss2', mode = 'red', coarser = 0 } = opts
   const key = `/thumb/${survey}/${mode}/${coarser}/${raDeg.toFixed(4)}/${decDeg.toFixed(4)}/${fovDeg}/${sizePx}`
+  if (signal?.aborted) return Promise.reject(abortError())
   const known = memory.get(key)
   // Wspólne zapytanie mógł przerwać inny odbiorca (np. podwójny efekt w StrictMode): wtedy zaczynamy od nowa.
   if (known) return known.catch((e: Error) => (e.name === 'AbortError' && !signal?.aborted ? getSkyImage(raDeg, decDeg, fovDeg, sizePx, signal, opts) : Promise.reject(e)))

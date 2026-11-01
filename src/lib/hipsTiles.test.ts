@@ -45,6 +45,29 @@ describe('kafelki z luster', () => {
     expect(g.mock.calls.map(mirrorOf)).toEqual([1, 2, 3, 4, 0])
   })
 
+  it('wolne ciało odpowiedzi (nagłówki na czas) nie degraduje lustra', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const { fetchTile } = await import('./hipsTiles')
+    // Nagłówki od razu, treść po 5 s: na słabym łączu to zwykłe pobieranie, nie awaria lustra.
+    // Jak prawdziwy fetch: przerwanie sygnału przerywa też czytanie treści.
+    const f = vi.fn(async (_url: string, init?: RequestInit) => ({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'Content-Type': 'image/jpeg' }),
+      blob: () =>
+        new Promise<Blob>((resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+          setTimeout(() => resolve(new Blob([new Uint8Array(500)])), 5000)
+        }),
+    }) as unknown as Response)
+    vi.stubGlobal('fetch', f)
+    let blob: Blob | null = null
+    void fetchTile(SURVEYS.dss2, 7, 1).then((b) => (blob = b))
+    await vi.advanceTimersByTimeAsync(5001)
+    expect(blob).not.toBeNull()
+    expect(f).toHaveBeenCalledTimes(1)
+  })
+
   it('404 przechodzi do kolejnego lustra bez degradacji', async () => {
     const { fetchTile } = await import('./hipsTiles')
     const f = stubFetch((m) => (m === 0 ? () => new Response('', { status: 404 }) : image))

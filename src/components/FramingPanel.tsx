@@ -77,13 +77,13 @@ export function FramingPanel() {
     // Najpierw miękki podgląd (rząd grubszy o 2, mały transfer), ostry obraz dopiero po nim; podgląd nie zastępuje ostrego.
     let previewFailed = false
     getSkyImage(imageRa, imageDec, imageFov, SIZE, ctrl.signal, { ...opts, coarser: 2 })
-      .then((url) => setImg((prev) => (prev?.key === imageKey && prev.sharp ? prev : { key: imageKey, url, sharp: false })))
+      .then((url) => !ctrl.signal.aborted && setImg((prev) => (prev?.key === imageKey && prev.sharp ? prev : { key: imageKey, url, sharp: false })))
       .catch((e: Error) => {
         if (e.name === 'AbortError') throw e
         previewFailed = true
       })
       .then(() => getSkyImage(imageRa, imageDec, imageFov, SIZE, ctrl.signal, opts))
-      .then((url) => setImg({ key: imageKey, url, sharp: true }))
+      .then((url) => !ctrl.signal.aborted && setImg({ key: imageKey, url, sharp: true }))
       .catch((e: Error) => e.name !== 'AbortError' && previewFailed && setErr(IMAGE_ERROR))
     return () => ctrl.abort()
   }, [o, imageRa, imageDec, imageFov, layer, imageKey])
