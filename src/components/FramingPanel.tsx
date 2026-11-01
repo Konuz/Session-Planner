@@ -156,8 +156,9 @@ export function FramingPanel() {
 
   return (
     <div className="sky-stage" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 230px', background: '#000' }}>
-      <div style={{ position: 'relative', display: 'grid', placeItems: 'center', overflow: 'hidden', padding: 12 }}>
-        <div style={{ position: 'relative', height: '100%', aspectRatio: '1', maxWidth: '100%' }}>
+      <div style={{ position: 'relative', display: 'grid', placeItems: 'center', overflow: 'hidden', padding: 12, containerType: 'size' }}>
+        {/* Kwadrat wpisany w kolumnę: krótszy z wymiarów, żeby szeroki kadr nie chował się za panelem ustawień. */}
+        <div style={{ position: 'relative', width: 'min(100cqw, 100cqh)', aspectRatio: '1' }}>
           {img?.key === imageKey ? (
             <img src={img.url} alt={`${o.id}, ${SURVEYS[LAYERS[layer].survey].label}`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', animation: 'fade-in .5s' }} onError={() => {
               setImg(null)
