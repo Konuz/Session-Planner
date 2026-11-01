@@ -10,7 +10,6 @@ import { useNight, useSelected, useSite } from '../state/data'
 import { useStore } from '../state/store'
 import { CloseButton } from './CloseButton'
 import { Thumb } from './Thumb'
-import { FavoriteButton } from './FavoriteButton'
 
 export function ObjectDetails({ onClose }: { onClose: () => void }) {
   const o = useSelected()
@@ -107,7 +106,6 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
             <button className="button primary" onClick={() => go('dome')}>Pokaż na niebie</button>
             <button className="button" onClick={() => go('3d')}>Pozycja 3D</button>
             <button className="button" onClick={() => { addToPlan(o.i, o.id); onClose(); setTab('planner') }}>Do planu</button>
-            <FavoriteButton objectId={o.id} showLabel />
             {astrobin?.key === o.i && (
               <a className="button" href={astrobin.url} target="_blank" rel="noreferrer" title="Zdjęcia z AstroBin wyróżnione jako IOTD lub Top Pick">
                 AstroBin
