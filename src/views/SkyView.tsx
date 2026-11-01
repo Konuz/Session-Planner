@@ -96,7 +96,6 @@ function LayersMenu() {
 
 const MODES: { id: CenterMode; label: string }[] = [
   { id: 'dome', label: 'Niebo' },
-  { id: 'framing', label: 'Kadr teleskopu' },
   { id: '3d', label: 'Pozycja 3D' },
 ]
 

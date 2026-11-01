@@ -1106,7 +1106,7 @@ export function SkyDome({ playing = false }: Props) {
     }
 
     // Wybrany obiekt: celownik i animacja namierzania.
-    if (selected) {
+    if (selected && aboveHorizon(unitVector(selected.raDeg, selected.decDeg))) {
       const p = proj.eq(unitVector(selected.raDeg, selected.decDeg))
       if (p) {
         const now = performance.now()
@@ -1152,12 +1152,6 @@ export function SkyDome({ playing = false }: Props) {
         ctx.font = '600 13px ui-monospace, Consolas, monospace'
         ctx.fillStyle = '#e6fbff'
         ctx.fillText(selected.id, p[0] + 16, p[1] + 26)
-        const h = vecToHorizontal(mulVec(horMatrix, unitVector(selected.raDeg, selected.decDeg)))
-        if (h.altDeg < horizonAltitude(horizon, h.azDeg)) {
-          ctx.font = '11px Inter, sans-serif'
-          ctx.fillStyle = 'rgba(245, 165, 36, 0.9)'
-          ctx.fillText('pod horyzontem', p[0] + 16, p[1] + 41)
-        }
       }
     }
   })
