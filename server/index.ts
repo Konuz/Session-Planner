@@ -3,14 +3,16 @@ import { readFile, realpath } from 'node:fs/promises'
 import { extname, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { astrobinPhoto, type AstroBinEnv } from './astrobin.ts'
+import { photoApi, type PhotoEnv } from './photo.ts'
 
 const types: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.woff2': 'font/woff2', '.webmanifest': 'application/manifest+json' }
 
-export function createAppServer({ distDir = fileURLToPath(new URL('../dist/', import.meta.url)), env = process.env, fetchImpl = fetch }: { distDir?: string; env?: AstroBinEnv; fetchImpl?: typeof fetch } = {}) {
+export function createAppServer({ distDir = fileURLToPath(new URL('../dist/', import.meta.url)), env = process.env, fetchImpl = fetch }: { distDir?: string; env?: AstroBinEnv & PhotoEnv; fetchImpl?: typeof fetch } = {}) {
   const root = resolve(distDir)
   return createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? '/', 'http://localhost')
+      if (url.pathname.startsWith('/api/photo/')) return await photoApi(req, res, env, fetchImpl)
       if (url.pathname === '/api/astrobin-photo') return await astrobinPhoto(req, res, env, fetchImpl)
       if (url.pathname.startsWith('/api/')) { res.writeHead(404).end(); return }
       if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405, { Allow: 'GET, HEAD' }).end(); return }

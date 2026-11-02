@@ -488,6 +488,43 @@ input[type='checkbox']:checked::after {
 .sky-stage { position: relative; flex: 1; min-height: 520px; overflow: hidden; }
 .sky-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .sky-stage .overlay { touch-action: none; }
+.photo-import { position: absolute; top: 12px; left: 12px; z-index: 6; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; max-width: 48%; }
+.photo-import .button { display: inline-flex; gap: 6px; align-items: center; }
+.photo-import .button:not(:hover) { background: var(--card); }
+.photo-notice { font: 10px var(--mono); color: var(--warn); }
+.photo-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: hidden; }
+.photo-circle { pointer-events: stroke; cursor: pointer; }
+.photo-draggable { pointer-events: all; cursor: move; touch-action: none; }
+.photo-resize { pointer-events: all; cursor: ew-resize; touch-action: none; }
+.photo-label, .photo-distance { text-anchor: middle; fill: var(--text); stroke: var(--bg); stroke-width: 3px; paint-order: stroke; font: 11px var(--mono); pointer-events: none; }
+.photo-distance { fill: var(--text-2); font-size: 9px; }
+.photo-controls { position: absolute; bottom: 12px; left: 12px; right: 12px; z-index: 5; padding: 8px 10px; border: 1px solid var(--border-strong); background: var(--card); }
+.photo-heading { display: flex; justify-content: space-between; gap: 8px; font: 10px var(--mono); margin-bottom: 5px; }
+.photo-heading > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.photo-timeline { display: flex; align-items: center; gap: 8px; font: 9px var(--mono); }
+.photo-timeline input[type=range] { flex: 1; min-width: 30px; }
+.photo-timeline .icon-button { color: var(--accent); flex: none; background: none; border: 0; display: grid; place-items: center; cursor: pointer; padding: 2px; }
+.photo-editor { position: absolute; top: 55px; left: 12px; width: 228px; max-height: calc(100% - 190px); overflow-y: auto; z-index: 7; padding: 12px; border: 1px solid var(--border-strong); background: var(--card); font-size: 11px; }
+.photo-editor-heading { display: flex; justify-content: space-between; align-items: center; }
+.photo-editor-heading .close-button, .photo-error .close-button { width: 24px; height: 24px; padding: 3px; flex: none; }
+.photo-editor-heading .close-button svg, .photo-error .close-button svg { width: 14px; height: 14px; }
+.photo-editor p { margin: 8px 0; font-size: 10px; }
+.photo-object-list { max-height: 125px; overflow: auto; margin: 8px 0; }
+.photo-object-list > div { display: flex; align-items: center; gap: 7px; border-bottom: 1px solid var(--border); }
+.photo-object-list > div.active { background: var(--accent-faint); }
+.photo-object-list button { background: none; border: 0; text-align: left; cursor: pointer; flex: 1; min-width: 0; padding: 5px 0; display: flex; justify-content: space-between; gap: 5px; }
+.photo-object-list small { color: var(--text-dim); font-size: 9px; }
+.photo-fields { display: grid; gap: 6px; border-top: 1px solid var(--border-strong); padding-top: 8px; }
+.photo-fields label { display: grid; gap: 3px; color: var(--text-dim); font-size: 10px; }
+.photo-fields input, .photo-fields select { width: 100%; min-width: 0; padding: 4px 6px; background: var(--bg); color: var(--text); border: 1px solid var(--border-strong); font: 11px var(--mono); }
+.photo-editor details { margin-top: 12px; color: var(--text-dim); font-size: 10px; }
+.photo-error { position: absolute; top: 55px; left: 12px; right: 12px; z-index: 9; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; background: var(--card-solid); border: 1px solid var(--bad); font-size: 12px; }
+@media (max-width: 650px) {
+  .photo-import { top: 50px; max-width: calc(100% - 24px); }
+  .photo-editor { top: 90px; max-height: calc(100% - 220px); }
+  .photo-overlay { z-index: 1; }
+  .photo-controls { bottom: 12px; }
+}
 .sky-toolbar {
   display: flex;
   align-items: center;
@@ -830,3 +867,9 @@ input[type='checkbox']:checked::after {
   .planner-export-actions > .field { flex-basis: 100%; }
   .planner-export-actions .control { width: 100%; font-size: 12px; }
 }
+
+.space-filters { position: absolute; bottom: 12px; right: 14px; z-index: 6; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; max-width: calc(100% - 60px); }
+.space-filters > .sky-hud { position: relative; bottom: auto; right: auto; }
+.sky-toolbar .layers-popover { left: auto; right: 0; }
+.space-stage .sky-hud .toggle-chip, .space-stage .constellation-select { height: 28px; min-height: 28px; padding: 0 10px; font-size: 10px; letter-spacing: 0.04em; }
+.space-stage.has-photo .space-filters, .space-stage.has-photo .scale-info-control { bottom: 82px; }

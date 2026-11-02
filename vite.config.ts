@@ -3,6 +3,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 import { loadEnv } from 'vite'
 import { defineConfig } from 'vitest/config'
 import { astrobinPhoto } from './server/astrobin.ts'
+import { photoApi } from './server/photo.ts'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
@@ -13,6 +14,7 @@ export default defineConfig(({ mode }) => {
         name: 'astrobin-photo-api',
         apply: 'serve',
         configureServer(server) {
+          server.middlewares.use('/api/photo', (req, res) => { void photoApi(req, res, env) })
           server.middlewares.use('/api/astrobin-photo', (req, res) => { void astrobinPhoto(req, res, env) })
         },
       },

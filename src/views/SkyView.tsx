@@ -64,14 +64,15 @@ function Section({ title, on, total, open, onToggle, children }: { title: string
 }
 
 /** Lista rozwijana warstw kopuły: zwijane sekcje przełączników warstw i grup katalogów. */
-function LayersMenu() {
+function LayersMenu({ threeD = false }: { threeD?: boolean }) {
+  const visibleLayers = threeD ? LAYERS.filter(({ key }) => key === 'showAnnotations') : LAYERS
   const [open, setOpen] = useState(false)
   // Rozwinięte sekcje pamiętane, dopóki otwarty jest widok kopuły (lista obiektów domyślnie zwinięta).
   const [sections, setSections] = useState({ layers: true, objects: false })
   const ref = useRef<HTMLDivElement>(null)
   const close = useCallback(() => setOpen(false), [])
   useOutside(ref, close)
-  const layers = useStore(useShallow((s) => LAYERS.map(({ key }) => s[key])))
+  const layers = useStore(useShallow((s) => visibleLayers.map(({ key }) => s[key])))
   const groups = useStore((s) => s.skyGroups)
   const toggle = useStore((s) => s.toggle)
   const toggleGroup = useStore((s) => s.toggleSkyGroup)
@@ -81,13 +82,13 @@ function LayersMenu() {
         <LayersIcon filled={false} /> Warstwy <ChevronDown size={12} />
       </button>
       {open && (
-        <div className="popover layers-popover" role="group" aria-label="Warstwy kopuły">
-          <Section title="Warstwy" on={layers.filter(Boolean).length} total={LAYERS.length} open={sections.layers} onToggle={() => setSections({ ...sections, layers: !sections.layers })}>
-            {LAYERS.map(({ key, label }, i) => <Switch key={key} on={layers[i]} onClick={() => toggle(key)} label={label} />)}
+        <div className="popover layers-popover" role="group" aria-label={threeD ? 'Warstwy 3D' : 'Warstwy kopuły'}>
+          <Section title="Warstwy" on={layers.filter(Boolean).length} total={visibleLayers.length} open={sections.layers} onToggle={() => setSections({ ...sections, layers: !sections.layers })}>
+            {visibleLayers.map(({ key, label }, i) => <Switch key={key} on={layers[i]} onClick={() => toggle(key)} label={label} />)}
           </Section>
-          <Section title="Obiekty" on={GROUPS.filter(({ id }) => groups[id]).length} total={GROUPS.length} open={sections.objects} onToggle={() => setSections({ ...sections, objects: !sections.objects })}>
+          {!threeD && <Section title="Obiekty" on={GROUPS.filter(({ id }) => groups[id]).length} total={GROUPS.length} open={sections.objects} onToggle={() => setSections({ ...sections, objects: !sections.objects })}>
             {GROUPS.map(({ id, label }) => <Switch key={id} on={groups[id]} onClick={() => toggleGroup(id)} label={label} />)}
-          </Section>
+          </Section>}
         </div>
       )}
     </div>
@@ -128,8 +129,6 @@ function usePlayback() {
 export function SkyView() {
   const mode = useStore((s) => s.centerMode)
   const setMode = useStore((s) => s.setCenterMode)
-  const showAnnotations = useStore((s) => s.showAnnotations)
-  const toggle = useStore((s) => s.toggle)
   const setTime = useStore((s) => s.setTime)
   const selectedIndex = useStore((s) => s.selectedIndex)
   const select = useStore((s) => s.select)
@@ -168,7 +167,7 @@ export function SkyView() {
                 {label}
               </button>
             ))}
-            {mode === '3d' && <span className="toolbar-group"><Switch on={showAnnotations} onClick={() => toggle('showAnnotations')} label="Opisy" /></span>}
+            {mode === '3d' && <LayersMenu threeD />}
             {mode === 'dome' && (
               <div style={{ display: 'contents' }}>
                 <button className="button small icon-button" title={playing ? 'Zatrzymaj' : 'Odtwórz noc'} onClick={() => setPlaying(!playing)}>

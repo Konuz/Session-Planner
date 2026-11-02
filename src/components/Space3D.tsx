@@ -17,6 +17,8 @@ import { CONSTELLATION_PL } from '../lib/constellations'
 import { Range } from './Range'
 import { LayersIcon } from './SkyDome'
 import { useOutside } from './TopBar'
+import { PhotoExplorer } from './PhotoExplorer'
+import { photoAnchorKind, photoStageHeight, type PhotoProject, type PhotoSceneFrame } from '../lib/photo'
 
 const SUN_TO_GC_KLY = 26.7
 const GALACTIC_LIMIT_LY = 150_000
@@ -386,6 +388,11 @@ function showTypes(bg: { geometry: THREE.BufferGeometry; types: ObjectType[]; po
 }
 
 export default function Space3D() {
+  const [photo, setPhoto] = useState<PhotoProject | null>(null)
+  const photoRef = useRef(photo)
+  photoRef.current = photo
+  const photoFrameRef = useRef<((frame: PhotoSceneFrame) => void) | null>(null)
+  const photoFitRef = useRef<(() => void) | null>(null)
   const mountRef = useRef<HTMLDivElement>(null)
   const pinRef = useRef<HTMLDivElement>(null)
   // Punkty tła posortowane wg odległości: suwak zmienia tylko zakres rysowania, bez przebudowy sceny.
@@ -429,6 +436,12 @@ export default function Space3D() {
   const [scaleInfoOpen, setScaleInfoOpen] = useState(false)
   const outOfScale = scale === 'galaxy' && dist !== null && dist > GALACTIC_LIMIT_LY
   const withDistance = useMemo(() => (catalog ? catalog.filter((c) => c.distLy !== null) : []), [catalog])
+
+  useEffect(() => {
+    if (!photo) return
+    const distances = photo.cuts.map((c) => c.distLy).filter((d): d is number => d !== null)
+    setScaleChoice(distances.length && distances.every((d) => d >= GALACTIC_LIMIT_LY) ? 'universe' : 'galaxy')
+  }, [photo?.id])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -646,22 +659,24 @@ export default function Space3D() {
     scene.add(sunLabel)
 
     // Obiekt.
+    const objectGuide = new THREE.Group()
+    scene.add(objectGuide)
     let target = sunPos.clone()
     if (placed) {
       target = target0.clone()
       const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([sunPos, target]), new THREE.LineDashedMaterial({ color: 0x00e0ff, ...dashes, transparent: true, opacity: 0.8 }))
       line.computeLineDistances()
-      scene.add(line)
+      objectGuide.add(line)
       if (scale === 'universe') {
         // Pion obiektu do płaszczyzny Drogi Mlecznej i linia w płaszczyźnie do Słońca: z przerywaną tworzą trójkąt.
         const foot = new THREE.Vector3(target.x, 0, target.z)
         const drop = new THREE.Line(new THREE.BufferGeometry().setFromPoints([target, foot, sunPos]), new THREE.LineBasicMaterial({ color: 0x00e0ff, transparent: true, opacity: 0.6 }))
-        scene.add(drop)
+        objectGuide.add(drop)
         disposables.push(drop.geometry, drop.material as THREE.Material)
       }
       const objLabel = label(o.id, '#00e0ff', 0.65)
       objLabel.position.copy(target).add(new THREE.Vector3(0, 2.4 * k, 0))
-      scene.add(objLabel)
+      objectGuide.add(objLabel)
       disposables.push(line.geometry, line.material as THREE.Material)
     } else {
       // Tylko kierunek ze Słońca. Ta sama informacja w obu skalach: obiekt Galaktyki leży w Drodze Mlecznej
@@ -678,7 +693,7 @@ export default function Space3D() {
       }
       const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([sunPos, sunPos.clone().add(dir.multiplyScalar(length))]), new THREE.LineDashedMaterial({ color: 0x00e0ff, ...dashes }))
       line.computeLineDistances()
-      scene.add(line)
+      objectGuide.add(line)
       disposables.push(line.geometry, line.material as THREE.Material)
     }
 
@@ -696,6 +711,22 @@ export default function Space3D() {
     let rightLook: { pointerId: number; x: number; y: number; distance: number; yaw: number; pitch: number; position: THREE.Vector3 } | null = null
     const moveKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight'])
     const stopFly = () => (flying = false)
+    let photoSpan = span
+    photoFitRef.current = () => {
+      const points = [sunPos.clone()]
+      for (const cut of photoRef.current?.cuts ?? []) {
+        if (cut.enabled && photoAnchorKind(cut.distLy, scale) === 'position') points.push(position(cut, cut.distLy!, scale))
+      }
+      const bounds = new THREE.Box3().setFromPoints(points)
+      const center = bounds.getCenter(new THREE.Vector3())
+      photoSpan = Math.max(scale === 'galaxy' ? 80 : 35, bounds.getSize(new THREE.Vector3()).length() * 2.4)
+      flying = false
+      controls.autoRotate = false
+      camera.position.copy(center).add(new THREE.Vector3(photoSpan * 0.55, photoSpan * 0.55, photoSpan * 0.75))
+      controls.target.copy(center)
+      camera.lookAt(center)
+      controls.update()
+    }
     const onKeyDown = (e: KeyboardEvent) => {
       const active = document.activeElement
       if ((active !== renderer.domElement && active !== filterRef.current?.querySelector('.constellation-select')) || !moveKeys.has(e.code) || e.altKey || e.ctrlKey || e.metaKey) return
@@ -721,6 +752,11 @@ export default function Space3D() {
       stopFly()
       controls.autoRotate = false
     })
+    let projectedPhoto: PhotoProject | null | undefined
+    let projectedReceiver: typeof photoFrameRef.current = null
+    let photoWidth = 0, photoHeight = 0, projectedSpan = 0, lastPhotoFrame = 0
+    const photoCameraMatrix = new THREE.Matrix4()
+    const photoProjectionMatrix = new THREE.Matrix4()
     const tick = () => {
       const now = performance.now()
       const delta = Math.min((now - lastTick) / 1000, 0.05)
@@ -751,6 +787,7 @@ export default function Space3D() {
         }
       }
       if (!rightLook) controls.update()
+      if (photoRef.current) controls.autoRotate = false
       if (earth) {
         camera.updateMatrixWorld()
         textCameraPosition.copy(sunPos).applyMatrix4(camera.matrixWorldInverse)
@@ -833,13 +870,42 @@ export default function Space3D() {
           layout.connectors.needsUpdate = true
         }
       }
+      objectGuide.visible = !photoRef.current
       renderer.render(scene, camera)
+      if (photoFrameRef.current) {
+        const width = mount.clientWidth
+        const height = mount.clientHeight
+        const photo = photoRef.current
+        const changed = photo !== projectedPhoto || width !== photoWidth || height !== photoHeight
+          || projectedReceiver !== photoFrameRef.current || projectedSpan !== photoSpan
+          || (photo !== null && (!photoCameraMatrix.equals(camera.matrixWorld) || !photoProjectionMatrix.equals(camera.projectionMatrix)))
+        if (changed && now - lastPhotoFrame >= 32) {
+          const origin = photo ? sunPos.clone().project(camera) : { x: 0, y: 0 }
+          const anchors = (photo?.cuts ?? []).filter((c) => c.enabled).map((cut) => {
+            const kind = photoAnchorKind(cut.distLy, scale)
+            const world = kind === 'position' ? position(cut, cut.distLy!, scale)
+              : kind === 'local' ? sunPos.clone()
+                : sunPos.clone().add(toThree(galacticVector(cut)).multiplyScalar(photoSpan * 0.35))
+            const p = world.project(camera)
+            return { id: cut.id, x: (p.x + 1) * width / 2, y: (1 - p.y) * height / 2, visible: p.z >= -1 && p.z <= 1 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1, kind, originX: (origin.x + 1) * width / 2, originY: (1 - origin.y) * height / 2 }
+          })
+          photoFrameRef.current({ width, height, anchors })
+          projectedPhoto = photo
+          projectedReceiver = photoFrameRef.current
+          photoWidth = width
+          photoHeight = height
+          projectedSpan = photoSpan
+          photoCameraMatrix.copy(camera.matrixWorld)
+          photoProjectionMatrix.copy(camera.projectionMatrix)
+          lastPhotoFrame = now
+        }
+      }
       drawLabels()
       // Pinezka obiektu (HTML nad sceną) przypięta do rzutu jego położenia.
       const pin = pinRef.current
       if (pin) {
         const v = target.clone().project(camera)
-        pin.style.display = placed && v.z < 1 ? '' : 'none'
+        pin.style.display = !photoRef.current && placed && v.z < 1 ? '' : 'none'
         pin.style.transform = `translate(${((v.x + 1) / 2) * mount.clientWidth}px, ${((1 - v.y) / 2) * mount.clientHeight}px)`
       }
       raf = requestAnimationFrame(tick)
@@ -1020,6 +1086,7 @@ export default function Space3D() {
     }
     document.addEventListener('visibilitychange', onVis)
     return () => {
+      photoFitRef.current = null
       cancelAnimationFrame(raf)
       ro.disconnect()
       document.removeEventListener('visibilitychange', onVis)
@@ -1090,8 +1157,9 @@ export default function Space3D() {
 
   if (!o) return <div className="sky-stage empty" style={{ display: 'grid', placeItems: 'center' }}>Wybierz obiekt.</div>
   return (
-    <div className="sky-stage" style={{ background: 'radial-gradient(circle at 50% 40%, #071022, #000 75%)' }}>
+    <div className={`sky-stage space-stage${photo ? ' has-photo' : ''}`} style={{ background: 'radial-gradient(circle at 50% 40%, #071022, #000 75%)', minHeight: photo ? photoStageHeight(photo.cuts, photo.width) : undefined }}>
       <div ref={mountRef} style={{ position: 'absolute', inset: 0 }} />
+      <PhotoExplorer project={photo} onProject={setPhoto} frameRef={photoFrameRef} fitRef={photoFitRef} />
       <div ref={pinRef} className="pin" style={{ display: 'none' }} aria-hidden>
         {scale === 'universe' && LOCAL_GROUP_SHAPES[o.id] ? (
           <span style={{ width: 28, height: 28, border: '1px dashed var(--accent)', background: 'transparent' }} />
@@ -1124,8 +1192,9 @@ export default function Space3D() {
           </div>
         )}
       </div>
+      <div className="space-filters">
       {scale === 'galaxy' && (
-        <div ref={filterRef} className="sky-hud br" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 6, maxWidth: 'calc(100% - 24px)' }}>
+        <div ref={filterRef} className="sky-hud br" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 6, maxWidth: '100%' }}>
           {showConstellations && (
             <>
               <select className="control constellation-select" aria-label="Gwiazdozbiór w przestrzeni 3D" style={{ width: 'auto', maxWidth: '100%' }} value={constellationChoice} onChange={(e) => setConstellationChoice(e.target.value)}>
@@ -1180,6 +1249,7 @@ export default function Space3D() {
           </label>
         </div>
       )}
+      </div>
     </div>
   )
 }
