@@ -4,9 +4,10 @@ import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import sharp from 'sharp'
-import { parseCatalog } from '../src/lib/catalog.ts'
+import { parseCatalog, type DSO } from '../src/lib/catalog.ts'
 import type { PhotoProject } from '../src/lib/photo.ts'
 import { loadPhotoDistances } from './photoDistances.ts'
 
@@ -14,6 +15,19 @@ export type PhotoEnv = { SKYSHOT_BRIDGE?: string; SKYSHOT_INDEX?: string }
 const execute = promisify(execFile)
 const maxBytes = 40 * 1024 * 1024
 let busy = false
+const catalogPath = fileURLToPath(new URL('../public/data/catalog.json', import.meta.url))
+let cachedCatalogById: Promise<Map<string, DSO>> | null = null
+
+function getCatalogById(): Promise<Map<string, DSO>> {
+  cachedCatalogById ??= readFile(catalogPath, 'utf8')
+    .then((raw) => new Map(parseCatalog(JSON.parse(raw).rows).map((o) => [o.id, o])))
+    .catch((err) => {
+      cachedCatalogById = null
+      throw err
+    })
+  return cachedCatalogById
+}
+
 function paths(env: PhotoEnv) {
   return { binary: env.SKYSHOT_BRIDGE ?? resolve('scripts/.cache/skyshot-build/release', process.platform === 'win32' ? 'tracker-skyshot.exe' : 'tracker-skyshot'), index: env.SKYSHOT_INDEX ?? resolve('scripts/.cache/skyshot-data/index') }
 }
@@ -26,8 +40,8 @@ export async function photoApi(req: IncomingMessage, res: ServerResponse, env: P
   if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}` && req.headers.origin !== `https://${req.headers.host}`) { json(403, { error: 'Żądanie musi pochodzić z tej aplikacji.' }); return }
   if (path.endsWith('/distances')) {
     if (req.method !== 'GET') { res.setHeader('Allow', 'GET'); json(405, { error: 'Wymagane zapytanie GET.' }); return }
-    const catalog = parseCatalog(JSON.parse(await readFile(resolve('public/data/catalog.json'), 'utf8')).rows)
-    const object = catalog.find((o) => o.id === url.searchParams.get('id'))
+    const byId = await getCatalogById()
+    const object = byId.get(url.searchParams.get('id') ?? '')
     if (!object) { json(404, { error: 'Nieznany obiekt katalogowy.' }); return }
     const abort = new AbortController()
     res.on('close', () => { if (!res.writableEnded) abort.abort() })
@@ -56,7 +70,7 @@ export async function photoApi(req: IncomingMessage, res: ServerResponse, env: P
     let size = 0
     for await (const chunk of req) {
       size += chunk.length
-      if (size > maxBytes) { json(413, { error: 'Maksymalny rozmiar zdjęcia to 40 MB.' }); return }
+      if (size > maxBytes) { json(413, { error: 'Maksymalny rozmiar zdjęcia to 40 MB.' }); req.destroy(); return }
       chunks.push(Buffer.from(chunk))
     }
     let input = Buffer.concat(chunks)
@@ -74,11 +88,9 @@ export async function photoApi(req: IncomingMessage, res: ServerResponse, env: P
     } catch { json(422, { error: 'Nie można odczytać tego obrazu. Wybierz poprawny plik JPEG, PNG, WebP, TIFF lub FITS.' }); return }
     const imagePath = join(temp, 'reference.jpg')
     await writeFile(imagePath, image)
-    const catalogPath = resolve('public/data/catalog.json')
     const { stdout } = await execute(binary, ['solve', imagePath, index, catalogPath], { timeout: 90_000, maxBuffer: 8 * 1024 * 1024, signal: abort.signal, windowsHide: true })
     const result = JSON.parse(stdout) as PhotoProject['astrometry'] & { width: number; height: number; objects: { id: string; x: number; y: number; radius: number }[] }
-    const catalog = parseCatalog(JSON.parse(await readFile(catalogPath, 'utf8')).rows)
-    const byId = new Map(catalog.map((o) => [o.id, o]))
+    const byId = await getCatalogById()
     const cuts = result.objects.flatMap((p) => {
       const o = byId.get(p.id)
       return o ? [{ ...p, type: o.type, raDeg: o.raDeg, decDeg: o.decDeg, enabled: true, distLy: o.distLy, distanceSource: o.distLy ? 'Wikidata — katalog aplikacji' : '', uncertaintyLy: null, distanceScope: 'object' as const }] : []

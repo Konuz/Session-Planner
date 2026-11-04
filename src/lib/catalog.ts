@@ -104,9 +104,15 @@ export function parseCatalog(rows: Row[]): DSO[] {
   })
 }
 
+let lastRawQuery = ''
+let lastNormQuery = ''
+
 /** Małe litery, bez znaków diakrytycznych i bez spacji („M 51” → „m51”, „Wir” → „wir”). */
 export function normalizeQuery(text: string): string {
-  return text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/g, 'l').replace(/[\s_-]+/g, '')
+  if (text === lastRawQuery) return lastNormQuery
+  lastRawQuery = text
+  lastNormQuery = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/g, 'l').replace(/[\s_-]+/g, '')
+  return lastNormQuery
 }
 
 /** Nazwa do wyświetlania: polska, potem angielska. */

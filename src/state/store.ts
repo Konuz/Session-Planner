@@ -398,7 +398,14 @@ export const useStore = create<State>()(
       // Noc zawsze startuje od bieżącej daty w strefie zapisanej lokalizacji.
       onRehydrateStorage: () => (state) => {
         if (state) queueMicrotask(() => {
-          useStore.setState({ nightDate: nightDateOf(Date.now(), state.location.timeZone) })
+          let tz = 'Europe/Warsaw'
+          try {
+            if (state.location?.timeZone) {
+              new Intl.DateTimeFormat('en-US', { timeZone: state.location.timeZone })
+              tz = state.location.timeZone
+            }
+          } catch { /* nieprawidłowa strefa z localStorage wraca do domyślnej */ }
+          useStore.setState({ nightDate: nightDateOf(Date.now(), tz) })
           // Dawny suwak głębi powyżej 0 oznaczał widoczne elipsy.
           if ((state as { annotationDepth?: number }).annotationDepth) useStore.setState({ showEllipses: true })
           if (state.equipment.telescopeId === 'gso-newton-150-600') useStore.getState().setEquipment({

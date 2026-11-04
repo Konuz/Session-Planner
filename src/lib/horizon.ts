@@ -18,7 +18,14 @@ export function horizonAltitude(horizon: readonly HorizonPoint[], azDeg: number)
   if (horizon.length === 0) return 0
   if (horizon.length === 1) return horizon[0].altDeg
   const az = normDeg(azDeg)
-  const nextIndex = Math.max(0, horizon.findIndex((p) => p.azDeg > az))
+  let lo = 0
+  let hi = horizon.length
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (horizon[mid].azDeg > az) hi = mid
+    else lo = mid + 1
+  }
+  const nextIndex = lo < horizon.length ? lo : 0
   const next = horizon[nextIndex]
   const prev = horizon[(nextIndex - 1 + horizon.length) % horizon.length]
   const span = normDeg(next.azDeg - prev.azDeg)

@@ -14,8 +14,16 @@ export default defineConfig(({ mode }) => {
         name: 'astrobin-photo-api',
         apply: 'serve',
         configureServer(server) {
-          server.middlewares.use('/api/photo', (req, res) => { void photoApi(req, res, env) })
-          server.middlewares.use('/api/astrobin-photo', (req, res) => { void astrobinPhoto(req, res, env) })
+          server.middlewares.use('/api/photo', (req, res) => {
+            photoApi(req, res, env).catch((err) => {
+              if (!res.headersSent) { res.statusCode = 500; res.end(String(err)) }
+            })
+          })
+          server.middlewares.use('/api/astrobin-photo', (req, res) => {
+            astrobinPhoto(req, res, env).catch((err) => {
+              if (!res.headersSent) { res.statusCode = 500; res.end(String(err)) }
+            })
+          })
         },
       },
       VitePWA({

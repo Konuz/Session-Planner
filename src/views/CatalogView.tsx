@@ -1,6 +1,6 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { CalendarCheck, Heart, Palette, RotateCcw, Search, Trash2 } from 'lucide-react'
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ObjectDetails } from '../components/ObjectDetails'
 import { Range } from '../components/Range'
 import { ScrambleText } from '../components/ScrambleText'
@@ -22,7 +22,15 @@ const SORTS = [
   { id: 'name', label: 'Oznaczenie' },
 ] as const
 
-const designationKey = (id: string) => id.replace(/\d+/g, (d) => d.padStart(6, '0'))
+const designationKeyCache = new Map<string, string>()
+const designationKey = (id: string) => {
+  let k = designationKeyCache.get(id)
+  if (!k) {
+    k = id.replace(/\d+/g, (d) => d.padStart(6, '0'))
+    designationKeyCache.set(id, k)
+  }
+  return k
+}
 
 function AnnotationColorSettings() {
   const [open, setOpen] = useState(false)
@@ -95,11 +103,26 @@ export default function CatalogView() {
     return c
   }, [catalog])
 
+  const favoriteSet = useMemo(() => new Set(favoriteIds), [favoriteIds])
+  const activeFavoriteSet = onlyFavorites ? favoriteSet : null
+  const planSet = useMemo(() => new Set(plan.map((p) => p.objectId)), [plan])
+
+  const handleOpenCard = useCallback((o: DSO) => {
+    if (catalogPlanMode) {
+      select(o.i, false)
+      addToPlan(o.i, o.id)
+      if (catalogPlanMode === 'single') setTab('planner')
+    } else {
+      select(o.i, true)
+      setDetails(true)
+    }
+  }, [catalogPlanMode, select, addToPlan, setTab])
+
   const list = useMemo(() => {
     if (!catalog) return []
     const out: DSO[] = []
     for (const o of catalog) {
-      if (onlyFavorites && !favoriteIds.includes(o.id)) continue
+      if (activeFavoriteSet && !activeFavoriteSet.has(o.id)) continue
       if (!matchesFilter(o, filter)) continue
       if (onlyVisible && vis && vis.hours[o.i] < 1) continue
       out.push(o)
@@ -122,7 +145,7 @@ export default function CatalogView() {
       case 'size': return out.sort((x, y) => y.majArcmin - x.majArcmin)
       case 'name': return out.sort((x, y) => designationKey(x.id).localeCompare(designationKey(y.id)))
     }
-  }, [catalog, filter, sortBy, onlyVisible, vis, onlyFavorites, favoriteIds])
+  }, [catalog, filter, sortBy, onlyVisible, vis, activeFavoriteSet])
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(1000)
@@ -231,7 +254,7 @@ export default function CatalogView() {
                 {list.slice(row.index * cols, row.index * cols + cols).map((o) => {
                   const hours = vis ? vis.hours[o.i] : null
                   const maxAlt = vis ? vis.maxAlt[o.i] : null
-                  const inPlan = plan.some((p) => p.objectId === o.id)
+                  const inPlan = planSet.has(o.id)
                   return (
                     <CatalogCard
                       key={o.i}
@@ -244,16 +267,7 @@ export default function CatalogView() {
                       bestMs={vis ? vis.best[o.i] : null}
                       minAlt={minAlt}
                       tz={tz}
-                      onOpen={() => {
-                        if (catalogPlanMode) {
-                          select(o.i, false)
-                          addToPlan(o.i, o.id)
-                          if (catalogPlanMode === 'single') setTab('planner')
-                        } else {
-                          select(o.i, true)
-                          setDetails(true)
-                        }
-                      }}
+                      onOpen={handleOpenCard}
                     />
                   )
                 })}
@@ -287,7 +301,7 @@ interface CardProps {
   bestMs: number | null
   minAlt: number
   tz: string
-  onOpen: () => void
+  onOpen: (o: DSO) => void
 }
 
 /** Karta obiektu jak karta galerii konuzastro.pl: narożniki, ramka w cyjanie i rozszyfrowanie nazwy po najechaniu myszą. */
@@ -301,7 +315,7 @@ const CatalogCard = memo(function CatalogCard({ o, typeColor, selected, inPlan, 
     >
       <Thumb object={o} />
       <FavoriteButton objectId={o.id} />
-      <button type="button" className="obj-card-open" aria-label={`Otwórz ${o.id}`} onClick={onOpen} />
+      <button type="button" className="obj-card-open" aria-label={`Otwórz ${o.id}`} onClick={() => onOpen(o)} />
       {inPlan && <span className="in-plan" title="W planie"><CalendarCheck size={14} /></span>}
       <div className="vis-bar" title={hours !== null ? `${fmtDuration(hours)} powyżej ${minAlt}°` : ''}>
         <div style={{ width: `${Math.min(100, ((hours ?? 0) / 10) * 100)}%` }} />

@@ -19,9 +19,10 @@ export function gnomonic(center: Equatorial, p: Equatorial): TangentPoint {
 
 export function gnomonicInverse(center: Equatorial, { xi, eta }: TangentPoint): Equatorial {
   const d0 = center.decDeg * DEG
+  const sinDec = (Math.sin(d0) + eta * Math.cos(d0)) / Math.sqrt(1 + xi * xi + eta * eta)
   return {
     raDeg: normDeg(center.raDeg + Math.atan2(xi, Math.cos(d0) - eta * Math.sin(d0)) / DEG),
-    decDeg: Math.asin((Math.sin(d0) + eta * Math.cos(d0)) / Math.sqrt(1 + xi * xi + eta * eta)) / DEG,
+    decDeg: Math.asin(Math.max(-1, Math.min(1, sinDec))) / DEG,
   }
 }
 

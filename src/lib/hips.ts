@@ -1,7 +1,7 @@
 // Przeglądy HiPS (lustra, rzędy) i składanie obrazu TAN z kafelków: ta sama geometria co `framing.ts`
 // (N u góry, E po lewej, skala 2·tan(fov/2)/W). Orientację kafelka sprawdzono 1.11.2026 względem SkyView:
 // kolumna obrazu kafelka = iy & 511, wiersz = ix & 511.
-import { gnomonicInverse, pixelToTangent } from './framing'
+import { DEG, normDeg } from './astro'
 import { healpixFaceXY, nestIndex } from './healpix'
 
 export type SurveyId = 'dss2' | 'ps1'
@@ -88,20 +88,36 @@ export function layoutTan(req: TanRequest, survey: Survey): TanLayout {
   const tileOfPixel = new Int32Array(W * W)
   const colRow = new Uint32Array(W * W)
   const tiles = new Set<number>()
-  const center = { raDeg: req.raDeg, decDeg: req.decDeg }
+  const radPerPx = (2 * Math.tan((req.fovDeg / 2) * DEG)) / W
+  const halfW = W / 2
+  const d0 = req.decDeg * DEG
+  const sinD0 = Math.sin(d0)
+  const cosD0 = Math.cos(d0)
+  const pixelOrder = req.order + 9
+  let lastTile = -1
   for (let j = 0; j < W; j++) {
+    const eta = (halfW - (j + 0.5)) * radPerPx
+    const etaCosD0 = eta * cosD0
+    const etaSinD0 = eta * sinD0
+    const onePlusEta2 = 1 + eta * eta
     for (let i = 0; i < W; i++) {
       const p = j * W + i
-      const { raDeg, decDeg } = gnomonicInverse(center, pixelToTangent(i + 0.5, j + 0.5, req.fovDeg, W))
+      const xi = (halfW - (i + 0.5)) * radPerPx
+      const sinDec = (sinD0 + etaCosD0) / Math.sqrt(onePlusEta2 + xi * xi)
+      const decDeg = Math.asin(Math.max(-1, Math.min(1, sinDec))) / DEG
       if (decDeg < survey.minDecDeg) {
         tileOfPixel[p] = -1
         continue
       }
-      const [face, ix, iy] = healpixFaceXY(req.order + 9, raDeg, decDeg)
+      const raDeg = normDeg(req.raDeg + Math.atan2(xi, cosD0 - etaSinD0) / DEG)
+      const [face, ix, iy] = healpixFaceXY(pixelOrder, raDeg, decDeg)
       const npix = nestIndex(req.order, face, ix >> 9, iy >> 9)
       tileOfPixel[p] = npix
       colRow[p] = (ix & 511) * 512 + (iy & 511)
-      tiles.add(npix)
+      if (npix !== lastTile) {
+        tiles.add(npix)
+        lastTile = npix
+      }
     }
   }
   return { sizePx: W, order: req.order, tiles: [...tiles].sort((a, b) => a - b), tileOfPixel, colRow }

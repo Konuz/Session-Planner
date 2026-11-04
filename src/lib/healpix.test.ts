@@ -37,5 +37,7 @@ describe('HEALPix', () => {
     const [face, ix, iy] = healpixFaceXY(16, 299.9016, 22.721)
     expect(nestIndex(7, face, ix >> 9, iy >> 9)).toBe(51933)
     expect(nestIndex(7, 3, 15, 58)).toBe(51933)
+    expect(nestIndex(15, 0, 0, 1 << 14)).toBe(2 ** 29)
+    expect(nestIndex(16, 0, 0, 1 << 15)).toBe(2 ** 31)
   })
 })

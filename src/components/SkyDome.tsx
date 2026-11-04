@@ -20,6 +20,7 @@ import {
   type Vec3,
 } from '../lib/astro'
 import { catalogOf, DEFAULT_ANNOTATION_COLORS, displayName, skyGroupOf, TYPE_INFO, type DSO, type ObjectType } from '../lib/catalog'
+import { fmtTime } from '../lib/format'
 import { frameCorners, gnomonicInverse } from '../lib/framing'
 import { horizonAltitude, type HorizonPoint } from '../lib/horizon'
 import { altitudeTrack, nightGrid } from '../lib/night'
@@ -136,9 +137,11 @@ function createStarGL(canvas: HTMLCanvasElement, sky: SkyData): StarGL | null {
     const loc = gl.getAttribLocation(prog, name)
     gl.enableVertexAttribArray(loc)
     gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 0, 0)
+    return b
   }
-  buf(dirs, 'a_dir', 3)
-  buf(magbv, 'a_magbv', 2)
+  // bufory VBO zwalniane w dispose()
+  const dirsBuf = buf(dirs, 'a_dir', 3)
+  const magbvBuf = buf(magbv, 'a_magbv', 2)
   const u = (name: string) => gl.getUniformLocation(prog, name)
   const uM = u('u_m'), uZen = u('u_zen'), uScale = u('u_scale'), uCenter = u('u_center'), uRes = u('u_res'), uMag = u('u_magLimit'), uDpr = u('u_dpr'), uBright = u('u_bright')
   return {
@@ -165,6 +168,8 @@ function createStarGL(canvas: HTMLCanvasElement, sky: SkyData): StarGL | null {
       // Kontekst zostaje przy płótnie (StrictMode tworzy scenę dwa razy); zwalniamy tylko bufory i program.
       gl.deleteProgram(prog)
       gl.deleteVertexArray(vao)
+      gl.deleteBuffer(dirsBuf)
+      gl.deleteBuffer(magbvBuf)
     },
   }
 }
@@ -246,12 +251,23 @@ function polyline(ctx: CanvasRenderingContext2D, pts: Pt[], size: { w: number; h
 
 const groundCanvas = typeof document !== 'undefined' ? document.createElement('canvas') : null
 const GROUND_STEP = 3 // piksele CSS na piksel maski
+let groundCacheKey = ''
+let groundCacheHorizon: readonly HorizonPoint[] | null = null
 
 /** Maska ziemi: każdy piksel maski → kierunek (rzut odwrotny) → wysokość pod horyzontem? Brzeg wygładzony. */
 function drawGround(ctx: CanvasRenderingContext2D, proj: Projector, horizon: readonly HorizonPoint[], w: number, h: number, fovDeg: number, radius: number) {
   if (!groundCanvas) return
   const mw = Math.ceil(w / GROUND_STEP)
   const mh = Math.ceil(h / GROUND_STEP)
+  const gKey = `${mw}x${mh}|${fovDeg}|${radius}|${proj.cx},${proj.cy},${proj.scale}|${proj.horToView.join(',')}`
+  if (gKey === groundCacheKey && horizon === groundCacheHorizon && groundCanvas.width === mw && groundCanvas.height === mh) {
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
+    ctx.drawImage(groundCanvas, 0, 0, mw * GROUND_STEP, mh * GROUND_STEP)
+    return
+  }
+  groundCacheKey = gKey
+  groundCacheHorizon = horizon
   if (groundCanvas.width !== mw || groundCanvas.height !== mh) {
     groundCanvas.width = mw
     groundCanvas.height = mh
@@ -304,15 +320,31 @@ function drawGround(ctx: CanvasRenderingContext2D, proj: Projector, horizon: rea
 
 const mwCanvas = typeof document !== 'undefined' ? document.createElement('canvas') : null
 const MW_STEP = 4 // piksele CSS na próbkę
+let mwCacheKey = ''
+let mwCacheHorizon: readonly HorizonPoint[] | null = null
+let mwCacheRef: MilkyWay | null = null
 
 /** Smuga Drogi Mlecznej: dla każdej próbki ekranu kierunek J2000 → jasność z siatki RA/Dec (dwuliniowo), potem
  *  powiększenie z wygładzaniem i rysowanie w trybie „screen”. Ziemia rysowana później zakrywa część pod horyzontem. */
 function drawMilkyWay(ctx: CanvasRenderingContext2D, proj: Projector, mw: MilkyWay, horizon: readonly HorizonPoint[], w: number, h: number, alpha: number) {
   if (!mwCanvas || alpha <= 0) return
-  const table = new Float32Array(721)
-  for (let i = 0; i <= 720; i++) table[i] = horizonAltitude(horizon, i / 2)
   const cw = Math.ceil(w / MW_STEP)
   const ch = Math.ceil(h / MW_STEP)
+  const mKey = `${cw}x${ch}|${alpha}|${proj.cx},${proj.cy},${proj.scale}|${proj.eqToView.join(',')}|${proj.horToView.join(',')}`
+  if (mKey === mwCacheKey && horizon === mwCacheHorizon && mw === mwCacheRef && mwCanvas.width === cw && mwCanvas.height === ch) {
+    ctx.save()
+    ctx.globalCompositeOperation = 'screen'
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
+    ctx.drawImage(mwCanvas, 0, 0, cw * MW_STEP, ch * MW_STEP)
+    ctx.restore()
+    return
+  }
+  mwCacheKey = mKey
+  mwCacheHorizon = horizon
+  mwCacheRef = mw
+  const table = new Float32Array(721)
+  for (let i = 0; i <= 720; i++) table[i] = horizonAltitude(horizon, i / 2)
   if (mwCanvas.width !== cw || mwCanvas.height !== ch) {
     mwCanvas.width = cw
     mwCanvas.height = ch
@@ -389,6 +421,8 @@ export function SkyDome({ playing = false }: Props) {
   const overlayRef = useRef<HTMLCanvasElement>(null)
   const moonRef = useRef<HTMLDivElement>(null)
   const moonMask = useRef<HTMLCanvasElement | null>(null)
+  const moonMaskKey = useRef('')
+  const tipRef = useRef<HTMLDivElement>(null)
   const [sky, setSky] = useState<SkyData | null>(null)
   const [milkyWay, setMilkyWay] = useState<MilkyWay | null>(null)
   const [outlines, setOutlines] = useState<Outline[] | null>(null)
@@ -493,7 +527,7 @@ export function SkyDome({ playing = false }: Props) {
     for (const o of catalog) for (const a of o.aliases) if (!byId.has(a)) byId.set(a, o)
     return byId
   }, [catalog])
-  // Obiekt katalogu dla każdego konturu; regiony nie mają obiektu.
+  // Obiekty katalogu dla każdego konturu; regiony nie mają obiektu.
   const outlineObjects = useMemo(
     () => (outlines && catalogById ? outlines.map((o) => (o.region ? null : catalogById.get(o.id) ?? null)) : null),
     [outlines, catalogById],
@@ -918,7 +952,7 @@ export function SkyDome({ playing = false }: Props) {
       ctx.setLineDash([])
       ctx.font = '10px ui-monospace, Consolas, monospace'
       for (const { p, t } of moonPoints) {
-        const local = new Date(t).toLocaleTimeString('pl-PL', { timeZone: tz, hour: '2-digit', minute: '2-digit' })
+        const local = fmtTime(t, tz)
         if (Number(local.slice(3, 5)) >= 10) continue
         ctx.fillStyle = 'rgba(220, 225, 235, 0.85)'
         ctx.beginPath()
@@ -964,7 +998,7 @@ export function SkyDome({ playing = false }: Props) {
       ctx.setLineDash([])
       ctx.font = '10px ui-monospace, Consolas, monospace'
       for (const { p, t } of pts) {
-        const local = new Date(t).toLocaleTimeString('pl-PL', { timeZone: tz, hour: '2-digit', minute: '2-digit' })
+        const local = fmtTime(t, tz)
         if (Number(local.slice(3, 5)) >= 10) continue
         ctx.fillStyle = 'rgba(0, 224, 255, 0.9)'
         ctx.beginPath()
@@ -992,18 +1026,22 @@ export function SkyDome({ playing = false }: Props) {
     drawGround(ctx, proj, horizon, size.w, size.h, view.fovDeg, radius)
     // Nakładka DOM Księżyca dostaje tę samą maskę gruntu co postacie, w swoim lokalnym układzie.
     if (moonRef.current && moonPoint && groundCanvas) {
-      const mask = moonMask.current ??= document.createElement('canvas')
-      mask.width = Math.ceil(moonRef.current.offsetWidth * dpr)
-      mask.height = Math.ceil(moonRef.current.offsetHeight * dpr)
-      const mc = mask.getContext('2d')!
-      mc.fillStyle = '#fff'
-      mc.fillRect(0, 0, mask.width, mask.height)
-      mc.globalCompositeOperation = 'destination-out'
-      mc.setTransform(dpr, 0, 0, dpr, -(moonPoint[0] - moonMarkerSize / 2) * dpr, -(moonPoint[1] - moonMarkerSize / 2) * dpr)
-      mc.imageSmoothingEnabled = true
-      // Jak dla postaci: dwa przejścia usuwają również półprzezroczysty cień pod gruntem.
-      for (let i = 0; i < 2; i++) mc.drawImage(groundCanvas, 0, 0, groundCanvas.width * GROUND_STEP, groundCanvas.height * GROUND_STEP)
-      moonRef.current.style.maskImage = `url(${mask.toDataURL()})`
+      const nextMaskKey = `${Math.round(moonPoint[0] * 2)},${Math.round(moonPoint[1] * 2)}|${moonMarkerSize}|${dpr}|${groundCacheKey}`
+      if (moonMaskKey.current !== nextMaskKey) {
+        moonMaskKey.current = nextMaskKey
+        const mask = moonMask.current ??= document.createElement('canvas')
+        mask.width = Math.ceil(moonRef.current.offsetWidth * dpr)
+        mask.height = Math.ceil(moonRef.current.offsetHeight * dpr)
+        const mc = mask.getContext('2d')!
+        mc.fillStyle = '#fff'
+        mc.fillRect(0, 0, mask.width, mask.height)
+        mc.globalCompositeOperation = 'destination-out'
+        mc.setTransform(dpr, 0, 0, dpr, -(moonPoint[0] - moonMarkerSize / 2) * dpr, -(moonPoint[1] - moonMarkerSize / 2) * dpr)
+        mc.imageSmoothingEnabled = true
+        // Jak dla postaci: dwa przejścia usuwają również półprzezroczysty cień pod gruntem.
+        for (let i = 0; i < 2; i++) mc.drawImage(groundCanvas, 0, 0, groundCanvas.width * GROUND_STEP, groundCanvas.height * GROUND_STEP)
+        moonRef.current.style.maskImage = `url(${mask.toDataURL()})`
+      }
     }
     ctx.strokeStyle = horizon.length ? 'rgba(245, 165, 36, 0.55)' : 'rgba(0, 224, 255, 0.35)'
     ctx.lineWidth = 1.2
@@ -1267,7 +1305,14 @@ export function SkyDome({ playing = false }: Props) {
     const eq = vecToEquatorial(mulVec(transpose(horMatrix), v))
     const abbr = constellationOf(eq)
     if (abbr !== hoverCon?.abbr) setHoverCon({ abbr, x, y, since: performance.now() })
-    else if (hoverCon) setHoverCon({ ...hoverCon, x, y })
+    else if (hoverCon) {
+      hoverCon.x = x
+      hoverCon.y = y
+      if (tipRef.current) {
+        tipRef.current.style.left = `${x}px`
+        tipRef.current.style.top = `${y}px`
+      }
+    }
     const hit = visible ? pick(x, y) : null
     if (hit !== hoverObj) setHoverObj(hit)
     overlayRef.current!.style.cursor = hit ? 'pointer' : view.fovDeg < 180 ? 'grab' : 'crosshair'
@@ -1371,7 +1416,7 @@ export function SkyDome({ playing = false }: Props) {
         </div>
       )}
       {hoverCon && !drag.current && (hoveredOutline ? (
-        <div className="const-tip" style={{ left: hoverCon.x, top: hoverCon.y }}>
+        <div ref={tipRef} className="const-tip" style={{ left: hoverCon.x, top: hoverCon.y }}>
           {hoveredOutline.dso ? (
             <>
               <b>{hoveredOutline.dso.id}</b>
@@ -1386,7 +1431,7 @@ export function SkyDome({ playing = false }: Props) {
           )}
         </div>
       ) : hovered && (
-        <div className="const-tip" style={{ left: hoverCon.x, top: hoverCon.y }}>
+        <div ref={tipRef} className="const-tip" style={{ left: hoverCon.x, top: hoverCon.y }}>
           <b>{hovered.pl}</b> <span className="dim">· {hovered.la}</span>
         </div>
       ))}

@@ -27,6 +27,8 @@ export default function HorizonView() {
   const night = useNight()
   const site = useSite()
   const [message, setMessage] = useState('')
+  const [draft, setDraft] = useState<HorizonPoint[] | null>(null)
+  const activeHorizon = draft ?? horizon
   const svgRef = useRef<SVGSVGElement>(null)
   const dragIndex = useRef<number | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -45,12 +47,20 @@ export default function HorizonView() {
 
   const profile = useMemo(() => {
     const pts: string[] = []
-    for (let az = 0; az <= 360; az += 1) pts.push(`${x(az).toFixed(1)},${y(horizonAltitude(horizon, az)).toFixed(1)}`)
+    for (let az = 0; az <= 360; az += 1) pts.push(`${x(az).toFixed(1)},${y(horizonAltitude(activeHorizon, az)).toFixed(1)}`)
     return `M${x(0)},${y(ALT_MIN)}L${pts.join('L')}L${x(360)},${y(ALT_MIN)}Z`
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [horizon])
+  }, [activeHorizon])
 
   const track = useMemo(() => (o ? altitudeTrack(o, nightGrid(night, site, 10)).filter((s) => s.alt > ALT_MIN) : []), [o, night, site])
+
+  const commitDrag = () => {
+    dragIndex.current = null
+    if (draft !== null) {
+      setHorizon(draft)
+      setDraft(null)
+    }
+  }
 
   return (
     <div className="col">
@@ -58,7 +68,7 @@ export default function HorizonView() {
         <h2 className="panel-title">
           Mój horyzont <span className="sub">- {location.name}</span>
           <span className="spacer" />
-          <span className="sub">{horizon.length ? `${horizon.length} punktów` : 'bez przeszkód'}</span>
+          <span className="sub">{activeHorizon.length ? `${activeHorizon.length} punktów` : 'bez przeszkód'}</span>
         </h2>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
           {PRESETS.map((p) => (
@@ -66,10 +76,10 @@ export default function HorizonView() {
           ))}
           <span style={{ flex: 1 }} />
           <button className="button small" onClick={() => fileRef.current?.click()}><Upload size={13} /> Import pliku</button>
-          <button className="button small" onClick={() => download(`horyzont-${location.name.replace(/\s+/g, '-')}.hrz`, exportHorizon(horizon, location.name), 'text/plain')} disabled={horizon.length < 2}>
+          <button className="button small" onClick={() => download(`horyzont-${location.name.replace(/\s+/g, '-')}.hrz`, exportHorizon(activeHorizon, location.name), 'text/plain')} disabled={activeHorizon.length < 2}>
             <Download size={13} /> Eksport (N.I.N.A.)
           </button>
-          <button className="button small" onClick={() => setHorizon([])} disabled={!horizon.length}><Trash2 size={13} /> Wyczyść</button>
+          <button className="button small" onClick={() => setHorizon([])} disabled={!activeHorizon.length}><Trash2 size={13} /> Wyczyść</button>
           <input
             ref={fileRef}
             type="file"
@@ -95,21 +105,22 @@ export default function HorizonView() {
           onPointerDown={(e) => {
             if (e.button !== 0 || dragIndex.current !== null) return
             const p = fromSvg(e)
-            const next = normalizeHorizon([...horizon, p])
-            setHorizon(next)
+            const next = normalizeHorizon([...activeHorizon, p])
+            setDraft(next)
             dragIndex.current = next.findIndex((q) => q.azDeg === p.azDeg)
             svgRef.current!.setPointerCapture(e.pointerId)
           }}
           onPointerMove={(e) => {
             if (dragIndex.current === null) return
             const p = fromSvg(e)
-            const pts = [...horizon]
+            const pts = [...activeHorizon]
             pts[dragIndex.current] = p
             const next = normalizeHorizon(pts)
             dragIndex.current = next.findIndex((q) => q.azDeg === p.azDeg)
-            setHorizon(next)
+            setDraft(next)
           }}
-          onPointerUp={() => (dragIndex.current = null)}
+          onPointerUp={commitDrag}
+          onPointerCancel={commitDrag}
         >
           {[0, 15, 30, 45, 60, 75, 90].map((a) => (
             <g key={a}>
@@ -131,13 +142,13 @@ export default function HorizonView() {
           {track.length > 0 && (
             <g>
               {track.map((s, i) => {
-                const blocked = s.alt < horizonAltitude(horizon, s.az)
+                const blocked = s.alt < horizonAltitude(activeHorizon, s.az)
                 return <circle key={i} cx={x(s.az)} cy={y(s.alt)} r="2.2" fill={blocked ? '#f43f5e' : '#00e0ff'} opacity={s.alt < 0 ? 0.3 : 0.9} />
               })}
               <text x={x(track[0].az) + 6} y={y(track[0].alt) - 6} fill="#00e0ff" fontSize="12" fontFamily="var(--mono)">{o?.id}</text>
             </g>
           )}
-          {horizon.map((p, i) => (
+          {activeHorizon.map((p, i) => (
             <circle
               key={`${p.azDeg}-${i}`}
               cx={x(p.azDeg)}
@@ -150,11 +161,12 @@ export default function HorizonView() {
               onPointerDown={(e) => {
                 e.stopPropagation()
                 dragIndex.current = i
+                setDraft(activeHorizon)
                 svgRef.current!.setPointerCapture(e.pointerId)
               }}
               onContextMenu={(e) => {
                 e.preventDefault()
-                setHorizon(horizon.filter((_, k) => k !== i))
+                setHorizon(activeHorizon.filter((_, k) => k !== i))
               }}
             >
               <title>{`Az ${p.azDeg}°, wysokość ${p.altDeg}°; prawy klik usuwa`}</title>

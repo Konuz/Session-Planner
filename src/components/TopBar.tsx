@@ -13,19 +13,22 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'horizon', label: 'Mój horyzont' },
 ]
 
-export function useOutside(ref: React.RefObject<HTMLElement | null>, close: () => void) {
+export function useOutside(ref: React.RefObject<HTMLElement | null>, close: () => void, enabled = true) {
+  const closeRef = useRef(close)
+  closeRef.current = close
   useEffect(() => {
+    if (!enabled) return
     const onDown = (e: PointerEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) close()
+      if (ref.current && !ref.current.contains(e.target as Node)) closeRef.current()
     }
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close()
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && closeRef.current()
     document.addEventListener('pointerdown', onDown)
     document.addEventListener('keydown', onKey)
     return () => {
       document.removeEventListener('pointerdown', onDown)
       document.removeEventListener('keydown', onKey)
     }
-  }, [ref, close])
+  }, [ref, enabled])
 }
 
 function LocationPicker() {
@@ -40,7 +43,7 @@ function LocationPicker() {
   const [status, setStatus] = useState('')
   const [manual, setManual] = useState({ lat: String(location.latDeg), lon: String(location.lonDeg) })
   const ref = useRef<HTMLDivElement>(null)
-  useOutside(ref, () => setOpen(false))
+  useOutside(ref, () => setOpen(false), open)
 
   useEffect(() => {
     if (query.trim().length < 2) {
@@ -177,7 +180,9 @@ const rowStyle: React.CSSProperties = {
   fontSize: 13,
 }
 
-const MONTHS = Array.from({ length: 12 }, (_, i) => new Intl.DateTimeFormat('pl-PL', { month: 'long', timeZone: 'UTC' }).format(Date.UTC(2000, i, 1)))
+const MONTH_FMT = new Intl.DateTimeFormat('pl-PL', { month: 'long', timeZone: 'UTC' })
+const DATE_LABEL_FMT = new Intl.DateTimeFormat('pl-PL', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+const MONTHS = Array.from({ length: 12 }, (_, i) => MONTH_FMT.format(Date.UTC(2000, i, 1)))
 const daysInMonth = (y: number, m: number) => new Date(Date.UTC(y, m, 0)).getUTCDate()
 
 function DatePicker() {
@@ -185,11 +190,11 @@ function DatePicker() {
   const setDate = useStore((s) => s.setNightDate)
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
-  useOutside(ref, () => setOpen(false))
+  useOutside(ref, () => setOpen(false), open)
   const [y, m, d] = date.split('-').map(Number)
   const pick = (year: number, month: number, day: number) =>
     setDate(`${year}-${String(month).padStart(2, '0')}-${String(Math.min(day, daysInMonth(year, month))).padStart(2, '0')}`)
-  const label = new Intl.DateTimeFormat('pl-PL', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(Date.UTC(y, m - 1, d))
+  const label = DATE_LABEL_FMT.format(Date.UTC(y, m - 1, d))
   return (
     <div style={{ display: 'flex', alignItems: 'center' }}>
       <button className="picker-button icon-button" style={{ justifyContent: 'center' }} title="Poprzednia noc" onClick={() => setDate(addDays(date, -1))}>
@@ -260,4 +265,3 @@ export function TopBar() {
     </header>
   )
 }
-

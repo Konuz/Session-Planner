@@ -25,9 +25,17 @@ export function healpixFaceXY(order: number, raDeg: number, decDeg: number): [nu
   return z > 0 ? [ntt, nside - jm - 1, nside - jp - 1] : [ntt + 8, jp, jm]
 }
 
-/** Indeks NESTED: bity `ix` na pozycjach parzystych, `iy` na nieparzystych (rząd ≤ 15). */
+const CTAB = new Uint16Array(256)
+for (let i = 0; i < 256; i++) {
+  let m = 0
+  for (let b = 0; b < 8; b++) m |= ((i >> b) & 1) << (2 * b)
+  CTAB[i] = m
+}
+
+/** Indeks NESTED: bity `ix` na pozycjach parzystych, `iy` na nieparzystych (bezpieczne do rzędu 24 włącznie). */
 export function nestIndex(order: number, face: number, ix: number, iy: number): number {
-  let bits = 0
-  for (let b = 0; b < order; b++) bits += (((ix >> b) & 1) << (2 * b)) + (((iy >> b) & 1) << (2 * b + 1))
-  return face * 4 ** order + bits
+  const lo = CTAB[ix & 0xff] | (CTAB[iy & 0xff] << 1)
+  const mid = (CTAB[(ix >> 8) & 0xff] | (CTAB[(iy >> 8) & 0xff] << 1)) * 0x10000
+  const hi = (ix | iy) > 0xffff ? (CTAB[(ix >> 16) & 0xff] | (CTAB[(iy >> 16) & 0xff] << 1)) * 0x100000000 : 0
+  return face * 4 ** order + hi + mid + lo
 }

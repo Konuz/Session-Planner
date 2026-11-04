@@ -757,6 +757,15 @@ export default function Space3D() {
     let photoWidth = 0, photoHeight = 0, projectedSpan = 0, lastPhotoFrame = 0
     const photoCameraMatrix = new THREE.Matrix4()
     const photoProjectionMatrix = new THREE.Matrix4()
+    const zeroVec = new THREE.Vector3()
+    const moveForward = new THREE.Vector3()
+    const moveRight = new THREE.Vector3()
+    const moveDelta = new THREE.Vector3()
+    const pinProjected = new THREE.Vector3()
+    const labelCameraMatrix = new THREE.Matrix4()
+    const labelProjMatrix = new THREE.Matrix4()
+    let lastLabelW = 0, lastLabelH = 0, lastLabelAnnotations: boolean | null = null, lastLabelLevel = -1
+    let lastLabelHidden: readonly ObjectType[] | null = null
     const tick = () => {
       const now = performance.now()
       const delta = Math.min((now - lastTick) / 1000, 0.05)
@@ -767,13 +776,13 @@ export default function Space3D() {
         const k = Math.min(1, (now - t0) / 2200)
         const e = 1 - (1 - k) ** 3
         camera.position.lerpVectors(startCam, endCam, e)
-        controls.target.lerpVectors(new THREE.Vector3(), focus, e)
+        controls.target.lerpVectors(zeroVec, focus, e)
         if (k >= 1) flying = false
       }
       if (!flying && pressedKeys.size) {
-        const forward = camera.getWorldDirection(new THREE.Vector3())
-        const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion)
-        const movement = new THREE.Vector3()
+        const forward = camera.getWorldDirection(moveForward)
+        const right = moveRight.set(1, 0, 0).applyQuaternion(camera.quaternion)
+        const movement = moveDelta.set(0, 0, 0)
         if (pressedKeys.has('KeyW') || pressedKeys.has('ArrowUp')) movement.add(forward)
         if (pressedKeys.has('KeyS') || pressedKeys.has('ArrowDown')) movement.sub(forward)
         if (pressedKeys.has('KeyD') || pressedKeys.has('ArrowRight')) movement.add(right)
@@ -904,7 +913,7 @@ export default function Space3D() {
       // Pinezka obiektu (HTML nad sceną) przypięta do rzutu jego położenia.
       const pin = pinRef.current
       if (pin) {
-        const v = target.clone().project(camera)
+        const v = pinProjected.copy(target).project(camera)
         pin.style.display = !photoRef.current && placed && v.z < 1 ? '' : 'none'
         pin.style.transform = `translate(${((v.x + 1) / 2) * mount.clientWidth}px, ${((1 - v.y) / 2) * mount.clientHeight}px)`
       }
@@ -929,6 +938,24 @@ export default function Space3D() {
     function drawLabels() {
       const w = mount!.clientWidth
       const h = mount!.clientHeight
+      if (
+        w === lastLabelW &&
+        h === lastLabelH &&
+        annotationsRef.current === lastLabelAnnotations &&
+        galaxyLevelRef.current === lastLabelLevel &&
+        hiddenTypesRef.current === lastLabelHidden &&
+        labelCameraMatrix.equals(camera.matrixWorld) &&
+        labelProjMatrix.equals(camera.projectionMatrix)
+      ) {
+        return
+      }
+      lastLabelW = w
+      lastLabelH = h
+      lastLabelAnnotations = annotationsRef.current
+      lastLabelLevel = galaxyLevelRef.current
+      lastLabelHidden = hiddenTypesRef.current
+      labelCameraMatrix.copy(camera.matrixWorld)
+      labelProjMatrix.copy(camera.projectionMatrix)
       labelCtx.clearRect(0, 0, w, h)
       hits = []
       const hidden = hiddenTypesRef.current

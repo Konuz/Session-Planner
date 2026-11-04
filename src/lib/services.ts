@@ -13,10 +13,19 @@ function readCache<T>(key: string, maxAgeMs: number): T | null {
 }
 
 function writeCache(key: string, data: unknown) {
+  const payload = JSON.stringify({ at: Date.now(), data })
   try {
-    localStorage.setItem(key, JSON.stringify({ at: Date.now(), data }))
+    localStorage.setItem(key, payload)
   } catch {
-    // Pełny magazyn: dane i tak są w pamięci.
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i)
+        if (k && (k.startsWith('wx2:') || k.startsWith('wiki:'))) localStorage.removeItem(k)
+      }
+      localStorage.setItem(key, payload)
+    } catch {
+      // Pełny magazyn: dane i tak są w pamięci.
+    }
   }
 }
 
@@ -157,11 +166,15 @@ export async function fetchWikiSummary(titlePl: string, titleEn: string, fallbac
   if (cached !== null) return cached
   const tryTitle = async (lang: 'pl' | 'en', title: string): Promise<WikiSummary | null> => {
     if (!title) return null
-    const res = await fetch(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, '_'))}`)
-    if (!res.ok) return null
-    const j = await res.json()
-    if (j.type === 'disambiguation' || !j.extract) return null
-    return { title: j.title, extract: j.extract, url: j.content_urls?.desktop?.page ?? '', lang }
+    try {
+      const res = await fetch(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, '_'))}`)
+      if (!res.ok) return null
+      const j = await res.json()
+      if (j.type === 'disambiguation' || !j.extract) return null
+      return { title: j.title, extract: j.extract, url: j.content_urls?.desktop?.page ?? '', lang }
+    } catch {
+      return null
+    }
   }
   const result = (await tryTitle('pl', titlePl)) ?? (await tryTitle('en', titleEn)) ?? (await tryTitle('en', fallbackQuery))
   writeCache(key, result)

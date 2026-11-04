@@ -52,23 +52,42 @@ export function useNight(): NightPhases {
   return useMemo(() => nightPhases(date, site, tz), [date, site, tz])
 }
 
+let clockNow = Date.now()
+let clockInterval: ReturnType<typeof setInterval> | null = null
+const clockListeners = new Set<() => void>()
+const subscribeClock = (l: () => void) => {
+  clockListeners.add(l)
+  if (clockListeners.size === 1) {
+    clockNow = Date.now()
+    clockInterval = setInterval(() => {
+      clockNow = Date.now()
+      clockListeners.forEach((fn) => fn())
+    }, 60_000)
+  }
+  return () => {
+    clockListeners.delete(l)
+    if (clockListeners.size === 0 && clockInterval !== null) {
+      clearInterval(clockInterval)
+      clockInterval = null
+    }
+  }
+}
+const getClockSnapshot = () => clockNow
+
 /** Chwila wyświetlana: kursor czasu, „teraz” jeśli trwa ta noc, albo środek nocy. */
 export function useTime(): number {
   const night = useNight()
   const cursor = useStore((s) => s.timeMs)
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 60_000)
-    return () => clearInterval(id)
-  }, [])
+  const now = useSyncExternalStore(subscribeClock, getClockSnapshot)
   if (cursor !== null) return cursor
   if (now >= night.startMs && now <= night.endMs) return now
-  return night.astroDusk !== null && night.astroDawn !== null ? night.midnight : night.midnight
+  return night.midnight
 }
 
 // ---------- Widoczność katalogu ----------
 
 let worker: Worker | null = null
+let sentCatalog: DSO[] | null = null
 let requestId = 0
 
 export interface CatalogVisibility {
@@ -84,24 +103,30 @@ export function useCatalogVisibility(): CatalogVisibility | null {
   const minAlt = useStore((s) => s.minAltDeg)
   const horizon = useStore((s) => s.horizon)
   const [result, setResult] = useState<CatalogVisibility | null>(null)
-  const coords = useMemo(() => {
-    if (!catalog) return null
-    return { ra: Float64Array.from(catalog, (o) => o.raDeg), dec: Float64Array.from(catalog, (o) => o.decDeg) }
-  }, [catalog])
 
   useEffect(() => {
-    if (!coords) return
+    if (!catalog) return
     worker ??= new Worker(new URL('../workers/visibility.worker.ts', import.meta.url), { type: 'module' })
     const id = ++requestId
     const [darkStart, darkEnd] = darkWindow(night)
-    const req: VisibilityRequest = { id, ra: coords.ra, dec: coords.dec, site, darkStart, darkEnd, minAltDeg: minAlt, horizon }
+    const needCoords = sentCatalog !== catalog
+    if (needCoords) sentCatalog = catalog
+    const req: VisibilityRequest = {
+      id,
+      ...(needCoords ? { ra: Float64Array.from(catalog, (o) => o.raDeg), dec: Float64Array.from(catalog, (o) => o.decDeg) } : {}),
+      site,
+      darkStart,
+      darkEnd,
+      minAltDeg: minAlt,
+      horizon,
+    }
     const onMessage = (e: MessageEvent<VisibilityResult>) => {
       if (e.data.id === id) setResult({ maxAlt: e.data.maxAlt, hours: e.data.hours, best: e.data.best })
     }
     worker.addEventListener('message', onMessage)
     worker.postMessage(req)
     return () => worker?.removeEventListener('message', onMessage)
-  }, [coords, site, night, minAlt, horizon])
+  }, [catalog, site, night, minAlt, horizon])
 
   return result
 }
@@ -121,5 +146,8 @@ export function useWeather(): { hours: WeatherHour[]; error: string | null; load
       alive = false
     }
   }, [key, loc.latDeg, loc.lonDeg])
-  return { hours: state.key === key ? state.hours : [], error: state.key === key ? state.error : null, loading: state.key !== key }
+  return useMemo(
+    () => ({ hours: state.key === key ? state.hours : [], error: state.key === key ? state.error : null, loading: state.key !== key }),
+    [state, key],
+  )
 }

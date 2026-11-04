@@ -279,5 +279,5 @@ export function galacticVector(eq: Equatorial): Vec3 {
 
 export function galactic(eq: Equatorial): { lDeg: number; bDeg: number } {
   const v = galacticVector(eq)
-  return { lDeg: normDeg(Math.atan2(v[1], v[0]) / DEG), bDeg: Math.asin(v[2]) / DEG }
+  return { lDeg: normDeg(Math.atan2(v[1], v[0]) / DEG), bDeg: Math.asin(Math.max(-1, Math.min(1, v[2]))) / DEG }
 }

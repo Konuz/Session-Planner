@@ -1,5 +1,5 @@
 import { Search } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react'
+import { useDeferredValue, useMemo, useRef, useState } from 'react'
 import { displayName, matchesFilter, searchScore, TYPE_INFO, EMPTY_FILTER, type DSO } from '../lib/catalog'
 import { useCatalog } from '../state/data'
 import { useStore } from '../state/store'
@@ -9,21 +9,22 @@ export function ObjectSearch({ onPick, placeholder = 'Szukaj obiektu: M 51, NGC 
   const { catalog } = useCatalog()
   const select = useStore((s) => s.select)
   const [q, setQ] = useState('')
+  const deferredQ = useDeferredValue(q)
   const [open, setOpen] = useState(false)
   const [hl, setHl] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const results = useMemo(() => {
-    if (!catalog || q.trim().length < 1) return []
-    const f = { ...EMPTY_FILTER, query: q }
+    if (!catalog || deferredQ.trim().length < 1) return []
+    const f = { ...EMPTY_FILTER, query: deferredQ }
     const found: DSO[] = []
     for (const o of catalog) if (matchesFilter(o, f)) found.push(o)
     return found
-      .map((o) => ({ o, s: searchScore(o, q) + (o.mag ?? 15) / 100 }))
+      .map((o) => ({ o, s: searchScore(o, deferredQ) + (o.mag ?? 15) / 100 }))
       .sort((a, b) => a.s - b.s)
       .slice(0, 12)
       .map((x) => x.o)
-  }, [catalog, q])
+  }, [catalog, deferredQ])
 
   const pick = (o: DSO) => {
     select(o.i, true)

@@ -2,13 +2,27 @@
 
 const pad = (n: number) => String(n).padStart(2, '0')
 
+const timeFormatterCache = new Map<string, Intl.DateTimeFormat>()
+const dateFormatterCache = new Map<string, Intl.DateTimeFormat>()
+
 export function fmtTime(t: number | null, timeZone: string): string {
   if (t === null || !Number.isFinite(t)) return '-'
-  return new Intl.DateTimeFormat('pl-PL', { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(t)
+  let fmt = timeFormatterCache.get(timeZone)
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat('pl-PL', { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    timeFormatterCache.set(timeZone, fmt)
+  }
+  return fmt.format(t)
 }
 
 export function fmtDate(t: number, timeZone: string, opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' }): string {
-  return new Intl.DateTimeFormat('pl-PL', { timeZone, ...opts }).format(t)
+  const key = `${timeZone}|${opts.year ?? ''}|${opts.month ?? ''}|${opts.day ?? ''}|${opts.weekday ?? ''}`
+  let fmt = dateFormatterCache.get(key)
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat('pl-PL', { timeZone, ...opts })
+    dateFormatterCache.set(key, fmt)
+  }
+  return fmt.format(t)
 }
 
 export function fmtDuration(hours: number): string {

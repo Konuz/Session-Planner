@@ -1,5 +1,5 @@
 import { CircleDot, CloudMoon, Droplets, Eye, Gauge, Ruler, Settings, Sparkles, Telescope, Thermometer, Wind, Camera, Check } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { memo, useMemo, useState } from 'react'
 import { angularDistanceDeg, bodyAltAz, computeOptics, moonInfo, moonJ2000, riseSetMs, sampling } from '../lib/astro'
 import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO } from '../lib/catalog'
 import { fmtDate, fmtDeg, fmtDistance, fmtNum, fmtSize, fmtTime } from '../lib/format'
@@ -14,7 +14,7 @@ import { Thumb } from './Thumb'
 import { FavoriteButton } from './FavoriteButton'
 import { CONSTELLATION_PL } from '../lib/constellations'
 
-export function ObjectCard({ onDetails }: { onDetails: () => void }) {
+export const ObjectCard = memo(function ObjectCard({ onDetails }: { onDetails: () => void }) {
   const o = useSelected()
   const plan = useStore((s) => s.plan)
   const annotationColors = useStore((s) => s.annotationColors)
@@ -83,7 +83,7 @@ export function ObjectCard({ onDetails }: { onDetails: () => void }) {
       )}
     </section>
   )
-}
+})
 
 export function MoonCard() {
   const time = useTime()
@@ -249,7 +249,7 @@ export function WeatherCard() {
   )
 }
 
-export function OpticsCard() {
+export const OpticsCard = memo(function OpticsCard() {
   const eq = useStore((s) => s.equipment)
   const setTab = useStore((s) => s.setTab)
   const o = useMemo(
@@ -285,7 +285,7 @@ export function OpticsCard() {
       <TelescopeDrawing />
     </section>
   )
-}
+})
 
 function TelescopeDrawing() {
   return <img className="telescope-art" src="/icons/telescope.webp" alt="" width={720} height={535} decoding="async" loading="lazy" />

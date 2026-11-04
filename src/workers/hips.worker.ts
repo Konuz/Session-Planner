@@ -6,13 +6,16 @@ import { fetchTile } from '../lib/hipsTiles'
 const cancelled = new Set<number>()
 const running = new Set<number>()
 
+let decodeCanvas: OffscreenCanvas | null = null
+let decodeCtx: OffscreenCanvasRenderingContext2D | null = null
+
 async function decode(blob: Blob): Promise<TilePixels> {
   const bitmap = await createImageBitmap(blob)
   try {
-    const canvas = new OffscreenCanvas(512, 512)
-    const ctx = canvas.getContext('2d')!
-    ctx.drawImage(bitmap, 0, 0)
-    return { data: ctx.getImageData(0, 0, 512, 512).data }
+    decodeCanvas ??= new OffscreenCanvas(512, 512)
+    decodeCtx ??= decodeCanvas.getContext('2d')!
+    decodeCtx.drawImage(bitmap, 0, 0)
+    return { data: decodeCtx.getImageData(0, 0, 512, 512).data }
   } finally { bitmap.close() }
 }
 
