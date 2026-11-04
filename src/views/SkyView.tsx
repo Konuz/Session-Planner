@@ -23,7 +23,11 @@ function Switch({ on, onClick, label }: { on: boolean; onClick: () => void; labe
   )
 }
 
-type LayerKey = 'showLines' | 'showLabels' | 'showArt' | 'showOutlines' | 'showEllipses' | 'showAnnotations' | 'showTracks'
+type LayerKey = 'showLines' | 'showLabels' | 'showArt' | 'showOutlines' | 'showEllipses' | 'showAnnotations' | 'show3DAnnotations' | 'showTracks'
+
+const THREE_D_LAYERS: { key: LayerKey; label: string }[] = [
+  { key: 'show3DAnnotations', label: 'Opisy' },
+]
 
 const LAYERS: { key: LayerKey; label: string }[] = [
   { key: 'showLines', label: 'Linie' },
@@ -65,7 +69,7 @@ function Section({ title, on, total, open, onToggle, children }: { title: string
 
 /** Lista rozwijana warstw kopuły: zwijane sekcje przełączników warstw i grup katalogów. */
 function LayersMenu({ threeD = false }: { threeD?: boolean }) {
-  const visibleLayers = threeD ? LAYERS.filter(({ key }) => key === 'showAnnotations') : LAYERS
+  const visibleLayers = threeD ? THREE_D_LAYERS : LAYERS
   const [open, setOpen] = useState(false)
   // Rozwinięte sekcje pamiętane, dopóki otwarty jest widok kopuły (lista obiektów domyślnie zwinięta).
   const [sections, setSections] = useState({ layers: true, objects: false })

@@ -137,6 +137,8 @@ interface State {
   skyGroups: Record<SkyGroup, boolean>
   showLabels: boolean
   showAnnotations: boolean
+  /** Podpisy obiektów tła w widoku 3D (domyślnie wyłączone). */
+  show3DAnnotations: boolean
   annotationColors: Partial<Record<ObjectType, string>>
   /** Licznik „znajdź obiekt”: zmiana uruchamia animację na kopule. */
   findPulse: number
@@ -172,7 +174,7 @@ interface State {
   toggleSkyGroup(group: SkyGroup): void
   setAnnotationColor(type: ObjectType, color: string): void
   resetAnnotationColors(): void
-  toggle(key: 'showLines' | 'showTracks' | 'showArt' | 'showOutlines' | 'showEllipses' | 'showLabels' | 'showAnnotations' | 'onlyVisible'): void
+  toggle(key: 'showLines' | 'showTracks' | 'showArt' | 'showOutlines' | 'showEllipses' | 'showLabels' | 'showAnnotations' | 'show3DAnnotations' | 'onlyVisible'): void
 }
 
 // Porównanie pól przed JSON.stringify: zmiany czasu i kadru nie serializują planu w każdej klatce.
@@ -229,6 +231,7 @@ export const useStore = create<State>()(
       skyGroups: Object.fromEntries(SKY_GROUPS.map((g) => [g, true])) as Record<SkyGroup, boolean>,
       showLabels: true,
       showAnnotations: true,
+      show3DAnnotations: false,
       annotationColors: {},
       findPulse: 0,
 
@@ -384,6 +387,7 @@ export const useStore = create<State>()(
         skyGroups: s.skyGroups,
         showLabels: s.showLabels,
         showAnnotations: s.showAnnotations,
+        show3DAnnotations: s.show3DAnnotations,
         annotationColors: s.annotationColors,
       }),
       // Grupy katalogów dopisane po zapisie stanu startują włączone; stan sprzed poziomów kadru dostaje pusty obiekt.

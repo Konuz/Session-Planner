@@ -401,7 +401,7 @@ export default function Space3D() {
   const galaxyLevelRef = useRef(galaxyLevel)
   galaxyLevelRef.current = galaxyLevel
   // Filtr rodzajów obiektów tła w skali Drogi Mlecznej (lista rozwijana z polami wyboru).
-  const [hiddenTypes, setHiddenTypes] = useState<ObjectType[]>([])
+  const [hiddenTypes, setHiddenTypes] = useState<ObjectType[]>(() => Object.keys(TYPE_INFO) as ObjectType[])
   const hiddenTypesRef = useRef(hiddenTypes)
   hiddenTypesRef.current = hiddenTypes
   const [filterOpen, setFilterOpen] = useState(false)
@@ -416,7 +416,7 @@ export default function Space3D() {
   const [constellationError, setConstellationError] = useState(false)
   const filterRef = useRef<HTMLDivElement>(null)
   useOutside(filterRef, () => setFilterOpen(false))
-  const showAnnotations = useStore((s) => s.showAnnotations)
+  const showAnnotations = useStore((s) => s.show3DAnnotations)
   const annotationsRef = useRef(showAnnotations)
   annotationsRef.current = showAnnotations
   const annotationColors = useStore((s) => s.annotationColors)
@@ -1217,7 +1217,7 @@ export default function Space3D() {
           {filterOpen && (
             <div className="popover type-filter">
               <label>
-                <input type="checkbox" checked={hiddenTypes.length === 0} onChange={() => setHiddenTypes(hiddenTypes.length === 0 ? typeCounts.map((t) => t.type) : [])} />
+                <input type="checkbox" checked={shownCount === typeCounts.length && typeCounts.length > 0} onChange={() => setHiddenTypes(shownCount === typeCounts.length ? (Object.keys(TYPE_INFO) as ObjectType[]) : [])} />
                 Wszystkie
               </label>
               {typeCounts.map(({ type, count }) => (

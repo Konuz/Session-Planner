@@ -32,3 +32,12 @@ it('duplikaty planu rozpoznaje po ID mimo zmiany indeksu', async () => {
   useStore.getState().addToPlan(0, 'M 42')
   expect(useStore.getState().plan.map((p) => p.objectId)).toEqual(['M 51', 'M 42'])
 })
+
+it('domyślnie wyłącza etykiety obiektów w widoku 3D niezależnie od kopuły 2D', async () => {
+  const { useStore } = await import('./store')
+  expect(useStore.getState().showAnnotations).toBe(true)
+  expect(useStore.getState().show3DAnnotations).toBe(false)
+  useStore.getState().toggle('show3DAnnotations')
+  expect(useStore.getState().show3DAnnotations).toBe(true)
+  expect(useStore.getState().showAnnotations).toBe(true)
+})
