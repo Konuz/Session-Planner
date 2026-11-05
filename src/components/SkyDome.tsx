@@ -31,6 +31,7 @@ import { useCatalog, useNight, useSelected, useSite, useTime } from '../state/da
 import { useStore } from '../state/store'
 import { MoonDisc } from './MoonDisc'
 import { Range } from './Range'
+import { useSkyPhotoLayer } from './useSkyPhotoLayer'
 
 /** Stos warstw (cztery romby): kontur = mniej adnotacji, wypełnienie = więcej. */
 export function LayersIcon({ filled }: { filled: boolean }) {
@@ -463,6 +464,9 @@ export function SkyDome({ playing = false }: Props) {
   const outlineHits = useRef<{ k: number; pts: [number, number][]; holes: [number, number][][]; area: number }[]>([])
   const [hoverCon, setHoverCon] = useState<{ abbr: string; x: number; y: number; since: number } | null>(null)
   const [, setFrame] = useState(0)
+  // Rośnie przy każdym utworzeniu i utracie kontekstu gwiazd: warstwa moich zdjęć tworzy się w nim od nowa.
+  const [glEpoch, setGlEpoch] = useState(0)
+  const photoLayer = useSkyPhotoLayer(glRef, glEpoch, () => setFrame((f) => f + 1))
   const anim = useRef<{ from: View; to: View; start: number; dur: number } | null>(null)
   const lockStart = useRef(0)
   const artCache = useRef(new Map<string, HTMLImageElement>())
@@ -479,6 +483,8 @@ export function SkyDome({ playing = false }: Props) {
   const showTracks = useStore((s) => s.showTracks)
   const showArt = useStore((s) => s.showArt)
   const showOutlines = useStore((s) => s.showOutlines)
+  const showOwnPhotos = useStore((s) => s.showOwnPhotos)
+  const ownPhotosOpacity = useStore((s) => s.ownPhotosOpacity)
   const showEllipses = useStore((s) => s.showEllipses)
   const skyGroups = useStore((s) => s.skyGroups)
   const showLabels = useStore((s) => s.showLabels)
@@ -515,6 +521,7 @@ export function SkyDome({ playing = false }: Props) {
     const init = () => {
       try {
         starGL.current = createStarGL(canvas, sky)
+        setGlEpoch((n) => n + 1)
       } catch (e) {
         console.error('Kopuła: WebGL niedostępny', e)
         starGL.current = null
@@ -524,6 +531,7 @@ export function SkyDome({ playing = false }: Props) {
     const lost = (e: Event) => {
       e.preventDefault()
       starGL.current = null
+      setGlEpoch((n) => n + 1)
     }
     canvas.addEventListener('webglcontextlost', lost)
     canvas.addEventListener('webglcontextrestored', init)
@@ -661,6 +669,10 @@ export function SkyDome({ playing = false }: Props) {
     const bright = sunAlt > 0 ? 0.08 : sunAlt > -6 ? 0.25 : sunAlt > -12 ? 0.6 : sunAlt > -18 ? 0.85 : 1
     const magLimit = Math.min(6.6, 4.6 + (184 - view.fovDeg) / 50)
     starGL.current?.draw(proj.eqToView, zen, proj, size.w, size.h, dpr, magLimit, bright)
+    // Moje zdjęcia nad gwiazdami, pod całą nakładką (kontury na wierzchu); jasność niezależna od pory dnia.
+    if (starGL.current && showOwnPhotos) {
+      photoLayer.current?.draw({ proj, horMatrix, horizon, width: size.w, height: size.h, dpr, opacity: ownPhotosOpacity, selectedId: selected?.id ?? null, allowDecode: !playing })
+    }
 
     // Tło kopuły: kolor nieba zależny od Słońca (rysowany pod gwiazdami jako tło sceny).
     const stage = stageRef.current
