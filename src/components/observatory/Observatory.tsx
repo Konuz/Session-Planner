@@ -221,7 +221,7 @@ export default function Observatory({ project, onStars, onClose, onZoomOut }: Pr
           <span><span className="obs-marker galaxies" />Galaktyki</span>
           <span><span className="obs-marker nebulae" />Mgławice i gromady</span>
           <span className="obs-spacer" />
-          <span className="faint">Gwiazdy: Gaia DR3, odległości Bailer-Jones i in. 2021 przy ϖ/σ ≥ 5 · obiekty bez odległości zostają na zdjęciu</span>
+          <span className="faint">Gwiazdy: ESA/Gaia/DPAC (DR3, CC BY-NC 3.0 IGO), odległości Bailer-Jones i in. 2021 (CC BY 4.0) przy ϖ/σ ≥ 5 · obiekty bez odległości zostają na zdjęciu</span>
         </div>
       </div>
     </div>
