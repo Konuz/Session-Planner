@@ -154,3 +154,15 @@ it('krycie konturów: domyślnie 100%, przycinane do 10–100%, trafia do zapisu
   await Promise.resolve()
   expect(second.useStore.getState().outlinesOpacity).toBe(0.35)
 })
+
+it('krycie warstw z uszkodzonego zapisu wraca do zakresu 10–100%', async () => {
+  vi.resetModules()
+  const saved = JSON.stringify({ state: { ownPhotosOpacity: 5, outlinesOpacity: 'x' }, version: 1 })
+  const storage = { getItem: () => saved, setItem: vi.fn() }
+  vi.stubGlobal('localStorage', storage)
+  vi.stubGlobal('window', { localStorage: storage })
+  const { useStore } = await import('./store')
+  await Promise.resolve()
+  expect(useStore.getState().ownPhotosOpacity).toBe(1)
+  expect(useStore.getState().outlinesOpacity).toBe(1)
+})

@@ -428,7 +428,12 @@ export const useStore = create<State>()(
       // Grupy katalogów dopisane po zapisie stanu startują włączone; stan sprzed poziomów kadru dostaje pusty obiekt.
       merge: (persisted, current) => {
         const p = persisted as Partial<State> | undefined
-        return { ...current, ...p, skyGroups: { ...current.skyGroups, ...p?.skyGroups }, framingStretch: { ...p?.framingStretch }, ownPhotos: { ...p?.ownPhotos } }
+        // Krycie warstw z zapisu przycięte do 10–100% (wartość nieliczbowa = 100%).
+        const opacity = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0.1, Math.min(1, v)) : 1)
+        return {
+          ...current, ...p, skyGroups: { ...current.skyGroups, ...p?.skyGroups }, framingStretch: { ...p?.framingStretch }, ownPhotos: { ...p?.ownPhotos },
+          ownPhotosOpacity: opacity(p?.ownPhotosOpacity), outlinesOpacity: opacity(p?.outlinesOpacity),
+        }
       },
       // Noc zawsze startuje od bieżącej daty w strefie zapisanej lokalizacji.
       onRehydrateStorage: () => (state) => {

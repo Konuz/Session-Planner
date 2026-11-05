@@ -40,19 +40,20 @@ void main() {
   gl_Position = vec4(a_xy.x / u_res.x * 2.0 - 1.0, 1.0 - a_xy.y / u_res.y * 2.0, 0.0, 1.0);
 }`
 
-// Krawędź zdjęcia wygładzona na ok. 1 px (kontekst bez antyaliasingu); maska czarnych brzegów w kanale czerwonym.
+// Krawędź zdjęcia wygładzona na ok. 1 px (kontekst bez antyaliasingu); maska czarnych brzegów w kanale czerwonym
+// (bez maski: biała tekstura 1 × 1). Próg maski od 0,5: brzeg cofa się o pół teksela od czerni, więc filtrowanie
+// obrazu nie wnosi ciemnej obwódki.
 const PHOTO_FS = `#version 300 es
 precision highp float;
 in vec2 v_uv;
 in float v_alpha;
 uniform sampler2D u_img;
 uniform sampler2D u_mask;
-uniform bool u_hasMask;
 out vec4 outColor;
 void main() {
   vec2 d = min(v_uv, 1.0 - v_uv) / max(fwidth(v_uv), vec2(1e-6));
   float a = v_alpha * clamp(min(d.x, d.y), 0.0, 1.0);
-  if (u_hasMask) a *= texture(u_mask, v_uv).r;
+  a *= smoothstep(0.5, 1.0, texture(u_mask, v_uv).r);
   outColor = vec4(texture(u_img, v_uv).rgb * a, a);
 }`
 
@@ -110,7 +111,6 @@ export function createSkyPhotoLayer(gl: WebGL2RenderingContext, onLoaded: () => 
   const photoProg = program(gl, PHOTO_VS, PHOTO_FS)
   const composeProg = program(gl, COMPOSE_VS, COMPOSE_FS)
   const uRes = gl.getUniformLocation(photoProg, 'u_res')
-  const uHasMask = gl.getUniformLocation(photoProg, 'u_hasMask')
   const uOpacity = gl.getUniformLocation(composeProg, 'u_opacity')
   gl.useProgram(photoProg)
   gl.uniform1i(gl.getUniformLocation(photoProg, 'u_img'), 0)
@@ -118,6 +118,13 @@ export function createSkyPhotoLayer(gl: WebGL2RenderingContext, onLoaded: () => 
   gl.useProgram(composeProg)
   gl.uniform1i(gl.getUniformLocation(composeProg, 'u_layer'), 0)
   const emptyVao = gl.createVertexArray()!
+  const noMask = gl.createTexture()!
+  gl.bindTexture(gl.TEXTURE_2D, noMask)
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1)
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 1, 1, 0, gl.RED, gl.UNSIGNED_BYTE, new Uint8Array([255]))
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
   const maxTexture = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number
 
   let photos: SkyPhoto[] = []
@@ -129,6 +136,7 @@ export function createSkyPhotoLayer(gl: WebGL2RenderingContext, onLoaded: () => 
   let fboTex: WebGLTexture | null = null
   let fboW = 0
   let fboH = 0
+  let fboOk = false
 
   const freeTextures = (e: Entry) => {
     if (e.img) gl.deleteTexture(e.img)
@@ -197,7 +205,11 @@ export function createSkyPhotoLayer(gl: WebGL2RenderingContext, onLoaded: () => 
     const img = await createImageBitmap(record.image, opts)
     let mask: ImageBitmap | null = null
     try {
-      mask = record.mask ? await createImageBitmap(record.mask, opts) : null
+      // Błąd samej maski: zdjęcie rysowane bez niej.
+      mask = record.mask ? await createImageBitmap(record.mask, opts).catch((err: unknown) => {
+        console.warn('Kopuła: maska mojego zdjęcia', e.photo.key, err)
+        return null
+      }) : null
       // Zdjęcie usunięte z zestawu, warstwa zamknięta albo kontekst utracony w trakcie dekodowania: tylko sprzątanie.
       if (disposed || gl.isContextLost() || entries.get(e.photo.key) !== e) return
       freeTextures(e)
@@ -211,7 +223,8 @@ export function createSkyPhotoLayer(gl: WebGL2RenderingContext, onLoaded: () => 
     }
     const keep = new Set([...lastDrawnKeys, e.photo.key])
     const loaded = [...entries.entries()].filter(([, x]) => x.img).map(([key, x]) => ({ key, bytes: x.bytes, lastDrawn: x.lastDrawn }))
-    for (const key of evictionOrder(loaded, TEXTURE_BUDGET_BYTES, keep)) freeTextures(entries.get(key)!)
+    // Bufor poza ekranem liczy się do tego samego limitu pamięci.
+    for (const key of evictionOrder(loaded, TEXTURE_BUDGET_BYTES - fboW * fboH * 4, keep)) freeTextures(entries.get(key)!)
     onLoaded()
   }
 
@@ -219,6 +232,12 @@ export function createSkyPhotoLayer(gl: WebGL2RenderingContext, onLoaded: () => 
     if (busy || disposed) return
     const job = queue.shift()
     if (!job) return
+    // Zdjęcie usunięte z zestawu, zanim przyszła jego kolej: bez dekodowania.
+    if (entries.get(job.e.photo.key) !== job.e) {
+      job.e.pending = false
+      void pump()
+      return
+    }
     busy = true
     try {
       await load(job.e, job.level)
@@ -246,6 +265,9 @@ export function createSkyPhotoLayer(gl: WebGL2RenderingContext, onLoaded: () => 
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
     gl.bindFramebuffer(gl.FRAMEBUFFER, fbo)
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, fboTex, 0)
+    fboOk = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE
+    if (!fboOk) console.warn('Kopuła: bufor warstwy moich zdjęć niekompletny', w, h)
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
     fboW = w
     fboH = h
   }
@@ -289,6 +311,7 @@ export function createSkyPhotoLayer(gl: WebGL2RenderingContext, onLoaded: () => 
       const w = gl.drawingBufferWidth
       const h = gl.drawingBufferHeight
       ensureTarget(w, h)
+      if (!fboOk) return
       gl.bindFramebuffer(gl.FRAMEBUFFER, fbo)
       gl.viewport(0, 0, w, h)
       gl.clearColor(0, 0, 0, 0)
@@ -306,8 +329,7 @@ export function createSkyPhotoLayer(gl: WebGL2RenderingContext, onLoaded: () => 
         gl.activeTexture(gl.TEXTURE0)
         gl.bindTexture(gl.TEXTURE_2D, e.img)
         gl.activeTexture(gl.TEXTURE1)
-        gl.bindTexture(gl.TEXTURE_2D, e.mask)
-        gl.uniform1i(uHasMask, e.mask ? 1 : 0)
+        gl.bindTexture(gl.TEXTURE_2D, e.mask ?? noMask)
         gl.drawElements(gl.TRIANGLES, e.count, gl.UNSIGNED_SHORT, 0)
         e.lastDrawn = frameNo
       }
@@ -332,6 +354,7 @@ export function createSkyPhotoLayer(gl: WebGL2RenderingContext, onLoaded: () => 
       gl.deleteProgram(photoProg)
       gl.deleteProgram(composeProg)
       gl.deleteVertexArray(emptyVao)
+      gl.deleteTexture(noMask)
       if (fbo) gl.deleteFramebuffer(fbo)
       if (fboTex) gl.deleteTexture(fboTex)
     },
