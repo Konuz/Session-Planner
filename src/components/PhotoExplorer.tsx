@@ -275,9 +275,6 @@ export function PhotoExplorer({ project, onProject, frameRef, fitRef }: Props) {
         {project.cuts.length === 0 && <p>Brak obiektów katalogowych w tym kadrze.</p>}
         {active && <div className="photo-fields">
           <strong>{active.id}</strong>
-          <label>Środek X [px]<input readOnly value={Math.round(active.x)} /></label>
-          <label>Środek Y [px]<input readOnly value={Math.round(active.y)} /></label>
-          <label>Promień [px]<input readOnly value={Math.round(active.radius)} /></label>
           <label>Źródło odległości<select value={selectedDistance < 0 ? active.distLy ? 'saved' : 'unknown' : selectedDistance} title={active.distanceSource} onChange={(e) => {
             if (e.target.value === 'unknown') { updateCut(active.id, { distLy: null, uncertaintyLy: null, distanceSource: '' }); return }
             const measurement = distanceData?.measurements[Number(e.target.value)]
