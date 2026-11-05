@@ -63,6 +63,8 @@ export function useSkyPhotoLayer(glRef: RefObject<HTMLCanvasElement | null>, glE
       cancelled = true
       created?.dispose()
       if (layer.current === created) layer.current = null
+      // Ostatnie zdjęcie ukryte lub usunięte: kopuła rysuje się od nowa już bez warstwy (inaczej zostałoby do ruchu myszy).
+      redrawRef.current()
     }
   }, [has, glEpoch, glRef])
 
