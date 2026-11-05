@@ -164,7 +164,8 @@ export function WeatherCard() {
   const { hours, error, loading } = useWeather()
   const h = weatherAt(hours, time)
   const nightHours = hours.filter((x) => x.t >= night.startMs && x.t <= night.endMs)
-  const isNight = night.sunset !== null && time > night.sunset && (night.sunrise === null || time < night.sunrise)
+  // Bez zachodu Słońca: noc polarna to noc przez całą dobę, dzień polarny to dzień.
+  const isNight = night.sunset === null ? !night.polarDay : time > night.sunset && (night.sunrise === null || time < night.sunrise)
   const rating = h ? skyRating(h) : null
   const seeing = h ? seeingEstimate(h.jetKmh) : null
   const tz = useStore((s) => s.location.timeZone)

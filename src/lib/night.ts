@@ -2,6 +2,7 @@
 import {
   DAY_MS,
   altAz,
+  bodyAltAz,
   HOUR_MS,
   horizontalMatrix,
   mulVec,
@@ -32,6 +33,8 @@ export interface NightPhases {
   sunrise: number | null
   /** Środek nocy (dolne górowanie Słońca w przybliżeniu: połowa między zachodem i wschodem). */
   midnight: number
+  /** Dzień polarny: Słońce nie zachodzi tej nocy, więc nie ma ciemnego okna. */
+  polarDay: boolean
 }
 
 /** Północ lokalna strefy `timeZone` dla daty `date` (RRRR-MM-DD) jako ms UTC. */
@@ -100,17 +103,35 @@ export function nightPhases(date: string, site: Site, timeZone: string): NightPh
   const nauticalDawn = nauticalDusk === null ? null : up(-12)
   const civilDawn = civilDusk === null ? null : up(-6)
   const sunrise = sunset === null ? null : within(riseSetMs('sun', site, +1, from, searchDays(from)))
-  const startMs = sunset !== null ? sunset - HOUR_MS : noon + 6 * HOUR_MS
-  const endMs = sunrise !== null ? sunrise + HOUR_MS : nextNoon - 6 * HOUR_MS
   const midnight = sunset !== null && sunrise !== null ? (sunset + sunrise) / 2 : noon + 12 * HOUR_MS
-  return { date, startMs, endMs, sunset, civilDusk, nauticalDusk, astroDusk, astroDawn, nauticalDawn, civilDawn, sunrise, midnight }
+  // Bez zachodu Słońce jest stale nad albo stale pod horyzontem; próg jak w riseSetMs (górny brzeg z refrakcją).
+  const polarDay = sunset === null && bodyAltAz('sun', midnight, site).altDeg > -0.833
+  const n: NightPhases = {
+    date,
+    startMs: sunset !== null ? sunset - HOUR_MS : noon + 6 * HOUR_MS,
+    endMs: sunrise !== null ? sunrise + HOUR_MS : nextNoon - 6 * HOUR_MS,
+    sunset, civilDusk, nauticalDusk, astroDusk, astroDawn, nauticalDawn, civilDawn, sunrise, midnight, polarDay,
+  }
+  if (sunset === null) {
+    // Noc polarna: wykres i siatka próbek muszą objąć całe ciemne okno (z godziną zapasu, jak przy zachodzie).
+    const [darkStart, darkEnd] = darkWindow(n)
+    n.startMs = Math.max(noon, Math.min(n.startMs, darkStart - HOUR_MS))
+    n.endMs = Math.min(nextNoon, Math.max(n.endMs, darkEnd + HOUR_MS))
+  }
+  return n
 }
 
-/** Okno „ciemnej nocy”: noc astronomiczna, a gdy jej brak (lato), żeglarska, potem cywilna. */
+/**
+ * Okno „ciemnej nocy”: najciemniejsza dostępna faza. Noc astronomiczna, a gdy jej brak (lato), żeglarska,
+ * potem cywilna, potem czas pod horyzontem (białe noce). W dniu polarnym okno jest puste (koniec = początek),
+ * a w nocy polarnej bez żadnego zmierzchu ciemny jest cały wykres.
+ */
 export function darkWindow(n: NightPhases): [number, number] {
   if (n.astroDusk !== null && n.astroDawn !== null) return [n.astroDusk, n.astroDawn]
   if (n.nauticalDusk !== null && n.nauticalDawn !== null) return [n.nauticalDusk, n.nauticalDawn]
   if (n.civilDusk !== null && n.civilDawn !== null) return [n.civilDusk, n.civilDawn]
+  if (n.sunset !== null && n.sunrise !== null) return [n.sunset, n.sunrise]
+  if (n.polarDay) return [n.midnight, n.midnight]
   return [n.startMs, n.endMs]
 }
 

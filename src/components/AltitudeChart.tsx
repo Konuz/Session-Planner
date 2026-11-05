@@ -112,6 +112,8 @@ export function AltitudeChart({ object, slot, title = 'Widoczność obiektu', to
   ]
   // Bez nocy astronomicznej: najciemniejsza faza wypełnia środek.
   if (n.astroDusk === null && n.nauticalDusk !== null) bands[4] = { from: n.nauticalDusk, to: n.nauticalDawn, fill: 'rgba(22, 40, 84, 0.6)', label: 'Noc żeglarska (brak astronomicznej)' }
+  // Dzień polarny: Słońce nie zachodzi, cały wykres to dzień (bez tego tło wyglądałoby jak noc).
+  if (n.polarDay) bands.splice(0, bands.length, { from: n.startMs, to: n.endMs, fill: 'rgba(150, 90, 40, 0.55)', label: 'Dzień polarny' })
 
   const hourTicks: number[] = []
   const firstHour = Math.ceil(night.startMs / 3_600_000) * 3_600_000
@@ -288,7 +290,7 @@ export function AltitudeChart({ object, slot, title = 'Widoczność obiektu', to
       <div className="chart-footer">
         <span>
           <Moon size={15} />
-          {night.astroDusk !== null ? 'Noc astronomiczna' : 'Najciemniej'} <b>{fmtTime(darkStart, tz)}–{fmtTime(darkEnd, tz)}</b>
+          {night.polarDay ? <>Dzień polarny: <b>brak ciemnej nocy</b></> : <>{night.astroDusk !== null ? 'Noc astronomiczna' : 'Najciemniej'} <b>{fmtTime(darkStart, tz)}–{fmtTime(darkEnd, tz)}</b></>}
         </span>
         {o && vis && (
           <span>

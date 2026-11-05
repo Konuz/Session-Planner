@@ -127,7 +127,7 @@ export default function PlannerView() {
       `KONUZASTRO: plan sesji, noc ${night.date}`,
       `Miejsce: ${location.name} (${location.latDeg.toFixed(3)}°, ${location.lonDeg.toFixed(3)}°), strefa ${tz}`,
       `Zestaw: ${equipment.telescopeName} + ${equipment.cameraName}`,
-      `Ciemne okno: ${fmtTime(darkStart, tz)}–${fmtTime(darkEnd, tz)}`,
+      `Ciemne okno: ${night.polarDay ? 'brak (dzień polarny)' : `${fmtTime(darkStart, tz)}–${fmtTime(darkEnd, tz)}`}`,
       `Integracja: ${fmtDuration(integration / 3600)} · ${frameCount} klatek (bez przerw i obsługi sprzętu)`, '',
       ...rows.map((r, i) => {
         const s = slots[i]
@@ -157,7 +157,7 @@ export default function PlannerView() {
         </div>
         <div className="planner-stats">
           <div><span className="label">Cele w planie</span><strong>{rows.length.toString().padStart(2, '0')}</strong></div>
-          <div><span className="label">Ciemne okno</span><strong>{fmtTime(darkStart, tz)} <span>–</span> {fmtTime(darkEnd, tz)}</strong></div>
+          <div><span className="label">Ciemne okno</span>{night.polarDay ? <><strong>brak</strong><small>dzień polarny</small></> : <strong>{fmtTime(darkStart, tz)} <span>–</span> {fmtTime(darkEnd, tz)}</strong>}</div>
           <div><span className="label">Łączna integracja</span><strong>{fmtDuration(integration / 3600)}</strong><small>{frameCount} klatek · bez przerw</small></div>
           <div><span className="label">Kontrola planu</span><strong className={warningCount ? 'planner-warn' : ''}>{warningCount ? `${warningCount} do sprawdzenia` : rows.length ? 'Bez uwag' : 'Dodaj cele'}</strong><small>Widoczność, okna i ekspozycje</small></div>
         </div>

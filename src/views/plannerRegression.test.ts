@@ -7,7 +7,7 @@ import { useStore } from '../state/store'
 import { download } from '../lib/nina'
 import PlannerView from './PlannerView'
 
-const fixture = vi.hoisted(() => ({ catalog: [] as ReturnType<typeof parseCatalog> }))
+const fixture = vi.hoisted(() => ({ catalog: [] as ReturnType<typeof parseCatalog>, night: null as ReturnType<typeof nightPhases> | null }))
 vi.mock('react', async (original) => ({
   ...await original<typeof import('react')>(),
   useMemo: (fn: () => unknown) => fn(),
@@ -20,7 +20,7 @@ vi.mock('zustand/react/shallow', () => ({ useShallow: (select: unknown) => selec
 vi.mock('../state/data', () => ({
   useCatalog: () => ({ catalog: fixture.catalog, error: null }),
   useSite: () => ({ latDeg: 51.09, lonDeg: 17.29, elevationM: 130 }),
-  useNight: () => nightPhases('2026-10-22', { latDeg: 51.09, lonDeg: 17.29, elevationM: 130 }, 'Europe/Warsaw'),
+  useNight: () => fixture.night ?? nightPhases('2026-10-22', { latDeg: 51.09, lonDeg: 17.29, elevationM: 130 }, 'Europe/Warsaw'),
 }))
 vi.mock('../lib/nina', async (original) => ({ ...await original<typeof import('../lib/nina')>(), download: vi.fn() }))
 vi.mock('../state/store', async (original) => {
@@ -37,6 +37,7 @@ function elements(node: ReactNode): ReactElement<Record<string, unknown>>[] {
 
 beforeEach(() => {
   vi.mocked(download).mockClear()
+  fixture.night = null
   const rows: Parameters<typeof parseCatalog>[0] = [
     ['M 51', '', 'Wir', '', 'G', 202.47, 47.2, 10, 8, 0, 8, 20, 'CVn', 0, '', ''],
     ['M 42', '', 'Orion', '', 'EN', 83.82, -5.39, 60, 50, 0, 4, 20, 'Ori', 0, '', ''],
@@ -76,4 +77,14 @@ it('brakujące ID i stary zapis bez ID nie są zastępowane obiektem o dawnym in
   const tree = elements(PlannerView())
   expect(tree.filter((el) => el.type === 'section' && String(el.props['aria-label']).startsWith('Cel '))).toHaveLength(1)
   expect(tree.some((el) => el.props.role === 'alert')).toBe(true)
+})
+
+it('dzień polarny: planer pokazuje brak ciemnej nocy zamiast fikcyjnego okna 18:00–06:00 (B05)', () => {
+  fixture.night = nightPhases('2026-06-21', { latDeg: 69.65, lonDeg: 18.96, elevationM: 0 }, 'Europe/Oslo')
+  const tree = elements(PlannerView())
+  expect(tree.some((el) => el.type === 'small' && el.props.children === 'dzień polarny')).toBe(true)
+  expect(tree.some((el) => el.props.role === 'status' && JSON.stringify(el.props.children).includes('Brak dostępnego okna obserwacji.'))).toBe(true)
+  const button = tree.find((el) => el.type === 'button' && JSON.stringify(el.props.children).includes('Plan nocy TXT'))!
+  ;(button.props.onClick as () => void)()
+  expect(vi.mocked(download).mock.calls[0][1]).toContain('Ciemne okno: brak (dzień polarny)')
 })
