@@ -372,7 +372,16 @@ function addStarNameLabels(group: THREE.Group, stars: ConstellationStar[], sprit
 }
 
 /** Przepisuje do bufora tylko punkty niewyłączonych rodzajów i ogranicza do nich zakres rysowania. */
-function showTypes(bg: { geometry: THREE.BufferGeometry; types: ObjectType[]; pos: Float32Array; col: Float32Array }, hidden: ObjectType[]) {
+/**
+ * Ta sama klatka z dokładnością do niewidocznych zmian (1e-6 względnie, ok. 0,002 px). Tłumienie OrbitControls
+ * przesuwa kamerę o coraz mniejsze ułamki jeszcze przez kilka sekund, więc dokładne `equals` nigdy nie odpoczywa.
+ */
+function sameMatrix(a: THREE.Matrix4, b: THREE.Matrix4): boolean {
+  for (let i = 0; i < 16; i++) if (Math.abs(a.elements[i] - b.elements[i]) > 1e-6 * Math.max(1, Math.abs(b.elements[i]))) return false
+  return true
+}
+
+function showTypes(bg:{ geometry: THREE.BufferGeometry; types: ObjectType[]; pos: Float32Array; col: Float32Array }, hidden: ObjectType[]) {
   const pos = bg.geometry.getAttribute('position') as THREE.BufferAttribute
   const col = bg.geometry.getAttribute('color') as THREE.BufferAttribute
   let n = 0
@@ -413,6 +422,8 @@ export default function Space3D() {
   const screenTextSpritesRef = useRef<THREE.Sprite[]>([])
   const starNameLayoutsRef = useRef<StarNameLayout[]>([])
   const textLayoutDirty = useRef(true)
+  /** Zmiana sceny poza pętlą (warstwy, filtry): następna klatka musi zostać wyrenderowana. */
+  const sceneDirty = useRef(true)
   const [constellations, setConstellations] = useState<Constellations3D | null>(null)
   const [constellationError, setConstellationError] = useState(false)
   const filterRef = useRef<HTMLDivElement>(null)
@@ -770,6 +781,11 @@ export default function Space3D() {
     let lastTextWidth = 0, lastTextHeight = 0, lastTextGuideVisible = false
     let lastLabelW = 0, lastLabelH = 0, lastLabelAnnotations: boolean | null = null, lastLabelLevel = -1
     let lastLabelHidden: readonly ObjectType[] | null = null
+    // Renderowanie na żądanie: bez ruchu kamery i zmian sceny nie rysujemy co klatkę (GPU, bateria).
+    const renderedCamera = new THREE.Matrix4()
+    const renderedProjection = new THREE.Matrix4()
+    let renderedWidth = 0, renderedHeight = 0, renderedGuide: boolean | null = null, lastRender = -Infinity
+    sceneDirty.current = true
     const tick = () => {
       const now = performance.now()
       const delta = Math.min((now - lastTick) / 1000, 0.05)
@@ -841,8 +857,8 @@ export default function Space3D() {
       const textViewportWidth = renderer.domElement.clientWidth
       if (textViewportHeight > 0 && screenTextSpritesRef.current.length && (
         textLayoutDirty.current || textViewportWidth !== lastTextWidth || textViewportHeight !== lastTextHeight
-        || objectGuide.visible !== lastTextGuideVisible || !textCameraMatrix.equals(camera.matrixWorld)
-        || !textProjMatrix.equals(camera.projectionMatrix)
+        || objectGuide.visible !== lastTextGuideVisible || !sameMatrix(textCameraMatrix, camera.matrixWorld)
+        || !sameMatrix(textProjMatrix, camera.projectionMatrix)
       )) {
         textLayoutDirty.current = false
         textCameraMatrix.copy(camera.matrixWorld)
@@ -894,14 +910,27 @@ export default function Space3D() {
           layout.connectors.needsUpdate = true
         }
       }
-      renderer.render(scene, camera)
+      // Ziemia obraca się raz na 3 min (2°/s), więc dla niej wystarcza 10 klatek/s; co sekundę klatka kontrolna.
+      const canvas = renderer.domElement
+      if (sceneDirty.current || !sameMatrix(renderedCamera, camera.matrixWorld) || !sameMatrix(renderedProjection, camera.projectionMatrix)
+        || canvas.width !== renderedWidth || canvas.height !== renderedHeight || objectGuide.visible !== renderedGuide
+        || (earth && !reduced && now - lastRender >= 100) || now - lastRender >= 1000) {
+        renderer.render(scene, camera)
+        sceneDirty.current = false
+        renderedCamera.copy(camera.matrixWorld)
+        renderedProjection.copy(camera.projectionMatrix)
+        renderedWidth = canvas.width
+        renderedHeight = canvas.height
+        renderedGuide = objectGuide.visible
+        lastRender = now
+      }
       if (photoFrameRef.current) {
         const width = mount.clientWidth
         const height = mount.clientHeight
         const photo = photoRef.current
         const changed = photo !== projectedPhoto || width !== photoWidth || height !== photoHeight
           || projectedReceiver !== photoFrameRef.current || projectedSpan !== photoSpan
-          || (photo !== null && (!photoCameraMatrix.equals(camera.matrixWorld) || !photoProjectionMatrix.equals(camera.projectionMatrix)))
+          || (photo !== null && (!sameMatrix(photoCameraMatrix, camera.matrixWorld) || !sameMatrix(photoProjectionMatrix, camera.projectionMatrix)))
         if (changed && now - lastPhotoFrame >= 32) {
           const origin = photo ? sunPos.clone().project(camera) : { x: 0, y: 0 }
           const anchors = (photo?.cuts ?? []).filter((c) => c.enabled).map((cut) => {
@@ -958,8 +987,8 @@ export default function Space3D() {
         annotationsRef.current === lastLabelAnnotations &&
         galaxyLevelRef.current === lastLabelLevel &&
         hiddenTypesRef.current === lastLabelHidden &&
-        labelCameraMatrix.equals(camera.matrixWorld) &&
-        labelProjMatrix.equals(camera.projectionMatrix)
+        sameMatrix(labelCameraMatrix, camera.matrixWorld) &&
+        sameMatrix(labelProjMatrix, camera.projectionMatrix)
       ) {
         return
       }
@@ -1154,6 +1183,8 @@ export default function Space3D() {
       screenTextSpritesRef.current = []
       starNameLayoutsRef.current = []
       disposables.forEach((d) => d.dispose())
+      // Bez tego kontekst WebGL żyje do odśmiecenia płótna; szybkie przeglądanie obiektów wyczerpuje limit kontekstów.
+      renderer.forceContextLoss()
       renderer.domElement.remove()
       labels.remove()
     }
@@ -1162,11 +1193,13 @@ export default function Space3D() {
   useEffect(() => {
     if (constellationGroupRef.current) constellationGroupRef.current.visible = showConstellations
     textLayoutDirty.current = true
+    sceneDirty.current = true
   }, [showConstellations])
 
   useEffect(() => {
     constellationGroupRef.current?.children.forEach((c) => { c.visible = constellationChoice === 'all' || constellationChoice === c.name })
     textLayoutDirty.current = true
+    sceneDirty.current = true
   }, [constellationChoice])
 
   useEffect(() => {
@@ -1180,15 +1213,18 @@ export default function Space3D() {
       names.visible = showStarNames
     })
     textLayoutDirty.current = true
+    sceneDirty.current = true
   }, [showStarNames])
 
   useEffect(() => {
     const bg = bgRef.current
     if (bg && scale === 'universe') bg.geometry.setDrawRange(0, bg.counts[galaxyLevel])
+    sceneDirty.current = true
   }, [galaxyLevel])
 
   useEffect(() => {
     if (bgRef.current && scale === 'galaxy') showTypes(bgRef.current, hiddenTypes)
+    sceneDirty.current = true
   }, [hiddenTypes])
 
   // Liczba obiektów tła skali Drogi Mlecznej według rodzaju (tylko rodzaje obecne w tej skali).
