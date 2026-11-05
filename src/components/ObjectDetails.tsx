@@ -9,6 +9,7 @@ import { astrobinSearchUrl, fetchWikiSummary, type WikiSummary } from '../lib/se
 import { useNight, useSelected, useSite } from '../state/data'
 import { useStore } from '../state/store'
 import { CloseButton } from './CloseButton'
+import { OwnPhotoActions } from './OwnPhotoActions'
 import { Thumb } from './Thumb'
 
 export function ObjectDetails({ onClose }: { onClose: () => void }) {
@@ -106,6 +107,7 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
             <button className="button primary" onClick={() => go('dome')}>Pokaż na niebie</button>
             <button className="button" onClick={() => go('3d')}>Pozycja 3D</button>
             <button className="button" onClick={() => { addToPlan(o.i, o.id); onClose(); setTab('planner') }}>Do planu</button>
+            <OwnPhotoActions key={o.id} objectId={o.id} />
             {astrobin?.key === o.i && (
               <a className="button" href={astrobin.url} target="_blank" rel="noreferrer" title="Zdjęcia z AstroBin wyróżnione jako IOTD lub Top Pick">
                 AstroBin

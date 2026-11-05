@@ -12,6 +12,7 @@ import { ObjectSearch } from './ObjectSearch'
 import { ScrambleText } from './ScrambleText'
 import { Thumb } from './Thumb'
 import { FavoriteButton } from './FavoriteButton'
+import { OwnPhotoButton } from './OwnPhotoButton'
 import { CONSTELLATION_PL } from '../lib/constellations'
 
 export const ObjectCard = memo(function ObjectCard({ onDetails }: { onDetails: () => void }) {
@@ -32,6 +33,7 @@ export const ObjectCard = memo(function ObjectCard({ onDetails }: { onDetails: (
         <div key={o.i} style={{ marginTop: 12, animation: 'fade-in 0.4s ease' }}>
           <div className="object-photo corners">
             <Thumb object={o} className="thumb" style={{ position: 'absolute', inset: 0 }} fovDeg={Math.min(4, Math.max(0.25, (Math.max(o.majArcmin, 3) * 2.2) / 60))} sizePx={480} />
+            <OwnPhotoButton objectId={o.id} />
             <FavoriteButton objectId={o.id} />
           </div>
           <div className="object-head">

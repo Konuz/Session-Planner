@@ -701,8 +701,11 @@ input[type='checkbox']:checked::after {
 /* Rodzaj obiektu jak kategoria na karcie galerii: mono 10 px, wersaliki, kolor rodzaju. */
 .type-label { font: 10px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
 .thumb { position: relative; background: #05060b; overflow: hidden; }
-.favorite-button { position: absolute; top: 6px; right: 6px; z-index: 3; width: 26px; height: 26px; display: grid; place-items: center; padding: 0; border: 1px solid var(--border-strong); background: var(--card-solid); color: var(--text-2); cursor: pointer; }
+.favorite-button, .own-photo-button { position: absolute; top: 6px; right: 6px; z-index: 3; width: 26px; height: 26px; display: grid; place-items: center; padding: 0; border: 1px solid var(--border-strong); background: var(--card-solid); color: var(--text-2); cursor: pointer; }
 .favorite-button:hover, .favorite-button:focus-visible, .favorite-button.active { color: var(--accent); border-color: var(--accent); }
+/* Przełącznik moje/domyślne zdjęcie: lustrzanie do serca, w lewym górnym rogu. */
+.own-photo-button { right: auto; left: 6px; }
+.own-photo-button:hover, .own-photo-button:focus-visible, .own-photo-button.active { color: var(--accent); border-color: var(--accent); }
 .button.favorite-remove { background: var(--bad); border-color: var(--bad); color: var(--bg); }
 .button.favorite-action { width: 190px; flex: none; }
 .framing-button-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
