@@ -20,6 +20,8 @@ export function createAppServer({ distDir = fileURLToPath(new URL('../dist/', im
       if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405, { Allow: 'GET, HEAD' }).end(); return }
       let path: string
       try { path = decodeURIComponent(url.pathname) } catch { res.writeHead(400).end(); return }
+      // Bajt zerowy nie jest poprawną ścieżką; fs rzuciłby ERR_INVALID_ARG_VALUE, czyli 500.
+      if (path.includes('\0')) { res.writeHead(400).end(); return }
       const file = resolve(root, `.${path === '/' ? '/index.html' : path}`)
       if (!file.startsWith(root + sep)) { res.writeHead(403).end(); return }
       const realRoot = await realpath(root)

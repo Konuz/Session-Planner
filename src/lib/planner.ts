@@ -17,19 +17,37 @@ export interface Slot {
   endMs: number
 }
 
+/** Poniżej tego udziału granica w połowie drogi między najlepszymi chwilami ustępuje podziałowi wspólnego czasu. */
+const MIN_SHARE_MS = 30 * 60_000
+
 /**
- * Cele sortowane po chwili najlepszej wysokości; granica między kolejnymi to połowa drogi między ich najlepszymi
- * chwilami, przycięta do okna użyteczności każdego celu i do ciemnego okna. Cele bez okna pomijane.
+ * Cele sortowane po chwili najlepszej wysokości (przy remisie najpierw ten, który wcześniej znika, potem ten,
+ * który wcześniej się pojawia). Granica między kolejnymi to połowa drogi między ich najlepszymi chwilami. Gdy
+ * któryś z dwóch celów dostałby wtedy mniej niż 30 min (np. oba zachodzą o zmierzchu i mają tę samą najlepszą
+ * chwilę), granica wypada w połowie czasu, w którym widać oba. Sloty są przycinane do okna użyteczności celu
+ * i do ciemnego okna. Cele bez okna pomijane.
  */
 export function autoSchedule(targets: readonly PlanTarget[], darkStart: number, darkEnd: number): Slot[] {
-  const usable = targets.filter((t) => t.usableStart !== null && t.usableEnd !== null).sort((a, b) => a.bestMs - b.bestMs)
+  const usable = targets
+    .filter((t) => t.usableStart !== null && t.usableEnd !== null)
+    .sort((a, b) => a.bestMs - b.bestMs || a.usableEnd! - b.usableEnd! || a.usableStart! - b.usableStart!)
+  const bounds: number[] = []
+  for (let i = 0; i + 1 < usable.length; i++) {
+    const a = usable[i]
+    const b = usable[i + 1]
+    const mid = (a.bestMs + b.bestMs) / 2
+    const aStart = Math.max(bounds[i - 1] ?? darkStart, a.usableStart!, darkStart)
+    const aShare = Math.min(mid, a.usableEnd!, darkEnd) - aStart
+    const bShare = Math.min(b.usableEnd!, darkEnd) - Math.max(mid, b.usableStart!, darkStart)
+    const sharedStart = Math.max(a.usableStart!, b.usableStart!, darkStart)
+    const sharedEnd = Math.min(a.usableEnd!, b.usableEnd!, darkEnd)
+    bounds.push((aShare < MIN_SHARE_MS || bShare < MIN_SHARE_MS) && sharedEnd > sharedStart ? (sharedStart + sharedEnd) / 2 : mid)
+  }
   const slots: Slot[] = []
   for (let i = 0; i < usable.length; i++) {
     const t = usable[i]
-    const prev = usable[i - 1]
-    const next = usable[i + 1]
-    let start = prev ? (prev.bestMs + t.bestMs) / 2 : darkStart
-    let end = next ? (t.bestMs + next.bestMs) / 2 : darkEnd
+    let start = bounds[i - 1] ?? darkStart
+    let end = bounds[i] ?? darkEnd
     start = Math.max(start, t.usableStart!, darkStart)
     end = Math.min(end, t.usableEnd!, darkEnd)
     start = Math.ceil(start / 60_000) * 60_000

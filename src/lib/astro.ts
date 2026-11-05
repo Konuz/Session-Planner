@@ -123,6 +123,12 @@ export function hourAngleDeg(eq: Equatorial, timeMs: number, site: Site): number
   return ha > 180 ? ha - 360 : ha
 }
 
+/**
+ * Obiekt nigdy nie zachodzi (wysokość geometryczna > 0 także w dolnej kulminacji): |φ + δ| > 90°.
+ * Deklinacja J2000; precesja przesuwa próg o ułamek stopnia, co wystarcza dla etykiety.
+ */
+export const isCircumpolar = (decDeg: number, latDeg: number) => Math.abs(latDeg + decDeg) > 90
+
 /** Najbliższe górne górowanie po chwili startMs (z dokładnością do sekund). */
 export function nextTransitMs(eq: Equatorial, startMs: number, site: Site): number {
   // Doba gwiazdowa = 23 h 56 min 4 s; HA rośnie 15,041°/h.

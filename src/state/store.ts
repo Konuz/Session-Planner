@@ -353,7 +353,8 @@ export const useStore = create<State>()(
         }),
       toggleFavorite: (id) => set((s) => ({ favoriteIds: s.favoriteIds.includes(id) ? s.favoriteIds.filter((value) => value !== id) : [...s.favoriteIds, id] })),
       clearFavorites: () => set({ favoriteIds: [] }),
-      setFilter: (patch) => set((s) => ({ filter: { ...s.filter, ...patch } })),
+      // Bez zmiany wartości zostaje ten sam obiekt: katalog nie przelicza listy i nie przewija jej na górę.
+      setFilter: (patch) => set((s) => (Object.keys(patch) as (keyof CatalogFilter)[]).every((k) => Object.is(s.filter[k], patch[k])) ? s : { filter: { ...s.filter, ...patch } }),
       setSort: (sortBy) => set({ sortBy }),
       toggleSkyGroup: (group) => set((s) => ({ skyGroups: { ...s.skyGroups, [group]: !s.skyGroups[group] } })),
       setAnnotationColor: (type, color) => set((s) => ({ annotationColors: { ...s.annotationColors, [type]: color } })),

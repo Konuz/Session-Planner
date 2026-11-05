@@ -1,6 +1,6 @@
 import { ExternalLink } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { angularDistanceDeg, galactic, moonInfo, moonJ2000 } from '../lib/astro'
+import { angularDistanceDeg, galactic, isCircumpolar, moonInfo, moonJ2000 } from '../lib/astro'
 import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO } from '../lib/catalog'
 import { CONSTELLATION_PL } from '../lib/constellations'
 import { fmtDec, fmtDeg, fmtDistance, fmtDuration, fmtNum, fmtRa, fmtSize, fmtTime } from '../lib/format'
@@ -67,7 +67,7 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
       if (track[i - 1].alt >= 0 && track[i].alt < 0 && set === null) set = track[i].t
     }
     const moon = moonJ2000(vis.bestMs, site)
-    return { vis, rise, set, moonSep: angularDistanceDeg(o, moon), moonIllum: moonInfo(vis.bestMs).illumination, circumpolar: track.every((s) => s.alt > 0) }
+    return { vis, rise, set, moonSep: angularDistanceDeg(o, moon), moonIllum: moonInfo(vis.bestMs).illumination, circumpolar: isCircumpolar(o.decDeg, site.latDeg) }
   }, [o, night, site, minAlt, horizon])
 
   if (!o || !stats) return null

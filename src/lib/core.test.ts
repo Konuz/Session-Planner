@@ -1,7 +1,7 @@
 import { Horizon, MakeTime, Observer, RotateVector, Rotation_EQJ_EQD, SphereFromVector, Vector } from 'astronomy-engine'
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { altAz, computeOptics, DEG, galactic, hourAngleDeg, horizontalMatrix, moonInfo, nextTransitMs, vecToEquatorial, type Site } from './astro'
+import { altAz, computeOptics, DEG, galactic, hourAngleDeg, horizontalMatrix, isCircumpolar, moonInfo, nextTransitMs, vecToEquatorial, type Site } from './astro'
 import { matchesFilter, normalizeQuery, parseCatalog, quickSearch, searchScore, skyGroupOf, EMPTY_FILTER } from './catalog'
 import { frameCorners, gnomonic, gnomonicInverse, pixelToTangent, tangentToPixel } from './framing'
 import { exportHorizon, horizonAltitude, parseHorizon } from './horizon'
@@ -18,6 +18,16 @@ const M51 = { raDeg: 202.4696, decDeg: 47.1952 }
 const TZ = 'Europe/Warsaw'
 
 describe('astro', () => {
+  it('okołobiegunowość z deklinacji zgadza się z wysokością w pełnej dobie', () => {
+    const cases: [number, number][] = [[41.3, 51.1], [30, 51.1], [36.5, 51.1], [-70, -34], [-50, -34], [89, 10], [-89, 10]]
+    for (const [decDeg, latDeg] of cases) {
+      const site = { latDeg, lonDeg: 17, elevationM: 0 }
+      let minAlt = 90
+      for (let t = Date.UTC(2026, 10, 5); t < Date.UTC(2026, 10, 6); t += 5 * 60_000) minAlt = Math.min(minAlt, altAz({ raDeg: 80, decDeg }, t, site).altDeg)
+      expect(isCircumpolar(decDeg, latDeg), `δ=${decDeg} φ=${latDeg}`).toBe(minAlt > 0)
+    }
+  })
+
   it('wysokość i azymut zgodne z astronomy-engine (bez refrakcji)', () => {
     const t = Date.UTC(2026, 9, 22, 20, 0)
     const ours = altAz(M51, t, SITE)
