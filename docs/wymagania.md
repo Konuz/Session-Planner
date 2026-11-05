@@ -24,6 +24,7 @@ Każda linia ma dowód: test (T), sprawdzenie w przeglądarce przy 1440 px (P) a
 | 16 | Filtry katalogu: M, NGC, IC, LDN, LBN, Sh2, SNR, B, vdB oraz typ obiektu (Collinder i Melotte: brak w danych, do dodania) | T (`filters`) + P | ☑ |
 | 17 | Szybkość: JS na start < 200 KB gzip, 3D ładowane leniwie, obliczenia w workerze, `prefers-reduced-motion` | build + P | ☑ |
 | 18 | Wygląd spójny ze stroną (tokeny, krój mono, klamry narożne, odnośnik do konuzastro.pl) | P | ☑ |
+| 19 | Obserwatorium 3D zdjęcia: gwiazdy Gaia DR3 (odległości Bailer-Jones, ϖ/σ ≥ 5) i wycinki na osi linii widzenia, suwak zdjęcie ↔ przestrzeń, widoki Struktura / Z Ziemi / Z góry / Z boku, histogram z przedziałem, lista i inspektor, przejście do Drogi Mlecznej | T (`observatory`, `photoStarsServer`, `photo`) + P + S (GAVO) | ☑ |
 
 ## Stan na 22.10.2026
 
@@ -35,3 +36,10 @@ Wszystkie punkty zrealizowane i sprawdzone (22 testy Vitest, build, zrzuty Playw
   - szybkie łącze: ostry kadr 0,8 s, po przeładowaniu 0,07 s, 12 miniatur katalogu 0,55 s, przy awarii ESA kadr 1,6 s; przeciąganie kadru bez długich zadań;
   - wolne łącze (2 Mbit/s, 150 ms): podgląd kadru 2,6 s, ostry 4,9 s; 15 widocznych miniatur 4,5 s (604 KB), czyli powyżej celu 3 s.
   - 1.11.2026: miniatury kolorowe, 224 px z rzędem grubszym o 1 (wcześniej 128 px, grubszy o 2: widoczne romby pikseli HEALPix); transfer 12 miniatur ok. 1,5× większy, więc na wolnym łączu będą wolniejsze niż powyższe 4,5 s (niezmierzone); szybkie łącze: 15 miniatur 2,2 s.
+
+## Obserwatorium 3D (5.11.2026)
+
+- Zdjęcie testowe IC 434 z konuzastro.pl: rzut gwiazd Gaia mieści się w 0,78 px od wykryć solvera (mediana 0,16 px). Gwiazdy σ Ori wychodzą 362–405 pc (literatura 387,5 pc). Zdjęcia M42 na konuzastro.pl nie ma; M45 i M44 nie dały się rozwiązać w limicie 90 s.
+- Przedział 998–2004 lś zostawia na liście i w scenie 363 obiekty o odległościach 999–1998 lś i żadnego bez odległości.
+- Scena rysuje tylko przy ruchu: w spoczynku zero wywołań rysowania przez 3 s, także po przelocie kamery. Startowy JS ma 149,1 KB gzip, obserwatorium to leniwy fragment 10,6 KB.
+- Eksport wideo pominięto (decyzja użytkownika).
