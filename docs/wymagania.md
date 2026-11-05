@@ -52,3 +52,16 @@ Wszystkie punkty zrealizowane i sprawdzone (22 testy Vitest, build, zrzuty Playw
 - Czarne kliny zdjęcia obróconego o 25° są wycinane: kadr wygląda jak dla zdjęcia nieobróconego. Ciemne obszary we wnętrzu zostają (test jednostkowy).
 - Wybór moje/domyślne przetrwa przeładowanie; „Usuń moje zdjęcie” przywraca domyślne i chowa przełącznik. Zdjęcia leżą w bazie `tracker-own-photos`; projekt Eksploratora zdjęć (`tracker-photo`) jest nietknięty.
 - Startowy JS 152,4 KB gzip. Warstwa zdjęcia na mapie nieba jest osobnym, późniejszym zadaniem.
+
+## Moje zdjęcia na mapie nieba (5.11.2026)
+
+- Przełącznik „Moje zdjęcia” w „Warstwach” kopuły (domyślnie włączony) i pod nim suwak krycia 10–100%. Na kopule leżą tylko zdjęcia z wyborem „moje” w karcie obiektu. Po przeładowaniu przełącznik, krycie (0,7) i trzy zdjęcia zostają.
+- Zdjęcie leży na niebie przez siatkę WCS 17 × 17; wierzchołki rzutuje ta sama funkcja co kontury. Test jednostkowy: piksel we wnętrzu komórki trafia w rzut swojego RA/Dec w granicach 0,5 px (zenit, 12° nad horyzontem, obrót, zdjęcie 6° przy polu 30°, odbicie lustrzane, pełna kopuła, RA 0°/360°, Dec 88,5°). Przesunięcie UV o 0,02 komórki psuje 3 testy.
+- IC 434 (zdjęcie z konuzastro.pl, pole 8°): ζ Ori na zdjęciu leży 0,46 px od gwiazdy kopuły (centroidy jasności, warstwa wyłączona i włączona). Elipsa NGC 2023 i kontur B 33 trafiają w HD 37903 i Koński Łeb na zdjęciu. M 51: galaktyka pod celownikiem obiektu. W polu M 51 nie ma gwiazd kopuły (granica 6,6 mag), więc tam zgodność gwiazd jest niesprawdzalna.
+- Kontury, elipsy, etykiety i ziemia są nad zdjęciem. Droga Mleczna, siatka wysokości, południk i linie gwiazdozbiorów przeszły na płótno pod gwiazdami, więc zdjęcie je zasłania; gwiazdy kopuły też. Kopuła bez zdjęć: średnia różnica pikseli z wersją sprzed zmiany 0,02 (pełna kopuła) i 0,36 (Łabędź, gwiazdy są teraz nad smugą).
+- Brak ramki i szwów (wspólne wierzchołki, krawędź wygładzona w shaderze na ok. 1 px), czarne kliny wycina maska jako druga tekstura (bez kopiowania pikseli w pełnej rozdzielczości).
+- Zachodzenie: wycinek IC 434 przypięty do B 33 leży w pełnym zdjęciu IC 434; przy kryciu 50% nie widać krawędzi wycinka (krycie działa na całą warstwę). Zdjęcie wybranego obiektu idzie na wierzch. To samo zdjęcie przypięte do IC 434 i NGC 2024 rysowane jest raz.
+- Wschód IC 434 (+0,3°): część zdjęcia pod horyzontem zakryta ziemią. Utrata i przywrócenie kontekstu WebGL (`WEBGL_lose_context`): zdjęcie wraca samo.
+- Wydajność: rzut siatek 20 widocznych zdjęć zajmuje 1,06 ms na klatkę (Node). Tekstury mają 256–2048 px zależnie od wielkości zdjęcia na ekranie, limit 128 MB, dekodowanie po jednym zdjęciu i nie podczas odtwarzania nocy. Klatek w swiftshader nie mierzono (cała kopuła rysuje się tam 0,5–0,8 s z warstwą i bez niej).
+- Startowy JS 152,3 KB gzip; warstwa WebGL zdjęć to leniwy fragment 3,5 KB, ładowany dopiero przy pierwszym zdjęciu „moje”.
+- Ograniczenie: najmocniejsze powiększenie kopuły to 8°, więc zdjęcie ok. 1° zajmuje ok. 10% widoku.
