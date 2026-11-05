@@ -7,6 +7,7 @@ import { fmtDec, fmtNum, fmtRa } from '../lib/format'
 import { frameCorners, gnomonic, gnomonicInverse, mosaicOffsets, pixelToTangent, tangentToPixel, type Mosaic } from '../lib/framing'
 import { SURVEYS } from '../lib/hips'
 import { isDefaultLevels, normalizeLevels, tableValues } from '../lib/stretch'
+import { getOwnSkyImage, OwnPhotoMissingError } from '../lib/ownPhotoImage'
 import { getSkyImage, type SkyImageOptions } from '../lib/thumbs'
 import { useSelected } from '../state/data'
 import { useStore } from '../state/store'
@@ -42,6 +43,10 @@ export function FramingPanel() {
   const plan = useStore((s) => s.plan)
   const storedStretch = useStore((s) => s.framingStretch)
   const setFramingStretch = useStore((s) => s.setFramingStretch)
+  // Własne zdjęcie wpasowane w tło kadrowania, gdy w karcie wybrano „moje”.
+  const own = useStore((s) => (o ? s.ownPhotos[o.id] : undefined))
+  const ownId = own?.shown ? own.photoId : ''
+  const removeOwnPhoto = useStore((s) => s.removeOwnPhoto)
   const [layer, setLayer] = useState<Layer>('color')
   // Zdjęcie z miejscem, które pokazuje: po przesunięciu nieba poprzednie zostaje widoczne, przesunięte, do czasu wczytania nowego.
   const [img, setImg] = useState<{ key: string; blob: Blob; sharp: boolean; raDeg: number; decDeg: number; fovDeg: number; layer: Layer } | null>(null)
@@ -77,7 +82,7 @@ export function FramingPanel() {
   const center = o ? { raDeg: framing.raDeg ?? o.raDeg, decDeg: framing.decDeg ?? o.decDeg } : null
   const imageRa = o ? (photoCenter?.objectIndex === o.i ? photoCenter.raDeg : center?.raDeg ?? o.raDeg) : null
   const imageDec = o ? (photoCenter?.objectIndex === o.i ? photoCenter.decDeg : center?.decDeg ?? o.decDeg) : null
-  const imageKey = o ? `${o.i}:${imageRa}:${imageDec}:${imageFov}:${layer}` : ''
+  const imageKey = o ? `${o.i}:${imageRa}:${imageDec}:${imageFov}:${layer}:${ownId}` : ''
   const levels = normalizeLevels(storedStretch[layer])
   const stretched = !isDefaultLevels(levels)
   const pointsKey = JSON.stringify(levels.points ?? [])
@@ -107,17 +112,24 @@ export function FramingPanel() {
     // Najpierw miękki podgląd (rząd grubszy o 2, mały transfer), ostry obraz dopiero po nim; podgląd nie zastępuje ostrego.
     let previewFailed = false
     const where = { raDeg: imageRa, decDeg: imageDec, fovDeg: imageFov, layer }
-    getSkyImage(imageRa, imageDec, imageFov, SIZE, ctrl.signal, { ...opts, coarser: 2 })
+    const load = (layerOpts: SkyImageOptions) => ownId
+      ? getOwnSkyImage(o.id, ownId, { raDeg: imageRa, decDeg: imageDec, fovDeg: imageFov, sizePx: SIZE }, ctrl.signal, layerOpts)
+      : getSkyImage(imageRa, imageDec, imageFov, SIZE, ctrl.signal, layerOpts)
+    load({ ...opts, coarser: 2 })
       .then((blob) => !ctrl.signal.aborted && setImg((prev) => (prev?.key === imageKey && prev.sharp ? prev : { key: imageKey, blob, sharp: false, ...where })))
       .catch((e: Error) => {
         if (e.name === 'AbortError') throw e
         previewFailed = true
       })
-      .then(() => getSkyImage(imageRa, imageDec, imageFov, SIZE, ctrl.signal, opts))
+      .then(() => load(opts))
       .then((blob) => !ctrl.signal.aborted && setImg({ key: imageKey, blob, sharp: true, ...where }))
-      .catch((e: Error) => e.name !== 'AbortError' && previewFailed && setErr(IMAGE_ERROR))
+      .catch((e: Error) => {
+        // Brak rekordu w IndexedDB: indeks wraca do domyślnego tła, efekt wczyta je ponownie.
+        if (e instanceof OwnPhotoMissingError) removeOwnPhoto(o.id)
+        else if (e.name !== 'AbortError' && previewFailed) setErr(IMAGE_ERROR)
+      })
     return () => ctrl.abort()
-  }, [o, imageRa, imageDec, imageFov, layer, imageKey])
+  }, [o, imageRa, imageDec, imageFov, layer, imageKey, ownId, removeOwnPhoto])
 
   if (!o || !center) return <div className="sky-stage empty" style={{ display: 'grid', placeItems: 'center' }}>Wybierz obiekt, aby kadrować.</div>
 
@@ -295,6 +307,7 @@ export function FramingPanel() {
               pole zdjęcia {fmtNum(imageFov, 2)}° · {SURVEYS[LAYERS[layer].survey].label}
               {layer === 'red' ? ' czerwony' : layer === 'color' ? ' kolor' : ''} · {SURVEYS[LAYERS[layer].survey].credit}
               {img?.key === imageKey ? (img.sharp ? '' : ' · podgląd') : shown ? ' · wczytywanie' : ''}
+              {ownId && img?.key === imageKey ? ' · moje zdjęcie' : ''}
               {stretched ? ' · rozciągnięte' : ''}
             </text>
           </svg>
