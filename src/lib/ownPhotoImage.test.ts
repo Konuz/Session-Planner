@@ -5,11 +5,12 @@ const mocks = vi.hoisted(() => ({
   cache: { get: vi.fn<(key: string) => Promise<Blob | null>>(), put: vi.fn<(key: string, blob: Blob) => Promise<void>>() },
   read: vi.fn<(objectId: string) => Promise<unknown>>(),
   sky: vi.fn<(...args: unknown[]) => Promise<Blob>>(),
+  complete: vi.fn<(blob: Blob) => boolean>(),
   compose: vi.fn<(background: Blob | null, record: unknown, view: TanView) => Promise<Blob>>(),
 }))
 vi.mock('./imageCache', () => ({ imageCache: () => mocks.cache }))
 vi.mock('./ownPhotoStorage', () => ({ readOwnPhoto: mocks.read }))
-vi.mock('./thumbs', () => ({ getSkyImage: mocks.sky }))
+vi.mock('./thumbs', () => ({ getSkyImage: mocks.sky, isCompleteSkyImage: mocks.complete }))
 vi.mock('./ownPhotoCompose', () => ({ composeOwnPhoto: mocks.compose }))
 
 const { getOwnSkyImage, ownImageKey, OwnPhotoMissingError } = await import('./ownPhotoImage')
@@ -24,6 +25,7 @@ beforeEach(() => {
   mocks.cache.put.mockReset().mockResolvedValue()
   mocks.read.mockReset().mockResolvedValue(record)
   mocks.sky.mockReset().mockResolvedValue(background)
+  mocks.complete.mockReset().mockReturnValue(true)
   mocks.compose.mockReset().mockResolvedValue(composed)
 })
 
@@ -68,4 +70,11 @@ it('przerwanie przez signal przechodzi jako AbortError', async () => {
   mocks.sky.mockRejectedValueOnce(new DOMException('aborted', 'AbortError'))
   await expect(getOwnSkyImage('M 51', 'abc', view, new AbortController().signal)).rejects.toMatchObject({ name: 'AbortError' })
   expect(mocks.compose).not.toHaveBeenCalled()
+})
+
+it('złożenie na niepełnym tle nie trafia do bufora', async () => {
+  mocks.complete.mockReturnValue(false)
+  expect(await getOwnSkyImage('M 51', 'abc', view)).toBe(composed)
+  expect(mocks.compose).toHaveBeenCalledWith(background, record, view)
+  expect(mocks.cache.put).not.toHaveBeenCalled()
 })

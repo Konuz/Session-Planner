@@ -3,7 +3,7 @@ import { imageCache } from './imageCache'
 import type { TanView } from './ownPhoto'
 import { composeOwnPhoto } from './ownPhotoCompose'
 import { readOwnPhoto } from './ownPhotoStorage'
-import { getSkyImage, type SkyImageOptions } from './thumbs'
+import { getSkyImage, isCompleteSkyImage, type SkyImageOptions } from './thumbs'
 
 // Osobny bufor: klucze tła zależą tylko od współrzędnych, a te obrazy także od zdjęcia.
 const cache = imageCache('tracker-own-thumbs-v1', 64)
@@ -21,7 +21,7 @@ export function ownImageKey(photoId: string, view: TanView, opts: SkyImageOption
   return `/own/${photoId}/${survey}/${mode}/${coarser}/${view.raDeg.toFixed(4)}/${view.decDeg.toFixed(4)}/${view.fovDeg}/${view.sizePx}`
 }
 
-/** Brak tła (kafelki, sieć) nie ukrywa zdjęcia: reszta pola jest czarna, a wynik nie trafia do bufora. */
+/** Brak tła (kafelki, sieć) nie ukrywa zdjęcia: reszta pola jest czarna. Wynik bez pełnego tła nie trafia do bufora. */
 export async function getOwnSkyImage(objectId: string, photoId: string, view: TanView, signal?: AbortSignal, opts: SkyImageOptions = {}): Promise<Blob> {
   const key = ownImageKey(photoId, view, opts)
   const cached = await cache.get(key)
@@ -34,6 +34,6 @@ export async function getOwnSkyImage(objectId: string, photoId: string, view: Ta
   if (!record || record.photoId !== photoId) throw new OwnPhotoMissingError(objectId)
   signal?.throwIfAborted()
   const blob = await composeOwnPhoto(background, record, view)
-  if (background) await cache.put(key, blob)
+  if (background && isCompleteSkyImage(background)) await cache.put(key, blob)
   return blob
 }

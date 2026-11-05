@@ -46,6 +46,13 @@ describe('miniatury', () => {
     expect(put).toHaveBeenCalledTimes(1)
   })
 
+  it('niepełny obraz jest rozpoznawalny dla odbiorców składających obrazy', async () => {
+    FakeWorker.reply = (msg) => ({ id: msg.id, blob: new Blob([new Uint8Array(500)]), complete: msg.raDeg === 1 })
+    const { getSkyImage, isCompleteSkyImage } = await import('./thumbs')
+    expect(isCompleteSkyImage(await getSkyImage(2, 20, 3, 800))).toBe(false)
+    expect(isCompleteSkyImage(await getSkyImage(1, 20, 3, 800))).toBe(true)
+  })
+
   it('awaria workera odrzuca zadanie, a kolejne tworzy nowy worker', async () => {
     FakeWorker.reply = () => 'crash'
     const { getSkyImage } = await import('./thumbs')

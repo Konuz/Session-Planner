@@ -5,6 +5,13 @@ import type { HipsCancel, HipsReply, HipsRequest, ImageMode, SurveyId } from './
 import { imageCache } from './imageCache'
 
 const cache = imageCache('tracker-thumbs-v2', 128)
+// Obrazy złożone bez części kafelków: odbiorcy, którzy z nich coś składają, też ich nie buforują.
+const incomplete = new WeakSet<Blob>()
+
+/** Czy obraz z `getSkyImage` ma wszystkie kafelki (obrazy z bufora zawsze mają). */
+export function isCompleteSkyImage(blob: Blob): boolean {
+  return !incomplete.has(blob)
+}
 const MAX_PARALLEL = 5
 
 /** Pole wycinka [°]: obiekt zajmuje ok. 60% kadru, od 0,2° do 4°. */
@@ -65,6 +72,7 @@ async function run(job: Job) {
       if ('error' in reply) throw new Error(reply.error)
       blob = reply.blob
       if (reply.complete) await cache.put(job.key, blob)
+      else incomplete.add(blob)
     }
     for (const c of job.consumers) c.resolve(blob)
   } catch (e) {
