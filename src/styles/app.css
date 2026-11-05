@@ -61,7 +61,7 @@ a:hover { text-decoration: underline; }
 button, input, select, textarea { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 select:focus-visible { outline: none; }
-select { color-scheme: dark; scrollbar-color: var(--border-strong) transparent; }
+select { color-scheme: dark; }
 select option, select optgroup { background-color: var(--card-solid); color: var(--text); }
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: var(--border-strong); }
@@ -874,7 +874,12 @@ input[type='checkbox']:checked::after {
 .space-filters > .sky-hud { position: relative; bottom: auto; right: auto; }
 .sky-toolbar .layers-popover { left: auto; right: 0; }
 .space-stage .sky-hud .toggle-chip, .space-stage .sky-hud .constellation-select { height: 28px; min-height: 28px; padding: 0 10px; font-size: 10px; letter-spacing: 0.04em; }
-.space-stage .sky-hud .constellation-select { border: 1px solid var(--accent); padding-right: 28px; }
+.space-stage .sky-hud .constellation-select { border: 1px solid var(--accent); padding-right: 28px; display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; padding-right: 10px; text-align: left; color: var(--text); cursor: pointer; }
+.constellation-picker { position: relative; }
+.popover.constellation-list { top: auto; bottom: calc(100% + 6px); left: 0; right: auto; width: 220px; max-height: 320px; overflow-y: auto; padding: 4px 0; display: grid; }
+.constellation-list button { padding: 6px 12px; background: none; border: 0; color: var(--text); font: 12px var(--mono); text-align: left; cursor: pointer; }
+.constellation-list button:hover, .constellation-list button:focus-visible { background: var(--accent-faint); outline: none; }
+.constellation-list button.on { color: var(--accent); }
 .space-stage.has-photo .space-filters, .space-stage.has-photo .scale-info-control { bottom: 82px; }
 
 /* ---------- Obserwatorium 3D (okno nad sceną, układ wzorowany na SyQon, kolory z tokenów) ---------- */

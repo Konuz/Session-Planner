@@ -1294,10 +1294,8 @@ export default function Space3D() {
         <div ref={filterRef} className="sky-hud br" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 6, maxWidth: '100%' }}>
           {showConstellations && (
             <>
-              <select className="control constellation-select" aria-label="Gwiazdozbiór w przestrzeni 3D" style={{ width: 'auto', maxWidth: '100%' }} value={constellationChoice} onChange={(e) => setConstellationChoice(e.target.value)}>
-                <option value="all">Wszystkie gwiazdozbiory</option>
-                {constellations?.constellations.slice().sort((a, b) => (CONSTELLATION_PL[a.abbr] ?? a.abbr).localeCompare(CONSTELLATION_PL[b.abbr] ?? b.abbr, 'pl')).map((c) => <option key={c.abbr} value={c.abbr}>{CONSTELLATION_PL[c.abbr] ?? c.abbr}</option>)}
-              </select>
+              <ConstellationPicker value={constellationChoice} onChange={setConstellationChoice}
+                options={(constellations?.constellations ?? []).map((c) => ({ value: c.abbr, label: CONSTELLATION_PL[c.abbr] ?? c.abbr })).sort((a, b) => a.label.localeCompare(b.label, 'pl'))} />
               <button className={`toggle-chip${showStarNames ? ' on' : ''}`} aria-pressed={showStarNames} onClick={() => setShowStarNames((v) => !v)} title="Pokaż nazwy gwiazd z widocznych gwiazdozbiorów">Nazwy gwiazd</button>
             </>
           )}
@@ -1349,4 +1347,21 @@ export default function Space3D() {
       </div>
     </div>
   )
+}
+
+/** Własna lista zamiast <select>: systemowa lista nie przyjmuje stylu paska przewijania aplikacji. */
+function ConstellationPicker({ value, options, onChange }: { value: string; options: { value: string; label: string }[]; onChange(value: string): void }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useOutside(ref, () => setOpen(false), open)
+  const all = [{ value: 'all', label: 'Wszystkie gwiazdozbiory' }, ...options]
+  return <div ref={ref} className="constellation-picker">
+    <button type="button" className="control constellation-select" aria-label="Gwiazdozbiór w przestrzeni 3D" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+      <span>{all.find((o) => o.value === value)?.label ?? value}</span><ChevronDown size={12} />
+    </button>
+    {open && <div className="popover constellation-list" role="listbox" aria-label="Gwiazdozbiór">
+      {all.map((o) => <button key={o.value} type="button" role="option" aria-selected={o.value === value} className={o.value === value ? 'on' : ''} ref={o.value === value ? (el) => el?.scrollIntoView({ block: 'nearest' }) : undefined}
+        onClick={() => { onChange(o.value); setOpen(false) }}>{o.label}</button>)}
+    </div>}
+  </div>
 }
