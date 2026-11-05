@@ -22,6 +22,10 @@ export interface ObservatoryItem {
   distHiLy: number | null
   gMag: number | null
   bpRp: number | null
+  /** ϖ/σ paralaksy Gaia (tylko gwiazdy). */
+  parallaxOverError: number | null
+  raDeg: number
+  decDeg: number
   source: string
 }
 
@@ -40,11 +44,12 @@ export function observatoryItems(project: PhotoProject): ObservatoryItem[] {
     id: cut.id, kind: 'object', category: categoryOf(cut.type), type: cut.type, x: cut.x, y: cut.y, radius: cut.radius,
     distLy: cut.distLy, distLoLy: cut.distLy !== null && cut.uncertaintyLy !== null ? cut.distLy - cut.uncertaintyLy : null,
     distHiLy: cut.distLy !== null && cut.uncertaintyLy !== null ? cut.distLy + cut.uncertaintyLy : null,
-    gMag: null, bpRp: null, source: cut.distanceSource,
+    gMag: null, bpRp: null, parallaxOverError: null, raDeg: cut.raDeg, decDeg: cut.decDeg, source: cut.distanceSource,
   }))
   const stars = (project.stars?.stars ?? []).map((star): ObservatoryItem => ({
     id: star.id, kind: 'star', category: 'stars', type: null, x: star.x, y: star.y, radius: 0,
-    distLy: star.distLy, distLoLy: star.distLoLy, distHiLy: star.distHiLy, gMag: star.gMag, bpRp: star.bpRp, source: GAIA_SOURCE,
+    distLy: star.distLy, distLoLy: star.distLoLy, distHiLy: star.distHiLy, gMag: star.gMag, bpRp: star.bpRp,
+    parallaxOverError: star.parallaxOverError, raDeg: star.raDeg, decDeg: star.decDeg, source: GAIA_SOURCE,
   }))
   return [...cuts, ...stars]
 }
@@ -146,4 +151,17 @@ export function starColor(bpRp: number | null): [number, number, number] {
 export function starSize(gMag: number | null, faintest: number): number {
   const delta = Math.max(0, faintest - (gMag ?? faintest))
   return Math.min(9, 1.5 + delta * 0.9)
+}
+
+/** Średnia średnica kątowa Księżyca w stopniach (31′). */
+export const MOON_DEG = 0.518
+
+/** Rozmiar pola z macierzy CD zapisanego WCS (skala w centrum, bez dystorsji). */
+export function fieldOfView(wcs: unknown, width: number, height: number): { widthDeg: number; heightDeg: number; moons: number } | null {
+  const cd = (wcs as { cd?: number[][] } | null)?.cd
+  if (!Array.isArray(cd) || cd.length !== 2 || cd.some((row) => !Array.isArray(row) || row.length !== 2 || row.some((v) => !Number.isFinite(v)))) return null
+  const scale = Math.sqrt(Math.abs(cd[0][0] * cd[1][1] - cd[0][1] * cd[1][0]))
+  if (!(scale > 0)) return null
+  const widthDeg = width * scale, heightDeg = height * scale
+  return { widthDeg, heightDeg, moons: Math.max(widthDeg, heightDeg) / MOON_DEG }
 }

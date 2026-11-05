@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { AXIS_LENGTH, PLANE_WIDTH, byDistance, categoryCounts, distanceAt, distanceDomain, distanceHistogram, matchesFilter, observatoryItems, observatoryPosition, starColor, starSize, type ObservatoryItem } from './observatory'
+import { AXIS_LENGTH, PLANE_WIDTH, byDistance, fieldOfView, categoryCounts, distanceAt, distanceDomain, distanceHistogram, matchesFilter, observatoryItems, observatoryPosition, starColor, starSize, type ObservatoryItem } from './observatory'
 import type { PhotoCut, PhotoProject, PhotoStar } from './photo'
 
 const image = { width: 2000, height: 1000 }
@@ -40,7 +40,7 @@ it('histogram liczy odległości w koszykach logarytmicznych i pomija brak danyc
   expect(distanceHistogram([1e4], { minLy: 100, maxLy: 1e4 }, 4).counts).toEqual([0, 0, 0, 1])
 })
 
-const item = (id: string, category: ObservatoryItem['category'], distLy: number | null, gMag: number | null = null): ObservatoryItem => ({ id, kind: category === 'stars' ? 'star' : 'object', category, type: null, x: 0, y: 0, radius: 0, distLy, distLoLy: null, distHiLy: null, gMag, bpRp: null, source: '' })
+const item = (id: string, category: ObservatoryItem['category'], distLy: number | null, gMag: number | null = null): ObservatoryItem => ({ id, kind: category === 'stars' ? 'star' : 'object', category, type: null, x: 0, y: 0, radius: 0, distLy, distLoLy: null, distHiLy: null, gMag, bpRp: null, parallaxOverError: null, raDeg: 0, decDeg: 0, source: '' })
 
 it('zakres 1000–2000 lś zostawia tylko obiekty z tego przedziału, kategoria zawęża dalej', () => {
   const items = [item('a', 'stars', 900), item('b', 'stars', 1000), item('c', 'nebulae', 1500), item('d', 'stars', 2000), item('e', 'stars', 2001), item('f', 'stars', null), item('g', 'galaxies', 2e7)]
@@ -71,4 +71,15 @@ it('barwa gwiazdy przechodzi od niebieskiej do czerwonej, rozmiar rośnie z jasn
   expect(starSize(4, 17)).toBe(9)
   expect(starSize(17, 17)).toBe(1.5)
   expect(starSize(12, 17)).toBeGreaterThan(starSize(15, 17))
+})
+
+it('rozmiar pola liczy z macierzy CD i porównuje z tarczą Księżyca', () => {
+  // IC 434 z konuzastro.pl: 2798 × 2827 px, 1,28″/px.
+  const cd = [[-0.000046206143700459305, 0.00035229624378628905], [-0.00035248318258832885, -0.00004637840645707231]]
+  const fov = fieldOfView({ cd }, 2798, 2827)!
+  expect(fov.widthDeg).toBeCloseTo(2798 * 1.27950 / 3600, 4)
+  expect(fov.heightDeg).toBeCloseTo(2827 * 1.27950 / 3600, 4)
+  expect(fov.moons).toBeCloseTo(1.94, 2)
+  expect(fieldOfView(null, 10, 10)).toBeNull()
+  expect(fieldOfView({ cd: [[0, 0], [0, 0]] }, 10, 10)).toBeNull()
 })

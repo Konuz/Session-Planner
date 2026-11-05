@@ -1,11 +1,13 @@
 import { ImagePlus, Pause, Play, RotateCcw, Settings2, X } from 'lucide-react'
-import { useEffect, useId, useRef, useState, type RefObject } from 'react'
+import { lazy, Suspense, useEffect, useId, useRef, useState, type RefObject } from 'react'
 import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO } from '../lib/catalog'
 import { fmtDistance } from '../lib/format'
-import { coveredPhotoCircles, photoColumns, photoPose, type PhotoCut, type PhotoDistances, type PhotoProject, type PhotoSceneFrame } from '../lib/photo'
+import { coveredPhotoCircles, photoColumns, photoPose, type PhotoCut, type PhotoDistances, type PhotoProject, type PhotoSceneFrame, type PhotoStars } from '../lib/photo'
 import { hasUnsavedPhoto, readPhoto, writePhoto } from '../lib/photoStorage'
 import { Range } from './Range'
 import { CloseButton } from './CloseButton'
+
+const Observatory = lazy(() => import('./observatory/Observatory'))
 
 interface Props {
   project: PhotoProject | null
@@ -26,6 +28,8 @@ export function PhotoExplorer({ project, onProject, frameRef, fitRef }: Props) {
   const [progress, setProgress] = useState(0)
   const [playing, setPlaying] = useState(false)
   const [editing, setEditing] = useState(false)
+  const [observatory, setObservatory] = useState(false)
+  const observatoryButton = useRef<HTMLButtonElement>(null)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -170,6 +174,23 @@ export function PhotoExplorer({ project, onProject, frameRef, fitRef }: Props) {
     if (d.resize) updateCut(d.id, { radius: Math.max(4, Math.min(Math.max(project!.width, project!.height) * 2, d.original.radius + (p.x - d.x) / imageScale)) })
     else updateCut(d.id, { x: d.original.x + (p.x - d.x) / imageScale, y: d.original.y + (p.y - d.y) / imageScale })
   }
+  function saveStars(id: string, stars: PhotoStars) {
+    const current = projectRef.current
+    if (current?.id === id) change({ ...current, stars })
+  }
+  function closeObservatory() {
+    setObservatory(false)
+    observatoryButton.current?.focus()
+  }
+  /** Z obserwatorium do skali Drogi Mlecznej: wycinki lecą do swoich położeń w Space3D. */
+  function zoomOutFromObservatory() {
+    setObservatory(false)
+    setEditing(false)
+    fitRef.current?.()
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { setProgress(1); return }
+    setProgress(0)
+    setPlaying(true)
+  }
   function play() {
     if (!playing && (progress === 0 || progress >= 1)) fitRef.current?.()
     setEditing(false)
@@ -236,10 +257,14 @@ export function PhotoExplorer({ project, onProject, frameRef, fitRef }: Props) {
           <button className="icon-button" aria-label={playing ? 'Zatrzymaj rozkładanie' : 'Odtwórz rozkładanie'} disabled={!enabled.length} onClick={play}>{playing ? <Pause size={15} /> : <Play size={15} />}</button>
           <button className="icon-button" aria-label="Wróć do fotografii" onClick={() => { setPlaying(false); setProgress(0) }}><RotateCcw size={14} /></button>
           <span>Zdjęcie</span><Range aria-label="Rozłożenie zdjęcia w 3D" min={0} max={1} step={0.001} value={progress} onChange={(e) => { setPlaying(false); if (progress === 0) fitRef.current?.(); setProgress(Number(e.target.value)) }} /><span>Mapa 3D</span>
+          <button ref={observatoryButton} className="button small" title="Obserwatorium 3D: gwiazdy Gaia i obiekty w swoich odległościach" aria-label="Otwórz obserwatorium 3D" onClick={() => { setPlaying(false); setEditing(false); setObservatory(true) }}>3D</button>
           <button className={`icon-button${editing ? ' active' : ''}`} aria-label="Edytuj wycinki" aria-expanded={editing} onClick={() => { setPlaying(false); setProgress(0); setEditing(!editing) }}><Settings2 size={16} /></button>
           <button className="icon-button" aria-label="Usuń zdjęcie z widoku" onClick={() => { setPlaying(false); setProgress(0); change(null) }}><X size={15} /></button>
         </div>
       </div>
+      {observatory && <Suspense fallback={null}>
+        <Observatory project={project} onStars={(stars) => saveStars(project.id, stars)} onClose={closeObservatory} onZoomOut={zoomOutFromObservatory} />
+      </Suspense>}
       {editing && <div className="photo-editor">
         <div className="photo-editor-heading"><strong>Wycinki zdjęcia</strong><CloseButton label="Zamknij edycję wycinków" onClick={() => setEditing(false)} /></div>
         <p className="dim">Propozycje z katalogu. Zaznacz widoczne obiekty; przesuń okrąg i jego uchwyt.</p>
