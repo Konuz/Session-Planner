@@ -264,6 +264,20 @@ const groundCanvas = typeof document !== 'undefined' ? document.createElement('c
 const GROUND_STEP = 3 // piksele CSS na piksel maski
 let groundCacheKey = ''
 let groundCacheHorizon: readonly HorizonPoint[] | null = null
+/** Kanał alfa ostatniej maski ziemi (RGBA, wymiary groundCanvas): odczyt bez dekodowania płótna. */
+let groundPixels: Uint8ClampedArray | null = null
+
+/** Czy prostokąt ekranu (piksele CSS) zachodzi na ziemię? Bez danych maski odpowiada „tak”, jak dotąd. */
+function overlapsGround(x0: number, y0: number, x1: number, y1: number): boolean {
+  if (!groundCanvas || !groundPixels) return true
+  const mw = groundCanvas.width
+  const i0 = Math.max(0, Math.floor(x0 / GROUND_STEP) - 1)
+  const i1 = Math.min(mw - 1, Math.ceil(x1 / GROUND_STEP) + 1)
+  const j0 = Math.max(0, Math.floor(y0 / GROUND_STEP) - 1)
+  const j1 = Math.min(groundCanvas.height - 1, Math.ceil(y1 / GROUND_STEP) + 1)
+  for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) if (groundPixels[(j * mw + i) * 4 + 3] > 0) return true
+  return false
+}
 
 /** Maska ziemi: każdy piksel maski → kierunek (rzut odwrotny) → wysokość pod horyzontem? Brzeg wygładzony. */
 function drawGround(ctx: CanvasRenderingContext2D, proj: Projector, horizon: readonly HorizonPoint[], w: number, h: number, fovDeg: number, radius: number) {
@@ -322,6 +336,7 @@ function drawGround(ctx: CanvasRenderingContext2D, proj: Projector, horizon: rea
     }
   }
   g.putImageData(img, 0, 0)
+  groundPixels = img.data
   ctx.imageSmoothingEnabled = true
   ctx.imageSmoothingQuality = 'high'
   ctx.drawImage(groundCanvas, 0, 0, mw * GROUND_STEP, mh * GROUND_STEP)
@@ -1037,8 +1052,16 @@ export function SkyDome({ playing = false }: Props) {
     drawGround(ctx, proj, horizon, size.w, size.h, view.fovDeg, radius)
     // Nakładka DOM Księżyca dostaje tę samą maskę gruntu co postacie, w swoim lokalnym układzie.
     if (moonRef.current && moonPoint && groundCanvas) {
-      const nextMaskKey = `${Math.round(moonPoint[0] * 2)},${Math.round(moonPoint[1] * 2)}|${moonMarkerSize}|${dpr}|${groundCacheKey}`
-      if (moonMaskKey.current !== nextMaskKey) {
+      // Kodowanie PNG maski kosztuje ok. 1 ms; robimy je tylko, gdy tarcza lub podpis zachodzą na ziemię.
+      // Prostokąt z zapasem: tarcza, odstęp i podpis „Księżyc” (ok. 50 px).
+      const left = moonPoint[0] - moonMarkerSize / 2
+      const top = moonPoint[1] - moonMarkerSize / 2
+      const covered = overlapsGround(left, top, left + moonMarkerSize + 80, top + Math.max(moonMarkerSize, 16))
+      const nextMaskKey = covered ? `${Math.round(moonPoint[0] * 2)},${Math.round(moonPoint[1] * 2)}|${moonMarkerSize}|${dpr}|${groundCacheKey}` : 'bez maski'
+      if (moonMaskKey.current !== nextMaskKey && !covered) {
+        moonMaskKey.current = nextMaskKey
+        moonRef.current.style.maskImage = ''
+      } else if (moonMaskKey.current !== nextMaskKey) {
         moonMaskKey.current = nextMaskKey
         const mask = moonMask.current ??= document.createElement('canvas')
         mask.width = Math.ceil(moonRef.current.offsetWidth * dpr)
