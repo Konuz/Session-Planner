@@ -4,9 +4,6 @@ import { DEG } from './astro'
 import { gnomonic, tangentToPixel } from './framing'
 import type { PhotoProject } from './photo'
 
-/** Liczba punktów siatki na bok (od krawędzi do krawędzi, z narożnikami). */
-export const OWN_PHOTO_GRID = 17
-
 /** Punkty wierszami; punkt (i, j) leży w pikselu (i·width/(cols−1), j·height/(rows−1)); [raDeg, decDeg]. */
 export interface PhotoGrid { cols: number; rows: number; sky: [number, number][] }
 

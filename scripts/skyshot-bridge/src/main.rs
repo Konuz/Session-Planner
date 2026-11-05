@@ -39,11 +39,30 @@ fn project(request: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Siatka punktów kontrolnych własnego zdjęcia: plik `{wcs, width, height, cols, rows}`.
+/// Punkt (i, j) w pikselu (i·width/(cols−1), j·height/(rows−1)) → [ra, dec] w stopniach, wierszami.
+fn grid(request: &Path) -> Result<()> {
+    let body: Value = serde_json::from_slice(&fs::read(request)?)?;
+    let wcs: Wcs = serde_json::from_value(body["wcs"].clone()).context("Niepoprawny WCS")?;
+    let width = body["width"].as_f64().context("Brak szerokości")?;
+    let height = body["height"].as_f64().context("Brak wysokości")?;
+    let cols = body["cols"].as_u64().context("Brak liczby kolumn")?;
+    let rows = body["rows"].as_u64().context("Brak liczby wierszy")?;
+    ensure!(cols >= 2 && rows >= 2 && cols * rows <= 10_000, "Niepoprawny rozmiar siatki");
+    let sky: Vec<Value> = (0..rows).flat_map(|j| (0..cols).map(move |i| (i, j))).map(|(i, j)| {
+        let p = wcs.pixel_to_sky(i as f64 * width / (cols - 1) as f64, j as f64 * height / (rows - 1) as f64);
+        json!([p[0], p[1]])
+    }).collect();
+    println!("{}", json!({"sky": sky}));
+    Ok(())
+}
+
 fn run() -> Result<()> {
     let args: Vec<String> = env::args().collect();
-    ensure!(args.len() >= 3, "preview image output | solve image index catalog [matches] | project request");
+    ensure!(args.len() >= 3, "preview image output | solve image index catalog [matches] | project request | grid request");
     if args[1] == "project" { return project(Path::new(&args[2])); }
-    ensure!(args.len() >= 4, "preview image output | solve image index catalog [matches] | project request");
+    if args[1] == "grid" { return grid(Path::new(&args[2])); }
+    ensure!(args.len() >= 4, "preview image output | solve image index catalog [matches] | project request | grid request");
     if args[1] == "preview" {
         fs::write(&args[3], skyshot::image_io::load(Path::new(&args[2]))?.preview()?)?;
         return Ok(());

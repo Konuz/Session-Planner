@@ -205,3 +205,89 @@ it('odrzuca skompresowany raster powyżej 64 MP przed solverem', async () => {
     await close()
   }
 })
+
+// Tryb własnego zdjęcia obiektu: `?object=<id>` zwraca siatkę, maskę i sprawdza obiekt w kadrze.
+type BridgeArgs = [string, string[]]
+const solved = { width: 32, height: 32, raDeg: 10.68, decDeg: 41.27, rmsPx: 0.4, matches: 30, edgeMatches: 8, edgeRmsPx: 0.5, totalMs: 120, wcs: {}, objects: [] }
+function fakeBridge(objectPixel: [number, number] | null) {
+  solve.mockImplementation((async (...call: unknown[]) => {
+    const [, args] = call as BridgeArgs
+    if (args[0] === 'solve') return { stdout: JSON.stringify(solved) }
+    if (args[0] === 'grid') return { stdout: JSON.stringify({ sky: Array.from({ length: 289 }, (_, k) => [10 + k * 1e-4, 41]) }) }
+    if (args[0] === 'project') return { stdout: JSON.stringify({ raDeg: 10.68, decDeg: 41.27, radiusDeg: 0.1, pixels: [objectPixel] }) }
+    throw new Error(`nieznana komenda ${args[0]}`)
+  }) as never)
+}
+const grayImage = async (border: number) => {
+  const inner = await sharp({ create: { width: 32 - 2 * border, height: 32 - 2 * border, channels: 3, background: { r: 120, g: 120, b: 120 } } }).png().toBuffer()
+  return new Uint8Array(await sharp(inner).extend({ top: border, bottom: border, left: border, right: border, background: '#000000' }).png().toBuffer())
+}
+const uploadFor = (url: string, object: string, body: BodyInit) => fetch(`${url}?object=${encodeURIComponent(object)}`, { method: 'POST', headers: { 'Content-Type': 'image/png' }, body })
+
+it('tryb obiektu: nieznany obiekt to 404 bez solvera', async () => {
+  const { url, close } = await solveServer()
+  try {
+    const response = await uploadFor(url, 'XYZ', await grayImage(3))
+    expect(response.status).toBe(404)
+    expect(solve).not.toHaveBeenCalled()
+  } finally {
+    await close()
+  }
+})
+
+it('tryb obiektu: zwraca siatkę, maskę i objectId', async () => {
+  fakeBridge([16, 16])
+  const { url, close } = await solveServer()
+  try {
+    const response = await uploadFor(url, 'M 31', await grayImage(3))
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(body.objectId).toBe('M 31')
+    expect(body.grid.cols).toBe(17)
+    expect(body.grid.rows).toBe(17)
+    expect(body.grid.sky).toHaveLength(289)
+    expect(body.mask).toMatch(/^data:image\/png;base64,/)
+    expect(body.image).toMatch(/^data:image\/jpeg;base64,/)
+    expect(body).not.toHaveProperty('cuts')
+    expect(body).not.toHaveProperty('objects')
+    expect(body.astrometry).not.toHaveProperty('objects')
+  } finally {
+    await close()
+  }
+})
+
+it('tryb obiektu: obiekt poza kadrem to 422', async () => {
+  fakeBridge(null)
+  const { url, close } = await solveServer()
+  try {
+    const response = await uploadFor(url, 'M 31', await grayImage(3))
+    expect(response.status).toBe(422)
+    expect((await response.json()).error).toContain('M 31 nie ma na tym zdjęciu')
+  } finally {
+    await close()
+  }
+})
+
+it('tryb obiektu: zdjęcie bez czarnych brzegów ma mask null', async () => {
+  fakeBridge([16, 16])
+  const { url, close } = await solveServer()
+  try {
+    const response = await uploadFor(url, 'M 31', await grayImage(0))
+    expect(response.status).toBe(200)
+    expect((await response.json()).mask).toBeNull()
+  } finally {
+    await close()
+  }
+})
+
+it('bez parametru odpowiedź jak dotąd', async () => {
+  fakeBridge([16, 16])
+  const { upload, close } = await solveServer()
+  try {
+    const response = await upload(await grayImage(3))
+    expect(response.status).toBe(200)
+    expect(Object.keys(await response.json()).sort()).toEqual(['astrometry', 'createdAt', 'cuts', 'height', 'id', 'image', 'name', 'stars', 'version', 'width'])
+  } finally {
+    await close()
+  }
+})

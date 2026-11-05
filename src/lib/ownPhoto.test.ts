@@ -1,11 +1,11 @@
 import { expect, it } from 'vitest'
 import { DEG } from './astro'
 import { gnomonicInverse } from './framing'
-import { affineFromTriangles, expandTriangle, OWN_PHOTO_GRID, warpTriangles, type PhotoGrid, type Pt, type TanView } from './ownPhoto'
+import { affineFromTriangles, expandTriangle, warpTriangles, type PhotoGrid, type Pt, type TanView } from './ownPhoto'
 
 /** Siatka idealnego zdjęcia TAN: N u góry, E po lewej (flip: E po prawej, odbicie lustrzane). */
 function gridFromTan(center: { raDeg: number; decDeg: number }, degPerPx: number, width: number, height: number, flip = false): PhotoGrid {
-  const n = OWN_PHOTO_GRID
+  const n = 17
   const sky: [number, number][] = []
   for (let j = 0; j < n; j++) {
     for (let i = 0; i < n; i++) {

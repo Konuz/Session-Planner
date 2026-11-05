@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import sharp from 'sharp'
 import { parseCatalog, type DSO } from '../src/lib/catalog.ts'
+import { blackBorderMask } from '../src/lib/blackBorderMask.ts'
+import type { OwnPhotoSolved } from '../src/lib/ownPhoto.ts'
 import type { PhotoProject } from '../src/lib/photo.ts'
 import { loadPhotoDistances } from './photoDistances.ts'
 import { loadPhotoStars, type FieldProjection } from './photoStars.ts'
@@ -17,6 +19,8 @@ const execute = promisify(execFile)
 const maxBytes = 40 * 1024 * 1024
 const maxStarsRequestBytes = 2 * 1024 * 1024
 const maxRasterPixels = 64_000_000
+/** Punkty siatki własnego zdjęcia na bok (piksel → niebo przez most Skyshota). */
+const ownPhotoGrid = 17
 const uploadIdleMs = 15_000
 const uploadDeadlineMs = 120_000
 let busy = false
@@ -137,6 +141,10 @@ export async function photoApi(req: IncomingMessage, res: ServerResponse, env: P
   if (req.method !== 'POST') { res.setHeader('Allow', 'POST'); json(405, { error: 'Wymagane przesłanie zdjęcia.' }); return }
   const mime = req.headers['content-type']?.split(';')[0]
   if (!mime || !['image/jpeg', 'image/png', 'image/webp', 'image/tiff', 'application/fits', 'application/octet-stream'].includes(mime)) { json(415, { error: 'Wybierz plik JPEG, PNG, WebP, TIFF lub FITS.' }); return }
+  // Własne zdjęcie obiektu: obiekt znany przed odbiorem pliku, pozycja z katalogu serwera.
+  const objectId = url.searchParams.get('object')
+  const target = objectId === null ? null : (await getCatalogById()).get(objectId)
+  if (target === undefined) { json(404, { error: 'Nieznany obiekt katalogowy.' }); return }
   const rejectUpload = (status: 408 | 413) => {
     res.setHeader('Connection', 'close')
     json(status, { error: status === 408 ? 'Przekroczono czas przesyłania zdjęcia.' : 'Maksymalny rozmiar zdjęcia to 40 MB.' })
@@ -164,8 +172,16 @@ export async function photoApi(req: IncomingMessage, res: ServerResponse, env: P
     }
     abort.signal.throwIfAborted()
     let image: Buffer
+    let mask: Buffer | null = null
     try {
-      image = await sharp(input, { limitInputPixels: maxRasterPixels }).autoOrient().resize({ width: 3200, height: 3200, fit: 'inside', withoutEnlargement: true }).flatten({ background: '#000000' }).jpeg({ quality: 95 }).toBuffer()
+      const base = sharp(input, { limitInputPixels: maxRasterPixels }).autoOrient().resize({ width: 3200, height: 3200, fit: 'inside', withoutEnlargement: true }).flatten({ background: '#000000' })
+      image = await base.clone().jpeg({ quality: 95 }).toBuffer()
+      if (target) {
+        // Maska z rastra przed kompresją JPEG: artefakty zaszumiłyby czerń przy krawędzi.
+        const { data, info } = await base.clone().raw().toBuffer({ resolveWithObject: true })
+        const cut = blackBorderMask(data, info.width, info.height, info.channels)
+        if (cut) mask = await sharp(Buffer.from(cut), { raw: { width: info.width, height: info.height, channels: 1 } }).png().toBuffer()
+      }
     } catch {
       if (!abort.signal.aborted) json(422, { error: 'Nie można odczytać tego obrazu. Dla JPEG, PNG, WebP i TIFF obowiązuje limit 64 MP.' })
       return
@@ -175,14 +191,34 @@ export async function photoApi(req: IncomingMessage, res: ServerResponse, env: P
     await writeFile(imagePath, image)
     const { stdout } = await execute(binary, ['solve', imagePath, index, catalogPath], { timeout: 90_000, maxBuffer: 8 * 1024 * 1024, signal: abort.signal, windowsHide: true })
     const result = JSON.parse(stdout) as PhotoProject['astrometry'] & { width: number; height: number; objects: { id: string; x: number; y: number; radius: number }[] }
+    let name = 'Zdjęcie'
+    try { name = decodeURIComponent(String(req.headers['x-photo-name'] ?? name)).slice(0, 160) } catch { /* Nazwa nie wpływa na astrometrię. */ }
+    if (target) {
+      const { width, height, objects: _objects, ...astrometry } = result
+      const bridge = async <T>(command: string, request: object): Promise<T> => {
+        const file = join(temp!, `${command}.json`)
+        await writeFile(file, JSON.stringify({ wcs: astrometry.wcs, width, height, ...request }))
+        const { stdout } = await execute(binary, [command, file], { timeout: 20_000, maxBuffer: 8 * 1024 * 1024, signal: abort.signal, windowsHide: true })
+        return JSON.parse(stdout) as T
+      }
+      const { sky } = await bridge<{ sky: [number, number][] }>('grid', { cols: ownPhotoGrid, rows: ownPhotoGrid })
+      const { pixels } = await bridge<{ pixels: ([number, number] | null)[] }>('project', { stars: [[target.raDeg, target.decDeg]] })
+      const at = pixels[0]
+      if (!at || at[0] < 0 || at[0] > width || at[1] < 0 || at[1] > height) { json(422, { error: `Obiektu ${target.id} nie ma na tym zdjęciu.` }); return }
+      const solved: OwnPhotoSolved = {
+        objectId: target.id, photoId: createHash('sha256').update(image).digest('hex'), name,
+        image: `data:image/jpeg;base64,${image.toString('base64')}`, mask: mask && `data:image/png;base64,${mask.toString('base64')}`,
+        width, height, createdAt: Date.now(), astrometry, grid: { cols: ownPhotoGrid, rows: ownPhotoGrid, sky },
+      }
+      json(200, solved)
+      return
+    }
     const byId = await getCatalogById()
     const cuts = result.objects.flatMap((p) => {
       const o = byId.get(p.id)
       return o ? [{ ...p, type: o.type, raDeg: o.raDeg, decDeg: o.decDeg, enabled: true, distLy: o.distLy, distanceSource: o.distLy ? 'Wikidata — katalog aplikacji' : '', uncertaintyLy: null, distanceScope: 'object' as const }] : []
     }).sort((a, b) => a.id.localeCompare(b.id, 'pl', { numeric: true }))
     const { width, height, objects: _objects, ...astrometry } = result
-    let name = 'Zdjęcie'
-    try { name = decodeURIComponent(String(req.headers['x-photo-name'] ?? name)).slice(0, 160) } catch { /* Nazwa nie wpływa na astrometrię. */ }
     const project: PhotoProject = { version: 2, id: createHash('sha256').update(image).digest('hex'), name, image: `data:image/jpeg;base64,${image.toString('base64')}`, width, height, createdAt: Date.now(), cuts, astrometry, stars: null }
     json(200, project)
   } catch (error) {
