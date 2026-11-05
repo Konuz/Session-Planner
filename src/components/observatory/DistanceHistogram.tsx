@@ -36,7 +36,6 @@ export function DistanceHistogram({ histogram, domain, range, onRange, marker }:
       onPointerMove={(e) => { if (drag !== null && Math.abs(fraction(e.clientX) - drag) > 0.005) select(drag, fraction(e.clientX)) }}
       onPointerUp={() => setDrag(null)} onPointerCancel={() => setDrag(null)}
       onDoubleClick={() => onRange(null)}>
-      {range && <rect className="obs-histogram-range" x={lo * bins} y={0} width={Math.max(0.2, (hi - lo) * bins)} height={40} />}
       {histogram.counts.map((count, i) => count > 0 && <rect key={i} className={(i + 0.5) / bins >= lo && (i + 0.5) / bins <= hi ? 'on' : ''} x={i + 0.12} width={0.76} y={40 - Math.max(3, count / max * 36)} height={Math.max(3, count / max * 36)} />)}
       {marker !== null && <line className="obs-histogram-marker" x1={depthFraction(marker, domain) * bins} x2={depthFraction(marker, domain) * bins} y1={0} y2={40} />}
     </svg>

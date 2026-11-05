@@ -944,12 +944,14 @@ input[type='checkbox']:checked::after {
 .obs-histogram svg { width: 100%; height: 46px; cursor: crosshair; touch-action: none; }
 .obs-histogram svg rect { fill: var(--accent-dim); opacity: 0.6; }
 .obs-histogram svg rect.on { fill: var(--accent); opacity: 1; }
-.obs-histogram svg .obs-histogram-range { fill: var(--accent-faint); opacity: 1; }
 .obs-histogram-marker { stroke: var(--text); stroke-width: 0.15; }
 .obs-histogram-scale { display: flex; justify-content: space-between; font-size: 9px; color: var(--text-faint); }
 .obs-range-inputs { position: relative; height: 14px; }
 .obs-range-inputs input { position: absolute; inset: 0; width: 100%; margin: 0; background: none; pointer-events: none; -webkit-appearance: none; appearance: none; }
-.obs-range-inputs input::-webkit-slider-thumb { pointer-events: auto; -webkit-appearance: none; width: 10px; height: 14px; background: var(--accent); cursor: ew-resize; }
+.obs-range-inputs input::-webkit-slider-thumb { pointer-events: auto; -webkit-appearance: none; width: 10px; height: 14px; background: var(--accent); margin-top: -5px; cursor: ew-resize; }
+/* Ścieżka tylko pod pierwszym suwakiem: ścieżka drugiego przecinałaby uchwyt pierwszego. */
+.obs-range-inputs input + input::-webkit-slider-runnable-track { background: transparent; }
+.obs-range-inputs input + input::-moz-range-track { background: transparent; }
 .obs-range-inputs input::-moz-range-thumb { pointer-events: auto; width: 10px; height: 14px; border: 0; border-radius: 0; background: var(--accent); cursor: ew-resize; }
 .obs-range-inputs input:focus-visible { outline: 1px solid var(--accent); }
 .obs-bottom { grid-column: 1 / -1; display: grid; gap: 8px; }
