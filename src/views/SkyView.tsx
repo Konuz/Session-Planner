@@ -1,9 +1,10 @@
 import { ChevronDown, Pause, Play, RotateCcw } from 'lucide-react'
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { AltitudeChart } from '../components/AltitudeChart'
 import { FramingPanel } from '../components/FramingPanel'
 import { ObjectDetails } from '../components/ObjectDetails'
+import { Range } from '../components/Range'
 import { MoonCard, ObjectCard, OpticsCard, WeatherCard } from '../components/SkyCards'
 import { LayersIcon, SkyDome } from '../components/SkyDome'
 import { useOutside } from '../components/TopBar'
@@ -23,7 +24,7 @@ function Switch({ on, onClick, label }: { on: boolean; onClick: () => void; labe
   )
 }
 
-type LayerKey = 'showLines' | 'showLabels' | 'showArt' | 'showOutlines' | 'showEllipses' | 'showAnnotations' | 'show3DAnnotations' | 'showTracks'
+type LayerKey = 'showLines' | 'showLabels' | 'showArt' | 'showOutlines' | 'showOwnPhotos' | 'showEllipses' | 'showAnnotations' | 'show3DAnnotations' | 'showTracks'
 
 const THREE_D_LAYERS: { key: LayerKey; label: string }[] = [
   { key: 'show3DAnnotations', label: 'Opisy' },
@@ -34,6 +35,7 @@ const LAYERS: { key: LayerKey; label: string }[] = [
   { key: 'showLabels', label: 'Nazwy gwiazdozbiorów' },
   { key: 'showArt', label: 'Postacie' },
   { key: 'showOutlines', label: 'Kontury' },
+  { key: 'showOwnPhotos', label: 'Moje zdjęcia' },
   { key: 'showEllipses', label: 'Okręgi obiektów' },
   { key: 'showAnnotations', label: 'Opisy' },
   { key: 'showTracks', label: 'Tory' },
@@ -80,6 +82,8 @@ function LayersMenu({ threeD = false }: { threeD?: boolean }) {
   const groups = useStore((s) => s.skyGroups)
   const toggle = useStore((s) => s.toggle)
   const toggleGroup = useStore((s) => s.toggleSkyGroup)
+  const photoOpacity = useStore((s) => Math.round(s.ownPhotosOpacity * 100))
+  const setPhotoOpacity = useStore((s) => s.setOwnPhotosOpacity)
   return (
     <div className="layers-menu" ref={ref}>
       <button className={`button small${open ? ' active' : ''}`} aria-expanded={open} aria-haspopup="true" onClick={() => setOpen(!open)}>
@@ -88,7 +92,18 @@ function LayersMenu({ threeD = false }: { threeD?: boolean }) {
       {open && (
         <div className="popover layers-popover" role="group" aria-label={threeD ? 'Warstwy 3D' : 'Warstwy kopuły'}>
           <Section title="Warstwy" on={layers.filter(Boolean).length} total={visibleLayers.length} open={sections.layers} onToggle={() => setSections({ ...sections, layers: !sections.layers })}>
-            {visibleLayers.map(({ key, label }, i) => <Switch key={key} on={layers[i]} onClick={() => toggle(key)} label={label} />)}
+            {visibleLayers.map(({ key, label }, i) => (
+              <Fragment key={key}>
+                <Switch on={layers[i]} onClick={() => toggle(key)} label={label} />
+                {key === 'showOwnPhotos' && layers[i] && (
+                  <label className="layers-range">
+                    <span>Krycie</span>
+                    <Range min={10} max={100} step={5} value={photoOpacity} onChange={(e) => setPhotoOpacity(Number(e.target.value) / 100)} aria-label="Krycie moich zdjęć" />
+                    <span className="mono">{photoOpacity}%</span>
+                  </label>
+                )}
+              </Fragment>
+            ))}
           </Section>
           {!threeD && <Section title="Obiekty" on={GROUPS.filter(({ id }) => groups[id]).length} total={GROUPS.length} open={sections.objects} onToggle={() => setSections({ ...sections, objects: !sections.objects })}>
             {GROUPS.map(({ id, label }) => <Switch key={id} on={groups[id]} onClick={() => toggleGroup(id)} label={label} />)}

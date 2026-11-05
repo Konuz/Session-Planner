@@ -549,6 +549,9 @@ input[type='checkbox']:checked::after {
 .layers-menu { position: relative; margin-left: auto; }
 .layers-menu .button { display: inline-flex; align-items: center; gap: 6px; }
 .popover.layers-popover { top: auto; bottom: calc(100% + 6px); left: 0; right: auto; width: 220px; padding: 10px 12px; display: grid; gap: 8px; }
+.layers-range { display: flex; align-items: center; gap: 8px; padding-left: 44px; font-size: 12px; color: var(--text-2); }
+.layers-range input { flex: 1; min-width: 60px; }
+.layers-range .mono { min-width: 34px; text-align: right; }
 /* Nagłówek zwijanej sekcji: etykieta, licznik włączonych i strzałka (obrócona po rozwinięciu). */
 .layers-section { display: flex; align-items: center; gap: 8px; width: 100%; padding: 2px 0; background: none; border: 0; color: var(--text-2); font: 10px var(--mono); cursor: pointer; text-align: left; }
 .layers-section .label { flex: 1; }

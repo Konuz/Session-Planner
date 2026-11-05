@@ -133,6 +133,9 @@ interface State {
   showTracks: boolean
   showArt: boolean
   showOutlines: boolean
+  /** Własne zdjęcia z wyborem „moje” na kopule i krycie tej warstwy (0,1–1). */
+  showOwnPhotos: boolean
+  ownPhotosOpacity: number
   /** Elipsy obiektów katalogu (wymiary i kąt pozycyjny) na kopule. */
   showEllipses: boolean
   /** Grupy katalogów widoczne na kopule (znaczniki, elipsy i kontury). */
@@ -179,7 +182,8 @@ interface State {
   toggleSkyGroup(group: SkyGroup): void
   setAnnotationColor(type: ObjectType, color: string): void
   resetAnnotationColors(): void
-  toggle(key: 'showLines' | 'showTracks' | 'showArt' | 'showOutlines' | 'showEllipses' | 'showLabels' | 'showAnnotations' | 'show3DAnnotations' | 'onlyVisible'): void
+  setOwnPhotosOpacity(value: number): void
+  toggle(key: 'showLines' | 'showTracks' | 'showArt' | 'showOutlines' | 'showOwnPhotos' | 'showEllipses' | 'showLabels' | 'showAnnotations' | 'show3DAnnotations' | 'onlyVisible'): void
 }
 
 // Porównanie pól przed JSON.stringify: zmiany czasu i kadru nie serializują planu w każdej klatce.
@@ -233,6 +237,8 @@ export const useStore = create<State>()(
       showTracks: true,
       showArt: true,
       showOutlines: true,
+      showOwnPhotos: true,
+      ownPhotosOpacity: 1,
       showEllipses: false,
       skyGroups: Object.fromEntries(SKY_GROUPS.map((g) => [g, true])) as Record<SkyGroup, boolean>,
       showLabels: true,
@@ -375,6 +381,7 @@ export const useStore = create<State>()(
       toggleSkyGroup: (group) => set((s) => ({ skyGroups: { ...s.skyGroups, [group]: !s.skyGroups[group] } })),
       setAnnotationColor: (type, color) => set((s) => ({ annotationColors: { ...s.annotationColors, [type]: color } })),
       resetAnnotationColors: () => set({ annotationColors: {} }),
+      setOwnPhotosOpacity: (value) => set({ ownPhotosOpacity: Math.max(0.1, Math.min(1, value)) }),
       toggle: (key) => set((s) => ({ [key]: !s[key] }) as Partial<State>),
     }),
     {
@@ -403,6 +410,8 @@ export const useStore = create<State>()(
         showTracks: s.showTracks,
         showArt: s.showArt,
         showOutlines: s.showOutlines,
+        showOwnPhotos: s.showOwnPhotos,
+        ownPhotosOpacity: s.ownPhotosOpacity,
         showEllipses: s.showEllipses,
         skyGroups: s.skyGroups,
         showLabels: s.showLabels,
