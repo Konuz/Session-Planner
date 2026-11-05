@@ -61,7 +61,7 @@ a:hover { text-decoration: underline; }
 button, input, select, textarea { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 select:focus-visible { outline: none; }
-select { color-scheme: dark; }
+select { color-scheme: dark; scrollbar-color: var(--border-strong) transparent; }
 select option, select optgroup { background-color: var(--card-solid); color: var(--text); }
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: var(--border-strong); }
@@ -873,7 +873,8 @@ input[type='checkbox']:checked::after {
 .space-filters { position: absolute; bottom: 12px; right: 14px; z-index: 6; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; max-width: calc(100% - 60px); }
 .space-filters > .sky-hud { position: relative; bottom: auto; right: auto; }
 .sky-toolbar .layers-popover { left: auto; right: 0; }
-.space-stage .sky-hud .toggle-chip, .space-stage .constellation-select { height: 28px; min-height: 28px; padding: 0 10px; font-size: 10px; letter-spacing: 0.04em; }
+.space-stage .sky-hud .toggle-chip, .space-stage .sky-hud .constellation-select { height: 28px; min-height: 28px; padding: 0 10px; font-size: 10px; letter-spacing: 0.04em; }
+.space-stage .sky-hud .constellation-select { border: 1px solid var(--accent); padding-right: 28px; }
 .space-stage.has-photo .space-filters, .space-stage.has-photo .scale-info-control { bottom: 82px; }
 
 /* ---------- Obserwatorium 3D (okno nad sceną, układ wzorowany na SyQon, kolory z tokenów) ---------- */
