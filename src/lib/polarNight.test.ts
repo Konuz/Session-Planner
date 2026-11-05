@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { altitudeTrack, darkWindow, nightGrid, nightPhases, visibility } from './night'
+import { altitudeTrack, darkWindow, localHourTicks, nightGrid, nightPhases, tzOffsetMs, visibility } from './night'
 import { autoSchedule } from './planner'
 
 const TROMSO = { latDeg: 69.65, lonDeg: 18.96, elevationM: 0 }
@@ -46,5 +46,25 @@ describe('noc na dużych szerokościach (B05)', () => {
     expect(n.sunset).not.toBeNull()
     expect(n.polarDay).toBe(false)
     expect(darkWindow(n)).toEqual([n.sunset, n.sunrise])
+  })
+})
+
+describe('znaczniki godzin na wykresie (B13)', () => {
+  it('wypadają na pełnych godzinach lokalnych także w strefie +05:30 i przy zmianie czasu', () => {
+    const H = 3_600_000
+    const cases: [string, number, number][] = [
+      ['Asia/Kolkata', Date.parse('2026-11-05T12:10:00Z'), Date.parse('2026-11-06T01:50:00Z')],
+      ['Asia/Kathmandu', Date.parse('2026-11-05T12:10:00Z'), Date.parse('2026-11-06T01:50:00Z')],
+      ['Europe/Warsaw', Date.parse('2026-10-24T15:20:00Z'), Date.parse('2026-10-25T06:40:00Z')],
+    ]
+    for (const [tz, start, end] of cases) {
+      const ticks = localHourTicks(start, end, tz)
+      expect(ticks.length, tz).toBeGreaterThan(10)
+      for (const t of ticks) {
+        expect(t).toBeGreaterThanOrEqual(start)
+        expect(t).toBeLessThanOrEqual(end)
+        expect((t + tzOffsetMs(t, tz)) % H, `${tz} ${new Date(t).toISOString()}`).toBe(0)
+      }
+    }
   })
 })

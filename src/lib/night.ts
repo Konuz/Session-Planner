@@ -74,6 +74,17 @@ export function nightDateOf(t: number, timeZone: string): string {
   return local.toISOString().slice(0, 10)
 }
 
+/**
+ * Pełne godziny czasu lokalnego w [startMs, endMs], także w strefach przesuniętych o pół lub trzy kwadranse
+ * (Indie, Nepal). Zmiana czasu w nocy przesuwa strefę o pełną godzinę, więc wystarcza przesunięcie z początku.
+ */
+export function localHourTicks(startMs: number, endMs: number, timeZone: string): number[] {
+  const offset = tzOffsetMs(startMs, timeZone)
+  const ticks: number[] = []
+  for (let t = Math.ceil((startMs + offset) / HOUR_MS) * HOUR_MS - offset; t <= endMs; t += HOUR_MS) ticks.push(t)
+  return ticks
+}
+
 export function addDays(date: string, days: number): string {
   const [y, m, d] = date.split('-').map(Number)
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10)

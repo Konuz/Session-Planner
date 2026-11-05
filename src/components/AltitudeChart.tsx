@@ -6,7 +6,7 @@ import { bodyAltAz, moonInfo } from '../lib/astro'
 import type { DSO } from '../lib/catalog'
 import { fmtDate, fmtDuration, fmtTime } from '../lib/format'
 import { horizonAltitude } from '../lib/horizon'
-import { altitudeTrack, darkWindow, nightGrid, visibility } from '../lib/night'
+import { altitudeTrack, darkWindow, localHourTicks, nightGrid, visibility } from '../lib/night'
 import { useNight, useSelected, useSite, useTime, useWeather } from '../state/data'
 import { useStore } from '../state/store'
 import { MoonDisc } from './MoonDisc'
@@ -115,9 +115,7 @@ export function AltitudeChart({ object, slot, title = 'Widoczność obiektu', to
   // Dzień polarny: Słońce nie zachodzi, cały wykres to dzień (bez tego tło wyglądałoby jak noc).
   if (n.polarDay) bands.splice(0, bands.length, { from: n.startMs, to: n.endMs, fill: 'rgba(150, 90, 40, 0.55)', label: 'Dzień polarny' })
 
-  const hourTicks: number[] = []
-  const firstHour = Math.ceil(night.startMs / 3_600_000) * 3_600_000
-  for (let t = firstHour; t <= night.endMs; t += 3_600_000) hourTicks.push(t)
+  const hourTicks = useMemo(() => localHourTicks(night.startMs, night.endMs, tz), [night.startMs, night.endMs, tz])
   const everyN = width < 700 ? 2 : 1
 
   const { objPath, areaPath, obstaclePath, moonPath } = useMemo(() => {

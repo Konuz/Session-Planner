@@ -1084,6 +1084,7 @@ export default function Space3D() {
       down = null
     }
     const lookEuler = new THREE.Euler(0, 0, 0, 'YXZ')
+    const lookDirection = new THREE.Vector3()
     const onRightLookDown = (e: PointerEvent) => {
       if (e.button !== 2) return
       e.preventDefault()
@@ -1114,7 +1115,7 @@ export default function Space3D() {
       lookEuler.set(rightLook.pitch, rightLook.yaw, 0, 'YXZ')
       camera.position.copy(rightLook.position)
       camera.quaternion.setFromEuler(lookEuler)
-      controls.target.copy(rightLook.position).addScaledVector(camera.getWorldDirection(new THREE.Vector3()), rightLook.distance)
+      controls.target.copy(rightLook.position).addScaledVector(camera.getWorldDirection(lookDirection), rightLook.distance)
     }
     const onRightLookEnd = (e: PointerEvent) => {
       if (!rightLook || e.pointerId !== rightLook.pointerId) return
@@ -1128,7 +1129,7 @@ export default function Space3D() {
       camera.position.copy(look.position)
       lookEuler.set(look.pitch, look.yaw, 0, 'YXZ')
       camera.quaternion.setFromEuler(lookEuler)
-      controls.target.copy(look.position).addScaledVector(camera.getWorldDirection(new THREE.Vector3()), look.distance)
+      controls.target.copy(look.position).addScaledVector(camera.getWorldDirection(lookDirection), look.distance)
       controls.update()
       controls.enableDamping = damping
     }
@@ -1150,6 +1151,18 @@ export default function Space3D() {
       renderer.setSize(mount.clientWidth, mount.clientHeight)
     })
     ro.observe(mount)
+    // Inny monitor albo powiększenie strony zmienia devicePixelRatio bez zmiany rozmiaru CSS (ResizeObserver milczy).
+    let dprQuery = matchMedia(`(resolution: ${devicePixelRatio}dppx)`)
+    const onDpr = () => {
+      renderer.setPixelRatio(Math.min(1.5, devicePixelRatio))
+      sizeLabels()
+      lastLabelW = 0
+      sceneDirty.current = true
+      dprQuery.removeEventListener('change', onDpr)
+      dprQuery = matchMedia(`(resolution: ${devicePixelRatio}dppx)`)
+      dprQuery.addEventListener('change', onDpr)
+    }
+    dprQuery.addEventListener('change', onDpr)
     const onVis = () => {
       cancelAnimationFrame(raf)
       if (!document.hidden) tick()
@@ -1159,6 +1172,7 @@ export default function Space3D() {
       photoFitRef.current = null
       cancelAnimationFrame(raf)
       ro.disconnect()
+      dprQuery.removeEventListener('change', onDpr)
       document.removeEventListener('visibilitychange', onVis)
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
@@ -1169,6 +1183,9 @@ export default function Space3D() {
       renderer.domElement.removeEventListener('pointerup', onRightLookEnd, true)
       renderer.domElement.removeEventListener('pointercancel', onRightLookEnd, true)
       renderer.domElement.removeEventListener('contextmenu', onContextMenu)
+      renderer.domElement.removeEventListener('pointerdown', onDown)
+      renderer.domElement.removeEventListener('pointerup', onUp)
+      renderer.domElement.removeEventListener('pointermove', onMove)
       scene.traverse((obj) => {
         if (obj instanceof THREE.Sprite) {
           obj.material.map?.dispose()

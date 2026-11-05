@@ -365,6 +365,8 @@ export const useStore = create<State>()(
       name: 'konuzastro-tracker',
       storage,
       version: 1,
+      // Bez migrate zustand porzuca zapisany stan (plan, ulubione) po podbiciu wersji. Uzupełnianie pól robi merge.
+      migrate: (persisted) => persisted as Partial<State>,
       partialize: (s) => ({
         location: s.location,
         savedLocations: s.savedLocations,

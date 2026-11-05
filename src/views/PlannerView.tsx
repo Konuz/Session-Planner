@@ -135,7 +135,7 @@ export default function PlannerView() {
           `${i + 1}. ${r.o.id}${displayName(r.o) ? ` ${displayName(r.o)}` : ''} (${TYPE_INFO[r.o.type].label})`,
           `   Okno: ${s ? `${fmtTime(s.startMs, tz)}–${fmtTime(s.endMs, tz)}` : 'brak'}`,
           `   Środek: RA ${fmtRa(r.item.framing.raDeg ?? r.o.raDeg)}, Dec ${fmtDec(r.item.framing.decDeg ?? r.o.decDeg)}, PA ${r.item.framing.paDeg}°`,
-          `   Górowanie: ${fmtTime(r.vis.transitMs, tz)} na ${fmtDeg(r.vis.transitAlt)}`,
+          `   Górowanie: ${r.vis.transitMs === null ? 'poza nocą' : `${fmtTime(r.vis.transitMs, tz)} na ${fmtDeg(r.vis.transitAlt)}`}`,
           ...r.exposures.map((e) => `   ${e.filter}: ${e.count} × ${e.seconds} s = ${fmtDuration(e.count * e.seconds / 3600)}`),
           ...(r.item.note ? [`   Notatka: ${r.item.note}`] : []),
           ...warnings[i].map((w) => `   Uwaga: ${w}`),

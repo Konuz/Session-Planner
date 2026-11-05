@@ -41,3 +41,16 @@ it('domyślnie wyłącza etykiety obiektów w widoku 3D niezależnie od kopuły 
   expect(useStore.getState().show3DAnnotations).toBe(true)
   expect(useStore.getState().showAnnotations).toBe(true)
 })
+
+it('zapis ze starszej wersji persist nie przepada (B17)', async () => {
+  vi.resetModules()
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  const saved = JSON.stringify({ state: { favoriteIds: ['M 31'], minAltDeg: 33 }, version: 0 })
+  const storage = { getItem: () => saved, setItem: vi.fn() }
+  vi.stubGlobal('localStorage', storage)
+  vi.stubGlobal('window', { localStorage: storage })
+  const { useStore } = await import('./store')
+  await Promise.resolve()
+  expect(useStore.getState().favoriteIds).toEqual(['M 31'])
+  expect(useStore.getState().minAltDeg).toBe(33)
+})

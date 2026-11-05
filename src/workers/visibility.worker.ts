@@ -79,5 +79,6 @@ self.onmessage = (e: MessageEvent<VisibilityRequest>) => {
   const maxAlt = new Float32Array(n)
   for (let i = 0; i < n; i++) maxAlt[i] = Math.asin(Math.max(-1, Math.min(1, maxZ[i]))) / DEG
   const result: VisibilityResult = { id, maxAlt, hours, best }
+  // Forma z tablicą transfer działa w każdej przeglądarce; typy DOM widzą tu Window, stąd rzutowanie.
   ;(self as unknown as Worker).postMessage(result, [maxAlt.buffer, hours.buffer, best.buffer])
 }

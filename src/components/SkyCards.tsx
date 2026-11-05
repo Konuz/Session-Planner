@@ -170,6 +170,8 @@ export function WeatherCard() {
   const seeing = h ? seeingEstimate(h.jetKmh) : null
   const tz = useStore((s) => s.location.timeZone)
   const week = useMemo(() => {
+    // 7 × nightPhases (po kilka wyszukiwań efemeryd) tylko wtedy, gdy widok tygodnia jest otwarty.
+    if (!weekView) return []
     const [year, month, day] = night.date.split('-').map(Number)
     return Array.from({ length: 7 }, (_, i) => {
       const date = new Date(Date.UTC(year, month - 1, day + i)).toISOString().slice(0, 10)
@@ -187,7 +189,7 @@ export function WeatherCard() {
         rating: score === null ? null : score >= 80 ? 'bardzo dobre' : score >= 60 ? 'dobre' : score >= 35 ? 'przeciętne' : 'złe',
       }
     })
-  }, [night.date, site, tz, hours])
+  }, [weekView, night.date, site, tz, hours])
   return (
     <section className="card weather-card">
       <h2 className="panel-title weather-title">
