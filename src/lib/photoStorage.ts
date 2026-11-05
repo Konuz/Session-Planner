@@ -1,4 +1,4 @@
-import type { PhotoProject } from './photo'
+import { migratePhotoProject, type PhotoProject } from './photo'
 
 let unsavedPhoto: { project: PhotoProject | null } | null = null
 let saveQueue = Promise.resolve()
@@ -24,7 +24,7 @@ export async function readPhoto(): Promise<PhotoProject | null> {
     return await new Promise((resolve, reject) => {
       const request = db.transaction('projects').objectStore('projects').get('current')
       request.onsuccess = () => {
-        const stored = request.result?.version === 1 ? request.result : null
+        const stored = migratePhotoProject(request.result)
         resolve(unsavedPhoto ? unsavedPhoto.project : stored)
       }
       request.onerror = () => reject(request.error)

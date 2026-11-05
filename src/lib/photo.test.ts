@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { photoAnchorKind, circleIntersectsImage, photoColumns, photoPose, photoStageHeight, coveredPhotoCircles, type PhotoCut } from './photo'
+import { photoAnchorKind, circleIntersectsImage, photoColumns, photoPose, photoStageHeight, coveredPhotoCircles, migratePhotoProject, type PhotoCut } from './photo'
 
 it('uwzględnia wycinek przecinający brzeg mimo środka poza zdjęciem', () => {
   expect(circleIntersectsImage(-5, 50, 10, 100, 100)).toBe(true)
@@ -84,4 +84,14 @@ it('oznacza tylko niżej narysowane okręgi, których obszary nachodzą na póź
     { x: 20, y: 0, radius: 10 },
   ])).toEqual([false, false])
   expect(coveredPhotoCircles([])).toEqual([])
+})
+
+it('migruje zapis w wersji 1 bez gwiazd i odrzuca nieznane wersje', () => {
+  const v1 = { version: 1, id: 'a', name: 'IC 434', image: '', width: 10, height: 10, createdAt: 0, cuts: [], astrometry: { raDeg: 0, decDeg: 0, rmsPx: 0, matches: 0, edgeMatches: 0, edgeRmsPx: null, totalMs: 0, wcs: {} } }
+  expect(migratePhotoProject(v1)).toEqual({ ...v1, version: 2, stars: null })
+  const stars = { stars: [], magLimit: 15, fetchedAt: 1 }
+  expect(migratePhotoProject({ ...v1, version: 2, stars })?.stars).toEqual(stars)
+  expect(migratePhotoProject({ ...v1, version: 2, stars: { broken: true } })?.stars).toBeNull()
+  expect(migratePhotoProject({ ...v1, version: 3 })).toBeNull()
+  expect(migratePhotoProject(undefined)).toBeNull()
 })

@@ -15,8 +15,26 @@ export interface PhotoCut {
   uncertaintyLy: number | null
   distanceScope: 'object' | 'complex'
 }
+/** Gwiazda Gaia DR3 w kadrze. Pozycja na epokę 2025,0 (jak katalog solvera), piksel z WCS zdjęcia. */
+export interface PhotoStar {
+  id: string
+  x: number
+  y: number
+  raDeg: number
+  decDeg: number
+  gMag: number
+  bpRp: number | null
+  parallaxMas: number | null
+  parallaxOverError: number | null
+  /** Bailer-Jones et al. 2021, mediana odległości geometrycznej; null przy ϖ/σ < 5 lub braku rozwiązania. */
+  distLy: number | null
+  /** 16. i 84. percentyl rozkładu a posteriori. */
+  distLoLy: number | null
+  distHiLy: number | null
+}
+export interface PhotoStars { stars: PhotoStar[]; magLimit: number; fetchedAt: number }
 export interface PhotoProject {
-  version: 1
+  version: 2
   id: string
   name: string
   image: string
@@ -25,6 +43,8 @@ export interface PhotoProject {
   createdAt: number
   cuts: PhotoCut[]
   astrometry: { raDeg: number; decDeg: number; rmsPx: number; matches: number; edgeMatches: number; edgeRmsPx: number | null; totalMs: number; wcs: unknown }
+  /** null: gwiazd jeszcze nie pobrano (także po migracji z wersji 1). */
+  stars: PhotoStars | null
 }
 export interface PhotoProjection { id: string; x: number; y: number; visible: boolean; kind: ReturnType<typeof photoAnchorKind>; originX: number; originY: number }
 export interface PhotoSceneFrame { width: number; height: number; anchors: PhotoProjection[] }
@@ -33,6 +53,15 @@ export interface PhotoDistance extends Pick<PhotoCut, 'distLy' | 'uncertaintyLy'
   url: string
 }
 export interface PhotoDistances { measurements: PhotoDistance[]; warnings: string[] }
+
+/** Zapis z IndexedDB → bieżąca wersja projektu; nieznane wersje odrzuca. */
+export function migratePhotoProject(stored: unknown): PhotoProject | null {
+  if (!stored || typeof stored !== 'object') return null
+  const project = stored as Omit<PhotoProject, 'version' | 'stars'> & { version: unknown; stars?: unknown }
+  if (project.version === 1) return { ...project, version: 2, stars: null }
+  if (project.version === 2) return { ...project, version: 2, stars: project.stars && Array.isArray((project.stars as PhotoStars).stars) ? project.stars as PhotoStars : null }
+  return null
+}
 
 export function circleIntersectsImage(x: number, y: number, radius: number, width: number, height: number): boolean {
   return Math.hypot(x - Math.max(0, Math.min(width, x)), y - Math.max(0, Math.min(height, y))) <= radius

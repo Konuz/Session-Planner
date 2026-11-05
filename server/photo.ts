@@ -10,10 +10,12 @@ import sharp from 'sharp'
 import { parseCatalog, type DSO } from '../src/lib/catalog.ts'
 import type { PhotoProject } from '../src/lib/photo.ts'
 import { loadPhotoDistances } from './photoDistances.ts'
+import { loadPhotoStars, type FieldProjection } from './photoStars.ts'
 
 export type PhotoEnv = { SKYSHOT_BRIDGE?: string; SKYSHOT_INDEX?: string }
 const execute = promisify(execFile)
 const maxBytes = 40 * 1024 * 1024
+const maxStarsRequestBytes = 2 * 1024 * 1024
 const maxRasterPixels = 64_000_000
 const uploadIdleMs = 15_000
 const uploadDeadlineMs = 120_000
@@ -21,6 +23,8 @@ let busy = false
 const catalogPath = fileURLToPath(new URL('../public/data/catalog.json', import.meta.url))
 const skyshotCache = fileURLToPath(new URL('../scripts/.cache/', import.meta.url))
 let cachedCatalogById: Promise<Map<string, DSO>> | null = null
+/** Udane odpowiedzi gwiazd według skrótu WCS i wymiarów (ponowne otwarcie zdjęcia bez zapytania). */
+const starsCache = new Map<string, Awaited<ReturnType<typeof loadPhotoStars>>>()
 
 function getCatalogById(): Promise<Map<string, DSO>> {
   cachedCatalogById ??= readFile(catalogPath, 'utf8')
@@ -36,7 +40,7 @@ function paths(env: PhotoEnv) {
   return { binary: env.SKYSHOT_BRIDGE ?? resolve(skyshotCache, 'skyshot-build/release', process.platform === 'win32' ? 'tracker-skyshot.exe' : 'tracker-skyshot'), index: env.SKYSHOT_INDEX ?? resolve(skyshotCache, 'skyshot-data/index') }
 }
 
-function receivePhoto(req: IncomingMessage): Promise<Buffer | 408 | 413 | null> {
+function receivePhoto(req: IncomingMessage, limit = maxBytes): Promise<Buffer | 408 | 413 | null> {
   return new Promise((resolve) => {
     const chunks: Buffer[] = []
     let size = 0
@@ -55,7 +59,7 @@ function receivePhoto(req: IncomingMessage): Promise<Buffer | 408 | 413 | null> 
     }
     function onData(chunk: Buffer) {
       size += chunk.length
-      if (size > maxBytes) { finish(413); return }
+      if (size > limit) { finish(413); return }
       chunks.push(chunk)
       idle.refresh()
     }
@@ -84,6 +88,45 @@ export async function photoApi(req: IncomingMessage, res: ServerResponse, env: P
     res.on('close', () => { if (!res.writableEnded) abort.abort() })
     const result = await loadPhotoDistances(object, fetchImpl, abort.signal)
     if (!abort.signal.aborted) json(200, result, result.warnings.length ? 'no-store' : 'private, max-age=3600')
+    return
+  }
+  if (path.endsWith('/stars')) {
+    if (req.method !== 'POST') { res.setHeader('Allow', 'POST'); json(405, { error: 'Wymagane zapytanie POST.' }); return }
+    if (req.headers['content-type']?.split(';')[0] !== 'application/json') { json(415, { error: 'Wymagany JSON z WCS zdjęcia.' }); return }
+    const body = await receivePhoto(req, maxStarsRequestBytes)
+    if (body === null || res.destroyed) return
+    if (typeof body === 'number') { res.setHeader('Connection', 'close'); json(body, { error: body === 408 ? 'Przekroczono czas przesyłania.' : 'Zbyt duże zapytanie.' }); return }
+    let request: { wcs?: unknown; width?: unknown; height?: unknown }
+    try { request = JSON.parse(body.toString('utf8')) } catch { json(400, { error: 'Niepoprawny JSON.' }); return }
+    const { wcs, width, height } = request
+    const size = (v: unknown): v is number => Number.isInteger(v) && (v as number) > 0 && (v as number) <= 20_000
+    if (!wcs || typeof wcs !== 'object' || !size(width) || !size(height)) { json(400, { error: 'Brak WCS lub wymiarów zdjęcia.' }); return }
+    if (!await access(binary).then(() => true, () => false)) { json(503, { error: 'Gwiazdy wymagają lokalnej instalacji Skyshota (rzut przez WCS).' }); return }
+    const key = createHash('sha256').update(JSON.stringify([wcs, width, height])).digest('hex')
+    const cached = starsCache.get(key)
+    if (cached) { json(200, cached); return }
+    const abort = new AbortController()
+    res.on('close', () => { if (!res.writableEnded) abort.abort() })
+    let temp: string | undefined
+    try {
+      temp = await mkdtemp(join(tmpdir(), 'tracker-stars-'))
+      const file = join(temp, 'request.json')
+      const project = async (stars: [number, number][]): Promise<FieldProjection> => {
+        await writeFile(file, JSON.stringify({ wcs, width, height, stars }))
+        const { stdout } = await execute(binary, ['project', file], { timeout: 20_000, maxBuffer: 16 * 1024 * 1024, signal: abort.signal, windowsHide: true })
+        return JSON.parse(stdout) as FieldProjection
+      }
+      const result = await loadPhotoStars(width, height, project, fetchImpl, abort.signal)
+      if (starsCache.size >= 32) starsCache.delete(starsCache.keys().next().value!)
+      starsCache.set(key, result)
+      if (!abort.signal.aborted) json(200, result)
+    } catch (error) {
+      if (abort.signal.aborted) return
+      if (error instanceof RangeError) json(422, { error: error.message })
+      else json(502, { error: 'Nie udało się pobrać gwiazd Gaia (GAVO). Spróbuj ponownie.' })
+    } finally {
+      if (temp) await rm(temp, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }).catch(() => console.warn('Nie udało się usunąć tymczasowych plików gwiazd.'))
+    }
     return
   }
   if (path.endsWith('/status') && req.method === 'GET') {
@@ -140,7 +183,7 @@ export async function photoApi(req: IncomingMessage, res: ServerResponse, env: P
     const { width, height, objects: _objects, ...astrometry } = result
     let name = 'Zdjęcie'
     try { name = decodeURIComponent(String(req.headers['x-photo-name'] ?? name)).slice(0, 160) } catch { /* Nazwa nie wpływa na astrometrię. */ }
-    const project: PhotoProject = { version: 1, id: createHash('sha256').update(image).digest('hex'), name, image: `data:image/jpeg;base64,${image.toString('base64')}`, width, height, createdAt: Date.now(), cuts, astrometry }
+    const project: PhotoProject = { version: 2, id: createHash('sha256').update(image).digest('hex'), name, image: `data:image/jpeg;base64,${image.toString('base64')}`, width, height, createdAt: Date.now(), cuts, astrometry, stars: null }
     json(200, project)
   } catch (error) {
     if (!abort.signal.aborted) json(422, { error: 'Nie udało się jednoznacznie rozwiązać zdjęcia. Spróbuj obrazu z większą liczbą ostrych gwiazd.', detail: error instanceof Error && 'killed' in error && error.killed ? 'Przekroczono czas obliczeń.' : undefined })

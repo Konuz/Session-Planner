@@ -2,8 +2,8 @@ import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import type { PhotoProject } from './photo'
 
 const project = (id: string): PhotoProject => ({
-  version: 1, id, name: id, image: 'data:image/png;base64,AA==', width: 1, height: 1, createdAt: 0, cuts: [],
-  astrometry: { raDeg: 0, decDeg: 0, rmsPx: 0, matches: 0, edgeMatches: 0, edgeRmsPx: null, totalMs: 0, wcs: null },
+  version: 2, id, name: id, image: 'data:image/png;base64,AA==', width: 1, height: 1, createdAt: 0, cuts: [],
+  astrometry: { raDeg: 0, decDeg: 0, rmsPx: 0, matches: 0, edgeMatches: 0, edgeRmsPx: null, totalMs: 0, wcs: null }, stars: null,
 })
 
 let saved: PhotoProject | null
