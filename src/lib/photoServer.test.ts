@@ -291,3 +291,21 @@ it('bez parametru odpowiedź jak dotąd', async () => {
     await close()
   }
 })
+
+it('tryb obiektu: nieaktualny most bez komendy grid to 503 z instrukcją', async () => {
+  fakeBridge([16, 16])
+  const current = solve.getMockImplementation()!
+  solve.mockImplementation((async (...call: unknown[]) => {
+    const [, args] = call as BridgeArgs
+    if (args[0] === 'grid') throw Object.assign(new Error('Command failed: tracker-skyshot grid'), { code: 1 })
+    return current(...(call as []))
+  }) as never)
+  const { url, close } = await solveServer()
+  try {
+    const response = await uploadFor(url, 'M 31', await grayImage(3))
+    expect(response.status).toBe(503)
+    expect((await response.json()).error).toContain('npm run setup:skyshot')
+  } finally {
+    await close()
+  }
+})

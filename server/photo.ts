@@ -201,8 +201,16 @@ export async function photoApi(req: IncomingMessage, res: ServerResponse, env: P
         const { stdout } = await execute(binary, [command, file], { timeout: 20_000, maxBuffer: 8 * 1024 * 1024, signal: abort.signal, windowsHide: true })
         return JSON.parse(stdout) as T
       }
-      const { sky } = await bridge<{ sky: [number, number][] }>('grid', { cols: ownPhotoGrid, rows: ownPhotoGrid })
-      const { pixels } = await bridge<{ pixels: ([number, number] | null)[] }>('project', { stars: [[target.raDeg, target.decDeg]] })
+      let sky: [number, number][]
+      let pixels: ([number, number] | null)[]
+      try {
+        sky = (await bridge<{ sky: [number, number][] }>('grid', { cols: ownPhotoGrid, rows: ownPhotoGrid })).sky
+        pixels = (await bridge<{ pixels: ([number, number] | null)[] }>('project', { stars: [[target.raDeg, target.decDeg]] })).pixels
+      } catch {
+        // Zdjęcie już rozwiązane: błąd siatki to most sprzed komendy `grid`, nie złe zdjęcie.
+        if (!abort.signal.aborted) json(503, { error: 'Most Skyshota jest nieaktualny. Uruchom npm run setup:skyshot i spróbuj ponownie.' })
+        return
+      }
       const at = pixels[0]
       if (!at || at[0] < 0 || at[0] > width || at[1] < 0 || at[1] > height) { json(422, { error: `Obiektu ${target.id} nie ma na tym zdjęciu.` }); return }
       const solved: OwnPhotoSolved = {
