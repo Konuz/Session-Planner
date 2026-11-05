@@ -65,20 +65,26 @@ attribute float alpha;
 attribute vec3 tint;
 varying vec3 vTint;
 varying float vAlpha;
+varying float vScale;
 uniform float pixelRatio;
+uniform float refDistance;
 void main() {
   vTint = tint;
   vAlpha = alpha;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  gl_PointSize = size * pixelRatio;
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  gl_Position = projectionMatrix * mv;
+  // Z daleka punkty maleją (do 30 %) i tracą poświatę, żeby gęste pola się nie zlewały.
+  vScale = clamp(refDistance / max(-mv.z, 1.0), 0.3, 1.0);
+  gl_PointSize = max(1.5, size * vScale) * pixelRatio;
 }`
 const starFragment = `
 varying vec3 vTint;
 varying float vAlpha;
+varying float vScale;
 void main() {
   float d = length(gl_PointCoord - 0.5) * 2.0;
   float core = smoothstep(1.0, 0.0, d);
-  float a = pow(core, 1.8) * vAlpha;
+  float a = pow(core, mix(3.5, 2.2, vScale)) * vAlpha;
   if (a < 0.01) discard;
   gl_FragColor = vec4(mix(vTint, vec3(1.0), pow(core, 6.0)), a);
 }`
@@ -233,9 +239,9 @@ export class ObservatoryScene {
       const faintest = Math.max(...starItems.map(([s]) => s.gMag ?? 0))
       geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(starItems.length * 3), 3))
       geometry.setAttribute('tint', new THREE.BufferAttribute(new Float32Array(starItems.flatMap(([s]) => starColor(s.bpRp))), 3))
-      geometry.setAttribute('size', new THREE.BufferAttribute(new Float32Array(starItems.map(([s]) => starSize(s.gMag, faintest) * 2.2)), 1))
+      geometry.setAttribute('size', new THREE.BufferAttribute(new Float32Array(starItems.map(([s]) => starSize(s.gMag, faintest) * 1.8)), 1))
       geometry.setAttribute('alpha', new THREE.BufferAttribute(new Float32Array(starItems.length).fill(1), 1))
-      const material = new THREE.ShaderMaterial({ vertexShader: starVertex, fragmentShader: starFragment, uniforms: { pixelRatio: { value: this.renderer.getPixelRatio() } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })
+      const material = new THREE.ShaderMaterial({ vertexShader: starVertex, fragmentShader: starFragment, uniforms: { pixelRatio: { value: this.renderer.getPixelRatio() }, refDistance: { value: 150 } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })
       this.stars = new THREE.Points(geometry, material)
       this.stars.frustumCulled = false
       this.scene.add(this.stars)
