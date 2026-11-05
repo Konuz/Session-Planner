@@ -45,8 +45,8 @@ it('erozja wcina się w zdjęcie o erodePx', () => {
 })
 
 it('szum JPEG do progu też jest tłem', () => {
-  // Pas 6 px przy lewej krawędzi z wartościami 0–8; w wierszu 15 piksel x = 2 ma 9 i przerywa zalewanie w tym wierszu.
-  const noisy = (x: number, y: number) => (x < 6 ? (y === 15 && x === 2 ? 9 : (x + y) % 9) : null)
+  // Pas 6 px przy lewej krawędzi z wartościami 0–4 (próg); w wierszu 15 piksel x = 2 ma 5 i zostaje.
+  const noisy = (x: number, y: number) => (x < 6 ? (y === 15 && x === 2 ? 5 : (x + y) % 5) : null)
   const mask = blackBorderMask(image(40, 30, noisy), 40, 30, 3, { erodePx: 0 })!
   expect(mask[10 * 40 + 4]).toBe(0)
   expect(mask[15 * 40 + 2]).toBe(255)
@@ -57,4 +57,29 @@ it('kanał alfa jest ignorowany', () => {
   expect(mask).not.toBeNull()
   expect(mask![0]).toBe(0)
   expect(mask![15 * 40 + 20]).toBe(255)
+})
+
+it('ciemne niebo z gwiazdami przy krawędzi nie jest wycinane', () => {
+  // Przetworzone zdjęcie z przyciętą czernią: niebo 0–6 sięga krawędzi, 300 gwiazd r = 2 i jasny dysk.
+  let seed = 7
+  const rand = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648
+  const stars = Array.from({ length: 300 }, () => [Math.floor(rand() * 400), Math.floor(rand() * 300)])
+  const sky = image(400, 300, (x, y) => {
+    if (Math.hypot(x - 200, y - 150) < 30) return 220
+    if (stars.some(([sx, sy]) => Math.hypot(x - sx, y - sy) <= 2)) return 200
+    return Math.floor(rand() * 7)
+  })
+  expect(blackBorderMask(sky, 400, 300, 3)).toBeNull()
+})
+
+it('wycięcie ponad 75% kadru daje null', () => {
+  const mostlyBlack = (x: number, y: number) => (x >= 15 && x < 25 && y >= 10 && y < 20 ? null : 0)
+  expect(blackBorderMask(image(40, 30, mostlyBlack), 40, 30, 3)).toBeNull()
+})
+
+it('ciemny pas nieba z wieloma gwiazdami poniżej 75% kadru nie jest wycinany', () => {
+  // Lewa połowa: czarne niebo przy krawędzi z 40 gwiazdami; prawa: jasne tło. Wycięcie ok. 50% kadru.
+  const stars = Array.from({ length: 40 }, (_, k) => [4 + (k % 8) * 12, 4 + Math.floor(k / 8) * 12])
+  const half = (x: number, y: number) => (x >= 100 ? null : stars.some(([sx, sy]) => Math.abs(x - sx) <= 1 && Math.abs(y - sy) <= 1) ? 200 : 0)
+  expect(blackBorderMask(image(200, 60, half), 200, 60, 3)).toBeNull()
 })
