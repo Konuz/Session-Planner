@@ -40,6 +40,7 @@ Wszystkie punkty zrealizowane i sprawdzone (22 testy Vitest, build, zrzuty Playw
 ## Obserwatorium 3D (5.11.2026)
 
 - Zdjęcie testowe IC 434 z konuzastro.pl: rzut gwiazd Gaia mieści się w 0,78 px od wykryć solvera (mediana 0,16 px). Gwiazdy σ Ori wychodzą 362–405 pc (literatura 387,5 pc). Zdjęcia M42 na konuzastro.pl nie ma; M45 i M44 nie dały się rozwiązać w limicie 90 s.
+- Galaktyki: zdjęcie M 51 z konuzastro.pl (10 galaktyk, 24,8 mln – 670 mln lś): rzut gwiazd w 0,82 px od wykryć solvera (mediana 0,14 px), oś obejmuje 9 dekad, „Droga Mleczna” przechodzi do skali Wszechświata lokalnego. 20 otwarć i zamknięć okna nie wypiera kontekstu WebGL Space3D.
 - Przedział 998–2004 lś zostawia na liście i w scenie 363 obiekty o odległościach 999–1998 lś i żadnego bez odległości.
 - Scena rysuje tylko przy ruchu: w spoczynku zero wywołań rysowania przez 3 s, także po przelocie kamery. Startowy JS ma 149,1 KB gzip, obserwatorium to leniwy fragment 10,6 KB.
 - Eksport wideo pominięto (decyzja użytkownika).

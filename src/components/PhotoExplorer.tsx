@@ -180,7 +180,7 @@ export function PhotoExplorer({ project, onProject, frameRef, fitRef }: Props) {
   }
   function closeObservatory() {
     setObservatory(false)
-    observatoryButton.current?.focus()
+    observatoryButton.current?.focus({ preventScroll: true })
   }
   /** Z obserwatorium do skali Drogi Mlecznej: wycinki lecą do swoich położeń w Space3D. */
   function zoomOutFromObservatory() {

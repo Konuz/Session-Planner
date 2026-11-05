@@ -244,7 +244,8 @@ export class ObservatoryScene {
 
     for (const item of items) {
       if (item.kind !== 'object' || !item.type) continue
-      const texture = cutTexture(image, item, DEFAULT_ANNOTATION_COLORS[item.type])
+      // Kolor typu galaktyki (#38194c) ginie na ciemnym tle: obrys galaktyk jak znacznik w legendzie.
+      const texture = cutTexture(image, item, item.category === 'galaxies' ? cssColor('--accent-dim', '#00e0ff') : DEFAULT_ANNOTATION_COLORS[item.type])
       const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false })
       const sprite = new THREE.Sprite(material)
       this.cards.set(item.id, sprite)
@@ -486,6 +487,8 @@ export class ObservatoryScene {
     this.controls.dispose()
     for (const d of this.disposables) d.dispose()
     this.renderer.dispose()
+    // dispose() nie zwalnia kontekstu WebGL; bez tego kolejne otwarcia wypierałyby kontekst Space3D.
+    this.renderer.forceContextLoss()
     this.renderer.domElement.remove()
     this.labels.remove()
   }

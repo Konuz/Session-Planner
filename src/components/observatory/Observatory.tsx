@@ -118,6 +118,9 @@ export default function Observatory({ project, onStars, onClose, onZoomOut }: Pr
   }, [playing])
   useEffect(() => { if (progress >= 1) setPlaying(false) }, [progress])
 
+  // Okno modalne: fokus do środka po otwarciu (powrót do przycisku 3D robi PhotoExplorer).
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useEffect(() => { dialogRef.current?.querySelector<HTMLElement>('.close-button')?.focus() }, [])
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
@@ -137,7 +140,7 @@ export default function Observatory({ project, onStars, onClose, onZoomOut }: Pr
   const span = withDistance.length ? [Math.min(...withDistance.map((i) => i.distLy!)), Math.max(...withDistance.map((i) => i.distLy!))] : null
   const unknown = visibleItems.length - withDistance.length
 
-  return <div className="observatory" role="dialog" aria-modal="true" aria-label="Obserwatorium 3D zdjęcia">
+  return <div ref={dialogRef} className="observatory" role="dialog" aria-modal="true" aria-label="Obserwatorium 3D zdjęcia">
     <div className="obs-window card">
       <header className="obs-header">
         <div>
