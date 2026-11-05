@@ -3,7 +3,7 @@
 // Konwencja pikseli jak w `ownPhoto.ts`: punkt (i, j) leży w pikselu (i·W/(cols−1), j·H/(rows−1)), krawędź zdjęcia = 0 i W.
 import { DEG, mulVec, unitVector, vecToHorizontal, type Mat3, type Vec3 } from './astro'
 import { horizonAltitude, type HorizonPoint } from './horizon'
-import type { PhotoGrid } from './ownPhoto'
+import type { OwnPhotoRecord, PhotoGrid } from './ownPhoto'
 import type { Projector } from './projection'
 
 export interface SkyMesh {
@@ -90,4 +90,61 @@ export function projectMesh(mesh: SkyMesh, proj: Projector, horMatrix: Mat3, hor
     longSidePx = Math.max(longSidePx, Math.hypot(xy[2 * a] - xy[2 * b], xy[2 * a + 1] - xy[2 * b + 1]))
   }
   return { xy, alpha, longSidePx }
+}
+
+/** Dłuższy bok tekstury zdjęcia: rośnie z wielkością zdjęcia na ekranie. */
+export const TEXTURE_LEVELS = [256, 512, 1024, 2048]
+/** Łączna pamięć tekstur zdjęć (obraz, maska, mipmapy); po przekroczeniu zwalniane najdawniej rysowane. */
+export const TEXTURE_BUDGET_BYTES = 128 * 1024 * 1024
+
+/** Najmniejszy poziom pokrywający `neededPx` pikseli urządzenia, nie większy niż zdjęcie i limit GPU. */
+export function textureLevel(neededPx: number, photoLongSide: number, maxTextureSize: number): number {
+  const level = TEXTURE_LEVELS.find((l) => l >= neededPx) ?? TEXTURE_LEVELS[TEXTURE_LEVELS.length - 1]
+  return Math.min(level, photoLongSide, maxTextureSize)
+}
+
+/** Pamięć tekstur RGBA (i maski R8) z mipmapami. */
+export function textureBytes(width: number, height: number, hasMask: boolean): number {
+  return (width * height * (4 + (hasMask ? 1 : 0)) * 4) / 3
+}
+
+/** Klucze tekstur do zwolnienia, od najdawniej rysowanej, aż suma zmieści się w `budget`; nigdy z `keep`. */
+export function evictionOrder(entries: readonly { key: string; bytes: number; lastDrawn: number }[], budget: number, keep: ReadonlySet<string>): string[] {
+  let total = entries.reduce((sum, e) => sum + e.bytes, 0)
+  const out: string[] = []
+  for (const e of [...entries].sort((a, b) => a.lastDrawn - b.lastDrawn)) {
+    if (total <= budget) break
+    if (keep.has(e.key)) continue
+    out.push(e.key)
+    total -= e.bytes
+  }
+  return out
+}
+
+export interface SkyPhoto {
+  /** `photoId`: to samo zdjęcie przypięte do kilku obiektów rysowane jest raz. */
+  key: string
+  objectIds: string[]
+  record: OwnPhotoRecord
+  mesh: SkyMesh
+}
+
+export function skyPhotos(records: readonly OwnPhotoRecord[]): SkyPhoto[] {
+  const byKey = new Map<string, SkyPhoto>()
+  for (const record of records) {
+    const known = byKey.get(record.photoId)
+    if (known) {
+      known.objectIds.push(record.objectId)
+      continue
+    }
+    const mesh = skyMesh(record.grid)
+    if (mesh) byKey.set(record.photoId, { key: record.photoId, objectIds: [record.objectId], record, mesh })
+  }
+  return [...byKey.values()]
+}
+
+/** Kolejność od dołu: większe pole niżej (mniejsze, zwykle szczegółowsze, wyżej), zdjęcie wybranego obiektu na wierzchu. */
+export function drawOrder(photos: readonly SkyPhoto[], selectedId: string | null): SkyPhoto[] {
+  const top = (p: SkyPhoto) => (selectedId !== null && p.objectIds.includes(selectedId) ? 1 : 0)
+  return [...photos].sort((a, b) => top(a) - top(b) || b.mesh.radiusDeg - a.mesh.radiusDeg)
 }

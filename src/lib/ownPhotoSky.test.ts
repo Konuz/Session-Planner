@@ -1,8 +1,8 @@
 import { expect, it } from 'vitest'
 import { DEG, horizontalMatrix, horizontalToVec, mulVec, transpose, unitVector, vecToEquatorial, vecToHorizontal, type Mat3, type Site, type Vec3 } from './astro'
 import { gnomonicInverse } from './framing'
-import type { PhotoGrid } from './ownPhoto'
-import { projectMesh, skyMesh, type ProjectedMesh, type SkyMesh } from './ownPhotoSky'
+import type { OwnPhotoRecord, PhotoGrid } from './ownPhoto'
+import { drawOrder, evictionOrder, projectMesh, skyMesh, skyPhotos, textureLevel, type ProjectedMesh, type SkyMesh } from './ownPhotoSky'
 import { FULL_DOME, makeProjector, type Projector, type View } from './projection'
 
 const SITE: Site = { latDeg: 51.09, lonDeg: 17.29, elevationM: 130 }
@@ -155,4 +155,45 @@ it('długi bok zdjęcia na ekranie odpowiada skali rzutu', () => {
   const pm = projectMesh(skyMesh(gridOf(photo))!, proj, HOR, [], 1000, 1000)!
   const expected = 4 * proj.scale * Math.tan(0.375 * DEG)
   expect(Math.abs(pm.longSidePx / expected - 1)).toBeLessThan(0.02)
+})
+
+it('poziom tekstury rośnie z wielkością na ekranie i nie przekracza zdjęcia ani GPU', () => {
+  expect(textureLevel(5, 3000, 16384)).toBe(256)
+  expect(textureLevel(300, 3000, 16384)).toBe(512)
+  expect(textureLevel(1500, 3000, 16384)).toBe(2048)
+  expect(textureLevel(9000, 9000, 16384)).toBe(2048)
+  expect(textureLevel(1500, 900, 16384)).toBe(900)
+  expect(textureLevel(1500, 3000, 1024)).toBe(1024)
+  expect(textureLevel(5, 200, 16384)).toBe(200)
+})
+
+it('limit pamięci zwalnia najdawniej rysowane, nigdy rysowane w tej klatce', () => {
+  const e = [{ key: 'a', bytes: 60, lastDrawn: 1 }, { key: 'b', bytes: 60, lastDrawn: 3 }, { key: 'c', bytes: 60, lastDrawn: 2 }]
+  expect(evictionOrder(e, 130, new Set())).toEqual(['a'])
+  expect(evictionOrder(e, 50, new Set(['a']))).toEqual(['c', 'b'])
+  expect(evictionOrder(e, 500, new Set())).toEqual([])
+})
+
+function record(objectId: string, photoId: string, photo: Photo): OwnPhotoRecord {
+  return {
+    objectId, photoId, name: `${objectId}.jpg`, width: photo.width, height: photo.height, createdAt: 0,
+    astrometry: {} as OwnPhotoRecord['astrometry'], grid: gridOf(photo), image: new Blob(), mask: null,
+  }
+}
+
+it('to samo zdjęcie u dwóch obiektów rysowane raz; uszkodzona siatka pomijana', () => {
+  const photo: Photo = { center: { raDeg: 202.47, decDeg: 47.2 }, degPerPx: 0.001, width: 1500, height: 1500 }
+  const broken = record('M 101', 'zly', photo)
+  broken.grid.sky[3] = [NaN, NaN]
+  const out = skyPhotos([record('M 51', 'abc', photo), record('NGC 5195', 'abc', photo), broken])
+  expect(out).toHaveLength(1)
+  expect(out[0].key).toBe('abc')
+  expect(out[0].objectIds).toEqual(['M 51', 'NGC 5195'])
+})
+
+it('wybrany obiekt na wierzchu, poza nim większe pole niżej', () => {
+  const at = (id: string, field: number) => record(id, id, { center: { raDeg: 83.8, decDeg: -5.4 }, degPerPx: field / 1500, width: 1500, height: 1500 })
+  const photos = skyPhotos([at('a', 3 * Math.SQRT2), at('b', 1 * Math.SQRT2), at('c', 2 * Math.SQRT2)])
+  expect(drawOrder(photos, null).map((p) => p.key)).toEqual(['a', 'c', 'b'])
+  expect(drawOrder(photos, 'a').map((p) => p.key)).toEqual(['c', 'b', 'a'])
 })
