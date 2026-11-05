@@ -54,3 +54,42 @@ it('zapis ze starszej wersji persist nie przepada (B17)', async () => {
   expect(useStore.getState().favoriteIds).toEqual(['M 31'])
   expect(useStore.getState().minAltDeg).toBe(33)
 })
+
+it('stary zapis bez ownPhotos daje pusty indeks', async () => {
+  vi.resetModules()
+  const saved = JSON.stringify({ state: { favoriteIds: ['M 31'] }, version: 1 })
+  const storage = { getItem: () => saved, setItem: vi.fn() }
+  vi.stubGlobal('localStorage', storage)
+  vi.stubGlobal('window', { localStorage: storage })
+  const { useStore } = await import('./store')
+  await Promise.resolve()
+  expect(useStore.getState().ownPhotos).toEqual({})
+})
+
+it('ownPhotos przetrwa zapis i odczyt', async () => {
+  vi.resetModules()
+  let saved: string | null = null
+  const storage = { getItem: () => saved, setItem: (_: string, value: string) => { saved = value } }
+  vi.stubGlobal('localStorage', storage)
+  vi.stubGlobal('window', { localStorage: storage })
+  const first = await import('./store')
+  await Promise.resolve()
+  first.useStore.getState().setOwnPhoto('M 51', 'abc')
+  vi.resetModules()
+  const second = await import('./store')
+  await Promise.resolve()
+  expect(second.useStore.getState().ownPhotos).toEqual({ 'M 51': { photoId: 'abc', shown: true } })
+})
+
+it('setOwnPhoto włącza, toggle przełącza, remove usuwa', async () => {
+  const { useStore } = await import('./store')
+  useStore.setState({ ownPhotos: {} })
+  useStore.getState().setOwnPhoto('M 42', 'p1')
+  expect(useStore.getState().ownPhotos['M 42']).toEqual({ photoId: 'p1', shown: true })
+  useStore.getState().toggleOwnPhotoShown('M 42')
+  expect(useStore.getState().ownPhotos['M 42'].shown).toBe(false)
+  useStore.getState().setOwnPhoto('M 42', 'p2')
+  expect(useStore.getState().ownPhotos['M 42']).toEqual({ photoId: 'p2', shown: true })
+  useStore.getState().removeOwnPhoto('M 42')
+  expect(useStore.getState().ownPhotos).toEqual({})
+})

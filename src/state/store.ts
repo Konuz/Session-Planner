@@ -124,6 +124,8 @@ interface State {
   framingStretch: Record<string, Levels>
   plan: PlanItem[]
   favoriteIds: string[]
+  /** Własne zdjęcia obiektów (rekordy w IndexedDB): identyfikator zdjęcia i wybór moje/domyślne. */
+  ownPhotos: Record<string, { photoId: string; shown: boolean }>
   filter: CatalogFilter
   sortBy: 'best' | 'alt' | 'hours' | 'mag' | 'size' | 'name'
   onlyVisible: boolean
@@ -168,6 +170,9 @@ interface State {
   removeFromPlan(key: string): void
   movePlan(key: string, delta: number): void
   toggleFavorite(id: string): void
+  setOwnPhoto(objectId: string, photoId: string): void
+  toggleOwnPhotoShown(objectId: string): void
+  removeOwnPhoto(objectId: string): void
   clearFavorites(): void
   setFilter(patch: Partial<CatalogFilter>): void
   setSort(s: State['sortBy']): void
@@ -220,6 +225,7 @@ export const useStore = create<State>()(
       framingStretch: {},
       plan: [],
       favoriteIds: [],
+      ownPhotos: {},
       filter: EMPTY_FILTER,
       sortBy: 'best',
       onlyVisible: false,
@@ -353,6 +359,16 @@ export const useStore = create<State>()(
         }),
       toggleFavorite: (id) => set((s) => ({ favoriteIds: s.favoriteIds.includes(id) ? s.favoriteIds.filter((value) => value !== id) : [...s.favoriteIds, id] })),
       clearFavorites: () => set({ favoriteIds: [] }),
+      setOwnPhoto: (objectId, photoId) => set((s) => ({ ownPhotos: { ...s.ownPhotos, [objectId]: { photoId, shown: true } } })),
+      toggleOwnPhotoShown: (objectId) => set((s) => {
+        const own = s.ownPhotos[objectId]
+        return own ? { ownPhotos: { ...s.ownPhotos, [objectId]: { ...own, shown: !own.shown } } } : {}
+      }),
+      removeOwnPhoto: (objectId) => set((s) => {
+        if (!s.ownPhotos[objectId]) return {}
+        const { [objectId]: _removed, ...rest } = s.ownPhotos
+        return { ownPhotos: rest }
+      }),
       // Bez zmiany wartości zostaje ten sam obiekt: katalog nie przelicza listy i nie przewija jej na górę.
       setFilter: (patch) => set((s) => (Object.keys(patch) as (keyof CatalogFilter)[]).every((k) => Object.is(s.filter[k], patch[k])) ? s : { filter: { ...s.filter, ...patch } }),
       setSort: (sortBy) => set({ sortBy }),
@@ -379,6 +395,7 @@ export const useStore = create<State>()(
         framingStretch: s.framingStretch,
         plan: s.plan,
         favoriteIds: s.favoriteIds,
+        ownPhotos: s.ownPhotos,
         filter: s.filter,
         sortBy: s.sortBy,
         onlyVisible: s.onlyVisible,
@@ -396,7 +413,7 @@ export const useStore = create<State>()(
       // Grupy katalogów dopisane po zapisie stanu startują włączone; stan sprzed poziomów kadru dostaje pusty obiekt.
       merge: (persisted, current) => {
         const p = persisted as Partial<State> | undefined
-        return { ...current, ...p, skyGroups: { ...current.skyGroups, ...p?.skyGroups }, framingStretch: { ...p?.framingStretch } }
+        return { ...current, ...p, skyGroups: { ...current.skyGroups, ...p?.skyGroups }, framingStretch: { ...p?.framingStretch }, ownPhotos: { ...p?.ownPhotos } }
       },
       // Noc zawsze startuje od bieżącej daty w strefie zapisanej lokalizacji.
       onRehydrateStorage: () => (state) => {
