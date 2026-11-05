@@ -483,6 +483,7 @@ export function SkyDome({ playing = false }: Props) {
   const showTracks = useStore((s) => s.showTracks)
   const showArt = useStore((s) => s.showArt)
   const showOutlines = useStore((s) => s.showOutlines)
+  const outlinesOpacity = useStore((s) => s.outlinesOpacity)
   const showOwnPhotos = useStore((s) => s.showOwnPhotos)
   const ownPhotosOpacity = useStore((s) => s.ownPhotosOpacity)
   const showEllipses = useStore((s) => s.showEllipses)
@@ -763,6 +764,8 @@ export function SkyDome({ playing = false }: Props) {
       const hoverKey = hoverOutline === null ? null : outlineKey(hoverOutline)
       // Największy widoczny pierścień obiektu, z poziomu 2/3 przed poziomem 1.
       const best = new Map<string, { k: number; c: [number, number]; top: [number, number]; r: number; faint: boolean }>()
+      // Suwak krycia konturów działa na obrysy i wypełnienia; podpisy (rysowane później razem z elipsami) zostają czytelne.
+      ctx.globalAlpha = outlinesOpacity
       outlines.forEach((o, k) => {
         if (!skyGroups[skyGroupOf(outlineObjects?.[k] ?? { catalogs: [catalogOf(o.id) ?? ''] })]) return
         const key = outlineKey(k)
@@ -809,6 +812,7 @@ export function SkyDome({ playing = false }: Props) {
           ctx.stroke()
         }
       })
+      ctx.globalAlpha = 1
       for (const [key, l] of best) {
         const dso = outlineObjects![l.k]!
         // Obiekty Messiera przy polu < 90° mają już własną etykietę przy znaczniku (o ile znaczniki M są włączone).

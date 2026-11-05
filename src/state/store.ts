@@ -133,6 +133,8 @@ interface State {
   showTracks: boolean
   showArt: boolean
   showOutlines: boolean
+  /** Krycie konturów mgławic na kopule (0,1–1). */
+  outlinesOpacity: number
   /** Własne zdjęcia z wyborem „moje” na kopule i krycie tej warstwy (0,1–1). */
   showOwnPhotos: boolean
   ownPhotosOpacity: number
@@ -183,6 +185,7 @@ interface State {
   setAnnotationColor(type: ObjectType, color: string): void
   resetAnnotationColors(): void
   setOwnPhotosOpacity(value: number): void
+  setOutlinesOpacity(value: number): void
   toggle(key: 'showLines' | 'showTracks' | 'showArt' | 'showOutlines' | 'showOwnPhotos' | 'showEllipses' | 'showLabels' | 'showAnnotations' | 'show3DAnnotations' | 'onlyVisible'): void
 }
 
@@ -237,6 +240,7 @@ export const useStore = create<State>()(
       showTracks: true,
       showArt: true,
       showOutlines: true,
+      outlinesOpacity: 1,
       showOwnPhotos: true,
       ownPhotosOpacity: 1,
       showEllipses: false,
@@ -382,6 +386,7 @@ export const useStore = create<State>()(
       setAnnotationColor: (type, color) => set((s) => ({ annotationColors: { ...s.annotationColors, [type]: color } })),
       resetAnnotationColors: () => set({ annotationColors: {} }),
       setOwnPhotosOpacity: (value) => set({ ownPhotosOpacity: Math.max(0.1, Math.min(1, value)) }),
+      setOutlinesOpacity: (value) => set({ outlinesOpacity: Math.max(0.1, Math.min(1, value)) }),
       toggle: (key) => set((s) => ({ [key]: !s[key] }) as Partial<State>),
     }),
     {
@@ -410,6 +415,7 @@ export const useStore = create<State>()(
         showTracks: s.showTracks,
         showArt: s.showArt,
         showOutlines: s.showOutlines,
+        outlinesOpacity: s.outlinesOpacity,
         showOwnPhotos: s.showOwnPhotos,
         ownPhotosOpacity: s.ownPhotosOpacity,
         showEllipses: s.showEllipses,

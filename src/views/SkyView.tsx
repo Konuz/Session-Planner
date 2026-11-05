@@ -55,6 +55,18 @@ const GROUPS: { id: SkyGroup; label: string }[] = [
   { id: 'other', label: 'Inne' },
 ]
 
+/** Suwak krycia warstwy wcięty pod jej przełącznikiem (10–100%). */
+function OpacityRow({ value, onChange, label }: { value: number; onChange: (value: number) => void; label: string }) {
+  const pct = Math.round(value * 100)
+  return (
+    <label className="layers-range">
+      <span>Krycie</span>
+      <Range min={10} max={100} step={5} value={pct} onChange={(e) => onChange(Number(e.target.value) / 100)} aria-label={label} />
+      <span>{pct}%</span>
+    </label>
+  )
+}
+
 /** Nagłówek zwijanej sekcji listy warstw z licznikiem włączonych przełączników. */
 function Section({ title, on, total, open, onToggle, children }: { title: string; on: number; total: number; open: boolean; onToggle: () => void; children: React.ReactNode }) {
   return (
@@ -82,8 +94,15 @@ function LayersMenu({ threeD = false }: { threeD?: boolean }) {
   const groups = useStore((s) => s.skyGroups)
   const toggle = useStore((s) => s.toggle)
   const toggleGroup = useStore((s) => s.toggleSkyGroup)
-  const photoOpacity = useStore((s) => Math.round(s.ownPhotosOpacity * 100))
-  const setPhotoOpacity = useStore((s) => s.setOwnPhotosOpacity)
+  // Warstwy z suwakiem krycia pod przełącznikiem (widocznym, gdy warstwa jest włączona).
+  const outlinesOpacity = useStore((s) => s.outlinesOpacity)
+  const ownPhotosOpacity = useStore((s) => s.ownPhotosOpacity)
+  const setOutlinesOpacity = useStore((s) => s.setOutlinesOpacity)
+  const setOwnPhotosOpacity = useStore((s) => s.setOwnPhotosOpacity)
+  const opacity: Partial<Record<LayerKey, { value: number; set: (value: number) => void }>> = {
+    showOutlines: { value: outlinesOpacity, set: setOutlinesOpacity },
+    showOwnPhotos: { value: ownPhotosOpacity, set: setOwnPhotosOpacity },
+  }
   return (
     <div className="layers-menu" ref={ref}>
       <button className={`button small${open ? ' active' : ''}`} aria-expanded={open} aria-haspopup="true" onClick={() => setOpen(!open)}>
@@ -95,13 +114,7 @@ function LayersMenu({ threeD = false }: { threeD?: boolean }) {
             {visibleLayers.map(({ key, label }, i) => (
               <Fragment key={key}>
                 <Switch on={layers[i]} onClick={() => toggle(key)} label={label} />
-                {key === 'showOwnPhotos' && layers[i] && (
-                  <label className="layers-range">
-                    <span>Krycie</span>
-                    <Range min={10} max={100} step={5} value={photoOpacity} onChange={(e) => setPhotoOpacity(Number(e.target.value) / 100)} aria-label="Krycie moich zdjęć" />
-                    <span className="mono">{photoOpacity}%</span>
-                  </label>
-                )}
+                {opacity[key] && layers[i] && <OpacityRow value={opacity[key].value} onChange={opacity[key].set} label={`Krycie: ${label}`} />}
               </Fragment>
             ))}
           </Section>

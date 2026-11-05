@@ -17,6 +17,8 @@ Użytkownik przypina do obiektów własne zdjęcia z astrometrią (funkcja „Mo
 - **Gwiazdy kopuły są zasłonięte zdjęciem** (na zdjęciu widać jego własne gwiazdy; przy kryciu < 100% kropki kopuły prześwitują).
 - **Droga Mleczna, siatka wysokości, południk i linie gwiazdozbiorów leżą pod zdjęciem** (po pytaniu recenzenta projektu). Nad zdjęciem zostają tylko kontury, elipsy, etykiety, ziemia, tor i znaczniki. Skutek uboczny przyjęty przez użytkownika: Droga Mleczna także pod gwiazdami całej kopuły.
 
+- **Dopisane 6.11.2026 (użytkownik):** taki sam suwak krycia (10–100%, trwały) pod przełącznikiem „Kontury”. Działa na obrysy i wypełnienia konturów; podpisy konturów zostają w pełni kryjące (moja decyzja: muszą być czytelne przy porównaniu).
+
 ## Cele
 
 - Przełącznik „Moje zdjęcia” włącza i wyłącza warstwę; stan przetrwa przeładowanie.
