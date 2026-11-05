@@ -74,19 +74,23 @@ export function photoAnchorKind(distLy: number | null, scale: PhotoScale): 'posi
   return 'position'
 }
 
-export function photoColumns(cuts: PhotoCut[], imageWidth: number): [PhotoCut[], PhotoCut[]] {
-  const columns: [PhotoCut[], PhotoCut[]] = [[], []]
-  for (const cut of cuts) columns[cut.x < imageWidth / 2 ? 0 : 1].push(cut)
+export function photoColumns(cuts: PhotoCut[], imageWidth: number, capacity = Infinity): [PhotoCut[], PhotoCut[]] {
+  const byX = [...cuts].sort((a, b) => a.x - b.x)
+  // Strona wynika z połowy zdjęcia; nadmiar ponad pojemność kolumny przechodzi na drugą stronę (obiekty najbliżej środka).
+  const left = Math.max(cuts.length - capacity, Math.min(capacity, byX.filter((c) => c.x < imageWidth / 2).length))
+  const columns: [PhotoCut[], PhotoCut[]] = [byX.slice(0, left), byX.slice(left)]
   for (const column of columns) column.sort((a, b) => a.y - b.y)
   return columns
 }
 
-export function photoStageHeight(cuts: PhotoCut[], imageWidth: number): number {
-  const counts = [0, 0]
-  for (const cut of cuts) counts[cut.x < imageWidth / 2 ? 0 : 1]++
-  // Rezerwuj miejsce także na wyłączone wycinki, aby zaznaczanie nie zmieniało wysokości sceny.
+/** Liczba kart w kolumnie. Zależy tylko od liczby wycinków (także wyłączonych), więc przesuwanie okręgów ani zaznaczanie nie zmienia wysokości sceny. */
+export function photoColumnCapacity(cuts: PhotoCut[]): number {
+  return Math.max(1, Math.ceil(cuts.length / 2))
+}
+
+export function photoStageHeight(cuts: PhotoCut[]): number {
   // Co najmniej 26 px średnicy oraz 32 px na podpis i odstęp.
-  return Math.max(520, 305 + (Math.max(...counts) - 1) * 58)
+  return Math.max(520, 305 + (photoColumnCapacity(cuts) - 1) * 58)
 }
 
 export function coveredPhotoCircles(circles: { x: number; y: number; radius: number }[]): boolean[] {

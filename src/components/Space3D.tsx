@@ -1254,7 +1254,7 @@ export default function Space3D() {
 
   if (!o) return <div className="sky-stage empty" style={{ display: 'grid', placeItems: 'center' }}>Wybierz obiekt.</div>
   return (
-    <div className={`sky-stage space-stage${photo ? ' has-photo' : ''}`} style={{ background: 'radial-gradient(circle at 50% 40%, #071022, #000 75%)', minHeight: photo ? photoStageHeight(photo.cuts, photo.width) : undefined }}>
+    <div className={`sky-stage space-stage${photo ? ' has-photo' : ''}`} style={{ background: 'radial-gradient(circle at 50% 40%, #071022, #000 75%)', minHeight: photo ? photoStageHeight(photo.cuts) : undefined }}>
       <div ref={mountRef} style={{ position: 'absolute', inset: 0 }} />
       <PhotoExplorer project={photo} onProject={setPhoto} frameRef={photoFrameRef} fitRef={photoFitRef} />
       <div ref={pinRef} className="pin" style={{ display: 'none' }} aria-hidden>

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { photoAnchorKind, circleIntersectsImage, photoColumns, photoPose, photoStageHeight, coveredPhotoCircles, migratePhotoProject, type PhotoCut } from './photo'
+import { photoAnchorKind, circleIntersectsImage, photoColumnCapacity, photoColumns, photoPose, photoStageHeight, coveredPhotoCircles, migratePhotoProject, type PhotoCut } from './photo'
 
 it('uwzględnia wycinek przecinający brzeg mimo środka poza zdjęciem', () => {
   expect(circleIntersectsImage(-5, 50, 10, 100, 100)).toBe(true)
@@ -50,21 +50,25 @@ it('zachowuje stronę również przy nierównej liczbie obiektów i na brzegu ka
   expect(photoColumns([], 1000)).toEqual([[], []])
 })
 
-it('zapewnia miejsce na okręgi i podpisy przy siedmiu obiektach po jednej stronie', () => {
-  const cuts = Array.from({ length: 7 }, (_, i) => ({ x: 100, y: i * 30, enabled: true })) as PhotoCut[]
-  const height = photoStageHeight(cuts, 1000)
+it('zapewnia miejsce na okręgi i podpisy, a nadmiar w kolumnie przenosi na drugą stronę', () => {
+  const cuts = Array.from({ length: 13 }, (_, i) => ({ x: 100 + i, y: i * 30, enabled: true })) as PhotoCut[]
+  const height = photoStageHeight(cuts)
   expect(height).toBe(653)
   expect((height - 305) / 6).toBeGreaterThanOrEqual(2 * 13 + 32)
-  expect(photoStageHeight([], 1000)).toBe(520)
+  const [left, right] = photoColumns(cuts, 1000, photoColumnCapacity(cuts))
+  expect(left.map((c) => c.x)).toEqual([100, 101, 102, 103, 104, 105, 106])
+  expect(right.map((c) => c.x)).toEqual([107, 108, 109, 110, 111, 112])
+  expect(photoStageHeight([])).toBe(520)
 })
 
-it('zachowuje wysokość sceny przy zaznaczaniu i odznaczaniu wycinków po obu stronach zdjęcia', () => {
-  for (const x of [100, 900]) {
-    const cuts = Array.from({ length: 7 }, (_, i) => ({ x, y: i * 30, enabled: true })) as PhotoCut[]
-    cuts.push({ x: 1000 - x, y: 100, enabled: true } as PhotoCut)
-    for (let count = 0; count <= cuts.length; count++) {
-      expect(photoStageHeight(cuts.map((c, i) => ({ ...c, enabled: i < count })), 1000)).toBe(653)
-    }
+it('nie zmienia wysokości sceny przy przesuwaniu okręgów przez środek zdjęcia ani przy zaznaczaniu', () => {
+  const cuts = Array.from({ length: 13 }, (_, i) => ({ x: 900, y: i * 30, enabled: true })) as PhotoCut[]
+  const height = photoStageHeight(cuts)
+  for (let moved = 0; moved <= cuts.length; moved++) {
+    const shifted = cuts.map((c, i) => ({ ...c, x: i < moved ? 100 : 900, enabled: i % 3 !== 0 }))
+    expect(photoStageHeight(shifted)).toBe(height)
+    const capacity = photoColumnCapacity(shifted)
+    for (const column of photoColumns(shifted.filter((c) => c.enabled), 1000, capacity)) expect(column.length).toBeLessThanOrEqual(capacity)
   }
 })
 

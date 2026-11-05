@@ -2,7 +2,7 @@ import { ImagePlus, Pause, Play, RotateCcw, Settings2, X } from 'lucide-react'
 import { lazy, Suspense, useEffect, useId, useRef, useState, type RefObject } from 'react'
 import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO } from '../lib/catalog'
 import { fmtDistance } from '../lib/format'
-import { coveredPhotoCircles, photoColumns, photoPose, type PhotoCut, type PhotoDistances, type PhotoProject, type PhotoSceneFrame, type PhotoStars } from '../lib/photo'
+import { coveredPhotoCircles, photoColumnCapacity, photoColumns, photoPose, type PhotoCut, type PhotoDistances, type PhotoProject, type PhotoSceneFrame, type PhotoStars } from '../lib/photo'
 import { hasUnsavedPhoto, readPhoto, writePhoto } from '../lib/photoStorage'
 import { Range } from './Range'
 import { CloseButton } from './CloseButton'
@@ -145,7 +145,7 @@ export function PhotoExplorer({ project, onProject, frameRef, fitRef }: Props) {
   }, [distanceKey, activeId, distanceRetry])
   const move = Math.max(0, Math.min(1, (progress - 0.18) / 0.82))
   const circleOpacity = Math.min(1, progress / 0.12)
-  const columns = photoColumns(enabled, project?.width ?? 0)
+  const columns = photoColumns(enabled, project?.width ?? 0, photoColumnCapacity(project?.cuts ?? []))
   const rows = Math.max(1, ...columns.map((column) => column.length))
   const rowSpacing = Math.max(0, height - 305) / Math.max(1, rows - 1)
   const cardRadius = Math.max(13, Math.min(48, width / 9, rows > 1 ? (rowSpacing - 32) / 2 : 48))
