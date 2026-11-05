@@ -207,15 +207,16 @@ export class ObservatoryScene {
 
     // Ziemia i ostrosłup pola: od Ziemi do narożników kadru.
     const earthPos = new THREE.Vector3(0, 0, EARTH_Z)
-    const earthMaterial = new THREE.MeshBasicMaterial({ color: cssColor('--accent-2', '#155dfc') })
-    const earth = new THREE.Mesh(new THREE.SphereGeometry(1.5, 24, 16), earthMaterial)
+    // Ta sama tekstura co w widoku Drogi Mlecznej (Space3D); scena nie ma świateł, więc materiał bez cieniowania.
+    const earthMap = new THREE.TextureLoader().load(`${import.meta.env.BASE_URL}textures/earth.webp`, () => { this.dirty = true })
+    earthMap.colorSpace = THREE.SRGBColorSpace
+    const earthMaterial = new THREE.MeshBasicMaterial({ map: earthMap })
+    const earth = new THREE.Mesh(new THREE.SphereGeometry(1.5, 48, 32), earthMaterial)
     earth.position.copy(earthPos)
-    const halo = new THREE.Mesh(new THREE.SphereGeometry(2.4, 24, 16), new THREE.MeshBasicMaterial({ color: this.accent, transparent: true, opacity: 0.12 }))
-    halo.position.copy(earthPos)
     const pyramidMaterial = new THREE.LineBasicMaterial({ color: this.accent, transparent: true, opacity: 0.35 })
     const pyramid = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(corners.flatMap((c) => [earthPos, c])), pyramidMaterial)
-    this.scene.add(earth, halo, pyramid)
-    this.disposables.push(earthMaterial, earth.geometry, halo.geometry, halo.material as THREE.Material, pyramidMaterial, pyramid.geometry)
+    this.scene.add(earth, pyramid)
+    this.disposables.push(earthMap, earthMaterial, earth.geometry, pyramidMaterial, pyramid.geometry)
 
     // Oś linii widzenia z podziałką dekad.
     const axisMaterial = new THREE.LineDashedMaterial({ color: this.accent, dashSize: 2, gapSize: 2, transparent: true, opacity: 0.7 })

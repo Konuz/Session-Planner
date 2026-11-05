@@ -160,10 +160,8 @@ export default function Observatory({ project, onStars, onClose, onZoomOut }: Pr
           {(Object.keys(CATEGORY_LABELS) as CategoryFilter[]).map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]} ({counts[c]})</option>)}
         </select>
         <div className="obs-tabs" role="tablist" aria-label="Widok kamery">
-          {VIEWS.map((v) => <button key={v.id} type="button" role="tab" aria-selected={view === v.id} className={`toggle-chip${view === v.id ? ' on' : ''}`} onClick={() => { if (view === v.id) sceneRef.current?.setView(v.id); else setView(v.id) }}>{v.label}</button>)}
+          {VIEWS.map((v) => <button key={v.id} type="button" role="tab" aria-selected={view === v.id} className={`toggle-chip${view === v.id ? ' on' : ''}`} title={view === v.id ? 'Kliknij ponownie, aby dopasować widok' : undefined} onClick={() => { if (view === v.id) sceneRef.current?.setView(v.id); else setView(v.id) }}>{v.label}</button>)}
         </div>
-        <span className="obs-spacer" />
-        <button type="button" className="toggle-chip" onClick={() => sceneRef.current?.setView(view)}>Dopasuj</button>
       </div>
       <div className="obs-stage">
         <div ref={hostRef} className="obs-canvas" />
@@ -211,9 +209,9 @@ export default function Observatory({ project, onStars, onClose, onZoomOut }: Pr
       <div className="obs-bottom">
         <div className="obs-timeline">
           <button type="button" className="button small" onClick={unfold}>{playing ? <Pause size={14} /> : <Play size={14} />}Rozłóż zdjęcie</button>
-          <button type="button" className="toggle-chip" onClick={() => { setPlaying(false); setProgress(0) }}>Zdjęcie</button>
+          <button type="button" className={`toggle-chip${progress === 0 ? ' on' : ''}`} aria-pressed={progress === 0} title="Płaskie zdjęcie (0%)" onClick={() => { setPlaying(false); setProgress(0) }}>Zdjęcie</button>
           <Range aria-label="Rozłożenie zdjęcia w głąb" min={0} max={1} step={0.001} value={progress} onChange={(e) => { setPlaying(false); setProgress(Number(e.target.value)) }} />
-          <button type="button" className="toggle-chip" onClick={() => { setPlaying(false); setProgress(1) }}>Przestrzeń 3D</button>
+          <button type="button" className={`toggle-chip${progress === 1 ? ' on' : ''}`} aria-pressed={progress === 1} title="Pełna głębia z odległości (100%)" onClick={() => { setPlaying(false); setProgress(1) }}>Przestrzeń 3D</button>
           <span className="figures obs-percent">{Math.round(progress * 100)}%</span>
         </div>
         <div className="obs-legend">

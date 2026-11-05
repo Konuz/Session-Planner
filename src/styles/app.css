@@ -902,6 +902,8 @@ input[type='checkbox']:checked::after {
 .obs-card.selected { border-color: var(--accent); color: var(--text); }
 .obs-tick { margin: 6px 0 0 6px; color: var(--accent-dim); }
 .obs-earth { margin: 4px 0 0 -18px; color: var(--text); }
+/* Płótno dostaje fokus dla WASD; ramka fokusu zasłaniałaby scenę. */
+.obs-canvas canvas:focus, .obs-canvas canvas:focus-visible { outline: none; }
 .obs-stage-title { position: absolute; top: 12px; left: 14px; display: grid; gap: 3px; pointer-events: none; font: 12px var(--mono); }
 .obs-stage-title .faint { font-size: 10px; }
 .obs-fov { position: absolute; top: 12px; right: 14px; padding: 6px 9px; border: 1px solid var(--accent-dim); background: rgba(0, 0, 0, 0.6); font-size: 11px; color: var(--accent); }
