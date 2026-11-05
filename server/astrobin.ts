@@ -1,6 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { readResponseText } from './readResponseText.ts'
 
 export interface AstroBinEnv { ASTROBIN_API_KEY?: string; ASTROBIN_API_SECRET?: string }
+const maxResponseBytes = 1024 * 1024
 
 function astroBinUrl(value: unknown): value is string {
   if (typeof value !== 'string') return false
@@ -27,8 +29,7 @@ export async function astrobinPhoto(req: IncomingMessage, res: ServerResponse, e
     url.search = new URLSearchParams({ user: 'Konuz', [filter]: value, limit: '10', format: 'json', api_key: env.ASTROBIN_API_KEY, api_secret: env.ASTROBIN_API_SECRET }).toString()
     try {
       const response = await fetchImpl(url, { headers: { 'User-Agent': 'KONUZASTRO Tracker (AstroBin API)' }, signal: AbortSignal.timeout(10_000) })
-      if (!response.ok) return end(502)
-      const data = await response.json() as { objects?: Array<{ url_regular?: unknown; url_thumb?: unknown; url_gallery?: unknown; title?: unknown }> }
+      const data = JSON.parse(await readResponseText(response, maxResponseBytes)) as { objects?: Array<{ url_regular?: unknown; url_thumb?: unknown; url_gallery?: unknown; title?: unknown }> }
       const image = data.objects?.find((item) => astroBinUrl(item.url_regular ?? item.url_thumb) && astroBinUrl(item.url_gallery))
       if (!image) continue
       res.setHeader('Cache-Control', 'private, max-age=3600')

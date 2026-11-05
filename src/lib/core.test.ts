@@ -2,7 +2,7 @@ import { Horizon, MakeTime, Observer, RotateVector, Rotation_EQJ_EQD, SphereFrom
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { altAz, computeOptics, DEG, galactic, hourAngleDeg, horizontalMatrix, moonInfo, nextTransitMs, vecToEquatorial, type Site } from './astro'
-import { matchesFilter, normalizeQuery, parseCatalog, searchScore, skyGroupOf, EMPTY_FILTER } from './catalog'
+import { matchesFilter, normalizeQuery, parseCatalog, quickSearch, searchScore, skyGroupOf, EMPTY_FILTER } from './catalog'
 import { frameCorners, gnomonic, gnomonicInverse, pixelToTangent, tangentToPixel } from './framing'
 import { exportHorizon, horizonAltitude, parseHorizon } from './horizon'
 import { darkWindow, nightDateOf, nightPhases, phaseAt, zonedMidnightMs } from './night'
@@ -205,6 +205,13 @@ describe('katalog', () => {
     ['Sh2-105', 'NGC 6888|LBN 203', 'Mgławica Półksiężyc', 'Crescent Nebula', 'EN', 303, 38.4, 18, 12, -1, 7.4, 99, 'Cyg', 4700, '', ''],
   ] as Parameters<typeof parseCatalog>[0]
   const cat = parseCatalog(rows)
+
+  it('szybkie wyszukiwanie zachowuje kolejność remisów na granicy 12 wyników', () => {
+    const tied = Array.from({ length: 13 }, (_, i) => ({ ...cat[0], i, search: 'wspolnanazwa' }))
+    const exact = { ...cat[0], i: 99, id: 'Wspólna', search: 'wspolna' }
+    expect(quickSearch([...tied, exact], 'wspólna').map((o) => o.i)).toEqual([99, ...tied.slice(0, 11).map((o) => o.i)])
+    expect(quickSearch(tied, '  ')).toEqual([])
+  })
 
   it('katalogi z oznaczeń i filtr po katalogu i typie', () => {
     expect(cat[0].catalogs).toEqual(['M', 'NGC'])

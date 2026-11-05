@@ -101,3 +101,29 @@ it('nie interpretuje błędu usługi NED ani deklaracji encji jako danych', asyn
     expect(data.warnings.join(' ')).toContain('NED')
   }
 })
+
+it.each(['SIMBAD', 'NED'] as const)('odrzuca za dużą odpowiedź %s bez nagłówka rozmiaru i zachowuje drugie źródło', async (source) => {
+  const cancel = vi.fn()
+  const payload = new TextEncoder().encode(source === 'SIMBAD' ? simbad([]) : ned('', 0))
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(payload)
+      controller.enqueue(new Uint8Array(8 * 1024 * 1024).fill(32))
+      controller.enqueue(Uint8Array.of(32))
+      controller.close()
+    },
+    cancel,
+  })
+  const fetchImpl = vi.fn<typeof fetch>(async (url) => {
+    const isSimbad = String(url).includes('simbad')
+    if (isSimbad === (source === 'SIMBAD')) return new Response(stream)
+    return new Response(isSimbad
+      ? simbad([[6, 'Mpc', null, null, null, '2024A&A...000A...1A', null]])
+      : ned('<TR><TD>1</TD><TD/><TD>6.19</TD><TD>TRGB</TD><TD>2024ApJ...000...1A</TD><TD/></TR>'))
+  })
+  const { status, data } = await request('M 101', fetchImpl)
+  expect(status).toBe(200)
+  expect(data.measurements.some((m: { source: string }) => m.source === (source === 'SIMBAD' ? 'NED' : 'SIMBAD'))).toBe(true)
+  expect(data.warnings.join(' ')).toContain(source)
+  expect(cancel).toHaveBeenCalledTimes(1)
+})

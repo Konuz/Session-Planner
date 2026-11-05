@@ -136,7 +136,10 @@ export default function CatalogView() {
       const size = Math.min(1, Math.log10(1 + o.majArcmin) / 2)
       return hours * (0.6 + bright * 0.8 + size * 0.6)
     }
-    if (filter.query) return out.sort((x, y) => searchScore(x, filter.query) - searchScore(y, filter.query))
+    if (filter.query) return out
+      .map((o) => ({ o, score: searchScore(o, filter.query) }))
+      .sort((x, y) => x.score - y.score)
+      .map(({ o }) => o)
     switch (sortBy) {
       case 'best': return out.sort((x, y) => score(y) - score(x))
       case 'hours': return h ? out.sort((x, y) => h[y.i] - h[x.i]) : out

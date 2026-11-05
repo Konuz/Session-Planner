@@ -1,5 +1,12 @@
 import type { PhotoProject } from './photo'
 
+let unsavedPhoto: { project: PhotoProject | null } | null = null
+let saveQueue = Promise.resolve()
+
+export function hasUnsavedPhoto(): boolean {
+  return unsavedPhoto !== null
+}
+
 async function database(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open('tracker-photo', 1)
@@ -10,17 +17,32 @@ async function database(): Promise<IDBDatabase> {
 }
 
 export async function readPhoto(): Promise<PhotoProject | null> {
+  await saveQueue
+  if (unsavedPhoto) return unsavedPhoto.project
   const db = await database()
   try {
     return await new Promise((resolve, reject) => {
       const request = db.transaction('projects').objectStore('projects').get('current')
-      request.onsuccess = () => resolve(request.result?.version === 1 ? request.result : null)
+      request.onsuccess = () => {
+        const stored = request.result?.version === 1 ? request.result : null
+        resolve(unsavedPhoto ? unsavedPhoto.project : stored)
+      }
       request.onerror = () => reject(request.error)
     })
   } finally { db.close() }
 }
 
-export async function writePhoto(project: PhotoProject | null): Promise<void> {
+export function writePhoto(project: PhotoProject | null): Promise<void> {
+  const draft = { project }
+  unsavedPhoto = draft
+  const saving = saveQueue.then(() => persistPhoto(project)).then(() => {
+    if (unsavedPhoto === draft) unsavedPhoto = null
+  })
+  saveQueue = saving.catch(() => {})
+  return saving
+}
+
+async function persistPhoto(project: PhotoProject | null): Promise<void> {
   const db = await database()
   try {
     await new Promise<void>((resolve, reject) => {

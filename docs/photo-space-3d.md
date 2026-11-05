@@ -1,6 +1,6 @@
 # Zdjęcia w widoku 3D
 
-W widoku **Niebo → Pozycja 3D → Rozłóż zdjęcie** można przesłać JPEG, PNG, WebP, TIFF lub FITS (do 40 MB). Obraz jest orientowany według EXIF i pomniejszany do maksymalnie 3200 pikseli dłuższego boku. Ten sam obraz otrzymuje rozwiązanie WCS i służy jako źródło wszystkich wycinków. FITS jest przedstawiany jako automatycznie rozciągnięty podgląd monochromatyczny.
+W widoku **Niebo → Pozycja 3D → Rozłóż zdjęcie** można przesłać JPEG, PNG, WebP, TIFF lub FITS o rozmiarze do 40 MiB. Dla JPEG, PNG, WebP i TIFF obowiązuje też limit 64 mln pikseli. Obraz jest orientowany według EXIF i pomniejszany do maksymalnie 3200 pikseli dłuższego boku. Ten sam obraz otrzymuje rozwiązanie WCS i służy jako źródło wszystkich wycinków. FITS jest przedstawiany jako automatycznie rozciągnięty podgląd monochromatyczny.
 
 Po imporcie sprawdź propozycje katalogowe, zaznacz widoczne obiekty i popraw okręgi przez przeciąganie. Cyjanowy uchwyt zmienia promień. Pola X, Y i promienia tylko wyświetlają aktualne wartości. Korekta okręgu nie przesuwa pozycji astronomicznej. Suwak i przycisk odtwarzania pokazują przejście od fotografii do adnotacji na mapie. Mapa nadal obsługuje obrót i powiększanie. Gwiazdy służą tylko astrometrii.
 

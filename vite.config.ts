@@ -4,6 +4,7 @@ import { loadEnv } from 'vite'
 import { defineConfig } from 'vitest/config'
 import { astrobinPhoto } from './server/astrobin.ts'
 import { photoApi } from './server/photo.ts'
+import type { ServerResponse } from 'node:http'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
@@ -14,15 +15,19 @@ export default defineConfig(({ mode }) => {
         name: 'astrobin-photo-api',
         apply: 'serve',
         configureServer(server) {
+          const apiError = (error: unknown, res: ServerResponse) => {
+            server.config.logger.error(error instanceof Error ? error.stack ?? error.message : String(error))
+            if (res.destroyed || res.writableEnded) return
+            if (res.headersSent) { res.destroy(); return }
+            res.statusCode = 500
+            res.setHeader('Content-Type', 'application/json; charset=utf-8')
+            res.end(JSON.stringify({ error: 'Błąd serwera. Spróbuj ponownie.' }))
+          }
           server.middlewares.use('/api/photo', (req, res) => {
-            photoApi(req, res, env).catch((err) => {
-              if (!res.headersSent) { res.statusCode = 500; res.end(String(err)) }
-            })
+            photoApi(req, res, env).catch((error) => apiError(error, res))
           })
           server.middlewares.use('/api/astrobin-photo', (req, res) => {
-            astrobinPhoto(req, res, env).catch((err) => {
-              if (!res.headersSent) { res.statusCode = 500; res.end(String(err)) }
-            })
+            astrobinPhoto(req, res, env).catch((error) => apiError(error, res))
           })
         },
       },

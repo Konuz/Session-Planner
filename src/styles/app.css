@@ -519,8 +519,10 @@ input[type='checkbox']:checked::after {
 .photo-fields input, .photo-fields select { width: 100%; min-width: 0; padding: 4px 6px; background: var(--bg); color: var(--text); border: 1px solid var(--border-strong); font: 11px var(--mono); }
 .photo-editor details { margin-top: 12px; color: var(--text-dim); font-size: 10px; }
 .photo-error { position: absolute; top: 55px; left: 12px; right: 12px; z-index: 9; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; background: var(--card-solid); border: 1px solid var(--bad); font-size: 12px; }
+.photo-save-error { border-color: var(--warn); }
 @media (max-width: 650px) {
   .photo-import { top: 50px; max-width: calc(100% - 24px); }
+  .photo-save-error { top: 90px; }
   .photo-editor { top: 90px; max-height: calc(100% - 220px); }
   .photo-overlay { z-index: 1; }
   .photo-controls { bottom: 12px; }

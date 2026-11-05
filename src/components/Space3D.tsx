@@ -412,6 +412,7 @@ export default function Space3D() {
   const constellationGroupRef = useRef<THREE.Group | null>(null)
   const screenTextSpritesRef = useRef<THREE.Sprite[]>([])
   const starNameLayoutsRef = useRef<StarNameLayout[]>([])
+  const textLayoutDirty = useRef(true)
   const [constellations, setConstellations] = useState<Constellations3D | null>(null)
   const [constellationError, setConstellationError] = useState(false)
   const filterRef = useRef<HTMLDivElement>(null)
@@ -764,6 +765,9 @@ export default function Space3D() {
     const pinProjected = new THREE.Vector3()
     const labelCameraMatrix = new THREE.Matrix4()
     const labelProjMatrix = new THREE.Matrix4()
+    const textCameraMatrix = new THREE.Matrix4()
+    const textProjMatrix = new THREE.Matrix4()
+    let lastTextWidth = 0, lastTextHeight = 0, lastTextGuideVisible = false
     let lastLabelW = 0, lastLabelH = 0, lastLabelAnnotations: boolean | null = null, lastLabelLevel = -1
     let lastLabelHidden: readonly ObjectType[] | null = null
     const tick = () => {
@@ -797,8 +801,8 @@ export default function Space3D() {
       }
       if (!rightLook) controls.update()
       if (photoRef.current) controls.autoRotate = false
+      camera.updateMatrixWorld()
       if (earth) {
-        camera.updateMatrixWorld()
         textCameraPosition.copy(sunPos).applyMatrix4(camera.matrixWorldInverse)
         const depth = -textCameraPosition.z
         const width = renderer.domElement.clientWidth
@@ -832,9 +836,20 @@ export default function Space3D() {
         material.size = 2.4 + close * 0.8
         material.opacity = 0.1 + close * 0.18
       }
+      objectGuide.visible = !photoRef.current
       const textViewportHeight = renderer.domElement.clientHeight
-      if (textViewportHeight > 0 && screenTextSpritesRef.current.length) {
-        camera.updateMatrixWorld()
+      const textViewportWidth = renderer.domElement.clientWidth
+      if (textViewportHeight > 0 && screenTextSpritesRef.current.length && (
+        textLayoutDirty.current || textViewportWidth !== lastTextWidth || textViewportHeight !== lastTextHeight
+        || objectGuide.visible !== lastTextGuideVisible || !textCameraMatrix.equals(camera.matrixWorld)
+        || !textProjMatrix.equals(camera.projectionMatrix)
+      )) {
+        textLayoutDirty.current = false
+        textCameraMatrix.copy(camera.matrixWorld)
+        textProjMatrix.copy(camera.projectionMatrix)
+        lastTextWidth = textViewportWidth
+        lastTextHeight = textViewportHeight
+        lastTextGuideVisible = objectGuide.visible
         const fovScale = Math.tan(THREE.MathUtils.degToRad(camera.getEffectiveFOV()) / 2)
         for (const sprite of screenTextSpritesRef.current) {
           let visible = sprite.visible
@@ -859,7 +874,7 @@ export default function Space3D() {
             const height = 2 * depth * fovScale * (anchor.sprite.userData.fixedPixelHeight as number) / textViewportHeight
             const pixelHeight = anchor.sprite.userData.fixedPixelHeight as number
             const halfWidth = pixelHeight * (anchor.sprite.userData.aspectRatio as number) / 2
-            const x = (nameScreenPosition.x + 1) * renderer.domElement.clientWidth / 2
+            const x = (nameScreenPosition.x + 1) * textViewportWidth / 2
             const y = (1 - nameScreenPosition.y) * textViewportHeight / 2
             const box = { left: x - halfWidth - 2, right: x + halfWidth + 2, top: y - pixelHeight - 6, bottom: y - 4 }
             const overlaps = () => nameBoxes.some((b) => box.left < b.right && box.right > b.left && box.top < b.bottom && box.bottom > b.top)
@@ -867,7 +882,7 @@ export default function Space3D() {
               box.top -= pixelHeight + 2
               box.bottom -= pixelHeight + 2
             }
-            anchor.sprite.visible = box.top >= 0 && box.bottom <= textViewportHeight && box.right >= 0 && box.left <= renderer.domElement.clientWidth && !overlaps()
+            anchor.sprite.visible = box.top >= 0 && box.bottom <= textViewportHeight && box.right >= 0 && box.left <= textViewportWidth && !overlaps()
             if (anchor.sprite.visible) nameBoxes.push(box)
             anchor.sprite.scale.set(height * (anchor.sprite.userData.aspectRatio as number), height, 1)
             const gap = 2 * depth * fovScale * (y - box.bottom) / textViewportHeight
@@ -879,7 +894,6 @@ export default function Space3D() {
           layout.connectors.needsUpdate = true
         }
       }
-      objectGuide.visible = !photoRef.current
       renderer.render(scene, camera)
       if (photoFrameRef.current) {
         const width = mount.clientWidth
@@ -1147,10 +1161,12 @@ export default function Space3D() {
 
   useEffect(() => {
     if (constellationGroupRef.current) constellationGroupRef.current.visible = showConstellations
+    textLayoutDirty.current = true
   }, [showConstellations])
 
   useEffect(() => {
     constellationGroupRef.current?.children.forEach((c) => { c.visible = constellationChoice === 'all' || constellationChoice === c.name })
+    textLayoutDirty.current = true
   }, [constellationChoice])
 
   useEffect(() => {
@@ -1163,6 +1179,7 @@ export default function Space3D() {
       }
       names.visible = showStarNames
     })
+    textLayoutDirty.current = true
   }, [showStarNames])
 
   useEffect(() => {

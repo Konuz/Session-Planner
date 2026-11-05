@@ -109,17 +109,28 @@ interface StarGL {
 function createStarGL(canvas: HTMLCanvasElement, sky: SkyData): StarGL | null {
   const gl = canvas.getContext('webgl2', { premultipliedAlpha: true, antialias: false, alpha: true })
   if (!gl) return null
+  const shaders: WebGLShader[] = []
   const compile = (type: number, src: string) => {
     const s = gl.createShader(type)!
+    shaders.push(s)
     gl.shaderSource(s, src)
     gl.compileShader(s)
     if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) ?? 'shader')
     return s
   }
   const prog = gl.createProgram()!
-  gl.attachShader(prog, compile(gl.VERTEX_SHADER, VS))
-  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FS))
-  gl.linkProgram(prog)
+  try {
+    gl.attachShader(prog, compile(gl.VERTEX_SHADER, VS))
+    gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FS))
+    gl.linkProgram(prog)
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog) ?? 'program')
+    shaders.forEach((shader) => gl.detachShader(prog, shader))
+  } catch (error) {
+    gl.deleteProgram(prog)
+    throw error
+  } finally {
+    shaders.forEach((shader) => gl.deleteShader(shader))
+  }
   const n = sky.starCount
   const dirs = new Float32Array(n * 3)
   const magbv = new Float32Array(n * 2)

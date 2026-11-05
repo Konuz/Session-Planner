@@ -1,7 +1,9 @@
 import { XMLParser } from 'fast-xml-parser'
 import type { DSO } from '../src/lib/catalog.ts'
 import type { PhotoDistance, PhotoDistances } from '../src/lib/photo.ts'
+import { readResponseText } from './readResponseText.ts'
 
+const maxResponseBytes = 8 * 1024 * 1024
 const lyPerUnit: Record<string, number> = { pc: 3.26156, kpc: 3261.56, Mpc: 3.26156e6 }
 const text = (value: unknown) => typeof value === 'string' ? value.trim() : ''
 function number(value: unknown): number | null {
@@ -17,8 +19,7 @@ async function simbadDistances(id: string, fetchImpl: typeof fetch, signal: Abor
   const url = new URL('https://simbad.idia.ac.za/simbad/sim-tap/sync')
   url.search = new URLSearchParams({ request: 'doQuery', lang: 'adql', format: 'json', query }).toString()
   const response = await fetchImpl(url, { signal })
-  if (!response.ok) throw new Error('SIMBAD')
-  const body = await response.json() as { metadata?: { name: string }[]; data?: unknown[][] }
+  const body = JSON.parse(await readResponseText(response, maxResponseBytes)) as { metadata?: { name: string }[]; data?: unknown[][] }
   if (!Array.isArray(body.metadata) || !Array.isArray(body.data)) throw new Error('SIMBAD')
   const names = body.metadata.map((m) => m.name)
   if (!['dist', 'unit', 'bibcode', 'qual'].every((name) => names.includes(name))) throw new Error('SIMBAD')
@@ -46,8 +47,7 @@ async function nedDistances(id: string, fetchImpl: typeof fetch, signal: AbortSi
   const url = new URL('https://ned.ipac.caltech.edu/NED::API/DistancesOfObject')
   url.search = new URLSearchParams({ TARGET: id, MAXREC: '1000' }).toString()
   const response = await fetchImpl(url, { signal })
-  if (!response.ok) throw new Error('NED')
-  const xml = await response.text()
+  const xml = await readResponseText(response, maxResponseBytes)
   // NED używa TABLEDATA, nie binarnej serializacji VOTable. Odrzucamy deklaracje encji.
   if (/<!DOCTYPE|<!ENTITY/i.test(xml)) throw new Error('NED')
   const parser = new XMLParser({ ignoreAttributes: false, parseTagValue: false, isArray: (name) => ['RESOURCE', 'TABLE', 'GROUP', 'PARAM', 'FIELD', 'TR', 'TD', 'INFO'].includes(name) })

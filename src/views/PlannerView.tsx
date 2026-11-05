@@ -1,5 +1,6 @@
 import { ArrowDown, ArrowUp, Download, FileText, Trash2, Wand2, Crosshair, AlertTriangle } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { AltitudeChart } from '../components/AltitudeChart'
 import { Thumb } from '../components/Thumb'
 import { angularDistanceDeg, computeOptics, moonJ2000 } from '../lib/astro'
@@ -26,6 +27,7 @@ export default function PlannerView() {
   const night = useNight()
   const site = useSite()
   const plan = useStore((s) => s.plan)
+  const targetIds = useStore(useShallow((s) => s.plan.map((item) => item.objectId)))
   const updatePlan = useStore((s) => s.updatePlan)
   const removeFromPlan = useStore((s) => s.removeFromPlan)
   const movePlan = useStore((s) => s.movePlan)
@@ -44,25 +46,31 @@ export default function PlannerView() {
   const grid = useMemo(() => nightGrid(night, site, 5), [night, site])
   const catalogById = useMemo(() => new Map((catalog ?? []).map((o) => [o.id, o])), [catalog])
   const missingItems = catalog ? plan.filter((item) => !catalogById.has(item.objectId)) : []
-  const rows: Row[] = useMemo(() => {
-    if (!catalog) return []
-    return plan.flatMap((item) => {
-      const o = catalogById.get(item.objectId)
-      if (!o) return []
+  const targets = useMemo(() => {
+    const result = new Map<string, Omit<Row, 'item' | 'exposures'>>()
+    for (const id of targetIds) {
+      const o = catalogById.get(id)
+      if (!o || result.has(id)) continue
       const track = altitudeTrack(o, grid)
-      return [{ item, o, track, vis: visibility(o, track, night, site, minAlt, horizon), exposures: planExposures(item) }]
-    })
-  }, [catalog, catalogById, plan, grid, night, site, minAlt, horizon])
+      result.set(id, { o, track, vis: visibility(o, track, night, site, minAlt, horizon) })
+    }
+    return result
+  }, [catalogById, targetIds, grid, night, site, minAlt, horizon])
+  const rows: Row[] = useMemo(() => plan.flatMap((item) => {
+    const target = targets.get(item.objectId)
+    return target ? [{ item, ...target, exposures: planExposures(item) }] : []
+  }), [plan, targets])
 
   const auto = useMemo(
     () => autoSchedule(rows.map((r) => ({ key: r.item.key, bestMs: r.vis.bestMs, usableStart: r.vis.windowStart, usableEnd: r.vis.windowEnd })), darkStart, darkEnd),
     [rows, darkStart, darkEnd],
   )
+  const autoByKey = useMemo(() => new Map(auto.map((slot) => [slot.key, slot])), [auto])
   const inNight = (t: number | null) => t !== null && t >= night.startMs && t <= night.endMs
   const slots = rows.map((r) => {
     const { startMs, endMs } = r.item
     if (inNight(startMs) && inNight(endMs)) return { key: r.item.key, startMs: startMs!, endMs: endMs!, manual: true }
-    const a = auto.find((s) => s.key === r.item.key)
+    const a = autoByKey.get(r.item.key)
     return a ? { ...a, manual: false } : null
   })
   const conflicts = overlaps(slots.filter((s): s is NonNullable<typeof s> => s !== null && s.endMs > s.startMs))
@@ -90,26 +98,26 @@ export default function PlannerView() {
   const chartRow = rows[chartIndex]
   const chartSlot = slots[chartIndex]
   const saveExposures = (r: Row, exposures: Exposure[]) => updatePlan(r.item.key, { exposures, filters: exposures.map((e) => e.filter).join(', ') })
-  const optics = computeOptics({ apertureMm: equipment.apertureMm, focalLengthMm: equipment.focalLengthMm, reducer: equipment.reducer, widthPx: equipment.widthPx, heightPx: equipment.heightPx, pixelUm: equipment.pixelUm, binning: equipment.binning })
-  // Mozaika: każdy panel to osobny cel („Panel k”) ze wspólnym PA, jak w planie mozaiki Telescopius.
-  const exportTargets = rows.flatMap((r, i) => {
-    const name = displayName(r.o) ? `${r.o.id} ${displayName(r.o)}` : r.o.id
-    const center = { raDeg: r.item.framing.raDeg ?? r.o.raDeg, decDeg: r.item.framing.decDeg ?? r.o.decDeg }
-    const mosaic = r.item.framing.mosaic
-    const panels = mosaic && mosaic.cols * mosaic.rows > 1 ? mosaicCenters(center, optics.fovWdeg, optics.fovHdeg, r.item.framing.paDeg, mosaic) : [center]
-    return panels.map((p, k) => ({
-      name: panels.length > 1 ? `${name} Panel ${k + 1}` : name,
-      type: TYPE_INFO[r.o.type].label,
-      raDeg: p.raDeg,
-      decDeg: p.decDeg,
-      paDeg: r.item.framing.paDeg,
-      exposures: r.exposures,
-      startMs: slots[i]?.startMs ?? null,
-      endMs: slots[i]?.endMs ?? null,
-      note: r.item.note,
-    }))
-  })
   const exportCsv = () => {
+    const optics = computeOptics({ apertureMm: equipment.apertureMm, focalLengthMm: equipment.focalLengthMm, reducer: equipment.reducer, widthPx: equipment.widthPx, heightPx: equipment.heightPx, pixelUm: equipment.pixelUm, binning: equipment.binning })
+    // Mozaika: każdy panel to osobny cel („Panel k”) ze wspólnym PA, jak w planie mozaiki Telescopius.
+    const exportTargets = rows.flatMap((r, i) => {
+      const name = displayName(r.o) ? `${r.o.id} ${displayName(r.o)}` : r.o.id
+      const center = { raDeg: r.item.framing.raDeg ?? r.o.raDeg, decDeg: r.item.framing.decDeg ?? r.o.decDeg }
+      const mosaic = r.item.framing.mosaic
+      const panels = mosaic && mosaic.cols * mosaic.rows > 1 ? mosaicCenters(center, optics.fovWdeg, optics.fovHdeg, r.item.framing.paDeg, mosaic) : [center]
+      return panels.map((p, k) => ({
+        name: panels.length > 1 ? `${name} Panel ${k + 1}` : name,
+        type: TYPE_INFO[r.o.type].label,
+        raDeg: p.raDeg,
+        decDeg: p.decDeg,
+        paDeg: r.item.framing.paDeg,
+        exposures: r.exposures,
+        startMs: slots[i]?.startMs ?? null,
+        endMs: slots[i]?.endMs ?? null,
+        note: r.item.note,
+      }))
+    })
     const csv = exportFormat === 'exposures' ? exposureCsv(exportTargets, tz)
       : exportFormat === 'scheduler' ? schedulerCsv(exportTargets) : ninaCsv(exportTargets)
     download(`plan-${night.date}-${exportFormat}.csv`, csv)

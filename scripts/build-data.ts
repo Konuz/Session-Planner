@@ -12,6 +12,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import sharp from 'sharp'
+import { fetchBuildData } from './download.ts'
 
 const ROOT = join(import.meta.dirname, '..')
 const CACHE = join(ROOT, 'scripts', '.cache')
@@ -23,7 +24,7 @@ mkdirSync(join(OUT, 'art'), { recursive: true })
 async function cached(name: string, url: string, init?: RequestInit): Promise<string> {
   const path = join(CACHE, name)
   if (existsSync(path)) return readFileSync(path, 'utf8')
-  const res = await fetch(url, { ...init, headers: { 'User-Agent': UA, ...init?.headers } })
+  const res = await fetchBuildData(url, { ...init, headers: { 'User-Agent': UA, ...init?.headers } })
   if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`)
   const text = await res.text()
   writeFileSync(path, text)
@@ -33,7 +34,7 @@ async function cached(name: string, url: string, init?: RequestInit): Promise<st
 async function cachedBinary(name: string, url: string): Promise<Buffer> {
   const path = join(CACHE, name)
   if (existsSync(path)) return readFileSync(path)
-  const res = await fetch(url, { headers: { 'User-Agent': UA } })
+  const res = await fetchBuildData(url, { headers: { 'User-Agent': UA } })
   if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`)
   const buf = Buffer.from(await res.arrayBuffer())
   writeFileSync(path, buf)

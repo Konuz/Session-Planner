@@ -16,6 +16,7 @@ vi.mock('react', async (original) => ({
   useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => snapshot(),
   useDebugValue: () => {},
 }))
+vi.mock('zustand/react/shallow', () => ({ useShallow: (select: unknown) => select }))
 vi.mock('../state/data', () => ({
   useCatalog: () => ({ catalog: fixture.catalog, error: null }),
   useSite: () => ({ latDeg: 51.09, lonDeg: 17.29, elevationM: 130 }),
@@ -59,6 +60,13 @@ it('TXT celu po mozaice zachowuje nazwę i środek własnego celu mimo permutacj
   expect(text).toContain('2. M 42 Orion')
   expect(text).toContain(`Środek: RA ${fmtRa(83.82)}, Dec ${fmtDec(-5.39)}, PA 0°`)
   expect(text).not.toContain('Panel 2')
+
+  const csvButton = tree.find((el) => el.type === 'button' && JSON.stringify(el.props.children).includes('Pobierz CSV'))!
+  ;(csvButton.props.onClick as () => void)()
+  const csv = vi.mocked(download).mock.calls[1][1]
+  expect(csv).toContain('M 51 Wir Panel 1,')
+  expect(csv).toContain('M 51 Wir Panel 2,')
+  expect(csv).toContain('M 42 Orion,')
 })
 
 it('brakujące ID i stary zapis bez ID nie są zastępowane obiektem o dawnym indeksie', () => {

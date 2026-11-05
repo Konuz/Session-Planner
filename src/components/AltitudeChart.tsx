@@ -1,7 +1,7 @@
 // Wykres wysokości obiektu w nocy: tło w fazach zmierzchu, limit wysokości, własny horyzont na torze obiektu,
 // Księżyc, kulminacja i południk, pas zachmurzenia i przeciągany kursor czasu.
 import { Clock, Moon, Mountain, Timer } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { bodyAltAz, moonInfo } from '../lib/astro'
 import type { DSO } from '../lib/catalog'
 import { fmtDate, fmtDuration, fmtTime } from '../lib/format'
@@ -15,6 +15,8 @@ const H = 250
 const PAD = { l: 44, r: 14, t: 30, b: 34 }
 const ALT_MIN = 0
 const ALT_MAX = 90
+
+const y = (alt: number) => PAD.t + ((ALT_MAX - Math.max(ALT_MIN, Math.min(ALT_MAX, alt))) / (ALT_MAX - ALT_MIN)) * (H - PAD.t - PAD.b)
 
 function visibleAltitudeSegments(points: { t: number; alt: number }[]) {
   const segments: { t: number; alt: number }[][] = []
@@ -92,8 +94,7 @@ export function AltitudeChart({ object, slot, title = 'Widoczność obiektu', to
   const vis = useMemo(() => (o ? visibility(o, track, night, site, minAlt, horizon) : null), [o, track, night, site, minAlt, horizon])
   const moonTrack = useMemo(() => grid.times.filter((_, i) => i % 3 === 0).map((t) => ({ t, alt: bodyAltAz('moon', t, site).altDeg })), [grid, site])
 
-  const x = (t: number) => PAD.l + ((t - night.startMs) / (night.endMs - night.startMs)) * (width - PAD.l - PAD.r)
-  const y = (alt: number) => PAD.t + ((ALT_MAX - Math.max(ALT_MIN, Math.min(ALT_MAX, alt))) / (ALT_MAX - ALT_MIN)) * (H - PAD.t - PAD.b)
+  const x = useCallback((t: number) => PAD.l + ((t - night.startMs) / (night.endMs - night.startMs)) * (width - PAD.l - PAD.r), [night.startMs, night.endMs, width])
   const tAt = (px: number) => night.startMs + ((px - PAD.l) / (width - PAD.l - PAD.r)) * (night.endMs - night.startMs)
 
   // Pasma faz nocy.
@@ -117,14 +118,20 @@ export function AltitudeChart({ object, slot, title = 'Widoczność obiektu', to
   for (let t = firstHour; t <= night.endMs; t += 3_600_000) hourTicks.push(t)
   const everyN = width < 700 ? 2 : 1
 
-  const linePath = (pts: { t: number; alt: number }[]) => pts.map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(p.alt).toFixed(1)}`).join('')
-  const visibleSegments = visibleAltitudeSegments(track)
-  const objPath = visibleSegments.map(linePath).join('')
-  const areaPath = visibleSegments.map((part) => `${linePath(part)}L${x(part[part.length - 1].t)},${y(0)}L${x(part[0].t)},${y(0)}Z`).join('')
-  // Przeszkody własnego horyzontu na azymucie obiektu w danej chwili.
-  const obstaclePath = o && horizon.length
-    ? `${linePath(track.map((s) => ({ t: s.t, alt: horizonAltitude(horizon, s.az) })))}L${x(night.endMs)},${y(ALT_MIN)}L${x(night.startMs)},${y(ALT_MIN)}Z`
-    : ''
+  const { objPath, areaPath, obstaclePath, moonPath } = useMemo(() => {
+    const linePath = (pts: { t: number; alt: number }[]) => pts.map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(p.alt).toFixed(1)}`).join('')
+    const segments = visibleAltitudeSegments(track)
+    const paths = segments.map(linePath)
+    const obstaclePath = track.length && horizon.length
+      ? `${linePath(track.map((s) => ({ t: s.t, alt: horizonAltitude(horizon, s.az) })))}L${x(night.endMs)},${y(ALT_MIN)}L${x(night.startMs)},${y(ALT_MIN)}Z`
+      : ''
+    return {
+      objPath: paths.join(''),
+      areaPath: segments.map((part, i) => `${paths[i]}L${x(part[part.length - 1].t)},${y(0)}L${x(part[0].t)},${y(0)}Z`).join(''),
+      obstaclePath,
+      moonPath: linePath(moonTrack),
+    }
+  }, [track, moonTrack, horizon, x, night.startMs, night.endMs])
 
   const cursorT = hoverT ?? time
   const cursorAlt = track.length ? track.reduce((b, s) => (Math.abs(s.t - cursorT) < Math.abs(b.t - cursorT) ? s : b)).alt : null
@@ -234,9 +241,9 @@ export function AltitudeChart({ object, slot, title = 'Widoczność obiektu', to
           {obstaclePath && <path d={obstaclePath} fill="url(#hatch)" stroke="rgba(245, 165, 36, 0.6)" strokeWidth="1" />}
 
           {/* Księżyc. */}
-          <path d={linePath(moonTrack)} fill="none" stroke="rgba(220, 225, 235, 0.38)" strokeDasharray="2 4" strokeWidth="1.2" />
+          <path d={moonPath} fill="none" stroke="rgba(220, 225, 235, 0.38)" strokeDasharray="2 4" strokeWidth="1.2" />
 
-          {o && visibleSegments.length > 0 && (
+          {o && objPath && (
             <>
               <path d={areaPath} fill="url(#g-obj)" />
               <path d={objPath} fill="none" stroke="#00e0ff" strokeWidth="2" filter="url(#glow)" />

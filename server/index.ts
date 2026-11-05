@@ -10,8 +10,10 @@ const types: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.j
 export function createAppServer({ distDir = fileURLToPath(new URL('../dist/', import.meta.url)), env = process.env, fetchImpl = fetch }: { distDir?: string; env?: AstroBinEnv & PhotoEnv; fetchImpl?: typeof fetch } = {}) {
   const root = resolve(distDir)
   return createServer(async (req, res) => {
+    let apiRequest = false
     try {
       const url = new URL(req.url ?? '/', 'http://localhost')
+      apiRequest = url.pathname.startsWith('/api/')
       if (url.pathname.startsWith('/api/photo/')) return await photoApi(req, res, env, fetchImpl)
       if (url.pathname === '/api/astrobin-photo') return await astrobinPhoto(req, res, env, fetchImpl)
       if (url.pathname.startsWith('/api/')) { res.writeHead(404).end(); return }
@@ -26,8 +28,11 @@ export function createAppServer({ distDir = fileURLToPath(new URL('../dist/', im
       const body = await readFile(realFile)
       res.writeHead(200, { 'Content-Type': types[extname(file)] ?? 'application/octet-stream', 'Cache-Control': 'no-cache' })
       res.end(req.method === 'HEAD' ? undefined : body)
-    } catch {
-      res.writeHead(404).end()
+    } catch (error) {
+      if (res.headersSent) { res.destroy(); return }
+      const missingFile = !apiRequest && error instanceof Error && 'code' in error
+        && (error.code === 'ENOENT' || error.code === 'ENOTDIR' || error.code === 'EISDIR')
+      res.writeHead(missingFile ? 404 : 500).end()
     }
   })
 }

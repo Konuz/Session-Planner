@@ -105,11 +105,11 @@ const MODES: { id: CenterMode; label: string }[] = [
 ]
 
 /** Odtwarzanie przebiegu nocy na kopule (1 s ≈ 12 min). */
-function usePlayback() {
-  const [playing, setPlaying] = useState(false)
+function PlaybackControls({ visible, playing, setPlaying }: { visible: boolean; playing: boolean; setPlaying: (playing: boolean) => void }) {
   const night = useNight()
   const time = useTime()
   const setTime = useStore((s) => s.setTime)
+  const tz = useStore((s) => s.location.timeZone)
   const tRef = useRef(time)
   tRef.current = time
   useEffect(() => {
@@ -127,20 +127,29 @@ function usePlayback() {
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
   }, [playing, night, setTime])
-  return [playing, setPlaying] as const
+  if (!visible) return null
+  return (
+    <div style={{ display: 'contents' }}>
+      <button className="button small icon-button" title={playing ? 'Zatrzymaj' : 'Odtwórz noc'} onClick={() => setPlaying(!playing)}>
+        {playing ? <Pause size={14} /> : <Play size={14} />}
+      </button>
+      <button className="button small icon-button" title="Wróć do bieżącej chwili" onClick={() => { setPlaying(false); setTime(null) }}>
+        <RotateCcw size={14} />
+      </button>
+      <span className="mono" style={{ fontSize: 12, minWidth: 44 }}>{fmtTime(time, tz)}</span>
+      <LayersMenu />
+    </div>
+  )
 }
 
 export function SkyView() {
   const mode = useStore((s) => s.centerMode)
   const setMode = useStore((s) => s.setCenterMode)
-  const setTime = useStore((s) => s.setTime)
   const selectedIndex = useStore((s) => s.selectedIndex)
   const select = useStore((s) => s.select)
-  const tz = useStore((s) => s.location.timeZone)
-  const time = useTime()
   const { catalog } = useCatalog()
   const [details, setDetails] = useState(false)
-  const [playing, setPlaying] = usePlayback()
+  const [playing, setPlaying] = useState(false)
 
   // Pierwsze uruchomienie: M 51 jak w prototypie.
   useEffect(() => {
@@ -172,18 +181,7 @@ export function SkyView() {
               </button>
             ))}
             {mode === '3d' && <LayersMenu threeD />}
-            {mode === 'dome' && (
-              <div style={{ display: 'contents' }}>
-                <button className="button small icon-button" title={playing ? 'Zatrzymaj' : 'Odtwórz noc'} onClick={() => setPlaying(!playing)}>
-                  {playing ? <Pause size={14} /> : <Play size={14} />}
-                </button>
-                <button className="button small icon-button" title="Wróć do bieżącej chwili" onClick={() => { setPlaying(false); setTime(null) }}>
-                  <RotateCcw size={14} />
-                </button>
-                <span className="mono" style={{ fontSize: 12, minWidth: 44 }}>{fmtTime(time, tz)}</span>
-                <LayersMenu />
-              </div>
-            )}
+            <PlaybackControls visible={mode === 'dome'} playing={playing} setPlaying={setPlaying} />
           </div>
         </section>
         <div className="col">

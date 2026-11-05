@@ -165,13 +165,33 @@ export function matchesFilter(o: DSO, f: CatalogFilter): boolean {
 
 /** Ranking wyszukiwania: dokładne oznaczenie, początek oznaczenia, potem nazwa. */
 export function searchScore(o: DSO, query: string): number {
-  const q = normalizeQuery(query)
+  return scoreForQuery(o, normalizeQuery(query))
+}
+
+function scoreForQuery(o: DSO, q: string): number {
   const id = normalizeQuery(o.id)
   if (id === q) return 0
-  if ([o.id, ...o.aliases].some((a) => normalizeQuery(a) === q)) return 1
+  if (o.aliases.some((a) => normalizeQuery(a) === q)) return 1
   if (id.startsWith(q)) return 2 + id.length / 100
   if (normalizeQuery(o.namePl).startsWith(q)) return 3
   return 5
+}
+
+export function quickSearch(catalog: readonly DSO[], query: string): DSO[] {
+  if (!query.trim()) return []
+  const q = normalizeQuery(query)
+  const best: { object: DSO; score: number }[] = []
+  const limit = 12
+  for (const object of catalog) {
+    if (object.majArcmin < 0 || !object.search.includes(q)) continue
+    const score = scoreForQuery(object, q) + (object.mag ?? 15) / 100
+    let index = best.length
+    while (index > 0 && best[index - 1].score > score) index--
+    if (index === limit) continue
+    if (best.length === limit) best.pop()
+    best.splice(index, 0, { object, score })
+  }
+  return best.map(({ object }) => object)
 }
 
 export async function loadCatalog(): Promise<DSO[]> {

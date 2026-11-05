@@ -76,21 +76,30 @@ export function addDays(date: string, days: number): string {
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10)
 }
 
+function zonedHourMs(date: string, hour: number, timeZone: string): number {
+  const [y, m, d] = date.split('-').map(Number)
+  const localAsUtc = Date.UTC(y, m - 1, d, hour)
+  const initialOffset = tzOffsetMs(localAsUtc, timeZone)
+  const candidate = localAsUtc - initialOffset
+  return candidate - (tzOffsetMs(candidate, timeZone) - initialOffset)
+}
+
 export function nightPhases(date: string, site: Site, timeZone: string): NightPhases {
-  const noon = zonedMidnightMs(date, timeZone) + 12 * HOUR_MS
-  const nextNoon = noon + DAY_MS
+  const noon = zonedHourMs(date, 12, timeZone)
+  const nextNoon = zonedHourMs(addDays(date, 1), 12, timeZone)
+  const searchDays = (startMs: number) => (nextNoon - startMs) / DAY_MS
   const within = (t: number | null) => (t !== null && t < nextNoon ? t : null)
-  const down = (alt: number) => within(sunCrossingMs(site, -1, alt, noon, 1))
-  const sunset = within(riseSetMs('sun', site, -1, noon, 1))
+  const down = (alt: number) => within(sunCrossingMs(site, -1, alt, noon, searchDays(noon)))
+  const sunset = within(riseSetMs('sun', site, -1, noon, searchDays(noon)))
   const civilDusk = down(-6)
   const nauticalDusk = down(-12)
   const astroDusk = down(-18)
   const from = astroDusk ?? nauticalDusk ?? civilDusk ?? sunset ?? noon
-  const up = (alt: number) => within(sunCrossingMs(site, +1, alt, from, 1))
+  const up = (alt: number) => within(sunCrossingMs(site, +1, alt, from, searchDays(from)))
   const astroDawn = astroDusk === null ? null : up(-18)
   const nauticalDawn = nauticalDusk === null ? null : up(-12)
   const civilDawn = civilDusk === null ? null : up(-6)
-  const sunrise = sunset === null ? null : within(riseSetMs('sun', site, +1, from, 1))
+  const sunrise = sunset === null ? null : within(riseSetMs('sun', site, +1, from, searchDays(from)))
   const startMs = sunset !== null ? sunset - HOUR_MS : noon + 6 * HOUR_MS
   const endMs = sunrise !== null ? sunrise + HOUR_MS : nextNoon - 6 * HOUR_MS
   const midnight = sunset !== null && sunrise !== null ? (sunset + sunrise) / 2 : noon + 12 * HOUR_MS

@@ -14,8 +14,12 @@ import { loadPhotoDistances } from './photoDistances.ts'
 export type PhotoEnv = { SKYSHOT_BRIDGE?: string; SKYSHOT_INDEX?: string }
 const execute = promisify(execFile)
 const maxBytes = 40 * 1024 * 1024
+const maxRasterPixels = 64_000_000
+const uploadIdleMs = 15_000
+const uploadDeadlineMs = 120_000
 let busy = false
 const catalogPath = fileURLToPath(new URL('../public/data/catalog.json', import.meta.url))
+const skyshotCache = fileURLToPath(new URL('../scripts/.cache/', import.meta.url))
 let cachedCatalogById: Promise<Map<string, DSO>> | null = null
 
 function getCatalogById(): Promise<Map<string, DSO>> {
@@ -29,7 +33,40 @@ function getCatalogById(): Promise<Map<string, DSO>> {
 }
 
 function paths(env: PhotoEnv) {
-  return { binary: env.SKYSHOT_BRIDGE ?? resolve('scripts/.cache/skyshot-build/release', process.platform === 'win32' ? 'tracker-skyshot.exe' : 'tracker-skyshot'), index: env.SKYSHOT_INDEX ?? resolve('scripts/.cache/skyshot-data/index') }
+  return { binary: env.SKYSHOT_BRIDGE ?? resolve(skyshotCache, 'skyshot-build/release', process.platform === 'win32' ? 'tracker-skyshot.exe' : 'tracker-skyshot'), index: env.SKYSHOT_INDEX ?? resolve(skyshotCache, 'skyshot-data/index') }
+}
+
+function receivePhoto(req: IncomingMessage): Promise<Buffer | 408 | 413 | null> {
+  return new Promise((resolve) => {
+    const chunks: Buffer[] = []
+    let size = 0
+    const idle = setTimeout(() => finish(408), uploadIdleMs)
+    const deadline = setTimeout(() => finish(408), uploadDeadlineMs)
+
+    function finish(result: Buffer | 408 | 413 | null) {
+      clearTimeout(idle)
+      clearTimeout(deadline)
+      req.off('data', onData)
+      req.off('end', onEnd)
+      req.off('close', onClose)
+      req.off('error', onClose)
+      if (typeof result === 'number') req.pause()
+      resolve(result)
+    }
+    function onData(chunk: Buffer) {
+      size += chunk.length
+      if (size > maxBytes) { finish(413); return }
+      chunks.push(chunk)
+      idle.refresh()
+    }
+    function onEnd() { finish(Buffer.concat(chunks, size)) }
+    function onClose() { finish(null) }
+
+    req.once('end', onEnd)
+    req.once('close', onClose)
+    req.once('error', onClose)
+    req.on('data', onData)
+  })
 }
 
 export async function photoApi(req: IncomingMessage, res: ServerResponse, env: PhotoEnv = process.env as PhotoEnv, fetchImpl: typeof fetch = fetch) {
@@ -57,24 +94,24 @@ export async function photoApi(req: IncomingMessage, res: ServerResponse, env: P
   if (req.method !== 'POST') { res.setHeader('Allow', 'POST'); json(405, { error: 'Wymagane przesłanie zdjęcia.' }); return }
   const mime = req.headers['content-type']?.split(';')[0]
   if (!mime || !['image/jpeg', 'image/png', 'image/webp', 'image/tiff', 'application/fits', 'application/octet-stream'].includes(mime)) { json(415, { error: 'Wybierz plik JPEG, PNG, WebP, TIFF lub FITS.' }); return }
-  if (Number(req.headers['content-length']) > maxBytes) { json(413, { error: 'Maksymalny rozmiar zdjęcia to 40 MB.' }); return }
+  const rejectUpload = (status: 408 | 413) => {
+    res.setHeader('Connection', 'close')
+    json(status, { error: status === 408 ? 'Przekroczono czas przesyłania zdjęcia.' : 'Maksymalny rozmiar zdjęcia to 40 MB.' })
+  }
+  if (Number(req.headers['content-length']) > maxBytes) { rejectUpload(413); return }
   if (!await Promise.all([access(binary), access(index)]).then(() => true, () => false)) { json(503, { error: 'Astrometria jest niedostępna na tym serwerze. Wymaga lokalnej instalacji Skyshota.' }); return }
+  if (req.destroyed || res.destroyed) return
   if (busy) { json(409, { error: 'Trwa rozwiązywanie innego zdjęcia. Spróbuj ponownie za chwilę.' }); return }
   busy = true
   const abort = new AbortController()
-  req.on('aborted', () => abort.abort())
-  res.on('close', () => { if (!res.writableEnded) abort.abort() })
+  res.once('close', () => { if (!res.writableEnded) abort.abort() })
   let temp: string | undefined
   try {
-    const chunks: Buffer[] = []
-    let size = 0
-    for await (const chunk of req) {
-      size += chunk.length
-      if (size > maxBytes) { json(413, { error: 'Maksymalny rozmiar zdjęcia to 40 MB.' }); req.destroy(); return }
-      chunks.push(Buffer.from(chunk))
-    }
-    let input = Buffer.concat(chunks)
+    let input = await receivePhoto(req)
+    if (input === null || res.destroyed) return
+    if (typeof input === 'number') { rejectUpload(input); return }
     temp = await mkdtemp(join(tmpdir(), 'tracker-photo-'))
+    abort.signal.throwIfAborted()
     if (input.subarray(0, 9).toString() === 'SIMPLE  =') {
       const fits = join(temp, 'input.fits')
       const preview = join(temp, 'preview.png')
@@ -82,10 +119,15 @@ export async function photoApi(req: IncomingMessage, res: ServerResponse, env: P
       await execute(binary, ['preview', fits, preview], { timeout: 60_000, signal: abort.signal, windowsHide: true })
       input = await readFile(preview)
     }
+    abort.signal.throwIfAborted()
     let image: Buffer
     try {
-      image = await sharp(input, { limitInputPixels: 100_000_000 }).autoOrient().resize({ width: 3200, height: 3200, fit: 'inside', withoutEnlargement: true }).flatten({ background: '#000000' }).jpeg({ quality: 95 }).toBuffer()
-    } catch { json(422, { error: 'Nie można odczytać tego obrazu. Wybierz poprawny plik JPEG, PNG, WebP, TIFF lub FITS.' }); return }
+      image = await sharp(input, { limitInputPixels: maxRasterPixels }).autoOrient().resize({ width: 3200, height: 3200, fit: 'inside', withoutEnlargement: true }).flatten({ background: '#000000' }).jpeg({ quality: 95 }).toBuffer()
+    } catch {
+      if (!abort.signal.aborted) json(422, { error: 'Nie można odczytać tego obrazu. Dla JPEG, PNG, WebP i TIFF obowiązuje limit 64 MP.' })
+      return
+    }
+    abort.signal.throwIfAborted()
     const imagePath = join(temp, 'reference.jpg')
     await writeFile(imagePath, image)
     const { stdout } = await execute(binary, ['solve', imagePath, index, catalogPath], { timeout: 90_000, maxBuffer: 8 * 1024 * 1024, signal: abort.signal, windowsHide: true })

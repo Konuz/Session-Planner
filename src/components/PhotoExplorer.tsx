@@ -3,7 +3,7 @@ import { useEffect, useId, useRef, useState, type RefObject } from 'react'
 import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO } from '../lib/catalog'
 import { fmtDistance } from '../lib/format'
 import { coveredPhotoCircles, photoColumns, photoPose, type PhotoCut, type PhotoDistances, type PhotoProject, type PhotoSceneFrame } from '../lib/photo'
-import { readPhoto, writePhoto } from '../lib/photoStorage'
+import { hasUnsavedPhoto, readPhoto, writePhoto } from '../lib/photoStorage'
 import { Range } from './Range'
 import { CloseButton } from './CloseButton'
 
@@ -14,11 +14,14 @@ interface Props {
   fitRef: RefObject<(() => void) | null>
 }
 
+const saveFailure = 'Nie udało się zapisać zmian zdjęcia. Ponów zapis przed zamknięciem aplikacji.'
+
 export function PhotoExplorer({ project, onProject, frameRef, fitRef }: Props) {
   const input = useRef<HTMLInputElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const mounted = useRef(false)
   const [scene, setScene] = useState<PhotoSceneFrame>({ width: 800, height: 520, anchors: [] })
   const [progress, setProgress] = useState(0)
   const [playing, setPlaying] = useState(false)
@@ -38,12 +41,25 @@ export function PhotoExplorer({ project, onProject, frameRef, fitRef }: Props) {
 
   useEffect(() => {
     let live = true
-    void readPhoto().then((saved) => { if (live && restorePending.current && saved) onProject(saved) }).catch(() => { if (live) setSaveError('Nie udało się odczytać zapisanego zdjęcia.') })
-    void fetch('/api/photo/status').then((r) => r.ok ? r.json() : null).then((status) => { if (live) setReady(status?.ready === true) }).catch(() => { if (live) setReady(false) })
+    mounted.current = true
+    const statusAbort = new AbortController()
+    void readPhoto().then((saved) => {
+      if (live && restorePending.current) {
+        if (saved || hasUnsavedPhoto()) onProject(saved)
+        if (hasUnsavedPhoto()) setSaveError(saveFailure)
+      }
+    }).catch(() => { if (live) setSaveError('Nie udało się odczytać zapisanego zdjęcia.') })
+    void fetch('/api/photo/status', { signal: statusAbort.signal }).then((r) => r.ok ? r.json() : null).then((status) => { if (live) setReady(status?.ready === true) }).catch(() => { if (live) setReady(false) })
     return () => {
       live = false
+      mounted.current = false
+      statusAbort.abort()
       abortRef.current?.abort()
-      if (saveTimer.current) { clearTimeout(saveTimer.current); void writePhoto(projectRef.current).catch(() => {}) }
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current)
+        saveTimer.current = null
+        void writePhoto(projectRef.current).catch(() => console.warn('Nie udało się zapisać zmian zdjęcia. Zachowano je w pamięci aplikacji.'))
+      }
     }
   }, [onProject])
 
@@ -67,12 +83,21 @@ export function PhotoExplorer({ project, onProject, frameRef, fitRef }: Props) {
   }, [playing])
   useEffect(() => { if (progress >= 1) setPlaying(false) }, [progress])
 
+  function save(next: PhotoProject | null) {
+    void writePhoto(next).then(() => {
+      if (mounted.current && projectRef.current === next) setSaveError('')
+    }).catch(() => {
+      if (mounted.current && projectRef.current === next) setSaveError(saveFailure)
+    })
+  }
   function change(next: PhotoProject | null) {
     restorePending.current = false
+    projectRef.current = next
     onProject(next)
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => {
-      void writePhoto(next).then(() => setSaveError('')).catch(() => setSaveError('Brak miejsca na zapis. Zdjęcie działa do zamknięcia tego widoku.'))
+      saveTimer.current = null
+      save(next)
     }, 350)
   }
   function updateCut(id: string, patch: Partial<PhotoCut>) {
@@ -161,6 +186,10 @@ export function PhotoExplorer({ project, onProject, frameRef, fitRef }: Props) {
       {!project && ready === false && <span className="photo-notice">Astrometria wymaga lokalnego Skyshota.</span>}
     </div>
     {error && <div className="photo-error" role="alert">{error}<CloseButton label="Zamknij komunikat" onClick={() => setError('')} /></div>}
+    {saveError && !error && <div role="status" className="photo-error photo-save-error">
+      {saveError}
+      {hasUnsavedPhoto() && <button className="button small" onClick={() => save(projectRef.current)}>Ponów zapis</button>}
+    </div>}
     {project && <>
       <svg ref={svgRef} className="photo-overlay" viewBox={`0 0 ${width} ${height}`} aria-label="Zdjęcie z wycinkami obiektów" onPointerMove={drag} onPointerUp={() => { dragRef.current = null }} onPointerCancel={() => { dragRef.current = null }}>
         <defs>
@@ -210,7 +239,6 @@ export function PhotoExplorer({ project, onProject, frameRef, fitRef }: Props) {
           <button className={`icon-button${editing ? ' active' : ''}`} aria-label="Edytuj wycinki" aria-expanded={editing} onClick={() => { setPlaying(false); setProgress(0); setEditing(!editing) }}><Settings2 size={16} /></button>
           <button className="icon-button" aria-label="Usuń zdjęcie z widoku" onClick={() => { setPlaying(false); setProgress(0); change(null) }}><X size={15} /></button>
         </div>
-        {saveError && <p role="status" className="photo-notice">{saveError}</p>}
       </div>
       {editing && <div className="photo-editor">
         <div className="photo-editor-heading"><strong>Wycinki zdjęcia</strong><CloseButton label="Zamknij edycję wycinków" onClick={() => setEditing(false)} /></div>
