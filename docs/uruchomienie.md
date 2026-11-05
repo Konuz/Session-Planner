@@ -10,7 +10,7 @@ npm.cmd run build
 npm.cmd start
 ```
 
-Domyślnie serwer słucha na `http://127.0.0.1:4173`. `HOST` i `PORT` zmieniają adres nasłuchu. Przy publikacji skonfiguruj istniejący hosting tak, aby kierował ruch HTTPS do tego procesu, w tym ścieżkę `/api/astrobin-photo`. Serwer udostępnia wyłącznie katalog `dist/`, nie katalog repozytorium. Pliki `server/` muszą być dostępne obok `dist/`.
+Domyślnie serwer słucha na `http://127.0.0.1:4173`. `HOST` i `PORT` zmieniają adres nasłuchu. Serwer odpowiada tylko na żądania z nagłówkiem `Host` będącym adresem IP, `localhost` albo nazwą z `ALLOWED_HOSTS` (lista po przecinku, np. `ALLOWED_HOSTS=tracker.konuzastro.pl`); inne dostają 403. Chroni to przed atakiem DNS rebinding. Przy publikacji pod własną domeną ustaw `ALLOWED_HOSTS`, chyba że reverse proxy przekazuje `Host: 127.0.0.1`. Przy publikacji skonfiguruj istniejący hosting tak, aby kierował ruch HTTPS do tego procesu, w tym ścieżkę `/api/astrobin-photo`. Serwer udostępnia wyłącznie katalog `dist/`, nie katalog repozytorium. Pliki `server/` muszą być dostępne obok `dist/`.
 
 Bez kluczy endpoint zwraca 503; jeśli AstroBin nie zwróci zdjęcia, zwraca 204; błąd lub przekroczenie czasu API daje 502. Interfejs korzysta wtedy z DSS2. W trybie `npm.cmd run dev` działa ten sam kod endpointu. Test `src/lib/productionServer.test.ts` uruchamia rzeczywisty serwer HTTP z atrapą API AstroBin; nie wymaga prawdziwych kluczy ani połączenia z AstroBin.
 

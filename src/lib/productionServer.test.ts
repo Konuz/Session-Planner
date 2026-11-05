@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { request } from 'node:http'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createAppServer } from '../../server/index.ts'
@@ -63,5 +64,42 @@ it('produkcyjny serwer dostarcza frontend i endpoint AstroBin z sekretami wyłą
     await new Promise<void>((r, reject) => server.close((e) => e ? reject(e) : r()))
     await rm(dir, { recursive: true, force: true })
     await rm(privateDir, { recursive: true, force: true })
+  }
+})
+
+/** fetch nie pozwala ustawić nagłówka Host, więc żądanie idzie przez node:http. */
+function get(port: number, path: string, headers: Record<string, string> = {}) {
+  return new Promise<{ status: number; headers: Record<string, string | string[] | undefined> }>((resolve, reject) => {
+    request({ host: '127.0.0.1', port, path, headers }, (res) => { res.resume(); resolve({ status: res.statusCode ?? 0, headers: res.headers }) }).on('error', reject).end()
+  })
+}
+
+it('odrzuca obce nazwy w nagłówku Host (DNS rebinding) i ustawia nagłówki statyków', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'tracker-hosts-'))
+  await writeFile(join(dir, 'index.html'), '<html>Tracker</html>')
+  await mkdir(join(dir, 'assets'))
+  await writeFile(join(dir, 'assets', 'index-abc123.js'), 'export {}')
+  const server = createAppServer({ distDir: dir, env: { ALLOWED_HOSTS: 'tracker.konuzastro.pl, other.test' } })
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
+  const address = server.address()
+  if (!address || typeof address === 'string') throw new Error('listen')
+  const port = address.port
+  try {
+    const evil = { Host: `evil.test:${port}`, Origin: `http://evil.test:${port}` }
+    expect((await get(port, '/api/photo/status', evil)).status).toBe(403)
+    expect((await get(port, '/api/astrobin-photo?subject=M51', evil)).status).toBe(403)
+    expect((await get(port, '/', evil)).status).toBe(403)
+    for (const host of [`localhost:${port}`, `127.0.0.1:${port}`, `[::1]:${port}`, 'app.localhost', 'tracker.konuzastro.pl', 'OTHER.test:443', '192.168.1.20:4173']) {
+      expect((await get(port, '/', { Host: host })).status, host).toBe(200)
+    }
+    const page = await get(port, '/')
+    expect(page.headers['x-content-type-options']).toBe('nosniff')
+    expect(page.headers['cache-control']).toBe('no-cache')
+    const asset = await get(port, '/assets/index-abc123.js')
+    expect(asset.headers['cache-control']).toBe('public, max-age=31536000, immutable')
+    expect(asset.headers['x-content-type-options']).toBe('nosniff')
+  } finally {
+    await new Promise<void>((r, reject) => server.close((e) => e ? reject(e) : r()))
+    await rm(dir, { recursive: true, force: true })
   }
 })

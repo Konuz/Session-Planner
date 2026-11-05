@@ -24,7 +24,9 @@ it('przerywa pobieranie danych również po otrzymaniu nagłówków', async () =
   }
 })
 
+// Limit testu musi przekraczać budżet samego runCommand: 200 ms + taskkill (spawnSync do 5 s) na Windows.
+// Przy domyślnych 5 s test bywał niestabilny podczas równoległego przebiegu całego zestawu.
 it('kończy zawieszone polecenie z komunikatem o przekroczeniu limitu', async () => {
   await expect(runCommand(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { timeoutMs: 200 }))
     .rejects.toThrow('Przekroczono limit czasu polecenia')
-})
+}, 15_000)

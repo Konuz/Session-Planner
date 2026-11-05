@@ -12,7 +12,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import sharp from 'sharp'
-import { fetchBuildData } from './download.ts'
+import { cachedBytes, cachedText } from './download.ts'
 
 const ROOT = join(import.meta.dirname, '..')
 const CACHE = join(ROOT, 'scripts', '.cache')
@@ -21,25 +21,9 @@ const UA = 'konuzastro-tracker-build/0.1 (https://konuzastro.pl)'
 
 mkdirSync(join(OUT, 'art'), { recursive: true })
 
-async function cached(name: string, url: string, init?: RequestInit): Promise<string> {
-  const path = join(CACHE, name)
-  if (existsSync(path)) return readFileSync(path, 'utf8')
-  const res = await fetchBuildData(url, { ...init, headers: { 'User-Agent': UA, ...init?.headers } })
-  if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`)
-  const text = await res.text()
-  writeFileSync(path, text)
-  return text
-}
-
-async function cachedBinary(name: string, url: string): Promise<Buffer> {
-  const path = join(CACHE, name)
-  if (existsSync(path)) return readFileSync(path)
-  const res = await fetchBuildData(url, { headers: { 'User-Agent': UA } })
-  if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`)
-  const buf = Buffer.from(await res.arrayBuffer())
-  writeFileSync(path, buf)
-  return buf
-}
+const cached = (name: string, url: string, init?: RequestInit) =>
+  cachedText(CACHE, name, url, { ...init, headers: { 'User-Agent': UA, ...init?.headers } })
+const cachedBinary = (name: string, url: string) => cachedBytes(CACHE, name, url, { headers: { 'User-Agent': UA } })
 
 async function sparql(name: string, query: string): Promise<string[][]> {
   const url = `https://query.wikidata.org/sparql?query=${encodeURIComponent(query)}`
@@ -123,7 +107,9 @@ const LY_PER_UNIT: Record<string, number> = {
 const CATALOG_QIDS = 'wd:Q14534 wd:Q741672 wd:Q14530 wd:Q2565783 wd:Q3247327' // NGC, IC, Messier, Sh2, Barnard
 
 async function buildCatalog() {
-  const old: OldRecord[] = JSON.parse(readFileSync(join(CACHE, 'old-catalog.json'), 'utf8'))
+  const oldPath = join(CACHE, 'old-catalog.json')
+  if (!existsSync(oldPath)) throw new Error(`Brak ${oldPath}. Utwórz go: git show 6c2fb33:public/catalog/catalog.v1.json > scripts/.cache/old-catalog.json`)
+  const old: OldRecord[] = JSON.parse(readFileSync(oldPath, 'utf8'))
 
   const distRows = await sparql('wd-dist.csv', `SELECT ?code ?dist ?unit WHERE {
     VALUES ?cat { ${CATALOG_QIDS} }

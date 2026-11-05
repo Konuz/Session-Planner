@@ -1,4 +1,5 @@
 import { createServer } from 'node:http'
+import { isIP } from 'node:net'
 import { readFile, realpath } from 'node:fs/promises'
 import { extname, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -7,11 +8,28 @@ import { photoApi, type PhotoEnv } from './photo.ts'
 
 const types: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.woff2': 'font/woff2', '.webmanifest': 'application/manifest+json' }
 
-export function createAppServer({ distDir = fileURLToPath(new URL('../dist/', import.meta.url)), env = process.env, fetchImpl = fetch }: { distDir?: string; env?: AstroBinEnv & PhotoEnv; fetchImpl?: typeof fetch } = {}) {
+/** `ALLOWED_HOSTS`: nazwy (po przecinku), pod którymi serwer jest publikowany, np. za reverse proxy. */
+export type ServerEnv = AstroBinEnv & PhotoEnv & { ALLOWED_HOSTS?: string }
+
+/**
+ * Ochrona przed DNS rebinding: obca strona, której domena wskazuje na 127.0.0.1, wysyła własną nazwę w Host.
+ * Przepuszczamy adresy IP (rebinding wymaga nazwy domenowej), localhost i nazwy z ALLOWED_HOSTS.
+ */
+function allowedHost(host: string | undefined, env: ServerEnv): boolean {
+  if (!host) return true
+  let name: string
+  try { name = new URL(`http://${host}`).hostname } catch { return false }
+  if (isIP(name.replace(/^\[|\]$/g, '')) || name === 'localhost' || name.endsWith('.localhost')) return true
+  return (env.ALLOWED_HOSTS ?? '').split(',').some((allowed) => allowed.trim().toLowerCase() === name)
+}
+
+export function createAppServer({ distDir = fileURLToPath(new URL('../dist/', import.meta.url)), env = process.env, fetchImpl = fetch }: { distDir?: string; env?: ServerEnv; fetchImpl?: typeof fetch } = {}) {
   const root = resolve(distDir)
   return createServer(async (req, res) => {
     let apiRequest = false
     try {
+      if (!allowedHost(req.headers.host, env)) { res.writeHead(403).end(); return }
+      res.setHeader('X-Content-Type-Options', 'nosniff')
       const url = new URL(req.url ?? '/', 'http://localhost')
       apiRequest = url.pathname.startsWith('/api/')
       if (url.pathname.startsWith('/api/photo/')) return await photoApi(req, res, env, fetchImpl)
@@ -28,7 +46,9 @@ export function createAppServer({ distDir = fileURLToPath(new URL('../dist/', im
       const realFile = await realpath(file)
       if (!realFile.startsWith(realRoot + sep)) { res.writeHead(403).end(); return }
       const body = await readFile(realFile)
-      res.writeHead(200, { 'Content-Type': types[extname(file)] ?? 'application/octet-stream', 'Cache-Control': 'no-cache' })
+      // Pliki w assets/ mają skrót treści w nazwie, więc mogą być buforowane bez końca.
+      const cache = path.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache'
+      res.writeHead(200, { 'Content-Type': types[extname(file)] ?? 'application/octet-stream', 'Cache-Control': cache })
       res.end(req.method === 'HEAD' ? undefined : body)
     } catch (error) {
       if (res.headersSent) { res.destroy(); return }

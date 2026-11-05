@@ -1,14 +1,19 @@
 import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { execFileSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import { runCommand } from './run-command.ts'
 
 const revision = '76f01812fe0fc0fcdcbeba1ab89b339b19e1bc9e'
-const cache = resolve('scripts/.cache')
+// Ścieżki względem tego pliku, nie katalogu uruchomienia: serwer szuka Skyshota tak samo (server/photo.ts).
+const scripts = dirname(fileURLToPath(import.meta.url))
+const cache = resolve(scripts, '.cache')
 const source = resolve(cache, 'skyshot-solver')
 mkdirSync(cache, { recursive: true })
 
 async function installDirectory(destination, prepare) {
+  // Sprawdzenie przed pobieraniem: pełny indeks pobiera się dziesiątki minut.
+  if (existsSync(destination)) throw new Error(`Katalog instalacji już istnieje: ${destination}`)
   const staging = resolve(mkdtempSync(join(cache, 'skyshot-stage-')))
   if (dirname(realpathSync(staging)) !== realpathSync(cache) || dirname(destination) !== cache) {
     throw new Error('Niepoprawna ścieżka instalacji Skyshota.')
@@ -31,7 +36,7 @@ await runCommand('git', ['checkout', '--detach', revision], { cwd: source, timeo
 const mingw = resolve(cache, 'mingw/mingw64/bin')
 const gnu = process.platform === 'win32' && existsSync(resolve(mingw, 'gcc.exe'))
 const env = gnu ? { ...process.env, PATH: `${mingw};${process.env.PATH}`, CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER: resolve(mingw, 'gcc.exe') } : process.env
-await runCommand('cargo', [...(gnu ? ['+stable-x86_64-pc-windows-gnu'] : []), 'build', '--release', '--locked', '--manifest-path', 'scripts/skyshot-bridge/Cargo.toml', '--target-dir', 'scripts/.cache/skyshot-build'], { env, timeoutMs: 30 * minute })
+await runCommand('cargo', [...(gnu ? ['+stable-x86_64-pc-windows-gnu'] : []), 'build', '--release', '--locked', '--manifest-path', resolve(scripts, 'skyshot-bridge/Cargo.toml'), '--target-dir', resolve(cache, 'skyshot-build')], { env, timeoutMs: 30 * minute })
 if (gnu) for (const name of ['libwinpthread-1.dll', 'libgcc_s_seh-1.dll']) {
   if (existsSync(resolve(mingw, name))) copyFileSync(resolve(mingw, name), resolve(cache, 'skyshot-build/release', name))
 }
