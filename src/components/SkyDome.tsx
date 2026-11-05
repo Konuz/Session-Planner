@@ -443,6 +443,7 @@ interface Props {
 
 export function SkyDome({ playing = false }: Props) {
   const stageRef = useRef<HTMLDivElement>(null)
+  const underRef = useRef<HTMLCanvasElement>(null)
   const glRef = useRef<HTMLCanvasElement>(null)
   const overlayRef = useRef<HTMLCanvasElement>(null)
   const moonRef = useRef<HTMLDivElement>(null)
@@ -636,8 +637,9 @@ export function SkyDome({ playing = false }: Props) {
   useLayoutEffect(() => {
     const overlay = overlayRef.current
     const glCanvas = glRef.current
-    if (!overlay || !glCanvas) return
-    for (const c of [overlay, glCanvas]) {
+    const under = underRef.current
+    if (!overlay || !glCanvas || !under) return
+    for (const c of [overlay, glCanvas, under]) {
       const w = Math.round(size.w * dpr)
       const h = Math.round(size.h * dpr)
       if (c.width !== w || c.height !== h) {
@@ -648,6 +650,10 @@ export function SkyDome({ playing = false }: Props) {
     const ctx = overlay.getContext('2d')!
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, size.w, size.h)
+    // Spód (pod gwiazdami i moimi zdjęciami): Droga Mleczna, siatka wysokości, południk i linie gwiazdozbiorów.
+    const uctx = under.getContext('2d')!
+    uctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    uctx.clearRect(0, 0, size.w, size.h)
     const fullDome = view.fovDeg > 150
     const zen: Vec3 = [horMatrix[6], horMatrix[7], horMatrix[8]]
     // Jasność nieba ze Słońca: dzień przygasza gwiazdy.
@@ -663,64 +669,64 @@ export function SkyDome({ playing = false }: Props) {
       stage.style.background = `radial-gradient(circle at 50% 50%, ${sky1} 0%, #02050d ${fullDome ? 62 : 120}%, #000 100%)`
     }
 
-    // Smuga Drogi Mlecznej pod siatką i liniami; w dzień i zmierzchu słabsza razem z gwiazdami.
-    if (milkyWay) drawMilkyWay(ctx, proj, milkyWay, horizon, size.w, size.h, 0.3 * bright * bright)
+    // Smuga Drogi Mlecznej pod siatką i liniami (wszystko na spodzie, pod gwiazdami); w dzień i zmierzchu słabsza razem z gwiazdami.
+    if (milkyWay) drawMilkyWay(uctx, proj, milkyWay, horizon, size.w, size.h, 0.3 * bright * bright)
 
     const toScreenHor = (alt: number, az: number) => proj.hor(horizontalToVec({ altDeg: alt, azDeg: az }))
 
     // Siatka wysokości (pierścienie co 20°) i kierunki świata.
-    ctx.lineWidth = 1
-    ctx.strokeStyle = 'rgba(120, 150, 200, 0.16)'
-    ctx.font = '11px ui-monospace, Consolas, monospace'
-    ctx.fillStyle = 'rgba(160, 180, 210, 0.55)'
+    uctx.lineWidth = 1
+    uctx.strokeStyle = 'rgba(120, 150, 200, 0.16)'
+    uctx.font = '11px ui-monospace, Consolas, monospace'
+    uctx.fillStyle = 'rgba(160, 180, 210, 0.55)'
     for (const alt of [0, 20, 40, 60, 80]) {
-      ctx.beginPath()
-      polyline(ctx, Array.from({ length: 121 }, (_, i) => toScreenHor(alt, i * 3)), size)
-      ctx.stroke()
+      uctx.beginPath()
+      polyline(uctx, Array.from({ length: 121 }, (_, i) => toScreenHor(alt, i * 3)), size)
+      uctx.stroke()
       if (alt > 0) {
         const p = toScreenHor(alt, 315)
-        if (p) ctx.fillText(`${alt}°`, p[0] + 4, p[1] - 4)
+        if (p) uctx.fillText(`${alt}°`, p[0] + 4, p[1] - 4)
       }
     }
     for (let az = 0; az < 360; az += 45) {
-      ctx.beginPath()
+      uctx.beginPath()
       const a = toScreenHor(0, az)
       const b = toScreenHor(80, az)
       if (a && b) {
-        ctx.moveTo(a[0], a[1])
-        ctx.lineTo(b[0], b[1])
-        ctx.strokeStyle = 'rgba(120, 150, 200, 0.07)'
-        ctx.stroke()
+        uctx.moveTo(a[0], a[1])
+        uctx.lineTo(b[0], b[1])
+        uctx.strokeStyle = 'rgba(120, 150, 200, 0.07)'
+        uctx.stroke()
       }
     }
     // Południk (N–zenit–S) przerywaną linią.
-    ctx.setLineDash([3, 6])
-    ctx.strokeStyle = 'rgba(0, 224, 255, 0.22)'
-    ctx.beginPath()
-    polyline(ctx, Array.from({ length: 91 }, (_, i) => (i * 2 <= 90 ? toScreenHor(i * 2, 180) : toScreenHor(180 - i * 2, 0))), size)
-    ctx.stroke()
-    ctx.setLineDash([])
+    uctx.setLineDash([3, 6])
+    uctx.strokeStyle = 'rgba(0, 224, 255, 0.22)'
+    uctx.beginPath()
+    polyline(uctx, Array.from({ length: 91 }, (_, i) => (i * 2 <= 90 ? toScreenHor(i * 2, 180) : toScreenHor(180 - i * 2, 0))), size)
+    uctx.stroke()
+    uctx.setLineDash([])
 
     // Linie gwiazdozbiorów.
     if (sky && showLines) {
-      ctx.lineWidth = 1
+      uctx.lineWidth = 1
       for (const c of sky.constellations) {
         const hovered = hoverCon?.abbr === c.abbr
-        ctx.strokeStyle = hovered ? 'rgba(0, 224, 255, 0.75)' : 'rgba(150, 190, 230, 0.28)'
-        ctx.lineWidth = hovered ? 1.4 : 1
-        ctx.beginPath()
+        uctx.strokeStyle = hovered ? 'rgba(0, 224, 255, 0.75)' : 'rgba(150, 190, 230, 0.28)'
+        uctx.lineWidth = hovered ? 1.4 : 1
+        uctx.beginPath()
         for (const line of c.lines) {
           let prev: [number, number] | null = null
           for (const [ra, dec] of line) {
             const p = proj.eq(unitVector(ra, dec))
             if (p && prev && Math.hypot(p[0] - prev[0], p[1] - prev[1]) < size.w) {
-              ctx.moveTo(prev[0], prev[1])
-              ctx.lineTo(p[0], p[1])
+              uctx.moveTo(prev[0], prev[1])
+              uctx.lineTo(p[0], p[1])
             }
             prev = p
           }
         }
-        ctx.stroke()
+        uctx.stroke()
       }
     }
 
@@ -1395,6 +1401,7 @@ export function SkyDome({ playing = false }: Props) {
 
   return (
     <div ref={stageRef} className="sky-stage">
+      <canvas ref={underRef} aria-hidden />
       <canvas ref={glRef} aria-hidden />
       <canvas
         ref={overlayRef}
