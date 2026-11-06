@@ -57,6 +57,8 @@ Pomiary Playwrightem (Chromium, swiftshader) na zdjęciu IC 434 (zapisanego proj
 - Po rozłożeniu przez 2 s żadna scena nie rysuje klatek (Obserwatorium 200 → 200, Droga Mleczna 108 → 108); w stanie zdjęcia płótno Drogi Mlecznej stoi.
 - Pod swiftshaderem scena Obserwatorium (dekodowanie zdjęcia 2798 × 2827 i karty) bywa gotowa ok. 0,8 s po końcu fazy ustawienia; kamera czeka wtedy w pozie szwu. Klik w trakcie przejścia kończy je od razu po zbudowaniu sceny.
 - Startowy JS: 153,3 KB gzip; okno z three.js to leniwy fragment 183,5 KB gzip (ze Space3D i Obserwatorium).
+- Panele w fazie wejścia: rozmiar sceny idzie za krzywą przejścia CSS (17 wartości w 0,9 s, początek co ok. 16 ms); pod swiftshaderem zdarzają się pojedyncze klatki 150–280 ms, niesprawdzone na prawdziwej karcie graficznej. Przeglądarki bez `interpolate-size` (Firefox, Safari) przestawiają wysokość paneli od razu.
+- Telefon (390 × 844): pasek zdjęcia i przełączniki zawijają się, w stanie zdjęcia okno przewija się (scena, lista, histogram, oś).
 
 ## Moje zdjęcie obiektu (5.11.2026)
 
