@@ -111,6 +111,7 @@ export class ObservatoryScene {
   private visible = new Set<string>()
   private selected: string | null = null
   private progress = 1
+  private arrival = 1
   private domain: LogDomain = { minLy: 10, maxLy: 1e4 }
   private image = { width: 1, height: 1 }
   private photo: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial> | null = null
@@ -126,6 +127,8 @@ export class ObservatoryScene {
   private stars: THREE.Points | null = null
   private starIndex: number[] = []
   private cards = new Map<string, THREE.Sprite>()
+  private anchors = new Map<string, THREE.Sprite>()
+  private anchorMaterial: THREE.SpriteMaterial
   private ring: THREE.Sprite
   private axis = new THREE.Group()
   private ticks: { ly: number; mesh: THREE.Mesh; label: HTMLDivElement }[] = []
@@ -167,7 +170,9 @@ export class ObservatoryScene {
     this.ring.renderOrder = 10
     this.ring.visible = false
     this.scene.add(this.ring)
-    this.disposables.push(ringMap, ringMaterial)
+    const anchorMap = ringTexture(DEFAULT_ANNOTATION_COLORS.DN)
+    this.anchorMaterial = new THREE.SpriteMaterial({ map: anchorMap, depthTest: false, depthWrite: false, transparent: true, sizeAttenuation: false })
+    this.disposables.push(ringMap, ringMaterial, anchorMap, this.anchorMaterial)
 
     this.scene.add(this.axis, this.data)
     this.earthLabel = this.label('obs-label obs-earth', 'Ziemia')
@@ -290,6 +295,13 @@ export class ObservatoryScene {
       const sprite = new THREE.Sprite(material)
       this.cards.set(item.id, sprite)
       this.data.add(sprite)
+      if (item.distLy !== null && Number.isFinite(item.distLy) && item.distLy > 0) {
+        const anchor = new THREE.Sprite(this.anchorMaterial)
+        anchor.scale.setScalar(0.019)
+        anchor.renderOrder = 5
+        this.anchors.set(item.id, anchor)
+        this.data.add(anchor)
+      }
       this.itemLabels.set(item.id, this.label('obs-label obs-card', `${item.id}\n${item.distLy ? `≈ ${fmtDistance(item.distLy)}` : 'odległość nieznana'}`))
       this.dataDisposables.push(texture, material)
     }
@@ -318,6 +330,7 @@ export class ObservatoryScene {
     this.ticks = []
     this.itemLabels.clear()
     this.cards.clear()
+    this.anchors.clear()
     this.visible.clear()
     this.stars = null
     this.starIndex = []
@@ -349,9 +362,10 @@ export class ObservatoryScene {
   /** Położenia wszystkich elementów zależne od postępu, filtra i zaznaczenia. */
   private layout() {
     const e = smooth(this.progress)
+    const arrival = smooth(this.arrival)
     const f = this.fade
     if (this.photo) {
-      this.photo.material.opacity = (1 - 0.82 * e) * f.photo
+      this.photo.material.opacity = (1 - 0.82 * e * arrival) * f.photo
       this.photo.visible = this.frame!.visible = f.photo > 0
       ;(this.frame!.material as THREE.LineBasicMaterial).opacity = 0.55 * f.photo
     }
@@ -373,16 +387,25 @@ export class ObservatoryScene {
       position.needsUpdate = alpha.needsUpdate = true
     }
     const pixelScale = PLANE_WIDTH / this.image.width
+    this.anchorMaterial.opacity = (1 - arrival) * f.photo
     for (const item of this.items) {
       const card = this.cards.get(item.id)
       if (!card) continue
       // Przy 0 % zdjęcie pokazuje płaszczyzna; karta pojawia się wraz z rozkładaniem, a rozległe obiekty
       // (często większe od kadru) mają ograniczony rozmiar, by nie zasłaniać sceny.
       const photoSize = Math.min(item.radius * 2 * pixelScale, PLANE_WIDTH * 0.3)
-      card.position.copy(this.position(item))
-      card.scale.setScalar(photoSize + (Math.min(photoSize, 14) - photoSize) * e)
-      card.material.opacity = Math.min(1, e * 2.5) * f.photo
-      card.visible = this.visible.has(item.id) && e > 0
+      const destination = this.position(item)
+      const anchor = this.anchors.get(item.id)
+      if (anchor) {
+        anchor.position.copy(destination)
+        anchor.visible = this.visible.has(item.id) && this.arrival < 1 && this.anchorMaterial.opacity > 0
+      }
+      card.position.copy(destination)
+      // Lecąca tekstura jest obrazem wycinka. Pozycję obiektu wskazuje nieruchomy znacznik.
+      card.position.z *= arrival
+      card.scale.setScalar(photoSize + (Math.min(photoSize, 14) - photoSize) * e * arrival)
+      card.material.opacity = Math.min(1, e * 2.5) * smooth(Math.min(1, this.arrival * 3)) * f.photo
+      card.visible = this.visible.has(item.id) && e > 0 && card.material.opacity > 0
     }
     for (const tick of this.ticks) tick.mesh.position.set(0, 0, -depthFraction(tick.ly, this.domain) * AXIS_LENGTH * e)
     // Oś zostaje po przejęciu linii widzenia, także przy płaskim zdjęciu. Podziałka pojawia się po rozłożeniu.
@@ -488,7 +511,8 @@ export class ObservatoryScene {
     this.dirty = true
   }
 
-  setFade(fade: Partial<ObservatoryFade>) {
+  setFade(fade: Partial<ObservatoryFade>, arrival = 1) {
+    this.arrival = arrival
     this.fade = { ...this.fade, ...fade }
     this.layout()
   }
@@ -610,7 +634,9 @@ export class ObservatoryScene {
       const card = this.cards.get(item.id)!
       el.classList.toggle('selected', isSelected)
       // Obiekty bez odległości zostają na zdjęciu bez podpisu (podpis tylko po zaznaczeniu).
-      place(el, card.position.clone().add(new THREE.Vector3(0, card.scale.y / 2, 0)), this.visible.has(item.id) && (item.distLy !== null || isSelected))
+      const anchor = this.anchors.get(item.id)
+      const labelPosition = anchor?.visible ? anchor.position : card.position
+      place(el, labelPosition.clone().add(new THREE.Vector3(0, card.scale.y / 2, 0)), this.visible.has(item.id) && (item.distLy !== null || isSelected))
     }
     let starLabel = this.labels.querySelector<HTMLDivElement>('.obs-star')
     const selected = this.items.find((item) => item.id === this.selected && item.kind === 'star')

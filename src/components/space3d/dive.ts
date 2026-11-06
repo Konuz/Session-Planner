@@ -201,11 +201,11 @@ export class SpaceDive {
       const t = ease(k)
       const pose = lerpPose(seam, { ...end, up: UP }, t)
       obs.setPose(pose.position, pose.target)
-      obs.setFade({ earth: 1, pyramid: 1, axis: 1, photo: 1, grid: 1 })
+      obs.setFade({ earth: 1, pyramid: 1, axis: 1, photo: 1, grid: 1 }, k)
     } else {
       const fades = diveFades(k)
       obs.setPose(seam.position, seam.target)
-      obs.setFade({ earth: fades.earth, pyramid: fades.pyramid, axis: fades.axis, photo: fades.photo, grid: fades.grid })
+      obs.setFade({ earth: fades.earth, pyramid: fades.pyramid, axis: fades.axis, photo: fades.photo, grid: fades.grid }, 0)
     }
     obs.step(now)
   }
