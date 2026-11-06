@@ -2,11 +2,14 @@
 // i znaczniki wycinków według photoAnchorKind(…, 'galaxy'). Podpisy w DOM nad sceną Space3D.
 import { useEffect, useRef, type RefObject } from 'react'
 import * as THREE from 'three'
+import type { Vec3 } from '../../lib/astro'
 import { DEFAULT_ANNOTATION_COLORS, type ObjectType } from '../../lib/catalog'
 import { frameBasis, halfFieldTan } from '../../lib/frameBasis'
 import { fmtDistance } from '../../lib/format'
+import { AXIS_DASH, AXIS_LENGTH, EARTH_Z } from '../../lib/observatory'
 import { photoAnchorKind, type PhotoProject } from '../../lib/photo'
 import { GALACTIC_LIMIT_LY, scenePosition } from '../../lib/space3d'
+import { diveScale } from '../../lib/spaceDive'
 import { useStore } from '../../state/store'
 import type { Space3DHandle } from '../Space3D'
 
@@ -26,8 +29,10 @@ export interface PhotoGuide {
   /** Kamera na Ziemię i zmierzone wycinki (jak kadr wybranego obiektu w Space3D). */
   frameCamera(): void
   labels: HTMLDivElement
-  /** Krycie linii widzenia ze znacznikami i osobno stożka pola (nurkowanie). */
-  setOpacity(opacity: number, cone?: number, faces?: number): void
+  setOpacity(opacity: number, cone?: number, faces?: number, axis?: number): void
+  /** Dopasowanie końca i kresek linii do osi Obserwatorium podczas nurkowania. */
+  alignSightLine(amount: number, bridgeScale: number): void
+  placeMarkers(project?: (id: string, position: Vec3) => Vec3): void
   /** Ukrycie na czas edycji okręgów (płaskie zdjęcie nad sceną). */
   setVisible(visible: boolean): void
   dispose(): void
@@ -80,12 +85,13 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, c
   const materials: THREE.Material[] = []
 
   // Linia widzenia: przerywana jak linia wybranego obiektu.
-  const lineMaterial = new THREE.LineDashedMaterial({ color: accent, dashSize: 0.25 * k, gapSize: 0.18 * k, transparent: true, opacity: 0.85, depthWrite: false })
-  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([sunPos, sunPos.clone().addScaledVector(dir, length)]), lineMaterial)
+  const dashSize = 0.25 * k, gapSize = 0.18 * k
+  const lineMaterial = new THREE.LineDashedMaterial({ color: accent, dashSize, gapSize, transparent: true, opacity: 0.85, depthWrite: false })
+  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), dir.clone().multiplyScalar(length)]), lineMaterial)
+  line.position.copy(sunPos)
   line.computeLineDistances()
   group.add(line)
   disposables.push(line.geometry, lineMaterial)
-  materials.push(lineMaterial)
 
   // Stożek pola: promienie (±L, ±L, −L) w bazie kadru, skala (tg x, tg y, 1).
   const cone = new THREE.Group()
@@ -123,7 +129,7 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, c
   const labels = document.createElement('div')
   labels.className = 'obs-labels space-photo-labels'
   handle.mount.appendChild(labels)
-  const marks: { position: THREE.Vector3; label: HTMLDivElement; width: number; height: number }[] = []
+  const marks: { id: string | null; position: Vec3; sprite: THREE.Sprite; label: HTMLDivElement; width: number; height: number }[] = []
   // Wycinki bez odległości i poza skalą leżą w jednym punkcie linii: jeden znacznik i jeden podpis na grupę.
   const groups = new Map<string, typeof cuts>()
   for (const entry of cuts) {
@@ -152,7 +158,7 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, c
     label.textContent = text.join('\n')
     labels.appendChild(label)
     // Wymiary podpisu w pikselach (krój 10 px ≈ 6,1 px na znak, wiersze po 13,5 px, obramowanie) do rozmieszczania.
-    marks.push({ position: world, label, width: Math.max(...text.map((line) => line.length)) * 6.1 + 16, height: text.length * 13.5 + 8 })
+    marks.push({ id: kind === 'position' ? cut.id : null, position: world.toArray(), sprite, label, width: Math.max(...text.map((line) => line.length)) * 6.1 + 16, height: text.length * 13.5 + 8 })
   }
   handle.scene.add(group)
 
@@ -171,7 +177,7 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, c
     lastProjection.copy(camera.projectionMatrix)
     const boxes: { left: number; top: number; right: number; bottom: number }[] = []
     for (const mark of marks) {
-      v.copy(mark.position).project(camera)
+      v.copy(mark.sprite.position).project(camera)
       const on = group.visible && v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1
       mark.label.style.display = on ? '' : 'none'
       if (!on) continue
@@ -198,13 +204,28 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, c
       controls.update()
       handle.invalidate()
     },
-    setOpacity(opacity, cone = opacity, faces = cone) {
+    setOpacity(opacity, cone = opacity, faces = cone, axis = opacity) {
+      lineMaterial.opacity = 0.85 * axis
+      line.visible = axis > 0
       for (const m of materials) {
         m.userData.base ??= m.opacity
         m.opacity = (m.userData.base as number) * (m.userData.faces ? faces : m.userData.cone ? cone : opacity)
       }
       labels.style.opacity = String(opacity)
       handle.invalidate()
+    },
+    alignSightLine(amount, bridgeScale) {
+      const depth = EARTH_Z + AXIS_LENGTH
+      // Długość linii w shaderze jest lokalna. Po dopasowaniu odmierzamy kreski w jednostkach Obserwatorium.
+      line.scale.setScalar(diveScale(amount, 1, depth * bridgeScale / length))
+      lineMaterial.scale = THREE.MathUtils.lerp(1, depth / length, amount)
+      lineMaterial.dashSize = THREE.MathUtils.lerp(dashSize, AXIS_DASH, amount)
+      lineMaterial.gapSize = THREE.MathUtils.lerp(gapSize, AXIS_DASH, amount)
+    },
+    placeMarkers(project) {
+      for (const mark of marks) {
+        if (mark.id !== null) mark.sprite.position.set(...(project?.(mark.id, mark.position) ?? mark.position))
+      }
     },
     setVisible(visible) {
       group.visible = visible

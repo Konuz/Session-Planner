@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest'
+import { EARTH_Z, PLANE_WIDTH, distanceDomain, observatoryPosition } from './observatory'
 import type { Vec3 } from './astro'
-import { ALIGN_K, DIVE_PHASE_MS, bridgePoint, bridgePose, bridgeVector, coneTan, diveFades, diveFrame, divePose, diveScale, diveTotalMs, ease, lerpPose, makeBridge, nearFar, startScale, turnWeight, unbridgePoint, type DiveDirection, type Pose } from './spaceDive'
+import { ALIGN_K, DIVE_PHASE_MS, bridgePoint, bridgePose, bridgeVector, coneLength, coneTan, diveFades, diveFrame, diveMarkerPosition, divePose, diveScale, diveTotalMs, ease, lerpPose, makeBridge, nearFar, startScale, turnWeight, unbridgePoint, type DiveDirection, type Pose } from './spaceDive'
 
 // Baza kadru: dowolny obrót (osie ortonormalne, x × y = −center).
 const center: Vec3 = [0.6, 0.48, 0.64]
@@ -68,7 +69,7 @@ it('przenikanie scen trwa co najmniej 0,5 s w każdym elemencie i kierunku, bez 
 
 it('krańce nurkowania: pełna Droga Mleczna albo pełne Obserwatorium (faza wejścia bez skoku krycia)', () => {
   const start = diveFades(0), end = diveFades(1)
-  for (const key of ['layers', 'labels', 'guide', 'cone', 'coneFaces', 'spaceEarth'] as const) {
+  for (const key of ['layers', 'labels', 'guide', 'spaceAxis', 'cone', 'coneFaces', 'spaceEarth'] as const) {
     expect(start[key]).toBe(1)
     expect(end[key]).toBe(0)
   }
@@ -88,7 +89,64 @@ it('elementy Obserwatorium pojawiają się dopiero, gdy obie sceny pokrywają si
   const before = diveFades(ALIGN_K - 1e-9)
   for (const key of ['earth', 'pyramid', 'axis', 'photo', 'grid'] as const) expect(before[key]).toBe(0)
   // Odpowiedniki z Drogi Mlecznej (linia widzenia, stożek, Ziemia) są jeszcze w pełni widoczne.
-  for (const key of ['guide', 'cone', 'spaceEarth'] as const) expect(before[key]).toBe(1)
+  for (const key of ['guide', 'spaceAxis', 'cone', 'spaceEarth'] as const) expect(before[key]).toBe(1)
+})
+
+it('przy Ziemi kamera zachowuje orientację Drogi Mlecznej przed rozpoczęciem obrotu', () => {
+  const start: Pose = { position: [-20, 6, 5], target: [-24, 0, 1], up: [0, 1, 0] }
+  const u0 = startScale(start, bridge, seam, 0.001)
+  const k = 0.12
+  const pose = divePose(start, bridge, seam, { e: ease(k), k }, u0, 0.001)
+  close(pose.up, start.up)
+  const scale = diveScale(ease(k), u0, 0.001) / u0
+  close(pose.target.map((v, i) => v - pose.position[i]) as Vec3, start.target.map((v, i) => (v - start.position[i]) * scale) as Vec3)
+})
+
+it('linia środkowa obu scen jest przekazywana w tym samym tempie', () => {
+  for (const k of [ALIGN_K, 0.72, 0.8, 0.9, 1]) {
+    const fade = diveFades(k)
+    expect(fade.spaceAxis + fade.axis).toBeCloseTo(1, 12)
+  }
+})
+
+it('wycinki IC 434 zachowują kolejność odległości i trafiają do rozłożonej pozycji Obserwatorium', () => {
+  const distances = [1300, 1500, 1600]
+  const domain = distanceDomain(distances)
+  const image = { width: 1200, height: 800 }
+  const pixel = { x: 630, y: 410 }
+  const u0 = 0.03
+  for (const k of [0, 0.2, 0.45, ALIGN_K, 0.9]) {
+    const u = diveScale(ease(k), u0, 0.001)
+    const depths = distances.map((distance) => {
+      const galaxy = bridgePoint(bridge, [0, 0, EARTH_Z - distance / 1000], 1)
+      const observatory = observatoryPosition(pixel, image, distance, domain, 1)
+      const p = diveMarkerPosition(bridge, galaxy, observatory, k, u0, u)
+      if (k === 0) close(p, galaxy)
+      if (k >= ALIGN_K) close(p, bridgePoint(bridge, observatory, u))
+      return unbridgePoint(bridge, p, u)[2]
+    })
+    expect(depths[0]).toBeGreaterThan(depths[1])
+    expect(depths[1]).toBeGreaterThan(depths[2])
+  }
+})
+
+it('stożek oddaje ostrosłupowi krawędzie o tych samych końcach i zsynchronizowanym kryciu', () => {
+  const real: [number, number] = [0.0087, 0.0088]
+  const halfWidth = PLANE_WIDTH / 2, halfHeight = PLANE_WIDTH * 0.75 / 2
+  const pyramid: [number, number] = [halfWidth / EARTH_Z, halfHeight / EARTH_Z]
+  const guideLength = 50
+  expect(coneLength(0, guideLength, 0.33)).toBe(guideLength)
+  for (const k of [ALIGN_K, 0.72, 0.8, 0.9, 1]) {
+    const scale = diveScale(ease(k), 0.33, 0.001)
+    const length = coneLength(k, guideLength, scale)
+    const [tx, ty] = coneTan(k, real, pyramid)
+    for (const [x, y] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) {
+      const corner = bridgePoint(bridge, [x * halfWidth, y * halfHeight, 0], scale)
+      close(bridgePoint(bridge, [x * tx * length / scale, y * ty * length / scale, EARTH_Z - length / scale], scale), corner)
+    }
+    const fade = diveFades(k)
+    expect(fade.cone + fade.pyramid).toBeCloseTo(1, 12)
+  }
 })
 
 it('skala mostu jest logarytmiczna: u(0,5) = √(u0·u1)', () => {

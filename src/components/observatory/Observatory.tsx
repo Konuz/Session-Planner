@@ -52,7 +52,7 @@ export default function Observatory({ project, slots, stars, onRetryStars, divin
   // Płaszczyzna zdjęcia: pomniejszona bitmapa przygotowana poza głównym wątkiem (wysyłka pełnych kilku megapikseli
   // na GPU trwała ponad 100 ms w jednej klatce).
   const [plane, setPlane] = useState<ImageBitmap | null>(null)
-  const [progress, setProgress] = useState(() => reducedMotion() ? 1 : 0)
+  const [progress, setProgress] = useState(1)
   const [playing, setPlaying] = useState(false)
   const [view, setView] = useState<ObservatoryView>('structure')
   const [category, setCategory] = useState<CategoryFilter>('all')
@@ -134,17 +134,15 @@ export default function Observatory({ project, slots, stars, onRetryStars, divin
     return () => cancelAnimationFrame(raf)
   }, [playing])
   useEffect(() => { if (progress >= 1) setPlaying(false) }, [progress])
-  // Po wejściu rozkładanie rusza samo, gdy obraz jest wczytany i scena już stoi (przy ograniczonym ruchu od razu 100%).
-  // W nurkowaniu stoi: powrót zwija postęp do zera, a wejście kończy się na płaskim zdjęciu.
+  // W nurkowaniu pozycje prowadzi sterownik przejścia. Po wejściu suwak przejmuje końcowy stan sceny.
   useEffect(() => {
     if (diving || hidden) {
       setPlaying(false)
       // Postęp prowadzi sterownik nurkowania: stan zgodny ze sceną, żeby efekt postępu niczego nie przestawił.
-      setProgress(sceneRef.current?.getProgress() ?? 0)
       viewRef.current = 'structure'
       setView('structure')
-    } else if (image && !reducedMotion()) setPlaying(true)
-  }, [image, diving, hidden])
+    } else setProgress(sceneRef.current?.getProgress() ?? 1)
+  }, [diving, hidden])
 
   function unfold() {
     if (reducedMotion()) { setProgress(1); return }

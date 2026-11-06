@@ -32,6 +32,7 @@ export interface ObservatoryItem {
 /** Szerokość płaszczyzny zdjęcia i długość osi w jednostkach sceny. */
 export const PLANE_WIDTH = 100
 export const AXIS_LENGTH = 400
+export const AXIS_DASH = 2
 export const GAIA_SOURCE = 'Gaia DR3; odległość: Bailer-Jones i in. 2021 (geometryczna)'
 
 export function categoryOf(type: ObjectType): ObservatoryCategory {

@@ -2,7 +2,7 @@
 // oś odległości (log.) z Ziemią i ostrosłupem pola. Renderowanie na żądanie; podpisy w nakładce DOM.
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { AXIS_LENGTH, EARTH_Z, OBSERVATORY_FOV as FOV, PLANE_WIDTH, depthFraction, earthViewPose, fitDistance, observatoryPosition, orbitOffset, starColor, starSize, structureViewPose, type LogDomain, type ObservatoryItem } from '../../lib/observatory'
+import { AXIS_DASH, AXIS_LENGTH, EARTH_Z, OBSERVATORY_FOV as FOV, PLANE_WIDTH, depthFraction, earthViewPose, fitDistance, observatoryPosition, orbitOffset, starColor, starSize, structureViewPose, type LogDomain, type ObservatoryItem } from '../../lib/observatory'
 import { DEFAULT_ANNOTATION_COLORS } from '../../lib/catalog'
 import { fmtDistance } from '../../lib/format'
 
@@ -252,7 +252,7 @@ export class ObservatoryScene {
     this.dataDisposables.push(earthMaterial, earth.geometry, pyramidMaterial, pyramid.geometry)
 
     // Oś linii widzenia z podziałką dekad.
-    const axisMaterial = new THREE.LineDashedMaterial({ color: this.accent, dashSize: 2, gapSize: 2, transparent: true, opacity: 0.7 })
+    const axisMaterial = new THREE.LineDashedMaterial({ color: this.accent, dashSize: AXIS_DASH, gapSize: AXIS_DASH, transparent: true, opacity: 0.7 })
     const axisLine = this.axisLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([earthPos, new THREE.Vector3(0, 0, -AXIS_LENGTH)]), axisMaterial)
     axisLine.computeLineDistances()
     this.axis.add(axisLine)
@@ -326,7 +326,9 @@ export class ObservatoryScene {
   }
 
   setProgress(progress: number) {
-    this.progress = Math.max(0, Math.min(1, progress))
+    const next = Math.max(0, Math.min(1, progress))
+    if (next === this.progress) return
+    this.progress = next
     this.layout()
   }
 
@@ -383,8 +385,8 @@ export class ObservatoryScene {
       card.visible = this.visible.has(item.id) && e > 0
     }
     for (const tick of this.ticks) tick.mesh.position.set(0, 0, -depthFraction(tick.ly, this.domain) * AXIS_LENGTH * e)
-    // Przy płaskim zdjęciu oś znika; w nurkowaniu jej linia przejmuje linię widzenia Drogi Mlecznej.
-    this.axis.visible = e > 0.02 || (this.external && f.axis > 0)
+    // Oś zostaje po przejęciu linii widzenia, także przy płaskim zdjęciu. Podziałka pojawia się po rozłożeniu.
+    this.axis.visible = f.axis > 0
     for (const tick of this.ticks) tick.mesh.visible = e > 0.02
     const selected = this.items.find((item) => item.id === this.selected)
     this.ring.visible = !!selected && this.visible.has(selected.id)

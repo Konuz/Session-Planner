@@ -1,9 +1,9 @@
 // Nurkowanie z Drogi Mlecznej do rozłożonego zdjęcia (i z powrotem), bez three.js: oś czasu faz, logarytmiczna
 // skala mostu między układami, pozy kamer, kąt stożka pola i krycia warstw. Jeden wirtualny kamerzysta prowadzi
-// obie sceny; szwem jest widok Obserwatorium „Struktura” (zdjęcie płasko, progress = 0). Nurkowanie zaczyna się
+// obie sceny; szwem jest widok Obserwatorium „Struktura”. Nurkowanie zaczyna się
 // od bieżącej kamery Drogi Mlecznej (bez oddalania): zbliża ją logarytmicznie do Ziemi i obraca do pozy mostu.
 import type { Vec3 } from './astro'
-import { orbitOffset } from './observatory'
+import { EARTH_Z, orbitOffset } from './observatory'
 
 export type DiveDirection = 'in' | 'out'
 export type DivePhase = 'dive' | 'enter'
@@ -120,12 +120,13 @@ export function startScale(start: Pose, b: Bridge, seam: Pose, u1: number): numb
 /** Chwila nurkowania (k, liniowy czas), w której kamera kończy obrót do pozy mostu, a stożek pola zrównuje się
  *  z ostrosłupem: od niej Ziemia, linia widzenia i stożek obu scen pokrywają się na ekranie w każdej skali mostu. */
 export const ALIGN_K = 0.6
+const CONE_OPEN_K = 0.3
 
 /**
- * Obrót od bieżącej kamery do pozy mostu (0–1) w liniowym czasie k, nie w wygładzonym e: w e cały obrót i rozchylenie
- * stożka wypadały w ok. 0,2 s najszybszej części zbliżania i urywały się tuż przed przenikaniem scen.
+ * Obrót do pozy mostu w liniowym czasie k. Przy krańcu Drogi Mlecznej kamera najpierw zbliża się
+ * w bieżącej orientacji (a w drodze powrotnej kończy w niej przelot).
  */
-export const turnWeight = (k: number) => ramp(k, 0, ALIGN_K)
+export const turnWeight = (k: number) => ramp(k, 0.15, ALIGN_K)
 
 /**
  * Kamera Drogi Mlecznej w nurkowaniu (skala mostu z e, obrót z k): bieżąca poza zbliżana do Ziemi w skali u/u0 i poza
@@ -157,14 +158,31 @@ export function lerpPose(a: Pose, b: Pose, t: number): Pose {
   return { target, position: [target[0] + offset[0], target[1] + offset[1], target[2] + offset[2]], up: slerpDirection(a.up, b.up, t) }
 }
 
+export const guideAlignment = (k: number) => ramp(k, CONE_OPEN_K, ALIGN_K)
+
+/** Przelicza znacznik ze skali liniowej na logarytmiczną razem ze zbliżeniem kamery. */
+export function diveMarkerPosition(b: Bridge, galaxy: Vec3, observatory: Vec3, k: number, u0: number, u: number): Vec3 {
+  const mix = guideAlignment(k)
+  const target = bridgePoint(b, observatory, u)
+  return target.map((v, i) => {
+    const from = b.origin[i] + (galaxy[i] - b.origin[i]) * (u / u0)
+    return from + (v - from) * mix
+  }) as Vec3
+}
+
 /**
  * Tangensy połowy kąta stożka pola: od prawdziwego pola zdjęcia do kąta ostrosłupa Obserwatorium (zabieg poglądowy:
  * ostrosłup jest umowny, ok. 71° wobec zwykle 0,5–5° pola). Interpolacja logarytmiczna w k ∈ [0,3; ALIGN_K]: stożek
  * rozchyla się dopiero przy Ziemi, nie na całą galaktykę.
  */
 export function coneTan(k: number, real: [number, number], pyramid: [number, number]): [number, number] {
-  const c = ramp(k, 0.3, ALIGN_K)
+  const c = guideAlignment(k)
   return [Math.exp(Math.log(real[0]) * (1 - c) + Math.log(pyramid[0]) * c), Math.exp(Math.log(real[1]) * (1 - c) + Math.log(pyramid[1]) * c)]
+}
+
+/** Głębokość stożka w skali Drogi Mlecznej. Na szwie jego końce leżą w narożnikach zdjęcia. */
+export function coneLength(k: number, guideLength: number, bridgeScale: number): number {
+  return diveScale(guideAlignment(k), guideLength, EARTH_Z * bridgeScale)
 }
 
 /**
@@ -179,8 +197,9 @@ export interface DiveFades {
   /** Droga Mleczna: napisy w scenie („Ziemia”, „Centrum Galaktyki”, nazwy gwiazd) mają stałe przesunięcie w przestrzeni,
    *  więc przy zbliżaniu odpływają od swoich punktów: gasną na początku nurkowania. */
   labels: number
-  /** Droga Mleczna: linia widzenia i znaczniki wycinków (oś Obserwatorium przejmuje linię). */
+  /** Droga Mleczna: znaczniki wycinków oraz osobno linia widzenia. */
   guide: number
+  spaceAxis: number
   /** Droga Mleczna: stożek pola (gaśnie, gdy jego kąt zrówna się z ostrosłupem). */
   cone: number
   /** Ścianki stożka: gasną wcześniej i łagodniej, bo rozchylony stożek wypełnia prawie cały kadr. */
@@ -197,18 +216,21 @@ export interface DiveFades {
 
 export function diveFades(k: number): DiveFades {
   const a = ALIGN_K
+  const pyramid = ramp(k, a, a + 0.25)
+  const axis = ramp(k, a, a + 0.23)
+  const photo = ramp(k, a + 0.04, 0.94)
   return {
     layers: 1 - ramp(k, 0.45, 0.85),
     labels: 1 - ramp(k, 0, 0.33),
-    // Linia widzenia i stożek gasną dopiero, gdy ich odpowiedniki z Obserwatorium już się pokazują.
-    guide: 1 - ramp(k, a + 0.07, 0.9),
-    cone: 1 - ramp(k, a + 0.07, 0.93),
+    guide: 1 - photo,
+    spaceAxis: 1 - axis,
+    cone: 1 - pyramid,
     coneFaces: 1 - ramp(k, 0.3, a),
     spaceEarth: 1 - ramp(k, a + 0.1, a + 0.33),
     earth: ramp(k, a, a + 0.23),
-    pyramid: ramp(k, a, a + 0.25),
-    axis: ramp(k, a, a + 0.23),
-    photo: ramp(k, a + 0.04, 0.94),
+    pyramid,
+    axis,
+    photo,
     grid: ramp(k, 0.77, 1),
   }
 }

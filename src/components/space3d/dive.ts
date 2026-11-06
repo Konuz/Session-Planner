@@ -5,7 +5,7 @@ import * as THREE from 'three'
 import type { Vec3 } from '../../lib/astro'
 import { EARTH_Z, PLANE_WIDTH } from '../../lib/observatory'
 import {
-  coneTan, diveFades, diveFrame, diveScale, divePose, diveTotalMs, ease, lerpPose, makeBridge, nearFar, startScale, turnWeight,
+  coneLength, coneTan, diveFades, diveFrame, diveMarkerPosition, diveScale, divePose, diveTotalMs, ease, guideAlignment, lerpPose, makeBridge, nearFar, startScale, turnWeight,
   type DiveDirection, type DiveFrame, type DivePhase, type Pose,
 } from '../../lib/spaceDive'
 import type { ObservatoryScene } from '../observatory/scene'
@@ -28,13 +28,14 @@ export interface DiveOptions {
   guide: PhotoGuide
   /** Scena Obserwatorium; null, dopóki nie powstanie (nurkowanie czeka wtedy na starcie). */
   observatory(): ObservatoryScene | null
-  /** Poza szwu: widok Obserwatorium „Struktura” (płaskie zdjęcie, Ziemia, oś), w który wchodzi most z Drogi Mlecznej. */
+  /** Poza szwu: widok Obserwatorium „Struktura”, w który wchodzi most z Drogi Mlecznej. */
   seam: { position: Vec3; target: Vec3 }
+  markerTargets: ReadonlyMap<string, Vec3>
+  seamProgress: number
   /** Proporcje zdjęcia (wysokość / szerokość) dla kąta ostrosłupa. */
   imageAspect: number
-  /** Powrót: poza Drogi Mlecznej sprzed wejścia i postęp rozkładania zwijany do 0. */
+  /** Powrót: poza Drogi Mlecznej sprzed wejścia. */
   spacePose?: Pose
-  progress?: number
   onPhase(phase: DivePhase): void
   onDone(): void
 }
@@ -65,7 +66,6 @@ export class SpaceDive {
   /** Poza Drogi Mlecznej na krańcu ustawienia (naprzód: bieżąca; wstecz: zapamiętana przy wejściu). */
   readonly spacePose: Pose
   private obsEnd: { position: Vec3; target: Vec3 } | null = null
-  private obsProgress: number
   private earthMaterial: THREE.Material | null
 
   constructor(private o: DiveOptions) {
@@ -74,7 +74,6 @@ export class SpaceDive {
     this.real = guide.fieldTan
     this.pyramid = [PLANE_WIDTH / 2 / EARTH_Z, PLANE_WIDTH * o.imageAspect / 2 / EARTH_Z]
     this.spacePose = o.spacePose ?? { position: space.camera.position.toArray() as Vec3, target: space.controls.target.toArray() as Vec3, up: space.camera.up.toArray() as Vec3 }
-    this.obsProgress = o.progress ?? 0
     this.earthMaterial = space.earth ? space.earth.material as THREE.Material : null
     space.stopIntro()
     space.setExternal(true)
@@ -161,7 +160,13 @@ export class SpaceDive {
     space.override.earthBlend = w
     this.fadeSpace(k)
     const [tx, ty] = coneTan(k, this.real, this.pyramid)
-    guide.cone.scale.set(tx, ty, 1)
+    const depthScale = coneLength(k, guide.length, u) / guide.length
+    guide.cone.scale.set(tx * depthScale, ty * depthScale, depthScale)
+    guide.alignSightLine(guideAlignment(k), u)
+    guide.placeMarkers((id, position) => {
+      const target = this.o.markerTargets.get(id)
+      return target ? diveMarkerPosition(this.bridge, position, target, k, u0, u) : position
+    })
     camera.up.set(...pose.up)
     camera.position.set(...pose.position)
     controls.target.set(...pose.target)
@@ -184,24 +189,23 @@ export class SpaceDive {
     fadeLayers(space, guide, fades.layers, fades.labels)
     if (this.earthMaterial) this.earthMaterial.opacity = fades.spaceEarth
     if (space.earth) space.earth.visible = fades.spaceEarth > 0
-    guide.setOpacity(fades.guide, fades.cone, fades.coneFaces)
+    guide.setOpacity(fades.guide, fades.cone, fades.coneFaces, fades.spaceAxis)
   }
 
   private applyObservatory(obs: ObservatoryScene, { phase, k }: DiveFrame, seam: Pose, now: number) {
     obs.setExternal(true)
     obs.setInteractive(false)
+    obs.setProgress(this.o.seamProgress)
     if (phase === 'enter') {
       const end = this.obsEnd ?? seam
       const t = ease(k)
       const pose = lerpPose(seam, { ...end, up: UP }, t)
       obs.setPose(pose.position, pose.target)
       obs.setFade({ earth: 1, pyramid: 1, axis: 1, photo: 1, grid: 1 })
-      if (this.o.direction === 'out') obs.setProgress(this.obsProgress * t)
     } else {
       const fades = diveFades(k)
       obs.setPose(seam.position, seam.target)
       obs.setFade({ earth: fades.earth, pyramid: fades.pyramid, axis: fades.axis, photo: fades.photo, grid: fades.grid })
-      obs.setProgress(0)
     }
     obs.step(now)
   }
@@ -255,6 +259,8 @@ export function restoreSpace(space: Space3DHandle, guide: PhotoGuide | null, pos
     fadeLayers(space, guide, 1)
     guide.setOpacity(1, 1, 1)
     guide.cone.scale.set(guide.fieldTan[0], guide.fieldTan[1], 1)
+    guide.alignSightLine(0, 1)
+    guide.placeMarkers()
   }
   if (space.earth) {
     const material = space.earth.material as THREE.Material
@@ -262,8 +268,13 @@ export function restoreSpace(space: Space3DHandle, guide: PhotoGuide | null, pos
     material.transparent = false
     space.earth.visible = true
   }
-  camera.up.set(...UP)
+  camera.up.set(...(pose?.up ?? UP))
   if (pose) {
+    // Usuń ruch bezwładny sprzed nurkowania, zanim ustawisz zapamiętaną kamerę.
+    const damping = controls.enableDamping
+    controls.enableDamping = false
+    controls.update()
+    controls.enableDamping = damping
     camera.position.set(...pose.position)
     controls.target.set(...pose.target)
   }

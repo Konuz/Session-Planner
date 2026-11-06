@@ -3,7 +3,7 @@
 // pod spodem bez zmian.
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { fmtDistance } from '../../lib/format'
-import { distanceDomain, observatoryItems, structureViewPose } from '../../lib/observatory'
+import { distanceDomain, observatoryItems, observatoryPosition, structureViewPose } from '../../lib/observatory'
 import type { PhotoSceneFrame } from '../../lib/photo'
 import type { SpaceScale } from '../../lib/space3d'
 import { DIVE_PHASE_MS, type DiveDirection, type Pose } from '../../lib/spaceDive'
@@ -80,6 +80,7 @@ export default function Space3DModal() {
     diveRef.current = null
     const obs = obsScene.current
     if (target === 'photo' && obs) {
+      obs.setProgress(1)
       obs.setFade({ earth: 1, pyramid: 1, axis: 1, photo: 1, grid: 1 })
       obs.setInteractive(true)
       obs.setExternal(false)
@@ -101,13 +102,18 @@ export default function Space3DModal() {
     setObsProject(project)
     setObsAlive(true)
     const items = observatoryItems(project)
+    const domain = distanceDomain(items.map((item) => item.distLy))
+    const seamProgress = direction === 'out' ? obsScene.current?.getProgress() ?? 1 : 1
+    const markerTargets = new Map(items.filter((item) => item.kind === 'object' && item.distLy !== null)
+      .map((item) => [item.id, observatoryPosition(item, project, item.distLy, domain, seamProgress)]))
     const dive = new SpaceDive({
       direction, space: handle, guide,
       observatory: () => obsScene.current,
-      seam: structureViewPose(items, project, distanceDomain(items.map((item) => item.distLy))),
+      seam: structureViewPose(items, project, domain),
+      markerTargets,
+      seamProgress,
       imageAspect: project.height / project.width,
       spacePose: direction === 'out' ? entryPose.current ?? undefined : undefined,
-      progress: direction === 'out' ? obsScene.current?.getProgress() ?? 0 : 0,
       onPhase: (phase) => { if (phase === 'enter') setPanels(direction === 'in') },
       onDone: () => { diveRef.current = null; setMode(direction === 'in' ? 'photo' : 'scale') },
     })
