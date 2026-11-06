@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { AXIS_LENGTH, PLANE_WIDTH, byDistance, fieldOfView, categoryCounts, distanceAt, distanceDomain, distanceHistogram, matchesFilter, observatoryItems, observatoryPosition, starColor, starSize, type ObservatoryItem } from './observatory'
+import { AXIS_LENGTH, PLANE_WIDTH, byDistance, fieldOfView, categoryCounts, distanceAt, distanceDomain, distanceHistogram, matchesFilter, observatoryItems, observatoryPosition, orbitOffset, starColor, starSize, type ObservatoryItem } from './observatory'
 import type { PhotoCut, PhotoProject, PhotoStar } from './photo'
 
 const image = { width: 2000, height: 1000 }
@@ -82,4 +82,29 @@ it('rozmiar pola liczy z macierzy CD i porównuje z tarczą Księżyca', () => {
   expect(fov.moons).toBeCloseTo(1.94, 2)
   expect(fieldOfView(null, 10, 10)).toBeNull()
   expect(fieldOfView({ cd: [[0, 0], [0, 0]] }, 10, 10)).toBeNull()
+})
+
+const azimuth = ([x, , z]: number[]) => Math.atan2(x, z) * 180 / Math.PI
+
+it('przelot kamery do widoku z góry obraca obraz płynnie, bez skoku azymutu na końcu', () => {
+  // Kierunek widoku Struktura i widok z góry z tym samym przesunięciem 0,001 co w scenie.
+  const from: [number, number, number] = [1.05 * 200, 0.62 * 200, 0.9 * 200]
+  const to: [number, number, number] = [0, 300, 0.001]
+  const steps = 100
+  const path = Array.from({ length: steps + 1 }, (_, i) => orbitOffset(from, to, i / steps))
+  path[0].forEach((v, i) => expect(v).toBeCloseTo(from[i], 6))
+  path[steps].forEach((v, i) => expect(v).toBeCloseTo(to[i], 6))
+  let maxStep = 0
+  for (let i = 1; i <= steps; i++) maxStep = Math.max(maxStep, Math.abs(azimuth(path[i]) - azimuth(path[i - 1])))
+  // Liniowe przesuwanie pozycji trzymało azymut ok. 49° do ostatniego kroku i wtedy skakało do 0°.
+  expect(maxStep).toBeLessThan(Math.abs(azimuth(to) - azimuth(from)) / steps * 1.01)
+})
+
+it('przelot kamery idzie najkrótszą drogą w azymucie i nie zmienia kierunku przy samym oddaleniu', () => {
+  const r = 50
+  const deg = Math.PI / 180
+  const half = orbitOffset([r * Math.sin(170 * deg), 0, r * Math.cos(170 * deg)], [r * Math.sin(-170 * deg), 0, r * Math.cos(-170 * deg)], 0.5)
+  expect(half[0]).toBeCloseTo(0, 6)
+  expect(half[2]).toBeCloseTo(-r, 6)
+  orbitOffset([10, 20, 30], [30, 60, 90], 0.5).forEach((v, i) => expect(v).toBeCloseTo([20, 40, 60][i], 6))
 })

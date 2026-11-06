@@ -93,6 +93,22 @@ export function observatoryPosition(pixel: { x: number; y: number }, image: { wi
   return [x, y, -depth * smooth(progress)]
 }
 
+type Vec3 = [number, number, number]
+
+/** Położenie kamery względem celu w chwili e (0–1) przelotu: promień, kąt od pionu (+y) i azymut atan2(x, z),
+ *  jak w OrbitControls, zmieniają się razem, azymut najkrótszą drogą. Przy liniowym przesuwaniu pozycji azymut
+ *  stał do ostatniej klatki, więc nad osią pionową (widok z góry) obraz obracał się skokiem na końcu. */
+export function orbitOffset(from: Vec3, to: Vec3, e: number): Vec3 {
+  const spherical = ([x, y, z]: Vec3) => {
+    const r = Math.hypot(x, y, z)
+    return { r, phi: r ? Math.acos(Math.max(-1, Math.min(1, y / r))) : 0, theta: Math.atan2(x, z) }
+  }
+  const a = spherical(from), b = spherical(to)
+  const turn = ((b.theta - a.theta) % (2 * Math.PI) + 3 * Math.PI) % (2 * Math.PI) - Math.PI
+  const r = a.r + (b.r - a.r) * e, phi = a.phi + (b.phi - a.phi) * e, theta = a.theta + turn * e
+  return [r * Math.sin(phi) * Math.sin(theta), r * Math.cos(phi), r * Math.sin(phi) * Math.cos(theta)]
+}
+
 export interface Histogram { edges: number[]; counts: number[] }
 
 /** Histogram w koszykach logarytmicznych; edges ma bins + 1 granic w latach świetlnych. */

@@ -2,7 +2,7 @@
 // oś odległości (log.) z Ziemią i ostrosłupem pola. Renderowanie na żądanie; podpisy w nakładce DOM.
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { AXIS_LENGTH, PLANE_WIDTH, depthFraction, observatoryPosition, starColor, starSize, type LogDomain, type ObservatoryItem } from '../../lib/observatory'
+import { AXIS_LENGTH, PLANE_WIDTH, depthFraction, observatoryPosition, orbitOffset, starColor, starSize, type LogDomain, type ObservatoryItem } from '../../lib/observatory'
 import { DEFAULT_ANNOTATION_COLORS } from '../../lib/catalog'
 import { fmtDistance } from '../../lib/format'
 
@@ -114,7 +114,7 @@ export class ObservatoryScene {
   private ticks: { ly: number; mesh: THREE.Mesh; label: HTMLDivElement }[] = []
   private itemLabels = new Map<string, HTMLDivElement>()
   private earthLabel: HTMLDivElement
-  private flight: { from: [THREE.Vector3, THREE.Vector3]; to: [THREE.Vector3, THREE.Vector3]; t0: number; resolve?: () => void } | null = null
+  private flight: { offset: [THREE.Vector3Tuple, THREE.Vector3Tuple]; target: [THREE.Vector3, THREE.Vector3]; t0: number; resolve?: () => void } | null = null
   private keys = new Set<string>()
   private lastTick = performance.now()
   private resizeObserver: ResizeObserver
@@ -342,13 +342,14 @@ export class ObservatoryScene {
     return sprite.scale.x / 2 / (2 * distance * Math.tan(THREE.MathUtils.degToRad(FOV) / 2)) * this.renderer.domElement.clientHeight
   }
 
-  /** Granice zawartości (widoczne obiekty, płaszczyzna zdjęcia i Ziemia). */
+  /** Granice zawartości po pełnym rozłożeniu (widoczne obiekty, płaszczyzna zdjęcia i Ziemia): kadr nie zależy
+   *  od suwaka, więc rozkładanie po ustawieniu widoku nie wynosi obiektów poza kadr. */
   private bounds(includeEarth = true): THREE.Box3 {
     const box = new THREE.Box3()
     const h = PLANE_WIDTH * this.image.height / this.image.width
     box.expandByPoint(new THREE.Vector3(-PLANE_WIDTH / 2, -h / 2, 0)).expandByPoint(new THREE.Vector3(PLANE_WIDTH / 2, h / 2, 0))
     if (includeEarth) box.expandByPoint(new THREE.Vector3(0, 0, EARTH_Z))
-    for (const item of this.items) if (this.visible.has(item.id) && item.distLy !== null) box.expandByPoint(this.position(item))
+    for (const item of this.items) if (this.visible.has(item.id) && item.distLy !== null) box.expandByPoint(new THREE.Vector3(...observatoryPosition(item, this.image, item.distLy, this.domain, 1)))
     return box
   }
 
@@ -401,7 +402,8 @@ export class ObservatoryScene {
     }
     return new Promise((resolve) => {
       this.flight?.resolve?.()
-      this.flight = { from: [this.camera.position.clone(), this.controls.target.clone()], to: [position, target], t0: performance.now(), resolve }
+      const offset = (p: THREE.Vector3, t: THREE.Vector3) => p.clone().sub(t).toArray([0, 0, 0])
+      this.flight = { offset: [offset(this.camera.position, this.controls.target), offset(position, target)], target: [this.controls.target.clone(), target], t0: performance.now(), resolve }
     })
   }
 
@@ -428,8 +430,9 @@ export class ObservatoryScene {
     if (this.flight) {
       const k = Math.min(1, (now - this.flight.t0) / FLY_MS)
       const e = 1 - (1 - k) ** 3
-      this.camera.position.lerpVectors(this.flight.from[0], this.flight.to[0], e)
-      this.controls.target.lerpVectors(this.flight.from[1], this.flight.to[1], e)
+      // Kamera po sferze wokół przesuwanego celu: obrót i zmiana wysokości kończą się razem.
+      this.controls.target.lerpVectors(this.flight.target[0], this.flight.target[1], e)
+      this.camera.position.set(...orbitOffset(this.flight.offset[0], this.flight.offset[1], e)).add(this.controls.target)
       this.dirty = true
       if (k >= 1) { this.flight.resolve?.(); this.flight = null }
     }

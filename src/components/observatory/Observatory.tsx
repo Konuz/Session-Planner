@@ -36,7 +36,7 @@ export default function Observatory({ project, onStars, onClose, onZoomOut }: Pr
   const hostRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<ObservatoryScene | null>(null)
   const [image, setImage] = useState<HTMLImageElement | null>(null)
-  const [progress, setProgress] = useState(1)
+  const [progress, setProgress] = useState(() => reducedMotion() ? 1 : 0)
   const [playing, setPlaying] = useState(false)
   const [view, setView] = useState<ObservatoryView>('structure')
   const [category, setCategory] = useState<CategoryFilter>('all')
@@ -110,13 +110,15 @@ export default function Observatory({ project, onStars, onClose, onZoomOut }: Pr
     const tick = (now: number) => {
       const dt = Math.min(now - last, 100)
       last = now
-      setProgress((p) => Math.min(1, p + dt / 4000))
+      setProgress((p) => Math.min(1, p + dt / 5000))
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
   }, [playing])
   useEffect(() => { if (progress >= 1) setPlaying(false) }, [progress])
+  // Po otwarciu rozkładanie rusza samo, gdy obraz jest wczytany i scena już stoi (przy ograniczonym ruchu od razu 100%).
+  useEffect(() => { if (image && !reducedMotion()) setPlaying(true) }, [image])
 
   // Okno modalne: fokus do środka po otwarciu (powrót do przycisku 3D robi PhotoExplorer).
   const dialogRef = useRef<HTMLDivElement>(null)

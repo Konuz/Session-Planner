@@ -44,6 +44,7 @@ Wszystkie punkty zrealizowane i sprawdzone (22 testy Vitest, build, zrzuty Playw
 - Przedział 998–2004 lś zostawia na liście i w scenie 363 obiekty o odległościach 999–1998 lś i żadnego bez odległości.
 - Scena rysuje tylko przy ruchu: w spoczynku zero wywołań rysowania przez 3 s, także po przelocie kamery. Startowy JS ma 149,1 KB gzip, obserwatorium to leniwy fragment 10,6 KB.
 - Eksport wideo pominięto (decyzja użytkownika).
+- 6.11.2026: po otwarciu okna rozkładanie rusza samo od 0% i trwa 5 s (wcześniej 4 s, na przycisk; na M 51 pod swiftshaderem 5,17 s zegara, bo 10 klatek przekroczyło limit kroku 100 ms); kadr widoków liczony dla pełnego rozłożenia. Przelot kamery po sferze wokół celu: na M 51 kąt osi na ekranie przy przejściu Struktura → Z góry maleje płynnie z 70,7° do 0° (ostatnie klatki 0,2° → 0,1° → 0°), bez obrotu na końcu.
 
 ## Moje zdjęcie obiektu (5.11.2026)
 
