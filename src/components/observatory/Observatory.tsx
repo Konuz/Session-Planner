@@ -13,14 +13,18 @@ import { DistanceHistogram } from './DistanceHistogram'
 import { ObjectList, itemKind } from './ObjectList'
 import { ObservatoryScene, type ObservatoryView } from './scene'
 
-/** Miejsca w oknie „Pozycja 3D”: scena (pod nią płótno Drogi Mlecznej), pasek narzędzi i podsumowanie w nagłówku. */
-export interface ObservatorySlots { stage: HTMLElement; toolbar: HTMLElement; summary: HTMLElement }
+/** Miejsca w oknie „Pozycja 3D”: scena (pod nią płótno Drogi Mlecznej), pasek narzędzi i podsumowanie w nagłówku.
+ *  Pasek dostaje przełączniki dopiero w stanie zdjęcia (w nurkowaniu go nie ma). */
+export interface ObservatorySlots { stage: HTMLElement; toolbar: HTMLElement | null; summary: HTMLElement | null }
 
 interface Props {
   project: PhotoProject
   slots: ObservatorySlots
   stars: StarsStatus
   onRetryStars(): void
+  /** Nurkowanie w toku: scena bez własnej pętli i bez samoczynnego rozkładania (rusza po wejściu). */
+  diving: boolean
+  onScene?(scene: ObservatoryScene | null): void
 }
 
 const VIEWS: { id: ObservatoryView; label: string }[] = [
@@ -36,7 +40,7 @@ function thumbnail(image: HTMLImageElement, item: ObservatoryItem): string {
   return canvas.toDataURL('image/jpeg', 0.85)
 }
 
-export default function Observatory({ project, slots, stars, onRetryStars }: Props) {
+export default function Observatory({ project, slots, stars, onRetryStars, diving, onScene }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<ObservatoryScene | null>(null)
   const [image, setImage] = useState<HTMLImageElement | null>(null)
@@ -72,12 +76,17 @@ export default function Observatory({ project, slots, stars, onRetryStars }: Pro
   }, [project.image])
 
   // Scena powstaje po wczytaniu obrazu i odtwarza się, gdy zmieni się zestaw obiektów (np. po pobraniu gwiazd).
+  const divingRef = useRef(diving)
+  divingRef.current = diving
+  const onSceneRef = useRef(onScene)
+  onSceneRef.current = onScene
   useEffect(() => {
     if (!image || !hostRef.current) return
-    const scene = new ObservatoryScene(hostRef.current, { reducedMotion: reducedMotion(), onSelect: setSelected })
+    const scene = new ObservatoryScene(hostRef.current, { reducedMotion: reducedMotion(), onSelect: setSelected, external: divingRef.current })
     scene.setData(image, { width: project.width, height: project.height }, items, domain)
     sceneRef.current = scene
-    return () => { scene.dispose(); sceneRef.current = null }
+    onSceneRef.current?.(scene)
+    return () => { onSceneRef.current?.(null); scene.dispose(); sceneRef.current = null }
   }, [image, items, domain, project.width, project.height])
 
   useEffect(() => { sceneRef.current?.setProgress(progress) }, [progress, image, items])
@@ -102,8 +111,12 @@ export default function Observatory({ project, slots, stars, onRetryStars }: Pro
     return () => cancelAnimationFrame(raf)
   }, [playing])
   useEffect(() => { if (progress >= 1) setPlaying(false) }, [progress])
-  // Po otwarciu rozkładanie rusza samo, gdy obraz jest wczytany i scena już stoi (przy ograniczonym ruchu od razu 100%).
-  useEffect(() => { if (image && !reducedMotion()) setPlaying(true) }, [image])
+  // Po wejściu rozkładanie rusza samo, gdy obraz jest wczytany i scena już stoi (przy ograniczonym ruchu od razu 100%).
+  // W nurkowaniu stoi: powrót zwija postęp do zera, a wejście kończy się na płaskim zdjęciu.
+  useEffect(() => {
+    if (diving) setPlaying(false)
+    else if (image && !reducedMotion()) setPlaying(true)
+  }, [image, diving])
 
   function unfold() {
     if (reducedMotion()) { setProgress(1); return }
@@ -114,11 +127,11 @@ export default function Observatory({ project, slots, stars, onRetryStars }: Pro
   const unknown = visibleItems.length - withDistance.length
 
   return <>
-    {createPortal(<>
+    {slots.summary && createPortal(<>
       {span ? <><strong>Obiekty w 3D: {withDistance.length}</strong><span>{fmtDistance(span[0])} — {fmtDistance(span[1])}</span></> : <strong>Brak odległości w tej grupie</strong>}
       {stars.status === 'loading' && <span className="accent">Pobieranie gwiazd Gaia DR3…</span>}
     </>, slots.summary)}
-    {createPortal(<>
+    {slots.toolbar && createPortal(<>
       <select className="control" aria-label="Grupa obiektów" value={category} onChange={(e) => setCategory(e.target.value as CategoryFilter)}>
         {(Object.keys(CATEGORY_LABELS) as CategoryFilter[]).map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]} ({counts[c]})</option>)}
       </select>

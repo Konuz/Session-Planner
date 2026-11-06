@@ -181,3 +181,31 @@ export function fieldOfView(wcs: unknown, width: number, height: number): { widt
   const widthDeg = width * scale, heightDeg = height * scale
   return { widthDeg, heightDeg, moons: Math.max(widthDeg, heightDeg) / MOON_DEG }
 }
+
+/** Ziemia przed płaszczyzną zdjęcia (umownie: oś jest logarytmiczna, zero nie ma na niej miejsca). */
+export const EARTH_Z = 70
+/** Pionowe pole widzenia kamery Obserwatorium w stopniach. */
+export const OBSERVATORY_FOV = 40
+
+/** Odległość kamery, przy której prostokąt (szerokość × wysokość w płaszczyźnie ekranu) mieści się w kadrze. */
+export function fitDistance(width: number, height: number, aspect: number): number {
+  const v = OBSERVATORY_FOV * Math.PI / 360
+  const h = Math.atan(Math.tan(v) * aspect)
+  return Math.max(height / 2 / Math.tan(v), width / 2 / Math.tan(h)) * 1.12
+}
+
+/** Głębia zawartości po pełnym rozłożeniu: najdalszy widoczny obiekt z odległością (jednostki sceny). */
+export function contentDepth(items: Pick<ObservatoryItem, 'distLy'>[], domain: LogDomain): number {
+  let depth = 0
+  for (const item of items) if (item.distLy !== null && item.distLy > 0) depth = Math.max(depth, depthFraction(item.distLy, domain) * AXIS_LENGTH)
+  return depth
+}
+
+/** Widok „Z Ziemi” (szew nurkowania z Drogi Mlecznej): zza Ziemi, lekko nad osią; widać Ziemię, ostrosłup i zdjęcie. */
+export function earthViewPose(image: { width: number; height: number }, aspect: number, depth: number): { position: Vec3; target: Vec3 } {
+  const h = PLANE_WIDTH * image.height / image.width
+  return {
+    target: [0, h * 0.08, -Math.min(depth, AXIS_LENGTH) * 0.15],
+    position: [0, h * 0.42, EARTH_Z + fitDistance(PLANE_WIDTH, h, aspect) * 0.75],
+  }
+}

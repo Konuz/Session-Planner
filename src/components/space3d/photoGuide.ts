@@ -26,8 +26,8 @@ export interface PhotoGuide {
   /** Kamera na Ziemię i zmierzone wycinki (jak kadr wybranego obiektu w Space3D). */
   frameCamera(): void
   labels: HTMLDivElement
-  /** Krycie całości (nurkowanie). */
-  setOpacity(opacity: number): void
+  /** Krycie linii widzenia ze znacznikami i osobno stożka pola (nurkowanie). */
+  setOpacity(opacity: number, cone?: number): void
   /** Ukrycie na czas edycji okręgów (płaskie zdjęcie nad sceną). */
   setVisible(visible: boolean): void
   dispose(): void
@@ -102,18 +102,26 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, c
   cone.scale.set(fieldTan[0], fieldTan[1], 1)
   group.add(cone)
   disposables.push(coneGeometry, coneMaterial)
+  coneMaterial.userData.cone = true
   materials.push(coneMaterial)
 
   // Znaczniki i podpisy.
   const labels = document.createElement('div')
   labels.className = 'obs-labels space-photo-labels'
   handle.mount.appendChild(labels)
-  const marks: { position: THREE.Vector3; label: HTMLDivElement }[] = []
-  for (const { cut, kind } of cuts) {
+  const marks: { position: THREE.Vector3; label: HTMLDivElement; height: number }[] = []
+  // Wycinki bez odległości i poza skalą leżą w jednym punkcie linii: jeden znacznik i jeden podpis na grupę.
+  const groups = new Map<string, typeof cuts>()
+  for (const entry of cuts) {
+    const key = entry.kind === 'position' ? entry.cut.id : entry.kind
+    groups.set(key, [...(groups.get(key) ?? []), entry])
+  }
+  for (const members of groups.values()) {
+    const { cut, kind } = members[0]
     const world = kind === 'position' ? new THREE.Vector3(...scenePosition(cut, cut.distLy!, 'galaxy'))
       : kind === 'outside' ? sunPos.clone().addScaledVector(dir, length)
         : sunPos.clone().addScaledVector(dir, DIRECTION_KLY)
-    const texture = ringTexture(colors[cut.type] ?? DEFAULT_ANNOTATION_COLORS[cut.type], kind !== 'position')
+    const texture = ringTexture(members.length > 1 ? accent : colors[cut.type] ?? DEFAULT_ANNOTATION_COLORS[cut.type], kind !== 'position')
     const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, depthTest: false, sizeAttenuation: false })
     const sprite = new THREE.Sprite(material)
     sprite.scale.setScalar(0.026)
@@ -122,11 +130,14 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, c
     group.add(sprite)
     disposables.push(texture, material)
     materials.push(material)
+    const ids = members.map((m) => m.cut.id)
+    const lines = Array.from({ length: Math.ceil(ids.length / 3) }, (_, i) => ids.slice(i * 3, i * 3 + 3).join(', '))
     const label = document.createElement('div')
     label.className = `obs-label space-photo-label${kind === 'position' ? '' : ' dashed'}`
-    label.textContent = `${cut.id}\n${kind === 'outside' ? 'poza skalą' : kind === 'direction' ? 'odległość nieznana' : `≈ ${fmtDistance(cut.distLy!)}`}`
+    label.textContent = [...lines, kind === 'outside' ? 'poza skalą' : kind === 'direction' ? 'odległość nieznana' : `≈ ${fmtDistance(cut.distLy!)}`].join('\n')
     labels.appendChild(label)
-    marks.push({ position: world, label })
+    // Wysokość podpisu w pikselach (wiersze po 13,5 px i obramowanie) do rozsuwania nakładających się podpisów.
+    marks.push({ position: world, label, height: (lines.length + 1) * 13.5 + 8 })
   }
   handle.scene.add(group)
 
@@ -142,7 +153,7 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, c
     lastW = w; lastH = h
     lastCamera.copy(camera.matrixWorld)
     lastProjection.copy(camera.projectionMatrix)
-    const boxes: { x: number; y: number }[] = []
+    const boxes: { x: number; top: number; bottom: number }[] = []
     for (const mark of marks) {
       v.copy(mark.position).project(camera)
       const on = group.visible && v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1
@@ -150,8 +161,8 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, c
       if (!on) continue
       const x = (v.x + 1) / 2 * w
       let y = (1 - v.y) / 2 * h
-      while (boxes.some((b) => Math.abs(b.x - x) < 90 && Math.abs(b.y - y) < 30)) y += 30
-      boxes.push({ x, y })
+      for (let hit = boxes.find((b) => Math.abs(b.x - x) < 160 && y < b.bottom && y + mark.height > b.top); hit; hit = boxes.find((b) => Math.abs(b.x - x) < 160 && y < b.bottom && y + mark.height > b.top)) y = hit.bottom + 2
+      boxes.push({ x, top: y, bottom: y + mark.height })
       mark.label.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`
     }
   }
@@ -169,10 +180,10 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, c
       controls.update()
       handle.invalidate()
     },
-    setOpacity(opacity) {
+    setOpacity(opacity, cone = opacity) {
       for (const m of materials) {
         m.userData.base ??= m.opacity
-        m.opacity = (m.userData.base as number) * opacity
+        m.opacity = (m.userData.base as number) * (m.userData.cone ? cone : opacity)
       }
       labels.style.opacity = String(opacity)
       handle.invalidate()
@@ -199,7 +210,10 @@ export function usePhotoGuide(handle: Space3DHandle | null, project: PhotoProjec
   const framed = useRef<{ handle: Space3DHandle | null; id: string }>({ handle: null, id: '' })
   const visibleRef = useRef(visible)
   visibleRef.current = visible
+  const projectRef = useRef(project)
+  projectRef.current = project
   useEffect(() => {
+    const project = projectRef.current
     if (!handle || handle.scale !== 'galaxy' || !project) return
     const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#00e0ff'
     const guide = createPhotoGuide(handle, project, colors, accent)
@@ -211,7 +225,8 @@ export function usePhotoGuide(handle: Space3DHandle | null, project: PhotoProjec
       guide.frameCamera()
     }
     return () => { guide.dispose(); guideRef.current = null }
-  }, [handle, project, colors])
+    // Gwiazdy Gaia zmieniają projekt, ale nie znaczniki: przebudowa tylko przy zmianie zdjęcia lub wycinków.
+  }, [handle, project?.id, project?.cuts, colors])
   useEffect(() => { guideRef.current?.setVisible(visible) }, [visible])
   return guideRef
 }

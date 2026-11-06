@@ -2,19 +2,21 @@
 // oś odległości (log.) z Ziemią i ostrosłupem pola. Renderowanie na żądanie; podpisy w nakładce DOM.
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { AXIS_LENGTH, PLANE_WIDTH, depthFraction, observatoryPosition, orbitOffset, starColor, starSize, type LogDomain, type ObservatoryItem } from '../../lib/observatory'
+import { AXIS_LENGTH, EARTH_Z, OBSERVATORY_FOV as FOV, PLANE_WIDTH, depthFraction, earthViewPose, fitDistance, observatoryPosition, orbitOffset, starColor, starSize, type LogDomain, type ObservatoryItem } from '../../lib/observatory'
 import { DEFAULT_ANNOTATION_COLORS } from '../../lib/catalog'
 import { fmtDistance } from '../../lib/format'
 
 export type ObservatoryView = 'structure' | 'earth' | 'top' | 'side'
-/** Ziemia przed płaszczyzną zdjęcia (umownie: oś jest logarytmiczna, zero nie ma na niej miejsca). */
-export const EARTH_Z = 70
-const FOV = 40
+/** Krycia części sceny w nurkowaniu z Drogi Mlecznej (1: bez zmian). */
+export interface ObservatoryFade { earth: number; pyramid: number; axis: number; photo: number; grid: number }
+type Vec3 = [number, number, number]
 const FLY_MS = 900
 
 interface Options {
   reducedMotion: boolean
   onSelect(id: string | null): void
+  /** Start bez własnej pętli (scena powstaje w trakcie nurkowania, klatki rysuje sterujący). */
+  external?: boolean
 }
 
 const cssColor = (name: string, fallback: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
@@ -106,6 +108,14 @@ export class ObservatoryScene {
   private image = { width: 1, height: 1 }
   private photo: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial> | null = null
   private frame: THREE.LineLoop | null = null
+  private grid: THREE.GridHelper
+  private earth: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial> | null = null
+  private pyramid: THREE.LineSegments<THREE.BufferGeometry, THREE.LineBasicMaterial> | null = null
+  private axisLine: THREE.Line<THREE.BufferGeometry, THREE.LineDashedMaterial> | null = null
+  private tickMaterial: THREE.MeshBasicMaterial | null = null
+  private fade: ObservatoryFade = { earth: 1, pyramid: 1, axis: 1, photo: 1, grid: 1 }
+  /** Klatki z zewnątrz (nurkowanie): własna pętla stoi, pozę i krycia ustawia sterujący. */
+  private external = false
   private stars: THREE.Points | null = null
   private starIndex: number[] = []
   private cards = new Map<string, THREE.Sprite>()
@@ -136,7 +146,8 @@ export class ObservatoryScene {
     this.controls.addEventListener('start', () => { this.flight = null })
     this.controls.addEventListener('change', () => { this.dirty = true })
 
-    const grid = new THREE.GridHelper(1, 24, cssColor('--border-strong', '#232942'), cssColor('--border', '#15192b'))
+    const grid = this.grid = new THREE.GridHelper(1, 24, cssColor('--border-strong', '#232942'), cssColor('--border', '#15192b'))
+    ;(grid.material as THREE.LineBasicMaterial).transparent = true
     grid.scale.set(PLANE_WIDTH * 2.4, 1, AXIS_LENGTH + EARTH_Z + 40)
     grid.position.set(0, -PLANE_WIDTH * 0.62, (EARTH_Z - AXIS_LENGTH) / 2)
     this.scene.add(grid)
@@ -165,7 +176,8 @@ export class ObservatoryScene {
     this.resizeObserver = new ResizeObserver(() => this.resize())
     this.resizeObserver.observe(host)
     this.resize()
-    this.loop()
+    this.external = options.external ?? false
+    if (!this.external) this.loop(performance.now())
   }
 
   private label(className: string, text: string): HTMLDivElement {
@@ -210,21 +222,21 @@ export class ObservatoryScene {
     // Ta sama tekstura co w widoku Drogi Mlecznej (Space3D); scena nie ma świateł, więc materiał bez cieniowania.
     const earthMap = new THREE.TextureLoader().load(`${import.meta.env.BASE_URL}textures/earth.webp`, () => { this.dirty = true })
     earthMap.colorSpace = THREE.SRGBColorSpace
-    const earthMaterial = new THREE.MeshBasicMaterial({ map: earthMap })
-    const earth = new THREE.Mesh(new THREE.SphereGeometry(1.5, 48, 32), earthMaterial)
+    const earthMaterial = new THREE.MeshBasicMaterial({ map: earthMap, transparent: true })
+    const earth = this.earth = new THREE.Mesh(new THREE.SphereGeometry(1.5, 48, 32), earthMaterial)
     earth.position.copy(earthPos)
     const pyramidMaterial = new THREE.LineBasicMaterial({ color: this.accent, transparent: true, opacity: 0.35 })
-    const pyramid = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(corners.flatMap((c) => [earthPos, c])), pyramidMaterial)
+    const pyramid = this.pyramid = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(corners.flatMap((c) => [earthPos, c])), pyramidMaterial)
     this.scene.add(earth, pyramid)
     this.disposables.push(earthMap, earthMaterial, earth.geometry, pyramidMaterial, pyramid.geometry)
 
     // Oś linii widzenia z podziałką dekad.
     const axisMaterial = new THREE.LineDashedMaterial({ color: this.accent, dashSize: 2, gapSize: 2, transparent: true, opacity: 0.7 })
-    const axisLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([earthPos, new THREE.Vector3(0, 0, -AXIS_LENGTH)]), axisMaterial)
+    const axisLine = this.axisLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([earthPos, new THREE.Vector3(0, 0, -AXIS_LENGTH)]), axisMaterial)
     axisLine.computeLineDistances()
     this.axis.add(axisLine)
     const tickGeometry = new THREE.RingGeometry(1.2, 1.6, 24)
-    const tickMaterial = new THREE.MeshBasicMaterial({ color: this.accent, transparent: true, opacity: 0.6, side: THREE.DoubleSide })
+    const tickMaterial = this.tickMaterial = new THREE.MeshBasicMaterial({ color: this.accent, transparent: true, opacity: 0.6, side: THREE.DoubleSide })
     this.disposables.push(axisMaterial, axisLine.geometry, tickGeometry, tickMaterial)
     for (let k = Math.round(Math.log10(domain.minLy)); 10 ** k <= domain.maxLy * 1.0001; k++) {
       const mesh = new THREE.Mesh(tickGeometry, tickMaterial)
@@ -286,7 +298,18 @@ export class ObservatoryScene {
   /** Położenia wszystkich elementów zależne od postępu, filtra i zaznaczenia. */
   private layout() {
     const e = smooth(this.progress)
-    if (this.photo) this.photo.material.opacity = 1 - 0.82 * e
+    const f = this.fade
+    if (this.photo) {
+      this.photo.material.opacity = (1 - 0.82 * e) * f.photo
+      this.photo.visible = this.frame!.visible = f.photo > 0
+      ;(this.frame!.material as THREE.LineBasicMaterial).opacity = 0.55 * f.photo
+    }
+    ;(this.grid.material as THREE.LineBasicMaterial).opacity = f.grid
+    this.grid.visible = f.grid > 0
+    if (this.earth) { this.earth.material.opacity = f.earth; this.earth.visible = f.earth > 0 }
+    if (this.pyramid) { this.pyramid.material.opacity = 0.35 * f.pyramid; this.pyramid.visible = f.pyramid > 0 }
+    if (this.axisLine) this.axisLine.material.opacity = 0.7 * f.axis
+    if (this.tickMaterial) this.tickMaterial.opacity = 0.6 * f.axis
     if (this.stars) {
       const position = this.stars.geometry.getAttribute('position') as THREE.BufferAttribute
       const alpha = this.stars.geometry.getAttribute('alpha') as THREE.BufferAttribute
@@ -294,7 +317,7 @@ export class ObservatoryScene {
         const item = this.items[itemIndex]
         position.setXYZ(i, ...observatoryPosition(item, this.image, item.distLy, this.domain, this.progress))
         // Na płaszczyźnie gwiazdy są już na zdjęciu; jasny punkt pojawia się wraz z rozkładaniem.
-        alpha.setX(i, this.visible.has(item.id) ? 0.25 + 0.75 * e : 0)
+        alpha.setX(i, this.visible.has(item.id) ? (0.25 + 0.75 * e) * f.photo : 0)
       })
       position.needsUpdate = alpha.needsUpdate = true
     }
@@ -307,11 +330,13 @@ export class ObservatoryScene {
       const photoSize = Math.min(item.radius * 2 * pixelScale, PLANE_WIDTH * 0.3)
       card.position.copy(this.position(item))
       card.scale.setScalar(photoSize + (Math.min(photoSize, 14) - photoSize) * e)
-      card.material.opacity = Math.min(1, e * 2.5)
+      card.material.opacity = Math.min(1, e * 2.5) * f.photo
       card.visible = this.visible.has(item.id) && e > 0
     }
     for (const tick of this.ticks) tick.mesh.position.set(0, 0, -depthFraction(tick.ly, this.domain) * AXIS_LENGTH * e)
-    this.axis.visible = e > 0.02
+    // Przy płaskim zdjęciu oś znika; w nurkowaniu jej linia przejmuje linię widzenia Drogi Mlecznej.
+    this.axis.visible = e > 0.02 || (this.external && f.axis > 0)
+    for (const tick of this.ticks) tick.mesh.visible = e > 0.02
     const selected = this.items.find((item) => item.id === this.selected)
     this.ring.visible = !!selected && this.visible.has(selected.id)
     if (selected) this.ring.position.copy(this.position(selected))
@@ -353,23 +378,25 @@ export class ObservatoryScene {
     return box
   }
 
-  /** Odległość kamery, przy której prostokąt (szerokość × wysokość w płaszczyźnie ekranu) mieści się w kadrze. */
   private fitDistance(width: number, height: number): number {
-    const v = THREE.MathUtils.degToRad(FOV) / 2
-    const h = Math.atan(Math.tan(v) * this.camera.aspect)
-    return Math.max(height / 2 / Math.tan(v), width / 2 / Math.tan(h)) * 1.12
+    return fitDistance(width, height, this.camera.aspect)
   }
 
   setView(view: ObservatoryView, animate = true) {
+    const pose = this.viewPose(view)
+    this.fly(new THREE.Vector3(...pose.position), new THREE.Vector3(...pose.target), animate)
+  }
+
+  /** Poza kamery widoku (bez przelotu). */
+  viewPose(view: ObservatoryView): { position: Vec3; target: Vec3 } {
     const box = this.bounds(view !== 'earth')
     const center = box.getCenter(new THREE.Vector3())
     const size = box.getSize(new THREE.Vector3())
     let position: THREE.Vector3, target: THREE.Vector3
     if (view === 'earth') {
-      // Zza Ziemi, lekko nad osią: widać Ziemię, ostrosłup pola i zdjęcie w całości.
-      const h = PLANE_WIDTH * this.image.height / this.image.width
-      target = new THREE.Vector3(0, h * 0.08, -Math.min(size.z, AXIS_LENGTH) * 0.15)
-      position = new THREE.Vector3(0, h * 0.42, EARTH_Z + this.fitDistance(PLANE_WIDTH, h) * 0.75)
+      const pose = earthViewPose(this.image, this.camera.aspect, size.z)
+      target = new THREE.Vector3(...pose.target)
+      position = new THREE.Vector3(...pose.position)
     } else if (view === 'top') {
       target = center
       position = center.clone().add(new THREE.Vector3(0, this.fitDistance(size.x, size.z) + size.y / 2, 0.001))
@@ -381,7 +408,54 @@ export class ObservatoryScene {
       const radius = size.length() / 2
       position = center.clone().add(new THREE.Vector3(1.05, 0.62, 0.9).normalize().multiplyScalar(radius / Math.sin(THREE.MathUtils.degToRad(FOV) / 2) * 0.9))
     }
-    this.fly(position, target, animate)
+    return { position: position.toArray() as Vec3, target: target.toArray() as Vec3 }
+  }
+
+  /** Punkt sceny na ekranie (piksele płótna). */
+  screenPoint(p: Vec3): [number, number] {
+    const v = new THREE.Vector3(...p).project(this.camera)
+    return [(v.x + 1) / 2 * this.renderer.domElement.clientWidth, (1 - v.y) / 2 * this.renderer.domElement.clientHeight]
+  }
+
+  getProgress(): number {
+    return this.progress
+  }
+
+  getPose(): { position: Vec3; target: Vec3 } {
+    return { position: this.camera.position.toArray() as Vec3, target: this.controls.target.toArray() as Vec3 }
+  }
+
+  /** Poza ustawiana z zewnątrz (nurkowanie), bez przelotu i tłumienia. */
+  setPose(position: Vec3, target: Vec3) {
+    this.flight = null
+    this.camera.position.set(...position)
+    this.controls.target.set(...target)
+    this.camera.lookAt(this.controls.target)
+    this.dirty = true
+  }
+
+  setFade(fade: Partial<ObservatoryFade>) {
+    this.fade = { ...this.fade, ...fade }
+    this.layout()
+  }
+
+  setInteractive(on: boolean) {
+    this.controls.enabled = on
+    this.renderer.domElement.style.pointerEvents = on ? '' : 'none'
+  }
+
+  /** Klatki z zewnątrz: własna pętla stoi, klatkę rysuje step(now) z czasem requestAnimationFrame sterującego. */
+  setExternal(on: boolean) {
+    if (on === this.external) return
+    this.external = on
+    cancelAnimationFrame(this.raf)
+    this.layout()
+    if (!on) this.raf = requestAnimationFrame(this.loop)
+  }
+
+  /** Liczba narysowanych klatek (pomiar renderowania na żądanie). */
+  get frames(): number {
+    return this.renderer.info.render.frame
   }
 
   flyTo(id: string) {
@@ -415,9 +489,16 @@ export class ObservatoryScene {
   }
   private onKeyUp = (e: KeyboardEvent) => { this.keys.delete(e.code) }
 
-  private loop = () => {
+  private loop = (now: number) => {
     this.raf = requestAnimationFrame(this.loop)
-    const now = performance.now()
+    this.step(now)
+  }
+
+  step(now: number) {
+    if (this.external) {
+      if (this.dirty) this.render()
+      return
+    }
     const delta = Math.min((now - this.lastTick) / 1000, 0.05)
     this.lastTick = now
     if (this.flight) {
@@ -464,7 +545,9 @@ export class ObservatoryScene {
       if (on) el.style.transform = `translate(${((v.x + 1) / 2 * width).toFixed(1)}px, ${((1 - v.y) / 2 * height).toFixed(1)}px)`
     }
     const e = smooth(this.progress)
-    place(this.earthLabel, new THREE.Vector3(0, -4.5, EARTH_Z), true)
+    this.earthLabel.style.opacity = String(this.fade.earth)
+    this.labels.style.setProperty('--obs-photo-fade', String(this.fade.photo))
+    place(this.earthLabel, new THREE.Vector3(0, -4.5, EARTH_Z), this.fade.earth > 0)
     for (const tick of this.ticks) place(tick.label, tick.mesh.position, e > 0.3)
     for (const item of this.items) {
       const el = this.itemLabels.get(item.id)

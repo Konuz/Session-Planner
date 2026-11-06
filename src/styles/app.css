@@ -888,8 +888,18 @@ input[type='checkbox']:checked::after {
 .constellation-list button:hover, .constellation-list button:focus-visible { background: var(--accent-faint); outline: none; }
 .constellation-list button.on { color: var(--accent); }
 /* ---------- Okno „Pozycja 3D”: w skalach scena na całą szerokość, w stanie zdjęcia układ Obserwatorium ---------- */
-.space-window.is-scale { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); }
+/* Odstępy jako marginesy: w skali (i na początku nurkowania) panele Obserwatorium zwijają się płynnie do zera,
+   a scena rośnie razem z nimi (interpolate-size; bez tej własności panele pojawiają się od razu). */
+.obs-window.space-window { row-gap: 0; interpolate-size: allow-keywords; transition: grid-template-columns 0.9s var(--ease-std), column-gap 0.9s var(--ease-std); }
+.space-window > .obs-toolbar, .space-window > .obs-stage, .space-window > .obs-aside, .space-window > .obs-histogram, .space-window > .obs-bottom { margin-top: 10px; }
 .space-window .obs-stage { grid-column: 1; grid-row: 3; }
+.space-window > .obs-histogram, .space-window > .obs-bottom, .space-window > .obs-aside { overflow: hidden; transition: height 0.9s var(--ease-std), margin 0.9s var(--ease-std), padding 0.9s var(--ease-std), opacity 0.9s var(--ease-std); }
+.obs-window.space-window.is-scale { grid-template-columns: minmax(0, 1fr) 0px; column-gap: 0; }
+.space-window.is-scale > .obs-histogram, .space-window.is-scale > .obs-bottom { height: 0; margin-top: 0; padding-top: 0; padding-bottom: 0; border-width: 0; opacity: 0; }
+.space-window.is-scale > .obs-aside { padding-left: 0; padding-right: 0; border-width: 0; opacity: 0; }
+.space-window .obs-layer > :not(.obs-canvas) { transition: opacity 0.9s var(--ease-std), visibility 0.9s; }
+.space-window.is-scale .obs-layer > :not(.obs-canvas) { opacity: 0; visibility: hidden; }
+.space-window.is-diving .obs-layer { pointer-events: none; }
 .space-scene, .space-layer, .obs-layer { position: absolute; inset: 0; }
 .space-scene.is-hidden { visibility: hidden; }
 .space-layer canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
@@ -935,6 +945,8 @@ input[type='checkbox']:checked::after {
 .obs-label { position: absolute; left: 0; top: 0; white-space: pre; font: 10px/1.35 var(--mono); color: var(--text-2); }
 .obs-card { margin: -46px 0 0 8px; padding: 4px 7px; background: rgba(11, 13, 23, 0.85); border: 1px solid var(--border-strong); }
 .obs-card.selected { border-color: var(--accent); color: var(--text); }
+/* W nurkowaniu podpisy wycinków pojawiają się razem z płaskim zdjęciem. */
+.obs-labels .obs-card { opacity: var(--obs-photo-fade, 1); }
 .obs-tick { margin: 6px 0 0 6px; color: var(--accent-dim); }
 .obs-earth { margin: 4px 0 0 -18px; color: var(--text); }
 /* Płótno dostaje fokus dla WASD; ramka fokusu zasłaniałaby scenę. */
