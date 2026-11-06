@@ -134,8 +134,8 @@ Powrót („Droga Mleczna”) przebiega odwrotnie:
 - W Drodze Mlecznej pokaż w scenie 3D linię widzenia, stożek pola i znaczniki wycinków (decyzja 4), w kolorach typów z `annotationColors`. Pasek zdjęcia ma te same miejsce i wymiary co dzisiejszy `.photo-controls`, ale bez suwaka. Przyciski: [Rozłóż zdjęcie 3D] [Edytuj wycinki] [Zmień zdjęcie] [Usuń].
 - Usuń połączenia starej nakładki z Drogą Mleczną: gałąź `'galaxy'` w `photoFitRef`, rzut kotwic do `photoFrameRef` w tej skali, `zoomOutFromObservatory` i `ObservatoryScene.zoomOut`. Klasyfikacja `photoAnchorKind` i jej testy zostają (decyzja 4). Wszechświat lokalny działa jak dziś.
 - → weryfikuj:
-  - test w `src/lib`: baza kadru jest ortonormalna i ma wyznacznik +1; kierunek środka zgadza się z `galacticVector` środka; dla zapisanego zdjęcia M42 kierunki 3 gwiazd Gaia z RA/Dec i z pikseli przez bazę różnią się o < 2% szerokości pola;
-  - Playwright, Droga Mleczna ze zdjęciem M42: linia i stożek wychodzą z Ziemi w stronę Oriona, znaczniki M42 i M43 leżą ok. 1,3–1,4 tys. lś od Ziemi;
+  - test w `src/lib`: baza kadru jest ortonormalna i ma wyznacznik +1; kierunek środka zgadza się z `galacticVector` środka; dla zdjęcia IC434 (`scripts/.cache/observatory-photos`) kierunki 3 gwiazd Gaia z RA/Dec i z pikseli przez bazę różnią się o < 2% szerokości pola;
+  - Playwright, Droga Mleczna ze zdjęciem IC434: linia i stożek wychodzą z Ziemi w stronę Oriona, znaczniki wycinków leżą ok. 1,3–1,6 tys. lś od Ziemi;
   - edycja okręgu w Drodze Mlecznej zmienia kartę w Obserwatorium;
   - Wszechświat lokalny ze zdjęciem M51 wygląda jak przed zmianą (zrzut przed i po).
 
@@ -159,7 +159,7 @@ Powrót („Droga Mleczna”) przebiega odwrotnie:
 
 ## Definicja ukończenia
 
-Na zapisanym zdjęciu M42 użytkownik:
+Na zdjęciu IC434 z `scripts/.cache/observatory-photos` (zdjęcia M42 w repozytorium nie ma) użytkownik:
 1. klika „Pozycja 3D” i dostaje modal tej samej wielkości co dzisiejsze Obserwatorium;
 2. przełącza Drogę Mleczną i Wszechświat lokalny;
 3. w Drodze Mlecznej widzi linię widzenia, stożek pola i znaczniki wycinków;
