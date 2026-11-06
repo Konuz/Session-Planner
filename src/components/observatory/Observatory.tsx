@@ -1,6 +1,6 @@
 // Obserwatorium 3D zdjęcia (ładowane leniwie): gwiazdy Gaia i wycinki katalogowe wzdłuż linii widzenia.
 // Układ i interakcje wzorowane na SyQon Studio („3D distances”), kolory i krój z tokenów aplikacji.
-import { Orbit, Pause, Play } from 'lucide-react'
+import { Pause, Play, SkipBack, SkipForward } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { fmtDistance, fmtNum } from '../../lib/format'
 import { CATEGORY_LABELS, byDistance, categoryCounts, distanceDomain, distanceHistogram, fieldOfView, matchesFilter, observatoryItems, type CategoryFilter, type ObservatoryItem } from '../../lib/observatory'
@@ -154,8 +154,10 @@ export default function Observatory({ project, onStars, onClose, onZoomOut }: Pr
           {span ? <><strong>Obiekty w 3D: {withDistance.length}</strong><span>{fmtDistance(span[0])} — {fmtDistance(span[1])}</span></> : <strong>Brak odległości w tej grupie</strong>}
           {stars.status === 'loading' && <span className="accent">Pobieranie gwiazd Gaia DR3…</span>}
         </div>
-        <button type="button" className="button small" onClick={() => void zoomOut()} title="Przejdź do skali Drogi Mlecznej lub Wszechświata lokalnego"><Orbit size={14} />Droga Mleczna</button>
-        <CloseButton label="Zamknij obserwatorium" onClick={onClose} />
+        <div className="obs-header-actions">
+          <button type="button" className="button small" onClick={() => void zoomOut()} title="Przejdź do skali Drogi Mlecznej lub Wszechświata lokalnego">Droga Mleczna</button>
+          <CloseButton label="Zamknij obserwatorium" onClick={onClose} />
+        </div>
       </header>
       <div className="obs-toolbar">
         <select className="control" aria-label="Grupa obiektów" value={category} onChange={(e) => setCategory(e.target.value as CategoryFilter)}>
@@ -210,10 +212,10 @@ export default function Observatory({ project, onStars, onClose, onZoomOut }: Pr
       <DistanceHistogram histogram={histogram} domain={domain} range={range} onRange={setRange} marker={active?.distLy ?? null} />
       <div className="obs-bottom">
         <div className="obs-timeline">
-          <button type="button" className="button small" onClick={unfold}>{playing ? <Pause size={14} /> : <Play size={14} />}Rozłóż zdjęcie</button>
-          <button type="button" className={`toggle-chip${progress === 0 ? ' on' : ''}`} aria-pressed={progress === 0} title="Płaskie zdjęcie (0%)" onClick={() => { setPlaying(false); setProgress(0) }}>Zdjęcie</button>
+          <button type="button" className="button small icon-button" aria-label={playing ? 'Wstrzymaj rozkładanie' : 'Rozłóż zdjęcie'} title={playing ? 'Wstrzymaj rozkładanie' : 'Rozłóż zdjęcie'} onClick={unfold}>{playing ? <Pause size={14} /> : <Play size={14} />}</button>
+          <button type="button" className={`button small icon-button${progress === 0 ? ' active' : ''}`} aria-pressed={progress === 0} aria-label="Początek: płaskie zdjęcie (0%)" title="Początek: płaskie zdjęcie (0%)" onClick={() => { setPlaying(false); setProgress(0) }}><SkipBack size={14} /></button>
+          <button type="button" className={`button small icon-button${progress === 1 ? ' active' : ''}`} aria-pressed={progress === 1} aria-label="Koniec: pełna głębia z odległości (100%)" title="Koniec: pełna głębia z odległości (100%)" onClick={() => { setPlaying(false); setProgress(1) }}><SkipForward size={14} /></button>
           <Range aria-label="Rozłożenie zdjęcia w głąb" min={0} max={1} step={0.001} value={progress} onChange={(e) => { setPlaying(false); setProgress(Number(e.target.value)) }} />
-          <button type="button" className={`toggle-chip${progress === 1 ? ' on' : ''}`} aria-pressed={progress === 1} title="Pełna głębia z odległości (100%)" onClick={() => { setPlaying(false); setProgress(1) }}>Przestrzeń 3D</button>
           <span className="figures obs-percent">{Math.round(progress * 100)}%</span>
         </div>
         <div className="obs-legend">

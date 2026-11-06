@@ -20,7 +20,7 @@ Przycisk **3D** przy zdjęciu otwiera okno, w którym gwiazdy z kadru i włączo
 - **Odległości gwiazd:** geometryczne odległości Bailer-Jones i in. (2021) z paralaks Gaia EDR3 (mediana i przedział 16.–84. percentyla). Podajemy je tylko przy ϖ/σ ≥ 5, czyli błędzie względnym paralaksy do 20%. Słabsze, ujemne i brakujące paralaksy dają gwiazdę bez odległości: zostaje na zdjęciu, nie dostaje fikcyjnej głębi.
 - **Oś:** logarytmiczna, w pełnych dekadach od najbliższego do najdalszego obiektu, wspólna dla gwiazd i wycinków. Ziemia stoi umownie przed płaszczyzną zdjęcia, bo zero nie ma miejsca na osi logarytmicznej. Ostrosłup od Ziemi do narożników kadru pokazuje pole widzenia, a widok „Z Ziemi” podaje jego prawdziwy rozmiar w stopniach i w tarczach Księżyca (31 minut kątowych).
 - **Sterowanie:**
-  - suwak „Zdjęcie ↔ Przestrzeń 3D”: przy 0% płaskie zdjęcie, przy 100% głębia z odległości; przycisk „Rozłóż zdjęcie” odtwarza przejście;
+  - suwak rozłożenia: przy 0% płaskie zdjęcie, przy 100% głębia z odległości; przyciski początku i końca po lewej skaczą do 0% i 100%, „Rozłóż zdjęcie” odtwarza przejście;
   - widoki Struktura, Z Ziemi, Z góry i Z boku, „Dopasuj”, „Leć do zaznaczenia”, klawisze WASD;
   - grupy obiektów (wszystko, gwiazdy, mgławice i gromady, galaktyki) z komunikatem przy pustej grupie;
   - histogram odległości w skali logarytmicznej: przeciągnięcie wybiera przedział, dwuklik go usuwa, a dwa suwaki pod spodem obsługują klawiaturę;

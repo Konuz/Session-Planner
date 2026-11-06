@@ -244,7 +244,7 @@ export default function CatalogView() {
           <button className={`button small${onlyFavorites ? ' active' : ''}`} aria-pressed={onlyFavorites} onClick={() => setOnlyFavorites((value) => !value)}>
             <Heart size={14} fill={onlyFavorites ? 'currentColor' : 'none'} /> Ulubione ({favoriteIds.length})
           </button>
-          <select className="control" value={sortBy} onChange={(e) => setSort(e.target.value as typeof sortBy)} aria-label="Sortowanie" disabled={!!filter.query}>
+          <select className="control catalog-sort" value={sortBy} onChange={(e) => setSort(e.target.value as typeof sortBy)} aria-label="Sortowanie" disabled={!!filter.query}>
             {SORTS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
         </div>

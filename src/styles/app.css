@@ -656,6 +656,8 @@ input[type='checkbox']:checked::after {
 .filter-group .label { display: block; margin-bottom: 8px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .catalog-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+/* Sortowanie: wysokość, ramka i pismo (mono, wersaliki) jak przycisk „Ulubione” obok. */
+.catalog-sort { min-height: 28px; height: 28px; border-color: var(--accent); font: 10px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; }
 .catalog-plan-prompt { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; padding: 12px 14px; border: 1px solid var(--border-strong); background: var(--card); font-size: 13px; }
 .catalog-layout > section { display: flex; flex-direction: column; min-width: 0; }
 .catalog-scroll { flex: 1 1 auto; min-height: 0; height: calc(100vh - 175px); overflow: auto; scrollbar-gutter: stable; contain: strict; }
@@ -897,6 +899,9 @@ input[type='checkbox']:checked::after {
 }
 .obs-header { grid-column: 1 / -1; display: flex; align-items: flex-start; gap: 12px; }
 .obs-header > div:first-child { flex: 1; min-width: 0; }
+/* Droga Mleczna rozciąga się do wysokości krzyżyka zamknięcia. */
+.obs-header-actions { display: flex; align-items: stretch; gap: 6px; }
+.obs-header-actions .button { min-height: 0; }
 .obs-header .kicker { font-size: 10px; letter-spacing: 0.2em; }
 .obs-title { font: 700 16px/1.3 var(--display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .obs-header .dim { font: 11px var(--mono); }
@@ -971,6 +976,7 @@ input[type='checkbox']:checked::after {
 .obs-range-inputs input:focus-visible { outline: 1px solid var(--accent); }
 .obs-bottom { grid-column: 1 / -1; display: grid; gap: 8px; }
 .obs-timeline { display: flex; align-items: center; gap: 8px; }
+.obs-timeline .icon-button { width: 36px; min-height: 30px; flex: none; }
 .obs-timeline input[type=range] { flex: 1; min-width: 60px; }
 .obs-percent { width: 40px; text-align: right; font-size: 11px; }
 .obs-legend { display: flex; align-items: center; gap: 14px; font: 10px var(--mono); color: var(--text-2); }
