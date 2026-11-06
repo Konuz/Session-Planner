@@ -417,6 +417,10 @@ export class ObservatoryScene {
     return [(v.x + 1) / 2 * this.renderer.domElement.clientWidth, (1 - v.y) / 2 * this.renderer.domElement.clientHeight]
   }
 
+  get aspect(): number {
+    return this.camera.aspect
+  }
+
   getProgress(): number {
     return this.progress
   }

@@ -429,7 +429,18 @@ export default function Space3D({ settings, photo, frameRef: photoFrameRef, fitR
     const hooks = new Set<(now: number) => void>()
     const override: Space3DHandle['override'] = { camera: false, layerFade: 1, earthRadius: null }
     let external = false
+    let sizedW = mount.clientWidth, sizedH = mount.clientHeight
+    const fitSize = () => {
+      if (mount.clientWidth === sizedW && mount.clientHeight === sizedH) return
+      sizedW = mount.clientWidth
+      sizedH = mount.clientHeight
+      sizeLabels()
+      camera.aspect = sizedW / Math.max(1, sizedH)
+      camera.updateProjectionMatrix()
+      renderer.setSize(sizedW, sizedH)
+    }
     const step = (now: number) => {
+      fitSize()
       for (const hook of hooks) hook(now)
       const delta = Math.min((now - lastTick) / 1000, 0.05)
       lastTick = now
@@ -790,12 +801,8 @@ export default function Space3D({ settings, photo, frameRef: photoFrameRef, fitR
     renderer.domElement.addEventListener('pointerup', onUp)
     renderer.domElement.addEventListener('pointermove', onMove)
     tick()
-    const ro = new ResizeObserver(() => {
-      sizeLabels()
-      camera.aspect = mount.clientWidth / Math.max(1, mount.clientHeight)
-      camera.updateProjectionMatrix()
-      renderer.setSize(mount.clientWidth, mount.clientHeight)
-    })
+    // Wstrzymana scena (klatki z zewnątrz) dopasowuje rozmiar dopiero w step(): panele okna zmieniają go co klatkę.
+    const ro = new ResizeObserver(() => { if (!external) fitSize() })
     ro.observe(mount)
     // Inny monitor albo powiększenie strony zmienia devicePixelRatio bez zmiany rozmiaru CSS (ResizeObserver milczy).
     let dprQuery = matchMedia(`(resolution: ${devicePixelRatio}dppx)`)

@@ -150,7 +150,7 @@ export default function Observatory({ project, slots, stars, onRetryStars, divin
       {stars.status === 'error' && <div className="obs-error photo-error" role="alert">{stars.message}<button type="button" className="button small" onClick={onRetryStars}>Ponów</button></div>}
       <div className="obs-reference">
         <span className="label">Zdjęcie źródłowe</span>
-        <div><img src={project.image} alt="" />{active && <span className="obs-crosshair" style={{ left: `${active.x / project.width * 100}%`, top: `${active.y / project.height * 100}%` }} />}</div>
+        <div><img src={project.image} alt="" decoding="async" />{active && <span className="obs-crosshair" style={{ left: `${active.x / project.width * 100}%`, top: `${active.y / project.height * 100}%` }} />}</div>
       </div>
       <div className="obs-hint faint">Przeciągnij: obrót · prawy przycisk: przesunięcie · kółko: przybliżenie · WASD: ruch</div>
     </div>, slots.stage)}

@@ -116,14 +116,15 @@ export class SpaceDive {
       this.t0 = now - elapsed
     }
     const f = diveFrame(elapsed, this.o.direction)
-    const aspect = this.o.space.camera.aspect
+    // Proporcje z płótna Obserwatorium (zmienia rozmiar z panelami); wstrzymana Droga Mleczna dopasowuje się w step().
+    const aspect = obs?.aspect ?? this.o.space.camera.aspect
     const seam: Pose = { ...this.o.seam(aspect), up: UP }
     if (f.phase !== this.phase) {
       this.phase = f.phase
       if (f.phase === 'enter' && obs) this.obsEnd = this.o.direction === 'in' ? obs.viewPose('structure') : obs.getPose()
       // W fazie wejścia Droga Mleczna nie rysuje klatek: zostaje w stanie końca nurkowania (wszystko wygaszone),
       // także po przeskoku lub zgubionych klatkach.
-      if (f.phase === 'enter') this.applySpace('dive', 1, 1, seam, now)
+      if (f.phase === 'enter') this.fadeSpace(1)
       this.o.onPhase(f.phase)
     }
     if (f.phase !== 'enter') this.applySpace(f.phase, f.k, f.e, seam, now)
@@ -142,15 +143,10 @@ export class SpaceDive {
       pose = lerpPose(this.spacePose, bridgePose(this.bridge, seam, u0), t)
       fov = SPACE_FOV + (OBSERVATORY_FOV - SPACE_FOV) * t
     } else pose = bridgePose(this.bridge, seam, diveScale(e, u0, END_SCALE))
-    const fades = diveFades(e)
     const u = diveScale(e, u0, END_SCALE)
     // W nurkowaniu Ziemia ma promień Ziemi Obserwatorium w skali mostu: na szwie oba znaczniki się pokrywają.
     space.override.earthRadius = phase === 'dive' ? EARTH_RADIUS * u : null
-    space.override.layerFade = fades.layers
-    fadeLayers(space, guide, fades.layers)
-    if (this.earthMaterial) this.earthMaterial.opacity = fades.spaceEarth
-    if (space.earth) space.earth.visible = fades.spaceEarth > 0
-    guide.setOpacity(fades.guide, fades.cone)
+    this.fadeSpace(e)
     const [tx, ty] = coneTan(e, this.real, this.pyramid)
     guide.cone.scale.set(tx, ty, 1)
     camera.up.set(...pose.up)
@@ -164,6 +160,17 @@ export class SpaceDive {
     camera.updateProjectionMatrix()
     space.invalidate()
     space.step(now)
+  }
+
+  /** Krycia warstw Drogi Mlecznej bez rysowania klatki (na wejściu: wszystko wygaszone, także podpisy w DOM). */
+  private fadeSpace(e: number) {
+    const { space, guide } = this.o
+    const fades = diveFades(e)
+    space.override.layerFade = fades.layers
+    fadeLayers(space, guide, fades.layers)
+    if (this.earthMaterial) this.earthMaterial.opacity = fades.spaceEarth
+    if (space.earth) space.earth.visible = fades.spaceEarth > 0
+    guide.setOpacity(fades.guide, fades.cone)
   }
 
   private applyObservatory(obs: ObservatoryScene, phase: DivePhase, k: number, e: number, seam: Pose, now: number) {

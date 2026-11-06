@@ -893,10 +893,10 @@ input[type='checkbox']:checked::after {
 .obs-window.space-window { row-gap: 0; interpolate-size: allow-keywords; transition: grid-template-columns 0.9s var(--ease-std), column-gap 0.9s var(--ease-std); }
 .space-window > .obs-toolbar, .space-window > .obs-stage, .space-window > .obs-aside, .space-window > .obs-histogram, .space-window > .obs-bottom { margin-top: 10px; }
 .space-window .obs-stage { grid-column: 1; grid-row: 3; }
-.space-window > .obs-histogram, .space-window > .obs-bottom, .space-window > .obs-aside { overflow: hidden; transition: height 0.9s var(--ease-std), margin 0.9s var(--ease-std), padding 0.9s var(--ease-std), opacity 0.9s var(--ease-std); }
+.space-window > .obs-histogram, .space-window > .obs-bottom, .space-window > .obs-aside { overflow: clip; transition: height 0.9s var(--ease-std), margin 0.9s var(--ease-std), padding 0.9s var(--ease-std), opacity 0.9s var(--ease-std); }
 .obs-window.space-window.is-scale { grid-template-columns: minmax(0, 1fr) 0px; column-gap: 0; }
 .space-window.is-scale > .obs-histogram, .space-window.is-scale > .obs-bottom { height: 0; margin-top: 0; padding-top: 0; padding-bottom: 0; border-width: 0; opacity: 0; }
-.space-window.is-scale > .obs-aside { padding-left: 0; padding-right: 0; border-width: 0; opacity: 0; }
+.space-window.is-scale > .obs-aside { height: 0; margin-top: 0; padding: 0; border-width: 0; opacity: 0; }
 .space-window .obs-layer > :not(.obs-canvas) { transition: opacity 0.9s var(--ease-std), visibility 0.9s; }
 .space-window.is-scale .obs-layer > :not(.obs-canvas) { opacity: 0; visibility: hidden; }
 .space-window.is-diving .obs-layer { pointer-events: none; }
@@ -910,11 +910,11 @@ input[type='checkbox']:checked::after {
 .space-toolbar .popover.layers-popover { top: calc(100% + 6px); bottom: auto; left: auto; right: 0; }
 .space-toolbar .zoom-slider { min-height: 30px; }
 .space-crumb { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--text-2); }
-.space-toolbar-slot { display: flex; align-items: center; gap: 10px; }
+.space-toolbar-slot, .space-toolbar-slot .obs-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 /* Zdjęcie w Drodze Mlecznej: podpisy znaczników wycinków i pasek z przyciskami zamiast suwaka. */
 .space-photo-label { margin: -9px 0 0 13px; padding: 2px 6px; background: rgba(11, 13, 23, 0.85); border: 1px solid var(--border-strong); color: var(--text); }
 .space-photo-label.dashed { border-style: dashed; color: var(--text-2); }
-.photo-actions { gap: 6px; }
+.photo-actions { flex-wrap: wrap; gap: 6px; }
 .photo-actions .button.small { display: inline-flex; align-items: center; gap: 6px; height: 28px; min-height: 28px; }
 .link-button { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; }
 
@@ -1015,4 +1015,7 @@ input[type='checkbox']:checked::after {
   .obs-aside { grid-column: 1; grid-row: auto; max-height: 420px; }
   .obs-histogram { grid-column: 1; }
   .obs-legend .faint, .obs-hint { display: none; }
+  /* Okno „Pozycja 3D” w stanie zdjęcia przewija się; panel listy nie może się ścisnąć do nagłówka inspektora. */
+  .space-window.is-photo > .obs-aside { min-height: 320px; }
+  .obs-window.space-window { grid-template-rows: auto auto minmax(330px, 1fr) auto auto auto; }
 }
