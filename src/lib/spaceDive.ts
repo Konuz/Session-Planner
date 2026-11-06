@@ -11,8 +11,8 @@ export type DivePhase = 'dive' | 'enter'
 /** Czasy faz w ms dla kierunku: nurkowanie (z obrotem kamery do pozy mostu) i wejście do Obserwatorium (panele).
  *  Droga do Obserwatorium trwa 1,25 raza dłużej niż powrót (te same proporcje faz). */
 export const DIVE_PHASE_MS: Record<DiveDirection, Record<DivePhase, number>> = {
-  in: { dive: 2750, enter: 1125 },
-  out: { dive: 2200, enter: 900 },
+  in: { dive: 4250, enter: 1125 },
+  out: { dive: 3400, enter: 900 },
 }
 export const diveTotalMs = (direction: DiveDirection) => DIVE_PHASE_MS[direction].dive + DIVE_PHASE_MS[direction].enter
 
@@ -40,7 +40,7 @@ export function diveFrame(elapsedMs: number, direction: DiveDirection): DiveFram
   const ms = s * (dive + enter)
   if (ms < dive) {
     const k = ms / dive
-    return { s, phase: 'dive', k, e: ease(k), done: t >= 1 }
+    return { s, phase: 'dive', k, e: ramp(k, 0, 1), done: t >= 1 }
   }
   return { s, phase: 'enter', k: Math.min(1, (ms - dive) / enter), e: 1, done: t >= 1 }
 }
@@ -64,8 +64,18 @@ export interface Bridge {
   earth: Vec3
 }
 
-export function makeBridge(origin: Vec3, basis: { center: Vec3; x: Vec3; y: Vec3 }, earth: Vec3): Bridge {
-  return { origin, x: basis.x, y: basis.y, z: [-basis.center[0], -basis.center[1], -basis.center[2]], earth }
+/** Obrót prezentacji wokół linii widzenia, który kieruje górę kadru ku górze widoku Drogi Mlecznej. */
+export function uprightRoll(basis: { x: Vec3; y: Vec3 }, up: Vec3): number {
+  const x = basis.x.reduce((dot, v, i) => dot + v * up[i], 0)
+  const y = basis.y.reduce((dot, v, i) => dot + v * up[i], 0)
+  return Math.hypot(x, y) < 1e-6 ? 0 : Math.atan2(-x, y)
+}
+
+export function makeBridge(origin: Vec3, basis: { center: Vec3; x: Vec3; y: Vec3 }, earth: Vec3, roll = 0): Bridge {
+  const c = Math.cos(roll), s = Math.sin(roll)
+  const x = basis.x.map((v, i) => v * c + basis.y[i] * s) as Vec3
+  const y = basis.y.map((v, i) => v * c - basis.x[i] * s) as Vec3
+  return { origin, x, y, z: [-basis.center[0], -basis.center[1], -basis.center[2]], earth }
 }
 
 export function bridgeVector(b: Bridge, v: Vec3): Vec3 {
@@ -80,8 +90,13 @@ export function bridgePoint(b: Bridge, p: Vec3, u: number): Vec3 {
 /** Odwrotność mostu (punkt Drogi Mlecznej w układzie Obserwatorium). */
 export function unbridgePoint(b: Bridge, q: Vec3, u: number): Vec3 {
   const d: Vec3 = [(q[0] - b.origin[0]) / u, (q[1] - b.origin[1]) / u, (q[2] - b.origin[2]) / u]
-  const dot = (a: Vec3) => a[0] * d[0] + a[1] * d[1] + a[2] * d[2]
-  return [b.earth[0] + dot(b.x), b.earth[1] + dot(b.y), b.earth[2] + dot(b.z)]
+  const offset = unbridgeVector(b, d)
+  return [b.earth[0] + offset[0], b.earth[1] + offset[1], b.earth[2] + offset[2]]
+}
+
+export function unbridgeVector(b: Bridge, v: Vec3): Vec3 {
+  const dot = (axis: Vec3) => axis[0] * v[0] + axis[1] * v[1] + axis[2] * v[2]
+  return [dot(b.x), dot(b.y), dot(b.z)]
 }
 
 export interface Pose { position: Vec3; target: Vec3; up: Vec3 }
@@ -120,18 +135,18 @@ export function startScale(start: Pose, b: Bridge, seam: Pose, u1: number): numb
 /** Chwila nurkowania (k, liniowy czas), w której kamera kończy obrót do pozy mostu, a stożek pola zrównuje się
  *  z ostrosłupem: od niej Ziemia, linia widzenia i stożek obu scen pokrywają się na ekranie w każdej skali mostu. */
 export const ALIGN_K = 0.6
-const CONE_OPEN_K = 0.3
+const CONE_OPEN_K = 0.34
 
 /**
  * Obrót do pozy mostu w liniowym czasie k. Przy krańcu Drogi Mlecznej kamera najpierw zbliża się
  * w bieżącej orientacji (a w drodze powrotnej kończy w niej przelot).
  */
-export const turnWeight = (k: number) => ramp(k, 0.15, ALIGN_K)
+export const turnWeight = (k: number) => ramp(k, 0.15, 0.53)
 
 /**
  * Kamera Drogi Mlecznej w nurkowaniu (skala mostu z e, obrót z k): bieżąca poza zbliżana do Ziemi w skali u/u0 i poza
- * mostu w skali u leżą zawsze w tej samej odległości od Ziemi, więc przejście między nimi to obrót wokół Ziemi
- * (bez oddalania i przybliżania).
+ * mostu w skali u leżą zwykle w tej samej odległości od Ziemi. Kierunek położenia kamery zmienia się po krótszym
+ * łuku sfery, bez osobnych zmian azymutu i wysokości.
  */
 export function divePose(start: Pose, b: Bridge, seam: Pose, { e, k }: Pick<DiveFrame, 'e' | 'k'>, u0: number, u1: number): Pose {
   const u = diveScale(e, u0, u1)
@@ -140,7 +155,10 @@ export function divePose(start: Pose, b: Bridge, seam: Pose, { e, k }: Pick<Dive
   const rel = (p: Vec3, f: number): Vec3 => [(p[0] - o[0]) * f, (p[1] - o[1]) * f, (p[2] - o[2]) * f]
   const bridged = bridgePose(b, seam, u)
   const w = turnWeight(k)
-  const offset = orbitOffset(rel(start.position, scale), rel(bridged.position, 1), w)
+  const startOffset = rel(start.position, scale), endOffset = rel(bridged.position, 1)
+  const startRadius = Math.hypot(...startOffset), endRadius = Math.hypot(...endOffset)
+  const radius = startRadius + (endRadius - startRadius) * w
+  const offset = slerpDirection(startOffset, endOffset, w).map((v) => v * radius)
   const from = rel(start.target, scale), to = rel(bridged.target, 1)
   return {
     position: [o[0] + offset[0], o[1] + offset[1], o[2] + offset[2]],
@@ -159,6 +177,10 @@ export function lerpPose(a: Pose, b: Pose, t: number): Pose {
 }
 
 export const guideAlignment = (k: number) => ramp(k, CONE_OPEN_K, ALIGN_K)
+/** Względny rozstaw linii siatki, dopasowany w tej samej fazie co stożek. */
+export const diveGridScale = (k: number) => 1 + 8 * (1 - guideAlignment(k))
+
+export const guideRollWeight = (k: number) => ramp(k, 0.15, CONE_OPEN_K)
 
 /** Przelicza znacznik ze skali liniowej na logarytmiczną razem ze zbliżeniem kamery. */
 export function diveMarkerPosition(b: Bridge, galaxy: Vec3, observatory: Vec3, k: number, u0: number, u: number): Vec3 {
@@ -172,7 +194,7 @@ export function diveMarkerPosition(b: Bridge, galaxy: Vec3, observatory: Vec3, k
 
 /**
  * Tangensy połowy kąta stożka pola: od prawdziwego pola zdjęcia do kąta ostrosłupa Obserwatorium (zabieg poglądowy:
- * ostrosłup jest umowny, ok. 71° wobec zwykle 0,5–5° pola). Interpolacja logarytmiczna w k ∈ [0,3; ALIGN_K]: stożek
+ * ostrosłup jest umowny, ok. 71° wobec zwykle 0,5–5° pola). Interpolacja logarytmiczna w k ∈ [0,34; ALIGN_K]: stożek
  * rozchyla się dopiero przy Ziemi, nie na całą galaktykę.
  */
 export function coneTan(k: number, real: [number, number], pyramid: [number, number]): [number, number] {
@@ -188,7 +210,7 @@ export function coneLength(k: number, guideLength: number, bridgeScale: number):
 /**
  * Krycia warstw obu scen w funkcji k, liniowego czasu nurkowania (nie wygładzonego e): w e przenikanie wypadało
  * w najszybszej części ruchu i trwało ok. 0,2 s, a koniec nurkowania stał bez zmian. Elementy Obserwatorium
- * pojawiają się dopiero od ALIGN_K, gdy obie sceny pokrywają się na ekranie, i każde przenikanie trwa ≥ 0,23 czasu
+ * poza siatką pojawiają się dopiero od ALIGN_K, gdy obie sceny pokrywają się na ekranie. Każde przenikanie trwa ≥ 0,23 czasu
  * nurkowania (≥ 0,5 s także w szybszym powrocie).
  */
 export interface DiveFades {
@@ -220,18 +242,18 @@ export function diveFades(k: number): DiveFades {
   const axis = ramp(k, a, a + 0.23)
   const photo = ramp(k, a + 0.04, 0.94)
   return {
-    layers: 1 - ramp(k, 0.45, 0.85),
+    layers: 1 - ramp(k, 0.3, 0.68),
     labels: 1 - ramp(k, 0, 0.33),
     guide: 1 - photo,
     spaceAxis: 1 - axis,
     cone: 1 - pyramid,
-    coneFaces: 1 - ramp(k, 0.3, a),
+    coneFaces: 1 - ramp(k, CONE_OPEN_K, a),
     spaceEarth: 1 - ramp(k, a + 0.1, a + 0.33),
     earth: ramp(k, a, a + 0.23),
     pyramid,
     axis,
     photo,
-    grid: ramp(k, 0.77, 1),
+    grid: ramp(k, CONE_OPEN_K, 0.54),
   }
 }
 

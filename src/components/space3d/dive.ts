@@ -5,7 +5,7 @@ import * as THREE from 'three'
 import type { Vec3 } from '../../lib/astro'
 import { EARTH_Z, PLANE_WIDTH } from '../../lib/observatory'
 import {
-  coneLength, coneTan, diveFades, diveFrame, diveMarkerPosition, diveScale, divePose, diveTotalMs, ease, guideAlignment, lerpPose, makeBridge, nearFar, startScale, turnWeight,
+  ALIGN_K, coneLength, coneTan, diveFades, diveFrame, diveGridScale, diveMarkerPosition, diveScale, divePose, diveTotalMs, ease, guideAlignment, guideRollWeight, lerpPose, makeBridge, nearFar, startScale, turnWeight, unbridgePoint, unbridgeVector, uprightRoll,
   type DiveDirection, type DiveFrame, type DivePhase, type Pose,
 } from '../../lib/spaceDive'
 import type { ObservatoryScene } from '../observatory/scene'
@@ -61,6 +61,7 @@ export class SpaceDive {
   private skipping = false
   private finished = false
   private readonly bridge
+  private readonly roll: number
   private readonly real: [number, number]
   private readonly pyramid: [number, number]
   /** Poza Drogi Mlecznej na krańcu ustawienia (naprzód: bieżąca; wstecz: zapamiętana przy wejściu). */
@@ -70,10 +71,11 @@ export class SpaceDive {
 
   constructor(private o: DiveOptions) {
     const { space, guide } = o
-    this.bridge = makeBridge(space.sunPos.toArray() as Vec3, guide.basis, [0, 0, EARTH_Z])
     this.real = guide.fieldTan
     this.pyramid = [PLANE_WIDTH / 2 / EARTH_Z, PLANE_WIDTH * o.imageAspect / 2 / EARTH_Z]
     this.spacePose = o.spacePose ?? { position: space.camera.position.toArray() as Vec3, target: space.controls.target.toArray() as Vec3, up: space.camera.up.toArray() as Vec3 }
+    this.roll = uprightRoll(guide.basis, this.spacePose.up)
+    this.bridge = makeBridge(space.sunPos.toArray() as Vec3, guide.basis, [0, 0, EARTH_Z], this.roll)
     this.earthMaterial = space.earth ? space.earth.material as THREE.Material : null
     space.stopIntro()
     space.setExternal(true)
@@ -140,8 +142,8 @@ export class SpaceDive {
       if (f.phase === 'enter') this.fadeSpace(1)
       this.o.onPhase(f.phase)
     }
-    if (f.phase !== 'enter') this.applySpace(f, seam, now)
-    if (obs?.ready) this.applyObservatory(obs, f, seam, now)
+    const spaceView = f.phase === 'dive' ? this.applySpace(f, seam, now) : null
+    if (obs?.ready) this.applyObservatory(obs, f, seam, now, spaceView)
     if (f.done && !this.finished && (obs?.ready || this.o.direction === 'out')) this.finish(obs)
   }
 
@@ -162,6 +164,7 @@ export class SpaceDive {
     const [tx, ty] = coneTan(k, this.real, this.pyramid)
     const depthScale = coneLength(k, guide.length, u) / guide.length
     guide.cone.scale.set(tx * depthScale, ty * depthScale, depthScale)
+    guide.setConeRoll(this.roll * guideRollWeight(k))
     guide.alignSightLine(guideAlignment(k), u)
     guide.placeMarkers((id, position) => {
       const target = this.o.markerTargets.get(id)
@@ -178,6 +181,14 @@ export class SpaceDive {
     camera.updateProjectionMatrix()
     space.invalidate()
     space.step(now)
+    if (k >= ALIGN_K || guideAlignment(k) === 0) return null
+    // Przed wyrównaniem scen siatkę rysujemy z tej samej kamery co stożek.
+    return {
+      position: unbridgePoint(this.bridge, pose.position, u),
+      target: unbridgePoint(this.bridge, pose.target, u),
+      up: unbridgeVector(this.bridge, pose.up),
+      fov,
+    }
   }
 
   /** Krycia warstw Drogi Mlecznej (k: liniowy czas nurkowania) bez rysowania klatki (na wejściu: wszystko wygaszone,
@@ -192,7 +203,7 @@ export class SpaceDive {
     guide.setOpacity(fades.guide, fades.cone, fades.coneFaces, fades.spaceAxis)
   }
 
-  private applyObservatory(obs: ObservatoryScene, { phase, k }: DiveFrame, seam: Pose, now: number) {
+  private applyObservatory(obs: ObservatoryScene, { phase, k }: DiveFrame, seam: Pose, now: number, spaceView: (Pose & { fov: number }) | null) {
     obs.setExternal(true)
     obs.setInteractive(false)
     obs.setProgress(this.o.seamProgress)
@@ -204,8 +215,9 @@ export class SpaceDive {
       obs.setFade({ earth: 1, pyramid: 1, axis: 1, photo: 1, grid: 1 }, k)
     } else {
       const fades = diveFades(k)
-      obs.setPose(seam.position, seam.target)
-      obs.setFade({ earth: fades.earth, pyramid: fades.pyramid, axis: fades.axis, photo: fades.photo, grid: fades.grid }, 0)
+      const view = spaceView ?? seam
+      obs.setPose(view.position, view.target, view.up, spaceView?.fov)
+      obs.setFade({ earth: fades.earth, pyramid: fades.pyramid, axis: fades.axis, photo: fades.photo, grid: fades.grid }, 0, diveGridScale(k))
     }
     obs.step(now)
   }
@@ -260,6 +272,7 @@ export function restoreSpace(space: Space3DHandle, guide: PhotoGuide | null, pos
     guide.setOpacity(1, 1, 1)
     guide.cone.scale.set(guide.fieldTan[0], guide.fieldTan[1], 1)
     guide.alignSightLine(0, 1)
+    guide.setConeRoll(0)
     guide.placeMarkers()
   }
   if (space.earth) {

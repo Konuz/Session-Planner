@@ -11,6 +11,9 @@ export type ObservatoryView = 'structure' | 'earth' | 'top' | 'side'
 export interface ObservatoryFade { earth: number; pyramid: number; axis: number; photo: number; grid: number }
 type Vec3 = [number, number, number]
 const FLY_MS = 900
+const GRID_WIDTH = PLANE_WIDTH * 2.4
+const GRID_DEPTH = AXIS_LENGTH + EARTH_Z + 40
+const GRID_FRONT = EARTH_Z + 20
 
 interface Options {
   reducedMotion: boolean
@@ -158,8 +161,8 @@ export class ObservatoryScene {
 
     const grid = this.grid = new THREE.GridHelper(1, 24, cssColor('--border-strong', '#232942'), cssColor('--border', '#15192b'))
     ;(grid.material as THREE.LineBasicMaterial).transparent = true
-    grid.scale.set(PLANE_WIDTH * 2.4, 1, AXIS_LENGTH + EARTH_Z + 40)
-    grid.position.set(0, -PLANE_WIDTH * 0.62, (EARTH_Z - AXIS_LENGTH) / 2)
+    grid.scale.set(GRID_WIDTH, 1, GRID_DEPTH)
+    grid.position.set(0, -PLANE_WIDTH * 0.62, GRID_FRONT - GRID_DEPTH / 2)
     this.scene.add(grid)
     this.disposables.push(grid.geometry, grid.material as THREE.Material)
 
@@ -412,7 +415,8 @@ export class ObservatoryScene {
     this.axis.visible = f.axis > 0
     for (const tick of this.ticks) tick.mesh.visible = e > 0.02
     const selected = this.items.find((item) => item.id === this.selected)
-    this.ring.visible = !!selected && this.visible.has(selected.id)
+    this.ring.material.opacity = f.photo
+    this.ring.visible = f.photo > 0 && !!selected && this.visible.has(selected.id)
     if (selected) this.ring.position.copy(this.position(selected))
     this.dirty = true
   }
@@ -503,16 +507,27 @@ export class ObservatoryScene {
   }
 
   /** Poza ustawiana z zewnątrz (nurkowanie), bez przelotu i tłumienia. */
-  setPose(position: Vec3, target: Vec3) {
+  setPose(position: Vec3, target: Vec3, up: Vec3 = [0, 1, 0], fov = FOV) {
     this.flight = null
+    this.camera.up.set(...up)
+    this.setFov(fov)
     this.camera.position.set(...position)
     this.controls.target.set(...target)
     this.camera.lookAt(this.controls.target)
     this.dirty = true
   }
 
-  setFade(fade: Partial<ObservatoryFade>, arrival = 1) {
+  private setFov(fov: number) {
+    if (fov === this.camera.fov) return
+    this.camera.fov = fov
+    this.camera.updateProjectionMatrix()
+  }
+
+  setFade(fade: Partial<ObservatoryFade>, arrival = 1, gridScale = 1) {
     this.arrival = arrival
+    const depth = GRID_DEPTH * gridScale
+    this.grid.scale.set(GRID_WIDTH * Math.sqrt(gridScale), 1, depth)
+    this.grid.position.z = GRID_FRONT - depth / 2
     this.fade = { ...this.fade, ...fade }
     this.layout()
   }
@@ -528,7 +543,11 @@ export class ObservatoryScene {
     this.external = on
     cancelAnimationFrame(this.raf)
     this.layout()
-    if (!on) this.raf = requestAnimationFrame(this.loop)
+    if (!on) {
+      this.camera.up.set(0, 1, 0)
+      this.setFov(FOV)
+      this.raf = requestAnimationFrame(this.loop)
+    }
   }
 
   /** Liczba narysowanych klatek (pomiar renderowania na żądanie). */
@@ -626,7 +645,10 @@ export class ObservatoryScene {
     this.earthLabel.style.opacity = String(this.fade.earth)
     this.labels.style.setProperty('--obs-photo-fade', String(this.fade.photo))
     place(this.earthLabel, new THREE.Vector3(0, -4.5, EARTH_Z), this.fade.earth > 0)
-    for (const tick of this.ticks) place(tick.label, tick.mesh.position, e > 0.3)
+    for (const tick of this.ticks) {
+      tick.label.style.opacity = String(this.fade.axis)
+      place(tick.label, tick.mesh.position, e > 0.3 && this.fade.axis > 0)
+    }
     for (const item of this.items) {
       const el = this.itemLabels.get(item.id)
       const isSelected = item.id === this.selected

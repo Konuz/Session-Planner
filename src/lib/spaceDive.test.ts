@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { EARTH_Z, PLANE_WIDTH, distanceDomain, observatoryPosition } from './observatory'
 import type { Vec3 } from './astro'
-import { ALIGN_K, DIVE_PHASE_MS, bridgePoint, bridgePose, bridgeVector, coneLength, coneTan, diveFades, diveFrame, diveMarkerPosition, divePose, diveScale, diveTotalMs, ease, lerpPose, makeBridge, nearFar, startScale, turnWeight, unbridgePoint, type DiveDirection, type Pose } from './spaceDive'
+import { ALIGN_K, DIVE_PHASE_MS, bridgePoint, bridgePose, bridgeVector, coneLength, coneTan, diveFades, diveFrame, diveGridScale, diveMarkerPosition, divePose, diveScale, diveTotalMs, ease, guideAlignment, lerpPose, makeBridge, nearFar, startScale, turnWeight, unbridgePoint, unbridgeVector, uprightRoll, type DiveDirection, type Pose } from './spaceDive'
 
 // Baza kadru: dowolny obrót (osie ortonormalne, x × y = −center).
 const center: Vec3 = [0.6, 0.48, 0.64]
@@ -29,6 +29,35 @@ it('wejście do Obserwatorium trwa 1,25 raza dłużej niż powrót, w każdej fa
   expect(IN_MS).toBeCloseTo(1.25 * OUT_MS, 9)
   expect(DIVE_PHASE_MS.in.dive).toBeCloseTo(1.25 * DIVE_PHASE_MS.out.dive, 9)
   expect(DIVE_PHASE_MS.in.enter).toBeCloseTo(1.25 * DIVE_PHASE_MS.out.enter, 9)
+})
+
+it('zbliżenie przed Obserwatorium ogranicza zmianę skali w jednej klatce', () => {
+  const frameMs = 1000 / 60
+  const { dive } = DIVE_PHASE_MS.in
+  let fastest = 0
+  for (let ms = frameMs; ms < dive; ms += frameMs) {
+    fastest = Math.max(fastest, diveFrame(ms, 'in').e - diveFrame(ms - frameMs, 'in').e)
+  }
+  expect(fastest).toBeLessThan(0.0065)
+})
+
+it('kamera w połowie obrotu leży na krótszym łuku wokół Ziemi', () => {
+  const start: Pose = { position: [-20, 6, 5], target: [-24, 0, 1], up: [0, 1, 0] }
+  const u1 = 0.001
+  const u0 = startScale(start, bridge, seam, u1)
+  let low = 0, high = ALIGN_K
+  for (let i = 0; i < 40; i++) {
+    const mid = (low + high) / 2
+    if (turnWeight(mid) < 0.5) low = mid
+    else high = mid
+  }
+  const k = (low + high) / 2
+  const end = bridgePose(bridge, seam, u0)
+  const radius = Math.hypot(...start.position.map((v, i) => v - bridge.origin[i]))
+  const midpoint = start.position.map((v, i) => v + end.position[i] - 2 * bridge.origin[i])
+  const length = Math.hypot(...midpoint)
+  const expected = midpoint.map((v, i) => bridge.origin[i] + radius * v / length) as Vec3
+  close(divePose(start, bridge, seam, { e: 0, k }, u0, u1).position, expected)
 })
 
 it('ruch wstecz jest lustrem ruchu naprzód w tym samym położeniu s (każdy kierunek w swoim czasie)', () => {
@@ -87,9 +116,23 @@ it('elementy Obserwatorium pojawiają się dopiero, gdy obie sceny pokrywają si
   close(divePose({ position: [-20, 6, 5], target: [-24, 0, 1], up: [0, 1, 0] }, bridge, seam, { e: ease(ALIGN_K), k: ALIGN_K }, 0.3, 0.001).position,
     bridgePose(bridge, seam, diveScale(ease(ALIGN_K), 0.3, 0.001)).position)
   const before = diveFades(ALIGN_K - 1e-9)
-  for (const key of ['earth', 'pyramid', 'axis', 'photo', 'grid'] as const) expect(before[key]).toBe(0)
+  for (const key of ['earth', 'pyramid', 'axis', 'photo'] as const) expect(before[key]).toBe(0)
   // Odpowiedniki z Drogi Mlecznej (linia widzenia, stożek, Ziemia) są jeszcze w pełni widoczne.
   for (const key of ['guide', 'spaceAxis', 'cone', 'spaceEarth'] as const) expect(before[key]).toBe(1)
+})
+
+it('siatka pojawia się i zmienia rozstaw od pierwszej zmiany stożka', () => {
+  expect(diveGridScale(0.43)).toBeGreaterThan(6)
+  expect(diveFades(0.43).grid).toBeGreaterThan(0.35)
+  let previous = diveGridScale(0)
+  for (let i = 1; i <= 100; i++) {
+    const k = i / 100
+    const scale = diveGridScale(k)
+    expect(diveFades(k).grid > 0).toBe(guideAlignment(k) > 0)
+    expect(scale).toBeLessThanOrEqual(previous)
+    if (k >= ALIGN_K) expect(scale).toBe(1)
+    previous = scale
+  }
 })
 
 it('przy Ziemi kamera zachowuje orientację Drogi Mlecznej przed rozpoczęciem obrotu', () => {
@@ -171,6 +214,14 @@ it('most w e = 1 daje pozę szwu: kamera Drogi Mlecznej wraca odwrotnością do 
   close(unbridgePoint(bridge, pose.position, u1), seam.position)
   close(unbridgePoint(bridge, pose.target, u1), seam.target)
   close(pose.up, bridgeVector(bridge, [0, 1, 0]))
+  close(unbridgeVector(bridge, pose.up), seam.up)
+})
+
+it('odwrócony kadr zachowuje linię widzenia, a górę dopasowuje do widoku Drogi Mlecznej', () => {
+  const basis: { x: Vec3; y: Vec3; center: Vec3 } = { x: [-1, 0, 0], y: [0, -1, 0], center: [0, 0, -1] }
+  const upright = makeBridge(bridge.origin, basis, bridge.earth, uprightRoll(basis, [0, 1, 0]))
+  close(bridgeVector(upright, [0, 0, -1]), basis.center)
+  close(bridgeVector(upright, [0, 1, 0]), [0, 1, 0])
 })
 
 it('kąt stożka zmienia się w sposób ciągły od pola zdjęcia do ostrosłupa Obserwatorium', () => {

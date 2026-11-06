@@ -32,6 +32,7 @@ export interface PhotoGuide {
   setOpacity(opacity: number, cone?: number, faces?: number, axis?: number): void
   /** Dopasowanie końca i kresek linii do osi Obserwatorium podczas nurkowania. */
   alignSightLine(amount: number, bridgeScale: number): void
+  setConeRoll(angle: number): void
   placeMarkers(project?: (id: string, position: Vec3) => Vec3): void
   /** Ukrycie na czas edycji okręgów (płaskie zdjęcie nad sceną). */
   setVisible(visible: boolean): void
@@ -98,6 +99,7 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, c
   cone.position.copy(sunPos)
   const back = dir.clone().negate()
   cone.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(...basis.x), new THREE.Vector3(...basis.y), back))
+  const coneOrientation = cone.quaternion.clone()
   const rays: number[] = []
   for (const [sx, sy] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) rays.push(0, 0, 0, sx * length, sy * length, -length)
   const coneGeometry = new THREE.BufferGeometry()
@@ -221,6 +223,10 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, c
       lineMaterial.scale = THREE.MathUtils.lerp(1, depth / length, amount)
       lineMaterial.dashSize = THREE.MathUtils.lerp(dashSize, AXIS_DASH, amount)
       lineMaterial.gapSize = THREE.MathUtils.lerp(gapSize, AXIS_DASH, amount)
+    },
+    setConeRoll(angle) {
+      cone.quaternion.copy(coneOrientation)
+      cone.rotateZ(angle)
     },
     placeMarkers(project) {
       for (const mark of marks) {
