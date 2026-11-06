@@ -49,8 +49,9 @@ export interface Space3DHandle {
   /** Klatki z zewnątrz: własna pętla stoi, a klatkę liczy step(now) (nurkowanie; w stanie zdjęcia brak klatek). */
   setExternal(on: boolean): void
   step(now: number): void
-  /** Nadpisania nurkowania: kamera bez OrbitControls, krycie warstw tła i promień Ziemi w jednostkach sceny. */
-  override: { camera: boolean; layerFade: number; earthRadius: number | null }
+  /** Nadpisania nurkowania: kamera bez OrbitControls, krycie warstw tła i promień Ziemi w jednostkach sceny
+   *  (earthBlend: 0 – znacznik do 16 px, 1 – earthRadius; pośrednie wartości dają płynną zmianę wielkości). */
+  override: { camera: boolean; layerFade: number; earthRadius: number | null; earthBlend: number }
 }
 
 /** Przepisuje do bufora tylko punkty niewyłączonych rodzajów i ogranicza do nich zakres rysowania. */
@@ -427,7 +428,7 @@ export default function Space3D({ settings, photo, frameRef: photoFrameRef, fitR
     let renderedWidth = 0, renderedHeight = 0, renderedGuide: boolean | null = null, lastRender = -Infinity
     sceneDirty.current = true
     const hooks = new Set<(now: number) => void>()
-    const override: Space3DHandle['override'] = { camera: false, layerFade: 1, earthRadius: null }
+    const override: Space3DHandle['override'] = { camera: false, layerFade: 1, earthRadius: null, earthBlend: 0 }
     let external = false
     let sizedW = mount.clientWidth, sizedH = mount.clientHeight
     const fitSize = () => {
@@ -490,7 +491,8 @@ export default function Space3D({ settings, photo, frameRef: photoFrameRef, fitR
             radiusPixels = Math.min(radiusPixels, Math.max(0, gap - 7))
           }
         }
-        earth.scale.setScalar(override.earthRadius !== null ? override.earthRadius / (mr * 0.7) : depth > 0 ? Math.min(1, radiusPixels * unitsPerPixel / (mr * 0.7)) : 1)
+        const marker = depth > 0 ? Math.min(1, radiusPixels * unitsPerPixel / (mr * 0.7)) : 1
+        earth.scale.setScalar(override.earthRadius === null ? marker : marker + (override.earthRadius / (mr * 0.7) - marker) * override.earthBlend)
       }
       if (milkyWayMaterial) {
         // Przy zbliżeniu gwiazdy pozostają widoczne, a z daleka nie zlewają się w jasną plamę.

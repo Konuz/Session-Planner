@@ -194,18 +194,30 @@ export function fitDistance(width: number, height: number, aspect: number): numb
   return Math.max(height / 2 / Math.tan(v), width / 2 / Math.tan(h)) * 1.12
 }
 
-/** Głębia zawartości po pełnym rozłożeniu: najdalszy widoczny obiekt z odległością (jednostki sceny). */
-export function contentDepth(items: Pick<ObservatoryItem, 'distLy'>[], domain: LogDomain): number {
-  let depth = 0
-  for (const item of items) if (item.distLy !== null && item.distLy > 0) depth = Math.max(depth, depthFraction(item.distLy, domain) * AXIS_LENGTH)
-  return depth
-}
-
-/** Widok „Z Ziemi” (szew nurkowania z Drogi Mlecznej): zza Ziemi, lekko nad osią; widać Ziemię, ostrosłup i zdjęcie. */
+/** Widok „Z Ziemi”: zza Ziemi, lekko nad osią; widać Ziemię, ostrosłup i zdjęcie. */
 export function earthViewPose(image: { width: number; height: number }, aspect: number, depth: number): { position: Vec3; target: Vec3 } {
   const h = PLANE_WIDTH * image.height / image.width
   return {
     target: [0, h * 0.08, -Math.min(depth, AXIS_LENGTH) * 0.15],
     position: [0, h * 0.42, EARTH_Z + fitDistance(PLANE_WIDTH, h, aspect) * 0.75],
   }
+}
+
+/**
+ * Widok „Struktura” (i szew nurkowania z Drogi Mlecznej): skos z przodu i z góry na całość po pełnym rozłożeniu:
+ * płaszczyznę zdjęcia, Ziemię i obiekty z odległością. Nie zależy od proporcji płótna (dopasowanie w pionie).
+ */
+export function structureViewPose(items: Pick<ObservatoryItem, 'x' | 'y' | 'distLy'>[], image: { width: number; height: number }, domain: LogDomain): { position: Vec3; target: Vec3 } {
+  const h = PLANE_WIDTH * image.height / image.width
+  const min: Vec3 = [-PLANE_WIDTH / 2, -h / 2, 0], max: Vec3 = [PLANE_WIDTH / 2, h / 2, EARTH_Z]
+  for (const item of items) {
+    if (item.distLy === null) continue
+    const p = observatoryPosition(item, image, item.distLy, domain, 1)
+    for (let i = 0; i < 3; i++) { min[i] = Math.min(min[i], p[i]); max[i] = Math.max(max[i], p[i]) }
+  }
+  const target: Vec3 = [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2]
+  const radius = Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) / 2
+  const distance = radius / Math.sin(OBSERVATORY_FOV * Math.PI / 360) * 0.9
+  const dir = [1.05, 0.62, 0.9], n = Math.hypot(...dir)
+  return { target, position: [target[0] + dir[0] / n * distance, target[1] + dir[1] / n * distance, target[2] + dir[2] / n * distance] }
 }

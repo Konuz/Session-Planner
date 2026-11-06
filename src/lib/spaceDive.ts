@@ -125,8 +125,11 @@ export function coneTan(e: number, real: [number, number], pyramid: [number, num
 
 /** Krycia warstw obu scen w funkcji e (Droga Mleczna gaśnie, elementy Obserwatorium pojawiają się kolejno). */
 export interface DiveFades {
-  /** Droga Mleczna: tło (punkty galaktyki, obiekty, gwiazdozbiory, podpisy). */
+  /** Droga Mleczna: tło (punkty galaktyki, obiekty, gwiazdozbiory, podpisy obiektów tła). */
   layers: number
+  /** Droga Mleczna: napisy w scenie („Ziemia”, „Centrum Galaktyki”, nazwy gwiazd) mają stałe przesunięcie w przestrzeni,
+   *  więc przy zbliżaniu odpływają od swoich punktów: gasną na początku nurkowania. */
+  labels: number
   /** Droga Mleczna: linia widzenia i znaczniki wycinków (oś Obserwatorium przejmuje linię). */
   guide: number
   /** Droga Mleczna: stożek pola (gaśnie, gdy jego kąt zrówna się z ostrosłupem). */
@@ -144,6 +147,7 @@ export interface DiveFades {
 export function diveFades(e: number): DiveFades {
   return {
     layers: 1 - ramp(e, 0.5, 0.85),
+    labels: 1 - ramp(e, 0, 0.15),
     guide: 1 - ramp(e, 0.5, 0.75),
     cone: 1 - ramp(e, 0.6, 0.75),
     spaceEarth: 1 - ramp(e, 0.45, 0.6),

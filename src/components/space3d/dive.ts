@@ -28,8 +28,8 @@ export interface DiveOptions {
   guide: PhotoGuide
   /** Scena Obserwatorium; null, dopóki nie powstanie (kamera czeka wtedy w pozie szwu na końcu ustawienia). */
   observatory(): ObservatoryScene | null
-  /** Poza szwu (widok „Z Ziemi”) dla bieżących proporcji sceny. */
-  seam(aspect: number): { position: Vec3; target: Vec3 }
+  /** Poza szwu: widok Obserwatorium „Struktura” (płaskie zdjęcie, Ziemia, oś), w który wchodzi most z Drogi Mlecznej. */
+  seam: { position: Vec3; target: Vec3 }
   /** Proporcje zdjęcia (wysokość / szerokość) dla kąta ostrosłupa. */
   imageAspect: number
   /** Powrót: poza Drogi Mlecznej sprzed wejścia i postęp rozkładania zwijany do 0. */
@@ -42,8 +42,10 @@ export interface DiveOptions {
 export interface DiveDev {
   /** Zatrzymanie przejścia w chwili t (0–1 czasu przejścia w jego kierunku); null wznawia. */
   freeze(t: number | null): void
-  /** Szew: środek Ziemi i kierunek linii widzenia na ekranie w obu scenach (piksele, stopnie). */
-  seam(): { space: [number, number]; observatory: [number, number]; spaceAngle: number; observatoryAngle: number } | null
+  /** Szew: środek i promień Ziemi oraz kierunek linii widzenia na ekranie w obu scenach (piksele, stopnie). */
+  seam(): { space: [number, number]; observatory: [number, number]; spaceAngle: number; observatoryAngle: number; spaceEarthPx: number; observatoryEarthPx: number } | null
+  /** Promień Ziemi Drogi Mlecznej na ekranie (piksele) w bieżącej klatce. */
+  earthPx(): number
 }
 
 export class SpaceDive {
@@ -75,7 +77,7 @@ export class SpaceDive {
     space.override.camera = true
     space.controls.enabled = false
     if (this.earthMaterial) this.earthMaterial.transparent = true
-    if (import.meta.env.DEV) (window as unknown as { __spaceDive?: DiveDev }).__spaceDive = { freeze: (t) => { this.frozen = t }, seam: () => this.seamCheck() }
+    if (import.meta.env.DEV) (window as unknown as { __spaceDive?: DiveDev }).__spaceDive = { freeze: (t) => { this.frozen = t }, seam: () => this.seamCheck(), earthPx: () => this.spaceEarthPx() }
     this.raf = requestAnimationFrame(this.loop)
   }
 
@@ -88,17 +90,26 @@ export class SpaceDive {
     if (import.meta.env.DEV) delete (window as unknown as { __spaceDive?: DiveDev }).__spaceDive
   }
 
+  private spaceEarthPx(): number {
+    const { camera, mount, sunPos, earth } = this.o.space
+    if (!earth) return 0
+    const radius = (earth.geometry as THREE.SphereGeometry).parameters.radius * earth.scale.x
+    return radius / (camera.position.distanceTo(sunPos) * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) * mount.clientHeight / 2
+  }
+
   private seamCheck(): ReturnType<DiveDev['seam']> {
     const obs = this.o.observatory()
     if (!obs) return null
     const { camera, mount, sunPos } = this.o.space
+    const obsCamera = obs.getPose().position
+    const obsEarthPx = EARTH_RADIUS / (Math.hypot(obsCamera[0], obsCamera[1], obsCamera[2] - EARTH_Z) * Math.tan(THREE.MathUtils.degToRad(OBSERVATORY_FOV) / 2)) * mount.clientHeight / 2
     const screen = (p: THREE.Vector3): [number, number] => { const v = p.clone().project(camera); return [(v.x + 1) / 2 * mount.clientWidth, (1 - v.y) / 2 * mount.clientHeight] }
     // Punkt 100 jednostek Obserwatorium przed Ziemią na osi i jego odpowiednik w skali końca nurkowania.
     const ahead = sunPos.clone().addScaledVector(new THREE.Vector3(...this.o.guide.basis.center), 100 * END_SCALE)
     const space = screen(sunPos), spaceAhead = screen(ahead)
     const observatory = obs.screenPoint([0, 0, EARTH_Z]), obsAhead = obs.screenPoint([0, 0, EARTH_Z - 100])
     const angle = (a: [number, number], b: [number, number]) => Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI
-    return { space, observatory, spaceAngle: angle(space, spaceAhead), observatoryAngle: angle(observatory, obsAhead) }
+    return { space, observatory, spaceAngle: angle(space, spaceAhead), observatoryAngle: angle(observatory, obsAhead), spaceEarthPx: this.spaceEarthPx(), observatoryEarthPx: obsEarthPx }
   }
 
   private loop = (now: number) => {
@@ -116,12 +127,11 @@ export class SpaceDive {
       this.t0 = now - elapsed
     }
     const f = diveFrame(elapsed, this.o.direction)
-    // Proporcje z płótna Obserwatorium (zmienia rozmiar z panelami); wstrzymana Droga Mleczna dopasowuje się w step().
-    const aspect = obs?.aspect ?? this.o.space.camera.aspect
-    const seam: Pose = { ...this.o.seam(aspect), up: UP }
+    const seam: Pose = { ...this.o.seam, up: UP }
     if (f.phase !== this.phase) {
       this.phase = f.phase
-      if (f.phase === 'enter' && obs) this.obsEnd = this.o.direction === 'in' ? obs.viewPose('structure') : obs.getPose()
+      // Naprzód kamera Obserwatorium zostaje w widoku Struktura (wsuwają się tylko panele); wstecz wraca do niego z bieżącej pozy.
+      if (f.phase === 'enter' && obs) this.obsEnd = this.o.direction === 'in' ? seam : obs.getPose()
       // W fazie wejścia Droga Mleczna nie rysuje klatek: zostaje w stanie końca nurkowania (wszystko wygaszone),
       // także po przeskoku lub zgubionych klatkach.
       if (f.phase === 'enter') this.fadeSpace(1)
@@ -144,8 +154,10 @@ export class SpaceDive {
       fov = SPACE_FOV + (OBSERVATORY_FOV - SPACE_FOV) * t
     } else pose = bridgePose(this.bridge, seam, diveScale(e, u0, END_SCALE))
     const u = diveScale(e, u0, END_SCALE)
-    // W nurkowaniu Ziemia ma promień Ziemi Obserwatorium w skali mostu: na szwie oba znaczniki się pokrywają.
-    space.override.earthRadius = phase === 'dive' ? EARTH_RADIUS * u : null
+    // W nurkowaniu Ziemia ma promień Ziemi Obserwatorium w skali mostu (na szwie oba znaczniki się pokrywają);
+    // w ustawieniu wielkość przechodzi płynnie od znacznika (do 16 px) do tej wartości.
+    space.override.earthRadius = EARTH_RADIUS * u
+    space.override.earthBlend = phase === 'dive' ? 1 : ease(k)
     this.fadeSpace(e)
     const [tx, ty] = coneTan(e, this.real, this.pyramid)
     guide.cone.scale.set(tx, ty, 1)
@@ -167,7 +179,7 @@ export class SpaceDive {
     const { space, guide } = this.o
     const fades = diveFades(e)
     space.override.layerFade = fades.layers
-    fadeLayers(space, guide, fades.layers)
+    fadeLayers(space, guide, fades.layers, fades.labels)
     if (this.earthMaterial) this.earthMaterial.opacity = fades.spaceEarth
     if (space.earth) space.earth.visible = fades.spaceEarth > 0
     guide.setOpacity(fades.guide, fades.cone)
@@ -177,7 +189,7 @@ export class SpaceDive {
     obs.setExternal(true)
     obs.setInteractive(false)
     if (phase === 'enter') {
-      const end = this.obsEnd ?? obs.viewPose('structure')
+      const end = this.obsEnd ?? seam
       const t = ease(k)
       const pose = lerpPose(seam, { ...end, up: UP }, t)
       obs.setPose(pose.position, pose.target)
@@ -210,15 +222,16 @@ export class SpaceDive {
   }
 }
 
-/** Krycie warstw tła Drogi Mlecznej (bez znaczników zdjęcia i Ziemi); bazowe krycie zapamiętane w materiale. */
-function fadeLayers(space: Space3DHandle, guide: PhotoGuide, fade: number) {
+/** Krycie warstw tła Drogi Mlecznej (bez znaczników zdjęcia i Ziemi) i osobno napisów; bazowe krycie zapamiętane w materiale. */
+function fadeLayers(space: Space3DHandle, guide: PhotoGuide, fade: number, labels = fade) {
   space.scene.traverse((object) => {
     if (object === guide.group || object === space.earth || isInside(object, guide.group)) return
     const material = (object as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined
+    const f = object instanceof THREE.Sprite ? Math.min(fade, labels) : fade
     for (const m of Array.isArray(material) ? material : material ? [material] : []) {
       if (!m.transparent) continue
       m.userData.layerBase ??= m.opacity
-      m.opacity = (m.userData.layerBase as number) * fade
+      m.opacity = (m.userData.layerBase as number) * f
     }
   })
   space.overlay.style.opacity = String(fade)
@@ -234,6 +247,7 @@ export function restoreSpace(space: Space3DHandle, guide: PhotoGuide | null, pos
   const { camera, controls } = space
   space.override.camera = false
   space.override.earthRadius = null
+  space.override.earthBlend = 0
   space.override.layerFade = 1
   if (guide) {
     fadeLayers(space, guide, 1)

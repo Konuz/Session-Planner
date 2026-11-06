@@ -2,7 +2,7 @@
 // oś odległości (log.) z Ziemią i ostrosłupem pola. Renderowanie na żądanie; podpisy w nakładce DOM.
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { AXIS_LENGTH, EARTH_Z, OBSERVATORY_FOV as FOV, PLANE_WIDTH, depthFraction, earthViewPose, fitDistance, observatoryPosition, orbitOffset, starColor, starSize, type LogDomain, type ObservatoryItem } from '../../lib/observatory'
+import { AXIS_LENGTH, EARTH_Z, OBSERVATORY_FOV as FOV, PLANE_WIDTH, depthFraction, earthViewPose, fitDistance, observatoryPosition, orbitOffset, starColor, starSize, structureViewPose, type LogDomain, type ObservatoryItem } from '../../lib/observatory'
 import { DEFAULT_ANNOTATION_COLORS } from '../../lib/catalog'
 import { fmtDistance } from '../../lib/format'
 
@@ -173,7 +173,9 @@ export class ObservatoryScene {
     this.renderer.domElement.addEventListener('keydown', this.onKeyDown)
     this.renderer.domElement.addEventListener('keyup', this.onKeyUp)
     this.renderer.domElement.addEventListener('blur', () => this.keys.clear())
-    this.resizeObserver = new ResizeObserver(() => this.resize())
+    // Zmiana rozmiaru płótna czyści jego bufor po narysowanej klatce: przy panelach wsuwanych co klatkę płótno
+    // byłoby puste, więc rysujemy od razu (ResizeObserver działa przed odmalowaniem strony).
+    this.resizeObserver = new ResizeObserver(() => { this.resize(); this.render() })
     this.resizeObserver.observe(host)
     this.resize()
     this.external = options.external ?? false
@@ -404,9 +406,8 @@ export class ObservatoryScene {
       target = center
       position = center.clone().add(new THREE.Vector3(this.fitDistance(size.z, size.y) + size.x / 2, 0, 0))
     } else {
-      target = center
-      const radius = size.length() / 2
-      position = center.clone().add(new THREE.Vector3(1.05, 0.62, 0.9).normalize().multiplyScalar(radius / Math.sin(THREE.MathUtils.degToRad(FOV) / 2) * 0.9))
+      // Ta sama poza co szew nurkowania z Drogi Mlecznej (widoczne obiekty, pełne rozłożenie).
+      return structureViewPose(this.items.filter((item) => this.visible.has(item.id)), this.image, this.domain)
     }
     return { position: position.toArray() as Vec3, target: target.toArray() as Vec3 }
   }

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { AXIS_LENGTH, PLANE_WIDTH, byDistance, fieldOfView, categoryCounts, distanceAt, distanceDomain, distanceHistogram, matchesFilter, observatoryItems, observatoryPosition, orbitOffset, starColor, starSize, type ObservatoryItem } from './observatory'
+import { AXIS_LENGTH, PLANE_WIDTH, byDistance, fieldOfView, categoryCounts, distanceAt, distanceDomain, distanceHistogram, matchesFilter, observatoryItems, observatoryPosition, orbitOffset, starColor, starSize, structureViewPose, type ObservatoryItem } from './observatory'
 import type { PhotoCut, PhotoProject, PhotoStar } from './photo'
 
 const image = { width: 2000, height: 1000 }
@@ -107,4 +107,17 @@ it('przelot kamery idzie najkrótszą drogą w azymucie i nie zmienia kierunku p
   expect(half[0]).toBeCloseTo(0, 6)
   expect(half[2]).toBeCloseTo(-r, 6)
   orbitOffset([10, 20, 30], [30, 60, 90], 0.5).forEach((v, i) => expect(v).toBeCloseTo([20, 40, 60][i], 6))
+})
+
+it('widok Struktura (szew nurkowania) patrzy na środek całości po rozłożeniu, skosem z przodu i z góry', () => {
+  const image = { width: 1000, height: 500 }
+  const domain = { minLy: 100, maxLy: 1e4 }
+  // Zdjęcie ±50 × ±25, Ziemia z = 70, obiekt 10 tys. lś na końcu osi (z = −400); obiekt bez odległości nie zmienia kadru.
+  const pose = structureViewPose([{ x: 500, y: 250, distLy: 1e4 }, { x: 0, y: 0, distLy: null }], image, domain)
+  pose.target.forEach((v, i) => expect(v).toBeCloseTo([0, 0, -165][i], 9))
+  const offset = pose.position.map((v, i) => v - pose.target[i])
+  const distance = Math.hypot(...offset)
+  expect(distance).toBeCloseTo(Math.hypot(100, 50, 470) / 2 / Math.sin(Math.PI / 9) * 0.9, 9)
+  const dir = [1.05, 0.62, 0.9].map((v) => v / Math.hypot(1.05, 0.62, 0.9))
+  offset.forEach((v, i) => expect(v / distance).toBeCloseTo(dir[i], 9))
 })

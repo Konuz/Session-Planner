@@ -3,7 +3,7 @@
 // pod spodem bez zmian.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fmtDistance } from '../../lib/format'
-import { contentDepth, distanceDomain, earthViewPose, observatoryItems } from '../../lib/observatory'
+import { distanceDomain, observatoryItems, structureViewPose } from '../../lib/observatory'
 import { photoStageHeight, type PhotoSceneFrame } from '../../lib/photo'
 import type { SpaceScale } from '../../lib/space3d'
 import type { DiveDirection, Pose } from '../../lib/spaceDive'
@@ -84,11 +84,10 @@ export default function Space3DModal() {
       return
     }
     const items = observatoryItems(project)
-    const depth = contentDepth(items, distanceDomain(items.map((item) => item.distLy)))
     const dive = new SpaceDive({
       direction, space: handle, guide,
       observatory: () => obsScene.current,
-      seam: (aspect) => earthViewPose(project, aspect, depth),
+      seam: structureViewPose(items, project, distanceDomain(items.map((item) => item.distLy))),
       imageAspect: project.height / project.width,
       spacePose: direction === 'out' ? entryPose.current ?? undefined : undefined,
       progress: direction === 'out' ? obsScene.current?.getProgress() ?? 0 : 0,
