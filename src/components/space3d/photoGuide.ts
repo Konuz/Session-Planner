@@ -1,0 +1,217 @@
+// Zdjęcie w skali Drogi Mlecznej: linia widzenia od Ziemi, stożek pola (cztery promienie do narożników kadru)
+// i znaczniki wycinków według photoAnchorKind(…, 'galaxy'). Podpisy w DOM nad sceną Space3D.
+import { useEffect, useRef, type RefObject } from 'react'
+import * as THREE from 'three'
+import { DEFAULT_ANNOTATION_COLORS, type ObjectType } from '../../lib/catalog'
+import { frameBasis, halfFieldTan } from '../../lib/frameBasis'
+import { fmtDistance } from '../../lib/format'
+import { photoAnchorKind, type PhotoProject } from '../../lib/photo'
+import { GALACTIC_LIMIT_LY, scenePosition } from '../../lib/space3d'
+import { useStore } from '../../state/store'
+import type { Space3DHandle } from '../Space3D'
+
+/** Odległość znaczników bez pomiaru od Ziemi (tys. lś): dawna kotwica 0,35 kadru × 80 tys. lś. */
+export const DIRECTION_KLY = 28
+const DISK_RADIUS_KLY = 50
+
+export interface PhotoGuide {
+  group: THREE.Group
+  /** Stożek pola: grupa w Ziemi, osie bazy kadru; skala (tg x, tg y, 1) daje kąt otwarcia. */
+  cone: THREE.Group
+  /** Prawdziwe tangensy połowy pola. */
+  fieldTan: [number, number]
+  basis: NonNullable<ReturnType<typeof frameBasis>>
+  /** Długość linii widzenia w jednostkach sceny (tys. lś). */
+  length: number
+  /** Kamera na Ziemię i zmierzone wycinki (jak kadr wybranego obiektu w Space3D). */
+  frameCamera(): void
+  labels: HTMLDivElement
+  /** Krycie całości (nurkowanie). */
+  setOpacity(opacity: number): void
+  /** Ukrycie na czas edycji okręgów (płaskie zdjęcie nad sceną). */
+  setVisible(visible: boolean): void
+  dispose(): void
+}
+
+function ringTexture(color: string, dashed: boolean): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = 64
+  const g = canvas.getContext('2d')!
+  g.strokeStyle = color
+  g.lineWidth = 5
+  if (dashed) g.setLineDash([9, 7])
+  g.beginPath()
+  g.arc(32, 32, 24, 0, Math.PI * 2)
+  g.stroke()
+  g.setLineDash([])
+  g.fillStyle = color
+  g.beginPath()
+  g.arc(32, 32, 6, 0, Math.PI * 2)
+  g.fill()
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  return texture
+}
+
+/** Odległość od Słońca wzdłuż kierunku do sfery o promieniu r wokół centrum Galaktyki. */
+function toSphere(sun: THREE.Vector3, dir: THREE.Vector3, radius: number): number {
+  const b = sun.dot(dir)
+  return -b + Math.sqrt(Math.max(0, b * b - sun.lengthSq() + radius * radius))
+}
+
+export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, colors: Partial<Record<ObjectType, string>>, accent: string): PhotoGuide | null {
+  const basis = frameBasis(project.astrometry, project.width, project.height)
+  if (!basis) return null
+  const { sunPos } = handle
+  const dir = new THREE.Vector3(...basis.center)
+  const cuts = project.cuts.filter((c) => c.enabled).map((cut) => ({ cut, kind: photoAnchorKind(cut.distLy, 'galaxy') }))
+  const positions = cuts.filter((c) => c.kind === 'position').map(({ cut }) => new THREE.Vector3(...scenePosition(cut, cut.distLy!, 'galaxy')))
+  const farthest = Math.max(0, ...positions.map((p) => p.distanceTo(sunPos)))
+  const outside = cuts.some((c) => c.kind === 'outside')
+  const length = Math.max(toSphere(sunPos, dir, outside ? GALACTIC_LIMIT_LY / 1000 : DISK_RADIUS_KLY), farthest * 1.15, cuts.some((c) => c.kind === 'direction') ? DIRECTION_KLY * 1.15 : 0)
+  // Kadr jak dla wybranego obiektu: Ziemia i zmierzone wycinki, rozmiar co najmniej 8 tys. lś (k: skala kresek).
+  const box = new THREE.Box3().setFromPoints([sunPos, ...(positions.length ? positions : [sunPos.clone().addScaledVector(dir, 4)])])
+  const focus = box.getCenter(new THREE.Vector3())
+  const span = Math.max(8, box.getSize(new THREE.Vector3()).length() * 2.2)
+  const k = span / 40
+  const group = new THREE.Group()
+  group.name = 'photo-guide'
+  const disposables: { dispose(): void }[] = []
+  const materials: THREE.Material[] = []
+
+  // Linia widzenia: przerywana jak linia wybranego obiektu.
+  const lineMaterial = new THREE.LineDashedMaterial({ color: accent, dashSize: 0.25 * k, gapSize: 0.18 * k, transparent: true, opacity: 0.85, depthWrite: false })
+  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([sunPos, sunPos.clone().addScaledVector(dir, length)]), lineMaterial)
+  line.computeLineDistances()
+  group.add(line)
+  disposables.push(line.geometry, lineMaterial)
+  materials.push(lineMaterial)
+
+  // Stożek pola: promienie (±L, ±L, −L) w bazie kadru, skala (tg x, tg y, 1).
+  const cone = new THREE.Group()
+  cone.position.copy(sunPos)
+  const back = dir.clone().negate()
+  cone.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(...basis.x), new THREE.Vector3(...basis.y), back))
+  const rays: number[] = []
+  for (const [sx, sy] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) rays.push(0, 0, 0, sx * length, sy * length, -length)
+  const coneGeometry = new THREE.BufferGeometry()
+  coneGeometry.setAttribute('position', new THREE.Float32BufferAttribute(rays, 3))
+  const coneMaterial = new THREE.LineBasicMaterial({ color: accent, transparent: true, opacity: 0.45, depthWrite: false })
+  cone.add(new THREE.LineSegments(coneGeometry, coneMaterial))
+  const fieldTan = halfFieldTan(basis, project.width, project.height)
+  cone.scale.set(fieldTan[0], fieldTan[1], 1)
+  group.add(cone)
+  disposables.push(coneGeometry, coneMaterial)
+  materials.push(coneMaterial)
+
+  // Znaczniki i podpisy.
+  const labels = document.createElement('div')
+  labels.className = 'obs-labels space-photo-labels'
+  handle.mount.appendChild(labels)
+  const marks: { position: THREE.Vector3; label: HTMLDivElement }[] = []
+  for (const { cut, kind } of cuts) {
+    const world = kind === 'position' ? new THREE.Vector3(...scenePosition(cut, cut.distLy!, 'galaxy'))
+      : kind === 'outside' ? sunPos.clone().addScaledVector(dir, length)
+        : sunPos.clone().addScaledVector(dir, DIRECTION_KLY)
+    const texture = ringTexture(colors[cut.type] ?? DEFAULT_ANNOTATION_COLORS[cut.type], kind !== 'position')
+    const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, depthTest: false, sizeAttenuation: false })
+    const sprite = new THREE.Sprite(material)
+    sprite.scale.setScalar(0.026)
+    sprite.position.copy(world)
+    sprite.renderOrder = 5
+    group.add(sprite)
+    disposables.push(texture, material)
+    materials.push(material)
+    const label = document.createElement('div')
+    label.className = `obs-label space-photo-label${kind === 'position' ? '' : ' dashed'}`
+    label.textContent = `${cut.id}\n${kind === 'outside' ? 'poza skalą' : kind === 'direction' ? 'odległość nieznana' : `≈ ${fmtDistance(cut.distLy!)}`}`
+    labels.appendChild(label)
+    marks.push({ position: world, label })
+  }
+  handle.scene.add(group)
+
+  // Podpisy przesuwamy tylko przy zmianie kamery lub rozmiaru; nakładające się schodzą w dół.
+  const lastCamera = new THREE.Matrix4()
+  const lastProjection = new THREE.Matrix4()
+  let lastW = 0, lastH = 0
+  const v = new THREE.Vector3()
+  const place = () => {
+    const { camera, mount } = handle
+    const w = mount.clientWidth, h = mount.clientHeight
+    if (w === lastW && h === lastH && lastCamera.equals(camera.matrixWorld) && lastProjection.equals(camera.projectionMatrix)) return
+    lastW = w; lastH = h
+    lastCamera.copy(camera.matrixWorld)
+    lastProjection.copy(camera.projectionMatrix)
+    const boxes: { x: number; y: number }[] = []
+    for (const mark of marks) {
+      v.copy(mark.position).project(camera)
+      const on = group.visible && v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1
+      mark.label.style.display = on ? '' : 'none'
+      if (!on) continue
+      const x = (v.x + 1) / 2 * w
+      let y = (1 - v.y) / 2 * h
+      while (boxes.some((b) => Math.abs(b.x - x) < 90 && Math.abs(b.y - y) < 30)) y += 30
+      boxes.push({ x, y })
+      mark.label.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`
+    }
+  }
+  handle.hooks.add(place)
+  handle.invalidate()
+
+  return {
+    group, cone, fieldTan, basis, length, labels,
+    frameCamera() {
+      const { camera, controls } = handle
+      handle.stopIntro()
+      camera.position.copy(focus).add(new THREE.Vector3(span * 0.55, span * 0.55, span * 0.75))
+      controls.target.copy(focus)
+      camera.lookAt(focus)
+      controls.update()
+      handle.invalidate()
+    },
+    setOpacity(opacity) {
+      for (const m of materials) {
+        m.userData.base ??= m.opacity
+        m.opacity = (m.userData.base as number) * opacity
+      }
+      labels.style.opacity = String(opacity)
+      handle.invalidate()
+    },
+    setVisible(visible) {
+      group.visible = visible
+      labels.style.display = visible ? '' : 'none'
+      handle.invalidate()
+    },
+    dispose() {
+      handle.hooks.delete(place)
+      handle.scene.remove(group)
+      for (const d of disposables) d.dispose()
+      labels.remove()
+      handle.invalidate()
+    },
+  }
+}
+
+/** Znaczniki zdjęcia w scenie Drogi Mlecznej: odbudowa przy zmianie wycinków lub sceny, kadr przy nowym zdjęciu i scenie. */
+export function usePhotoGuide(handle: Space3DHandle | null, project: PhotoProject | null, visible: boolean): RefObject<PhotoGuide | null> {
+  const colors = useStore((s) => s.annotationColors)
+  const guideRef = useRef<PhotoGuide | null>(null)
+  const framed = useRef<{ handle: Space3DHandle | null; id: string }>({ handle: null, id: '' })
+  const visibleRef = useRef(visible)
+  visibleRef.current = visible
+  useEffect(() => {
+    if (!handle || handle.scale !== 'galaxy' || !project) return
+    const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#00e0ff'
+    const guide = createPhotoGuide(handle, project, colors, accent)
+    if (!guide) return
+    guideRef.current = guide
+    guide.setVisible(visibleRef.current)
+    if (framed.current.handle !== handle || framed.current.id !== project.id) {
+      framed.current = { handle, id: project.id }
+      guide.frameCamera()
+    }
+    return () => { guide.dispose(); guideRef.current = null }
+  }, [handle, project, colors])
+  useEffect(() => { guideRef.current?.setVisible(visible) }, [visible])
+  return guideRef
+}

@@ -25,6 +25,32 @@ interface Props {
   /** Stara nakładka zdjęcia (Wszechświat lokalny): rzut kotwic wycinków i dopasowanie kadru. */
   frameRef: RefObject<((frame: PhotoSceneFrame) => void) | null>
   fitRef: RefObject<(() => void) | null>
+  /** Dostęp do sceny dla znaczników zdjęcia i nurkowania (null przy przebudowie i odmontowaniu). */
+  onHandle?(handle: Space3DHandle | null): void
+}
+
+/** Scena Space3D dla modułów okna: znaczniki zdjęcia w Drodze Mlecznej i nurkowanie do Obserwatorium. */
+export interface Space3DHandle {
+  scale: 'galaxy' | 'universe'
+  scene: THREE.Scene
+  camera: THREE.PerspectiveCamera
+  controls: OrbitControls
+  renderer: THREE.WebGLRenderer
+  mount: HTMLDivElement
+  /** Płótno podpisów obiektów tła nad sceną. */
+  overlay: HTMLCanvasElement
+  sunPos: THREE.Vector3
+  earth: THREE.Mesh | null
+  /** Wywoływane na początku każdej klatki z czasem requestAnimationFrame. */
+  hooks: Set<(now: number) => void>
+  invalidate(): void
+  /** Koniec przelotu startowego i obrotu poglądowego. */
+  stopIntro(): void
+  /** Klatki z zewnątrz: własna pętla stoi, a klatkę liczy step(now) (nurkowanie; w stanie zdjęcia brak klatek). */
+  setExternal(on: boolean): void
+  step(now: number): void
+  /** Nadpisania nurkowania: kamera bez OrbitControls, krycie warstw tła i promień Ziemi w jednostkach sceny. */
+  override: { camera: boolean; layerFade: number; earthRadius: number | null }
 }
 
 /** Przepisuje do bufora tylko punkty niewyłączonych rodzajów i ogranicza do nich zakres rysowania. */
@@ -52,10 +78,12 @@ function showTypes(bg:{ geometry: THREE.BufferGeometry; types: ObjectType[]; pos
   bg.geometry.setDrawRange(0, n)
 }
 
-export default function Space3D({ settings, photo, frameRef: photoFrameRef, fitRef: photoFitRef }: Props) {
+export default function Space3D({ settings, photo, frameRef: photoFrameRef, fitRef: photoFitRef, onHandle }: Props) {
   const { scale, galaxyLevel, hiddenTypes, showConstellations, showStarNames, constellationChoice, constellations } = settings
   const photoRef = useRef(photo)
   photoRef.current = photo
+  const onHandleRef = useRef(onHandle)
+  onHandleRef.current = onHandle
   const mountRef = useRef<HTMLDivElement>(null)
   const pinRef = useRef<HTMLDivElement>(null)
   // Punkty tła posortowane wg odległości: suwak zmienia tylko zakres rysowania, bez przebudowy sceny.
@@ -335,14 +363,15 @@ export default function Space3D({ settings, photo, frameRef: photoFrameRef, fitR
     const moveKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight'])
     const stopFly = () => (flying = false)
     let photoSpan = span
-    photoFitRef.current = () => {
+    // Dopasowanie kadru do starej nakładki zdjęcia: tylko Wszechświat lokalny (Droga Mleczna ma linię widzenia).
+    photoFitRef.current = scale === 'galaxy' ? null : () => {
       const points = [sunPos.clone()]
       for (const cut of photoRef.current?.cuts ?? []) {
         if (cut.enabled && photoAnchorKind(cut.distLy, scale) === 'position') points.push(position(cut, cut.distLy!, scale))
       }
       const bounds = new THREE.Box3().setFromPoints(points)
       const center = bounds.getCenter(new THREE.Vector3())
-      photoSpan = Math.max(scale === 'galaxy' ? 80 : 35, bounds.getSize(new THREE.Vector3()).length() * 2.4)
+      photoSpan = Math.max(35, bounds.getSize(new THREE.Vector3()).length() * 2.4)
       flying = false
       controls.autoRotate = false
       camera.position.copy(center).add(new THREE.Vector3(photoSpan * 0.55, photoSpan * 0.55, photoSpan * 0.75))
@@ -397,20 +426,23 @@ export default function Space3D({ settings, photo, frameRef: photoFrameRef, fitR
     const renderedProjection = new THREE.Matrix4()
     let renderedWidth = 0, renderedHeight = 0, renderedGuide: boolean | null = null, lastRender = -Infinity
     sceneDirty.current = true
-    const tick = () => {
-      const now = performance.now()
+    const hooks = new Set<(now: number) => void>()
+    const override: Space3DHandle['override'] = { camera: false, layerFade: 1, earthRadius: null }
+    let external = false
+    const step = (now: number) => {
+      for (const hook of hooks) hook(now)
       const delta = Math.min((now - lastTick) / 1000, 0.05)
       lastTick = now
       // Powolny obrót poglądowy: jeden obrót na trzy minuty, niezależnie od liczby klatek.
       if (earth && !reduced) earth.rotation.y = ((performance.now() - t0) / 180_000) * Math.PI * 2
-      if (flying) {
+      if (flying && !override.camera) {
         const k = Math.min(1, (now - t0) / 2200)
         const e = 1 - (1 - k) ** 3
         camera.position.lerpVectors(startCam, endCam, e)
         controls.target.lerpVectors(zeroVec, focus, e)
         if (k >= 1) flying = false
       }
-      if (!flying && pressedKeys.size) {
+      if (!flying && !override.camera && pressedKeys.size) {
         const forward = camera.getWorldDirection(moveForward)
         const right = moveRight.set(1, 0, 0).applyQuaternion(camera.quaternion)
         const movement = moveDelta.set(0, 0, 0)
@@ -426,7 +458,7 @@ export default function Space3D({ settings, photo, frameRef: photoFrameRef, fitR
           rightLook?.position.add(movement)
         }
       }
-      if (!rightLook) controls.update()
+      if (!rightLook && !override.camera) controls.update()
       if (photoRef.current) controls.autoRotate = false
       camera.updateMatrixWorld()
       if (earth) {
@@ -447,13 +479,13 @@ export default function Space3D({ settings, photo, frameRef: photoFrameRef, fitR
             radiusPixels = Math.min(radiusPixels, Math.max(0, gap - 7))
           }
         }
-        earth.scale.setScalar(depth > 0 ? Math.min(1, radiusPixels * unitsPerPixel / (mr * 0.7)) : 1)
+        earth.scale.setScalar(override.earthRadius !== null ? override.earthRadius / (mr * 0.7) : depth > 0 ? Math.min(1, radiusPixels * unitsPerPixel / (mr * 0.7)) : 1)
       }
       if (milkyWayMaterial) {
         // Przy zbliżeniu gwiazdy pozostają widoczne, a z daleka nie zlewają się w jasną plamę.
         const close = 1 - THREE.MathUtils.smoothstep(camera.position.distanceTo(controls.target), 20, 100)
         milkyWayMaterial.size = 2.4 + close * 0.8
-        milkyWayMaterial.opacity = 0.17 + close * 0.13
+        milkyWayMaterial.opacity = (0.17 + close * 0.13) * override.layerFade
       }
       for (const model of localGalaxyModels) {
         // Zbliżenie względem promienia modelu: także małe galaktyki zachowują czytelne gwiazdy.
@@ -535,7 +567,7 @@ export default function Space3D({ settings, photo, frameRef: photoFrameRef, fitR
         renderedGuide = objectGuide.visible
         lastRender = now
       }
-      if (photoFrameRef.current) {
+      if (scale === 'universe' && photoFrameRef.current) {
         const width = mount.clientWidth
         const height = mount.clientHeight
         const photo = photoRef.current
@@ -571,6 +603,9 @@ export default function Space3D({ settings, photo, frameRef: photoFrameRef, fitR
         pin.style.display = !photoRef.current && placed && v.z < 1 ? '' : 'none'
         pin.style.transform = `translate(${((v.x + 1) / 2) * mount.clientWidth}px, ${((1 - v.y) / 2) * mount.clientHeight}px)`
       }
+    }
+    const tick = (now = performance.now()) => {
+      step(now)
       raf = requestAnimationFrame(tick)
     }
     // Podpisy obiektów tła (przełącznik „Opisy”): najbliższe kamerze najpierw, bez nakładania się.
@@ -776,10 +811,22 @@ export default function Space3D({ settings, photo, frameRef: photoFrameRef, fitR
     dprQuery.addEventListener('change', onDpr)
     const onVis = () => {
       cancelAnimationFrame(raf)
-      if (!document.hidden) tick()
+      if (!document.hidden && !external) tick()
     }
     document.addEventListener('visibilitychange', onVis)
+    onHandleRef.current?.({
+      scale, scene, camera, controls, renderer, mount, overlay: labels, sunPos, earth: earth ?? null, hooks, override, step,
+      invalidate: () => { sceneDirty.current = true },
+      stopIntro: () => { flying = false; controls.autoRotate = false },
+      setExternal: (on) => {
+        if (on === external) return
+        external = on
+        cancelAnimationFrame(raf)
+        if (!on && !document.hidden) tick()
+      },
+    })
     return () => {
+      onHandleRef.current?.(null)
       photoFitRef.current = null
       cancelAnimationFrame(raf)
       ro.disconnect()

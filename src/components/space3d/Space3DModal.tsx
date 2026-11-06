@@ -7,9 +7,11 @@ import type { SpaceScale } from '../../lib/space3d'
 import { useSelected } from '../../state/data'
 import { useStore } from '../../state/store'
 import Observatory from '../observatory/Observatory'
-import { PhotoExplorer } from '../PhotoExplorer'
-import Space3D from '../Space3D'
+import Space3D, { type Space3DHandle } from '../Space3D'
+import { GalaxyPhotoBar, PhotoCutEditor, PhotoFlatView, PhotoImport, PhotoMessages } from './PhotoEditing'
+import { usePhotoGuide } from './photoGuide'
 import { useGaiaStars, usePhotoSession } from './photoSession'
+import { PhotoUnfold } from './PhotoUnfold'
 import { useSpaceSettings } from './spaceSettings'
 import { SpaceToolbar } from './SpaceToolbar'
 import { SpaceWindow } from './SpaceWindow'
@@ -29,6 +31,8 @@ export default function Space3DModal() {
   const { stars, retry } = useGaiaStars(session, settings.scale === 'galaxy')
   const frameRef = useRef<((frame: PhotoSceneFrame) => void) | null>(null)
   const fitRef = useRef<(() => void) | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [handle, setHandle] = useState<Space3DHandle | null>(null)
   // Stan zdjęcia: Obserwatorium w miejscu sceny Drogi Mlecznej (ta czeka pod spodem, niewidoczna).
   const [photoState, setPhotoState] = useState(false)
   const inPhoto = photoState && !!project
@@ -36,12 +40,15 @@ export default function Space3DModal() {
   const [toolbarSlot, setToolbarSlot] = useState<HTMLDivElement | null>(null)
   const [summary, setSummary] = useState<HTMLDivElement | null>(null)
   useEffect(() => { if (!project) setPhotoState(false) }, [project])
+  const galaxy = settings.scale === 'galaxy'
+  usePhotoGuide(handle, project, galaxy && !inPhoto && !session.editing)
 
   function chooseScale(scale: SpaceScale) {
     setPhotoState(false)
     settings.setScale(scale)
   }
   function openObservatory() {
+    session.setEditing(false)
     settings.setScale('galaxy')
     setPhotoState(true)
   }
@@ -62,9 +69,15 @@ export default function Space3DModal() {
     </SpaceToolbar>
     <div ref={setStage} className="obs-stage space-stage" style={{ minHeight: !inPhoto && project && settings.scale === 'universe' ? photoStageHeight(project.cuts) : undefined }}>
       <div className={`space-scene${inPhoto ? ' is-hidden' : ''}`}>
-        <Space3D settings={settings} photo={project} frameRef={frameRef} fitRef={fitRef} />
+        <Space3D settings={settings} photo={project} frameRef={frameRef} fitRef={fitRef} onHandle={setHandle} />
       </div>
-      {!inPhoto && <PhotoExplorer session={session} frameRef={frameRef} fitRef={fitRef} onObservatory={openObservatory} />}
+      {!inPhoto && <>
+        <PhotoImport session={session} inputRef={inputRef} showButton={!project || !galaxy} />
+        <PhotoMessages session={session} />
+        {project && !galaxy && <PhotoUnfold key={project.id} session={session} frameRef={frameRef} fitRef={fitRef} onObservatory={openObservatory} />}
+        {project && galaxy && <GalaxyPhotoBar session={session} stars={stars} onUnfold={openObservatory} onPick={() => inputRef.current?.click()} onRetryStars={retry} />}
+        {project && session.editing && <><PhotoFlatView session={session} /><PhotoCutEditor session={session} /></>}
+      </>}
     </div>
     {inPhoto && stage && toolbarSlot && summary && <Observatory project={project} slots={{ stage, toolbar: toolbarSlot, summary }} stars={stars} onRetryStars={retry} />}
   </SpaceWindow>

@@ -104,3 +104,9 @@ export function photoPose(cut: Pick<PhotoCut, 'x' | 'y' | 'radius'>, frame: { x:
   const source = { x: frame.x + cut.x * frame.scale, y: frame.y + cut.y * frame.scale, radius: cut.radius * frame.scale }
   return { x: source.x + (destination.x - source.x) * e, y: source.y + (destination.y - source.y) * e, radius: source.radius + (destination.radius - source.radius) * e }
 }
+
+/** Położenie płaskiego zdjęcia na scenie (nad paskiem zdjęcia u dołu): lewy górny róg i skala piksela. */
+export function photoFrame(width: number, height: number, image: { width: number; height: number }): { x: number; y: number; scale: number } {
+  const scale = Math.min((width - 36) / image.width, Math.max(80, height - 170) / image.height)
+  return { x: (width - image.width * scale) / 2, y: 65 + (height - 170 - image.height * scale) / 2, scale }
+}
