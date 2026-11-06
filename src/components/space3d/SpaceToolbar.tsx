@@ -99,7 +99,8 @@ export function SpaceToolbar({ o, settings, onScale, crumb, children }: Props) {
       </label>}
       {children}
       <span className="obs-spacer" />
-      {!crumb && <div className="scale-info-control">
+      {!crumb && <div className="space-toolbar-end">
+      <div className="scale-info-control">
         <button className="scale-info-button" title="Informacje o skali" aria-label="Informacje o skali" aria-expanded={infoOpen} aria-controls="scale-info-popover" onClick={() => setInfoOpen((open) => !open)}>i</button>
         {infoOpen && (
           <div id="scale-info-popover" className="scale-info-popover" role="note" aria-label="Opis skali i źródła danych">
@@ -114,8 +115,9 @@ export function SpaceToolbar({ o, settings, onScale, crumb, children }: Props) {
             {scale === 'galaxy' && showConstellations && <p>Cyjanowe linie: gwiazdozbiory (Stellarium). Odległości gwiazd: szacunki z paralaks Hipparcosa (CDS I/239); brak dodatniej paralaksy przerywa linię.</p>}
           </div>
         )}
+      </div>
+      <LayersMenu threeD />
       </div>}
-      {!crumb && <LayersMenu threeD />}
     </div>
   )
 }

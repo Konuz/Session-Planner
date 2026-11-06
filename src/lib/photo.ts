@@ -83,14 +83,9 @@ export function photoColumns(cuts: PhotoCut[], imageWidth: number, capacity = In
   return columns
 }
 
-/** Liczba kart w kolumnie. Zależy tylko od liczby wycinków (także wyłączonych), więc przesuwanie okręgów ani zaznaczanie nie zmienia wysokości sceny. */
+/** Liczba kart w kolumnie. Zależy tylko od liczby wycinków (także wyłączonych), więc przesuwanie okręgów ani zaznaczanie nie przestawia kolumn. */
 export function photoColumnCapacity(cuts: PhotoCut[]): number {
   return Math.max(1, Math.ceil(cuts.length / 2))
-}
-
-export function photoStageHeight(cuts: PhotoCut[]): number {
-  // Co najmniej 26 px średnicy oraz 32 px na podpis i odstęp.
-  return Math.max(520, 305 + (photoColumnCapacity(cuts) - 1) * 58)
 }
 
 export function coveredPhotoCircles(circles: { x: number; y: number; radius: number }[]): boolean[] {

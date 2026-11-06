@@ -54,7 +54,8 @@ export function PhotoUnfold({ session, frameRef, fitRef, onObservatory }: Props)
   const columns = photoColumns(enabled, project?.width ?? 0, photoColumnCapacity(project?.cuts ?? []))
   const rows = Math.max(1, ...columns.map((column) => column.length))
   const rowSpacing = Math.max(0, height - 305) / Math.max(1, rows - 1)
-  const cardRadius = Math.max(13, Math.min(48, width / 9, rows > 1 ? (rowSpacing - 32) / 2 : 48))
+  // Okno ma stałą wysokość: przy wielu wycinkach karty maleją (do 8 px promienia) zamiast wydłużać scenę.
+  const cardRadius = Math.max(8, Math.min(48, width / 9, rows > 1 ? (rowSpacing - 32) / 2 : 48))
   const positions = columns.flatMap((column, side) => column.map((cut, i) => {
     const destination = { x: side === 0 ? cardRadius + 35 : width - cardRadius - 35, y: column.length === 1 ? height / 2 : 110 + i * Math.max(0, height - 305) / (column.length - 1), radius: cardRadius }
     return { cut, pose: photoPose(cut, frame, destination, move), anchor: scene.anchors.find((a) => a.id === cut.id) }

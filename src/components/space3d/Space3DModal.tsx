@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fmtDistance } from '../../lib/format'
 import { distanceDomain, observatoryItems, structureViewPose } from '../../lib/observatory'
-import { photoStageHeight, type PhotoSceneFrame } from '../../lib/photo'
+import type { PhotoSceneFrame } from '../../lib/photo'
 import type { SpaceScale } from '../../lib/space3d'
 import type { DiveDirection, Pose } from '../../lib/spaceDive'
 import { useSelected } from '../../state/data'
@@ -169,7 +169,7 @@ export default function Space3DModal() {
     <SpaceToolbar o={o} settings={settings} onScale={chooseScale} crumb={showPhoto ? project.name : undefined}>
       {showPhoto && <div ref={setToolbarSlot} className="space-toolbar-slot" />}
     </SpaceToolbar>
-    <div ref={setStage} className="obs-stage space-stage" style={{ minHeight: mode === 'scale' && project && !galaxy ? photoStageHeight(project.cuts) : undefined }}>
+    <div ref={setStage} className="obs-stage space-stage">
       <div className={`space-scene${mode === 'photo' || editing ? ' is-hidden' : ''}`}>
         <Space3D settings={settings} photo={project} frameRef={frameRef} fitRef={fitRef} onHandle={setHandle} />
       </div>
