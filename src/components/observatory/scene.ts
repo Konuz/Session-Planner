@@ -407,13 +407,6 @@ export class ObservatoryScene {
     })
   }
 
-  /** Oddalenie przed przejściem do skali Drogi Mlecznej. */
-  zoomOut(): Promise<void> {
-    const target = this.controls.target.clone()
-    const position = target.clone().add(this.camera.position.clone().sub(target).multiplyScalar(4))
-    return this.fly(position, target, true)
-  }
-
   private onKeyDown = (e: KeyboardEvent) => {
     if (!['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight'].includes(e.code) || e.altKey || e.ctrlKey || e.metaKey) return
     e.preventDefault()

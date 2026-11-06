@@ -1,8 +1,7 @@
-// Pozycja obiektu w przestrzeni 3D (three.js, ładowane leniwie). Odległości z Wikidata (mediana podanych wartości),
-// kierunek ze współrzędnych galaktycznych. Dwie skale: Droga Mleczna (liniowa, 1 j. = 1000 lś) i Wszechświat
-// lokalny (logarytmiczna). W tle wszystkie obiekty katalogu z odległością.
-import { ChevronDown } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+// Pozycja obiektu w przestrzeni 3D (three.js, ładowane leniwie z okna „Pozycja 3D”). Odległości z Wikidata (mediana
+// podanych wartości), kierunek ze współrzędnych galaktycznych. Dwie skale: Droga Mleczna (liniowa, 1 j. = 1000 lś)
+// i Wszechświat lokalny (logarytmiczna). W tle wszystkie obiekty katalogu z odległością. Ustawienia z paska narzędzi okna.
+import { useEffect, useMemo, useRef, type RefObject } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js'
@@ -12,363 +11,20 @@ import { galacticVector } from '../lib/astro'
 import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO, type DSO, type ObjectType } from '../lib/catalog'
 import { useCatalog, useSelected } from '../state/data'
 import { useStore } from '../state/store'
-import { fmtDistance } from '../lib/format'
-import { CONSTELLATION_PL } from '../lib/constellations'
-import { Range } from './Range'
-import { LayersIcon } from './SkyDome'
-import { useOutside } from './TopBar'
-import { PhotoExplorer } from './PhotoExplorer'
-import { photoAnchorKind, photoStageHeight, type PhotoProject, type PhotoSceneFrame } from '../lib/photo'
+import { photoAnchorKind, type PhotoProject, type PhotoSceneFrame } from '../lib/photo'
+import { GALACTIC_LIMIT_LY, sunPosition } from '../lib/space3d'
+import {
+  LOCAL_GROUP_SHAPES, MILKY_WAY_DIAMETER_LY, UNIVERSE_GALAXY_SCALE, addStarNameLabels, domeMaterial, dotTexture, fixedSizeTextSprite,
+  galaxyTexture, localGroupGalaxy, milkyWay, position, textSprite, toThree, type StarNameLayout,
+} from './space3d/galaxyModels'
+import { GALAXY_LEVELS, type ConstellationStar, type SpaceSettings } from './space3d/spaceSettings'
 
-const SUN_TO_GC_KLY = 26.7
-const GALACTIC_LIMIT_LY = 150_000
-const MILKY_WAY_DIAMETER_LY = 100_000
-const UNIVERSE_GALAXY_SCALE = 0.12
-type GalaxyProfile = {
-  kind: 'spiral' | 'flocculent' | 'elliptical' | 'irregular'
-  label: string
-  axisRatio: number
-  core: number
-  bar?: boolean
-  knots?: number
-}
-
-// Typy: https://ned.ipac.caltech.edu/level5/Mateo/table1.html
-// M33: https://www.nao.ac.jp/en/gallery/weekly/2017/20170307-subaru.html
-// Parametry rozkładu gwiazd są ilustracją morfologii, nie rekonstrukcją pojedynczych gwiazd.
-const LOCAL_GROUP_SHAPES: Record<string, GalaxyProfile> = {
-  'M 31': { kind: 'spiral', label: 'Sb - spiralna, duże zgrubienie i pierścień', axisRatio: 1, core: 0.28 },
-  'M 33': { kind: 'flocculent', label: 'Scd - spiralna, luźne i poszarpane ramiona', axisRatio: 1, core: 0 },
-  'M 32': { kind: 'elliptical', label: 'cE2 - zwarta eliptyczna', axisRatio: 0.8, core: 0.65 },
-  'M 110': { kind: 'elliptical', label: 'dE5 - karłowata eliptyczna', axisRatio: 0.5, core: 0.12 },
-  'NGC 147': { kind: 'elliptical', label: 'dE5 - rozproszona eliptyczna', axisRatio: 0.5, core: 0 },
-  'NGC 185': { kind: 'elliptical', label: 'dE3 - karłowata eliptyczna', axisRatio: 0.7, core: 0.2 },
-  'NGC 292': { kind: 'irregular', label: 'SMC - nieregularna, poprzeczka i skrzydło', axisRatio: 0.5, core: 0, bar: true, knots: 7 },
-  'NGC 6822': { kind: 'irregular', label: 'IBm - nieregularna z poprzeczką', axisRatio: 0.7, core: 0, bar: true, knots: 6 },
-  'IC 10': { kind: 'irregular', label: 'dIrr - nieregularna, intensywne tworzenie gwiazd', axisRatio: 0.8, core: 0, knots: 16 },
-  'IC 1613': { kind: 'irregular', label: 'dIrr - rozproszona nieregularna', axisRatio: 0.8, core: 0, knots: 5 },
-}
-
-type Scale = 'galaxy' | 'universe'
-type ConstellationStar = { raDeg: number; decDeg: number; distLy: number; name: string }
-type StarNameLayout = { group: THREE.Group; anchors: { position: THREE.Vector3; sprite: THREE.Sprite }[]; connectors: THREE.BufferAttribute }
-type Constellations3D = { constellations: { abbr: string; lines: ([number, number, number] | null)[][]; stars?: ConstellationStar[] }[] }
-
-// Suwak liczby galaktyk (skala Wszechświat lokalny): górna granica odległości na każdym poziomie.
-const GALAXY_LEVELS = [
-  { maxLy: 5e6, title: 'Galaktyki 0: tylko Grupa Lokalna (do 5 mln lś)' },
-  { maxLy: 5e7, title: 'Galaktyki 1: do 50 mln lś' },
-  { maxLy: 5e8, title: 'Galaktyki 2: do 500 mln lś' },
-  { maxLy: Infinity, title: 'Galaktyki 3: wszystkie z odległością' },
-]
-
-/** Galaktyczne (x ku centrum, y ku l = 90°, z ku biegunowi N) → three.js (y w górę). */
-const toThree = (g: [number, number, number]) => new THREE.Vector3(g[0], g[2], -g[1])
-
-/** Położenie w scenie: Droga Mleczna: tys. lś od centrum Galaktyki; Wszechświat: skala log. od Słońca. */
-function position(o: Pick<DSO, 'raDeg' | 'decDeg'>, distLy: number, scale: Scale): THREE.Vector3 {
-  const v = galacticVector(o)
-  if (scale === 'galaxy') {
-    const d = distLy / 1000
-    return toThree([v[0] * d - SUN_TO_GC_KLY, v[1] * d, v[2] * d])
-  }
-  const r = Math.max(0, Math.log10(distLy / 1e4)) * 22
-  return toThree([v[0] * r, v[1] * r, v[2] * r])
-}
-
-function milkyWay(count: number, texture: THREE.Texture): THREE.Points {
-  const pos = new Float32Array(count * 3)
-  const col = new Float32Array(count * 3)
-  const rnd = (() => {
-    let s = 7
-    return () => ((s = (s * 16807) % 2147483647) / 2147483647)
-  })()
-  const gauss = () => Math.sqrt(-2 * Math.log(rnd() + 1e-9)) * Math.cos(2 * Math.PI * rnd())
-  for (let i = 0; i < count; i++) {
-    let x: number, y: number, z: number, c: [number, number, number]
-    if (i < count * 0.22) {
-      // Zgrubienie centralne z poprzeczką.
-      const r = Math.abs(gauss()) * 4.5
-      const a = rnd() * Math.PI * 2
-      x = Math.cos(a) * r * 1.6
-      y = Math.sin(a) * r * 0.7
-      const bar = 0.44
-      ;[x, y] = [x * Math.cos(bar) - y * Math.sin(bar), x * Math.sin(bar) + y * Math.cos(bar)]
-      z = gauss() * 1.6
-      c = [1, 0.86, 0.62]
-    } else if (i < count * 0.42) {
-      // Słabszy dysk pomiędzy ramionami, bez pustych szczelin.
-      const r = Math.min(50, -Math.log(Math.max(1e-9, rnd() * rnd())) * 10)
-      const a = rnd() * Math.PI * 2
-      x = Math.cos(a) * r
-      y = Math.sin(a) * r
-      z = gauss() * 0.65
-      c = [0.45, 0.42, 0.39]
-    } else {
-      // Cztery ramiona spiralne (spirala logarytmiczna, nachylenie ok. 12°).
-      const arm = Math.floor(rnd() * 4)
-      const r = 4 + Math.pow(rnd(), 0.8) * 46
-      const theta = Math.log(r / 4) / Math.tan((12 * Math.PI) / 180) + (arm * Math.PI) / 2 + gauss() * 0.28
-      x = Math.cos(theta) * r + gauss() * 1.4
-      y = Math.sin(theta) * r + gauss() * 1.4
-      z = gauss() * 0.5
-      const t = rnd()
-      c = t < 0.15 ? [1, 0.55, 0.65] : t < 0.6 ? [0.62, 0.75, 1] : [0.85, 0.88, 1]
-    }
-    const p = toThree([x, y, z])
-    pos.set([p.x, p.y, p.z], i * 3)
-    col.set(c, i * 3)
-  }
-  const g = new THREE.BufferGeometry()
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
-  g.setAttribute('color', new THREE.BufferAttribute(col, 3))
-  const m = galaxyMaterial(texture)
-  return new THREE.Points(g, m)
-}
-
-function galaxyMaterial(texture: THREE.Texture): THREE.PointsMaterial {
-  return new THREE.PointsMaterial({ size: 2, map: texture, vertexColors: true, transparent: true, opacity: 0.16, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: false })
-}
-
-function localGroupGalaxy(o: DSO, profile: GalaxyProfile, texture: THREE.Texture): THREE.Points {
-  // M31 i M33: średnice NASA; karły: średnica z rozmiaru kątowego i odległości katalogowej.
-  const diameterLy = o.id === 'M 31' ? 220_000 : o.id === 'M 33' ? 50_000 : o.distLy! * o.majArcmin * Math.PI / 10_800
-  const spiral = profile.kind === 'spiral' || profile.kind === 'flocculent'
-  // Minimum próbek zachowuje czytelność karłów przy zbliżeniu; M33 ma rozległy, rozproszony dysk.
-  const count = o.id === 'M 31' ? 36000 : o.id === 'M 33' ? 8800 : Math.max(600, Math.round(18000 * (diameterLy / MILKY_WAY_DIAMETER_LY) ** 1.8))
-  const pos = new Float32Array(count * 3)
-  const col = new Float32Array(count * 3)
-  let seed = [...o.id].reduce((n, c) => n * 31 + c.charCodeAt(0), 7) >>> 0
-  const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296)
-  const gauss = () => Math.sqrt(-2 * Math.log(rnd() + 1e-9)) * Math.cos(2 * Math.PI * rnd())
-  const flocculent = profile.kind === 'flocculent'
-  // Rozproszona otoczka i odrębny układ skupisk dla każdej galaktyki nieregularnej.
-  const knots = Array.from({ length: profile.knots ?? 0 }, () => {
-    const r = 10 + rnd() * 26
-    const a = rnd() * Math.PI * 2
-    return [Math.cos(a) * r, Math.sin(a) * r * profile.axisRatio, 2 + rnd() * 4]
-  })
-  const radius = (length: number) => {
-    let r: number
-    do { r = -Math.log(Math.max(1e-9, rnd() * rnd())) * length } while (r > 49)
-    return r
-  }
-  for (let i = 0; i < count; i++) {
-    let x: number, y: number, z: number
-    let color: [number, number, number]
-    const part = rnd()
-    if (spiral) {
-      if (part < profile.core) {
-        // M31: klasyczne zgrubienie i wydłużona składowa poprzeczki. M33: bez dużego zgrubienia.
-        // https://www.aanda.org/articles/aa/pdf/2018/10/aa32517-17.pdf
-        const r = radius(2.5)
-        const a = rnd() * Math.PI * 2
-        const h = rnd() * 2 - 1
-        x = r * Math.sqrt(1 - h * h) * Math.cos(a)
-        y = r * Math.sqrt(1 - h * h) * Math.sin(a)
-        z = r * h * 0.65
-        if (rnd() < 0.35) {
-          // PA poprzeczki 55,7° rzutujemy z powrotem do płaszczyzny dysku nachylonego o 77°.
-          const barAngle = -Math.atan(Math.tan((55.7 - (o.paDeg ?? 35)) * Math.PI / 180) / Math.cos(77 * Math.PI / 180))
-          x *= 1.6
-          y *= 0.65
-          ;[x, y] = [x * Math.cos(barAngle) - y * Math.sin(barAngle), x * Math.sin(barAngle) + y * Math.cos(barAngle)]
-        }
-        color = [1, 0.8, 0.58]
-      } else {
-        const disk = part < profile.core + (flocculent ? 0.45 : 0.48)
-        // Pierścień M31: ok. 10 kpc od centrum (NASA/Spitzer), na tle dysku i ramion.
-        // https://science.nasa.gov/asset/webb/infrared-universe-andromeda-galaxy/
-        const ring = !flocculent && part > 0.96
-        const arm = Math.floor(rnd() * 2)
-        let r = ring ? 14.8 + gauss() * 2.4 : radius(flocculent ? 18 : 11)
-        // M33: dwa słabe, niesymetryczne ramiona ze skupiskami zamiast jednolitych wstęg.
-        // https://www.aanda.org/articles/aa/pdf/2024/05/aa48910-23.pdf
-        if (flocculent && !disk && rnd() < 0.6) {
-          r = Math.max(2, Math.min(48, 8 + Math.floor(rnd() * 4) * 10 + arm * 3 + gauss() * 2))
-        }
-        const pitch = (flocculent ? 22 + arm * 6 : 12) * Math.PI / 180
-        const spiralAngle = Math.log(1 + r / 3) / Math.tan(pitch) + arm * Math.PI
-        const a = disk || ring ? rnd() * Math.PI * 2 : spiralAngle + gauss() * (flocculent ? 0.5 : 0.35) + (flocculent ? 0.45 * Math.sin(r * 0.35 + arm * 2) : 0)
-        if (ring) r += 1.5 * Math.sin(a) + 0.8 * Math.sin(3 * a)
-        x = Math.cos(a) * r
-        y = Math.sin(a) * r
-        z = gauss() * (0.35 + r * 0.012)
-        const hii = !disk && rnd() < (flocculent ? 0.09 : 0.035)
-        color = disk ? (flocculent ? [0.56, 0.58, 0.64] : [0.42, 0.4, 0.37]) : hii ? [0.95, 0.42, 0.55] : ring ? [0.4, 0.45, 0.55] : [0.63, 0.76, 1]
-        if (!flocculent) {
-          // Poglądowe pasma pyłu: osłabienie światła w dysku, bez jasnego obrysu pierścienia.
-          const lane = Math.exp(-((Math.sin(a - Math.log(1 + r / 3) / Math.tan(pitch) - 0.18) / 0.13) ** 2))
-          const dim = 1 - 0.7 * lane * THREE.MathUtils.smoothstep(r, 4, 9)
-          color = [color[0] * dim, color[1] * dim, color[2] * dim]
-        }
-      }
-    } else if (profile.kind === 'elliptical') {
-      const r = radius(part < profile.core ? 2.5 : 11)
-      const a = rnd() * Math.PI * 2
-      const h = rnd() * 2 - 1
-      x = r * Math.sqrt(1 - h * h) * Math.cos(a)
-      y = r * Math.sqrt(1 - h * h) * Math.sin(a) * profile.axisRatio
-      z = r * h * profile.axisRatio
-      color = part < profile.core ? [1, 0.83, 0.65] : [0.6, 0.53, 0.44]
-    } else {
-      if (part < 0.5) {
-        const r = radius(12)
-        const a = rnd() * Math.PI * 2
-        x = Math.cos(a) * r
-        y = Math.sin(a) * r * profile.axisRatio
-        color = [0.44, 0.49, 0.56]
-      } else if (profile.bar && part < 0.8) {
-        x = (rnd() - 0.5) * 55
-        y = gauss() * 3 + x * 0.12
-        color = [0.65, 0.73, 0.86]
-      } else {
-        const [cx, cy, spread] = knots[Math.floor(rnd() * knots.length)]
-        x = cx + gauss() * spread
-        y = cy + gauss() * spread
-        // W SMC młoda populacja rozciąga się w asymetryczne skrzydło.
-        if (o.id === 'NGC 292') { x += 12; y += 8 }
-        color = rnd() < 0.18 ? [0.94, 0.42, 0.55] : [0.6, 0.76, 1]
-      }
-      z = gauss() * 5
-    }
-    pos.set([x, y, z], i * 3)
-    col.set(color, i * 3)
-  }
-  const geometry = new THREE.BufferGeometry()
-  geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3))
-  geometry.setAttribute('color', new THREE.BufferAttribute(col, 3))
-  const material = galaxyMaterial(texture)
-  const points = new THREE.Points(geometry, material)
-  points.scale.setScalar(UNIVERSE_GALAXY_SCALE * diameterLy / MILKY_WAY_DIAMETER_LY)
-  // PA jest mierzone na niebie od północy ku wschodowi, nie względem osi sceny.
-  const sight = toThree(galacticVector(o)).normalize()
-  const north = toThree(galacticVector({ raDeg: o.raDeg, decDeg: o.decDeg + 0.01 }))
-  north.addScaledVector(sight, -north.dot(sight)).normalize()
-  const east = north.clone().cross(sight).normalize()
-  const pa = (o.paDeg ?? 0) * Math.PI / 180
-  const major = north.clone().multiplyScalar(Math.cos(pa)).addScaledVector(east, Math.sin(pa))
-  const minor = sight.clone().cross(major).normalize()
-  points.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(major, minor, sight))
-  if (spiral) {
-    // Orientacja dysków z badań, nie z elipsy całej galaktyki obejmującej zgrubienie.
-    // M31: https://academic.oup.com/mnras/article/366/3/996/994137
-    // M33: https://www.aanda.org/articles/aa/pdf/2025/08/aa55408-25.pdf
-    const inclination = (flocculent ? 54 : 77) * Math.PI / 180
-    points.rotateX(inclination)
-  }
-  return points
-}
-
-function galaxyTexture(): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas')
-  canvas.width = canvas.height = 32
-  const ctx = canvas.getContext('2d')!
-  const glow = ctx.createRadialGradient(16, 16, 0, 16, 16, 16)
-  glow.addColorStop(0, 'rgba(255,255,255,1)')
-  glow.addColorStop(0.2, 'rgba(255,255,255,0.65)')
-  glow.addColorStop(0.55, 'rgba(255,255,255,0.12)')
-  glow.addColorStop(1, 'rgba(255,255,255,0)')
-  ctx.fillStyle = glow
-  ctx.fillRect(0, 0, 32, 32)
-  return new THREE.CanvasTexture(canvas)
-}
-
-function dotTexture(): THREE.CanvasTexture {
-  const c = document.createElement('canvas')
-  c.width = c.height = 32
-  const ctx = c.getContext('2d')!
-  // Miękka krawędź: przy kilku pikselach ostre koło zamienia się w plusik.
-  const g = ctx.createRadialGradient(16, 16, 0, 16, 16, 16)
-  g.addColorStop(0, '#fff')
-  g.addColorStop(0.6, '#fff')
-  g.addColorStop(1, 'rgba(255, 255, 255, 0)')
-  ctx.fillStyle = g
-  ctx.fillRect(0, 0, 32, 32)
-  return new THREE.CanvasTexture(c)
-}
-
-/** Kopuła odległości: prawie przezroczysta, jaśniejsza przy krawędziach (efekt Fresnela), jak szklana bańka. */
-function domeMaterial(): THREE.ShaderMaterial {
-  return new THREE.ShaderMaterial({
-    uniforms: { color: { value: new THREE.Color(0x00e0ff) } },
-    vertexShader: `
-      varying vec3 vNormal;
-      varying vec3 vView;
-      void main() {
-        vec4 mv = modelViewMatrix * vec4(position, 1.0);
-        vNormal = normalize(normalMatrix * normal);
-        vView = normalize(-mv.xyz);
-        gl_Position = projectionMatrix * mv;
-      }`,
-    fragmentShader: `
-      uniform vec3 color;
-      varying vec3 vNormal;
-      varying vec3 vView;
-      void main() {
-        float f = pow(1.0 - abs(dot(normalize(vNormal), normalize(vView))), 3.0);
-        gl_FragColor = vec4(color, 0.003 + f * 0.04);
-      }`,
-    transparent: true,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-    blending: THREE.AdditiveBlending,
-  })
-}
-
-function textSprite(text: string, color = '#e6edf7', scale = 1, outlined = false): THREE.Sprite {
-  const c = document.createElement('canvas')
-  const ctx = c.getContext('2d')!
-  ctx.font = '600 44px ui-monospace, Consolas, monospace'
-  const w = Math.ceil(ctx.measureText(text).width) + 20
-  c.width = w
-  c.height = 64
-  ctx.font = '600 44px ui-monospace, Consolas, monospace'
-  ctx.fillStyle = color
-  ctx.textBaseline = 'middle'
-  if (outlined) {
-    ctx.strokeStyle = '#02050d'
-    ctx.lineWidth = 8
-    ctx.lineJoin = 'round'
-    ctx.strokeText(text, 10, 34)
-  }
-  ctx.fillText(text, 10, 34)
-  const tex = new THREE.CanvasTexture(c)
-  tex.colorSpace = THREE.SRGBColorSpace
-  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false, transparent: true }))
-  s.scale.set((w / 64) * 2.2 * scale, 2.2 * scale, 1)
-  return s
-}
-
-function fixedSizeTextSprite(sprite: THREE.Sprite, sprites: THREE.Sprite[]) {
-  sprite.userData.fixedPixelHeight = 14
-  sprite.userData.aspectRatio = sprite.scale.x / sprite.scale.y
-  sprites.push(sprite)
-}
-
-function addStarNameLabels(group: THREE.Group, stars: ConstellationStar[], sprites: THREE.Sprite[]): StarNameLayout {
-  const anchors: StarNameLayout['anchors'] = []
-  const points = new Float32Array(stars.length * 6)
-  const geometry = new THREE.BufferGeometry()
-  const connectors = new THREE.BufferAttribute(points, 3)
-  connectors.setUsage(THREE.DynamicDrawUsage)
-  geometry.setAttribute('position', connectors)
-  const leaderLines = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: 0x858b93, transparent: true, opacity: 0.7, depthWrite: false }))
-  leaderLines.frustumCulled = false
-  leaderLines.renderOrder = 1
-  leaderLines.userData.starNameConnector = true
-  group.add(leaderLines)
-  for (const star of stars) {
-    const sprite = textSprite(star.name, '#e6edf7', 1, true)
-    fixedSizeTextSprite(sprite, sprites)
-    sprite.userData.fixedPixelHeight = 20
-    sprite.renderOrder = 2
-    const starPosition = position(star, star.distLy, 'galaxy')
-    sprite.position.copy(starPosition)
-    group.add(sprite)
-    anchors.push({ position: starPosition, sprite })
-  }
-  return { group, anchors, connectors }
+interface Props {
+  settings: SpaceSettings
+  photo: PhotoProject | null
+  /** Stara nakładka zdjęcia (Wszechświat lokalny): rzut kotwic wycinków i dopasowanie kadru. */
+  frameRef: RefObject<((frame: PhotoSceneFrame) => void) | null>
+  fitRef: RefObject<(() => void) | null>
 }
 
 /** Przepisuje do bufora tylko punkty niewyłączonych rodzajów i ogranicza do nich zakres rysowania. */
@@ -396,38 +52,26 @@ function showTypes(bg:{ geometry: THREE.BufferGeometry; types: ObjectType[]; pos
   bg.geometry.setDrawRange(0, n)
 }
 
-export default function Space3D() {
-  const [photo, setPhoto] = useState<PhotoProject | null>(null)
+export default function Space3D({ settings, photo, frameRef: photoFrameRef, fitRef: photoFitRef }: Props) {
+  const { scale, galaxyLevel, hiddenTypes, showConstellations, showStarNames, constellationChoice, constellations } = settings
   const photoRef = useRef(photo)
   photoRef.current = photo
-  const photoFrameRef = useRef<((frame: PhotoSceneFrame) => void) | null>(null)
-  const photoFitRef = useRef<(() => void) | null>(null)
   const mountRef = useRef<HTMLDivElement>(null)
   const pinRef = useRef<HTMLDivElement>(null)
   // Punkty tła posortowane wg odległości: suwak zmienia tylko zakres rysowania, bez przebudowy sceny.
   const bgRef = useRef<{ geometry: THREE.BufferGeometry; counts: number[]; types: ObjectType[]; pos: Float32Array; col: Float32Array } | null>(null)
-  const [galaxyLevel, setGalaxyLevel] = useState(0)
   const galaxyLevelRef = useRef(galaxyLevel)
   galaxyLevelRef.current = galaxyLevel
-  // Filtr rodzajów obiektów tła w skali Drogi Mlecznej (lista rozwijana z polami wyboru).
-  const [hiddenTypes, setHiddenTypes] = useState<ObjectType[]>(() => Object.keys(TYPE_INFO) as ObjectType[])
   const hiddenTypesRef = useRef(hiddenTypes)
   hiddenTypesRef.current = hiddenTypes
-  const [filterOpen, setFilterOpen] = useState(false)
-  const [showConstellations, setShowConstellations] = useState(false)
   const showConstellationsRef = useRef(showConstellations)
   showConstellationsRef.current = showConstellations
-  const [showStarNames, setShowStarNames] = useState(false)
   const constellationGroupRef = useRef<THREE.Group | null>(null)
   const screenTextSpritesRef = useRef<THREE.Sprite[]>([])
   const starNameLayoutsRef = useRef<StarNameLayout[]>([])
   const textLayoutDirty = useRef(true)
   /** Zmiana sceny poza pętlą (warstwy, filtry): następna klatka musi zostać wyrenderowana. */
   const sceneDirty = useRef(true)
-  const [constellations, setConstellations] = useState<Constellations3D | null>(null)
-  const [constellationError, setConstellationError] = useState(false)
-  const filterRef = useRef<HTMLDivElement>(null)
-  useOutside(filterRef, () => setFilterOpen(false))
   const showAnnotations = useStore((s) => s.show3DAnnotations)
   const annotationsRef = useRef(showAnnotations)
   annotationsRef.current = showAnnotations
@@ -436,46 +80,13 @@ export default function Space3D() {
     (Object.keys(TYPE_INFO) as ObjectType[]).map((type) => [type, Number.parseInt((annotationColors[type] ?? DEFAULT_ANNOTATION_COLORS[type]).slice(1), 16)]),
   ) as Record<ObjectType, number>, [annotationColors])
   const o = useSelected()
-  const [constellationChoice, setConstellationChoice] = useState(o?.con ?? 'Ori')
   const constellationChoiceRef = useRef(constellationChoice)
   constellationChoiceRef.current = constellationChoice
   const { catalog } = useCatalog()
   const select = useStore((s) => s.select)
   const dist = o?.distLy ?? null
-  const auto: Scale = dist !== null && dist > GALACTIC_LIMIT_LY ? 'universe' : 'galaxy'
-  const [scaleChoice, setScaleChoice] = useState<Scale | null>(null)
-  const scale = scaleChoice ?? auto
-  const [scaleInfoOpen, setScaleInfoOpen] = useState(false)
   const outOfScale = scale === 'galaxy' && dist !== null && dist > GALACTIC_LIMIT_LY
   const withDistance = useMemo(() => (catalog ? catalog.filter((c) => c.distLy !== null) : []), [catalog])
-
-  useEffect(() => {
-    if (!photo) return
-    const distances = photo.cuts.map((c) => c.distLy).filter((d): d is number => d !== null)
-    setScaleChoice(distances.length && distances.every((d) => d >= GALACTIC_LIMIT_LY) ? 'universe' : 'galaxy')
-  }, [photo?.id])
-
-  useEffect(() => {
-    const controller = new AbortController()
-    fetch('/data/constellations3d.json', { signal: controller.signal })
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        return res.json() as Promise<Constellations3D>
-      })
-      .then(setConstellations)
-      .catch((e: Error) => { if (e.name !== 'AbortError') setConstellationError(true) })
-    return () => controller.abort()
-  }, [])
-
-  useEffect(() => {
-    setScaleChoice(null)
-  }, [o?.i])
-
-  useEffect(() => {
-    if (!scaleInfoOpen) return
-    const timeout = window.setTimeout(() => setScaleInfoOpen(false), 10_000)
-    return () => window.clearTimeout(timeout)
-  }, [scaleInfoOpen])
 
   useEffect(() => {
     const mount = mountRef.current
@@ -507,7 +118,7 @@ export default function Space3D() {
     const stars = galaxyTexture()
     disposables.push(stars)
 
-    const sunPos = scale === 'galaxy' ? toThree([-SUN_TO_GC_KLY, 0, 0]) : new THREE.Vector3()
+    const sunPos = new THREE.Vector3(...sunPosition(scale))
     // Obiekt dalszy niż zasięg skali Drogi Mlecznej pokazany jak bez odległości: tylko kierunek, bez oddalania kadru.
     const placed = dist !== null && !outOfScale
     const target0 = placed ? position(o, dist, scale) : sunPos.clone()
@@ -741,7 +352,7 @@ export default function Space3D() {
     }
     const onKeyDown = (e: KeyboardEvent) => {
       const active = document.activeElement
-      if ((active !== renderer.domElement && active !== filterRef.current?.querySelector('.constellation-select')) || !moveKeys.has(e.code) || e.altKey || e.ctrlKey || e.metaKey) return
+      if ((active !== renderer.domElement && !active?.classList.contains('constellation-select')) || !moveKeys.has(e.code) || e.altKey || e.ctrlKey || e.metaKey) return
       e.preventDefault()
       renderer.domElement.focus({ preventScroll: true })
       pressedKeys.add(e.code)
@@ -1244,124 +855,15 @@ export default function Space3D() {
     sceneDirty.current = true
   }, [hiddenTypes])
 
-  // Liczba obiektów tła skali Drogi Mlecznej według rodzaju (tylko rodzaje obecne w tej skali).
-  const typeCounts = useMemo(() => {
-    const counts = new Map<ObjectType, number>()
-    for (const c of withDistance) if (c.distLy! < GALACTIC_LIMIT_LY) counts.set(c.type, (counts.get(c.type) ?? 0) + 1)
-    return (Object.keys(TYPE_INFO) as ObjectType[]).filter((t) => counts.has(t)).map((t) => ({ type: t, count: counts.get(t)! }))
-  }, [withDistance])
-  const shownCount = typeCounts.filter((t) => !hiddenTypes.includes(t.type)).length
-
-  if (!o) return <div className="sky-stage empty" style={{ display: 'grid', placeItems: 'center' }}>Wybierz obiekt.</div>
+  if (!o) return <div className="space-layer space-empty">Wybierz obiekt.</div>
   return (
-    <div className={`sky-stage space-stage${photo ? ' has-photo' : ''}`} style={{ background: 'radial-gradient(circle at 50% 40%, #071022, #000 75%)', minHeight: photo ? photoStageHeight(photo.cuts) : undefined }}>
+    <div className="space-layer">
       <div ref={mountRef} style={{ position: 'absolute', inset: 0 }} />
-      <PhotoExplorer project={photo} onProject={setPhoto} frameRef={photoFrameRef} fitRef={photoFitRef} />
       <div ref={pinRef} className="pin" style={{ display: 'none' }} aria-hidden>
         {scale === 'universe' && LOCAL_GROUP_SHAPES[o.id] ? (
           <span style={{ width: 28, height: 28, border: '1px dashed var(--accent)', background: 'transparent' }} />
         ) : <><span className="pin-ring" /><span className="pin-ring" /><span className="pin-dot" /></>}
       </div>
-      <div className="sky-hud tr" style={{ pointerEvents: 'auto', display: 'flex', gap: 6 }}>
-        <button className={`toggle-chip${scale === 'galaxy' ? ' on' : ''}`} onClick={() => setScaleChoice('galaxy')}>Droga Mleczna</button>
-        <button className={`toggle-chip${scale === 'universe' ? ' on' : ''}`} onClick={() => setScaleChoice('universe')}>Wszechświat lokalny</button>
-      </div>
-      <div className="scale-info-control">
-        <button
-          className="scale-info-button"
-          title="Informacje o skali"
-          aria-label="Informacje o skali"
-          aria-expanded={scaleInfoOpen}
-          aria-controls="scale-info-popover"
-          onClick={() => setScaleInfoOpen((open) => !open)}
-        >i</button>
-        {scaleInfoOpen && (
-          <div id="scale-info-popover" className="scale-info-popover" role="note" aria-label="Opis skali i źródła danych">
-            <p>{dist === null
-              ? 'Wikidata nie podaje odległości tego obiektu - pokazany jest tylko kierunek ze Słońca.'
-              : outOfScale
-                ? `Obiekt (${fmtDistance(dist)}) leży poza zasięgiem tej skali - pokazany jest tylko kierunek ze Słońca. Jego położenie: Wszechświat lokalny.`
-                : scale === 'galaxy'
-                  ? `Skala liniowa, 1 j. = 1000 lś. Punkty: ${withDistance.filter((c) => c.distLy! < GALACTIC_LIMIT_LY).length} obiektów katalogu z odległością.`
-                  : 'Skala odległości logarytmiczna. Modele Grupy Lokalnej zachowują proporcje rozmiarów względem Drogi Mlecznej; pozostałe galaktyki to punkty w kolorach typów obiektów.'}</p>
-            <p>Odległości: Wikidata (mediana wartości). Morfologia: NED, NASA, NAOJ. Modele poglądowe.{scale === 'galaxy' && ' Ziemia poza skalą; orientacja osi J2000, obrót poglądowy.'}</p>
-            {scale === 'galaxy' && showConstellations && <p>Cyjanowe linie: gwiazdozbiory (Stellarium). Odległości gwiazd: szacunki z paralaks Hipparcosa (CDS I/239); brak dodatniej paralaksy przerywa linię.</p>}
-          </div>
-        )}
-      </div>
-      <div className="space-filters">
-      {scale === 'galaxy' && (
-        <div ref={filterRef} className="sky-hud br" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 6, maxWidth: '100%' }}>
-          {showConstellations && (
-            <>
-              <ConstellationPicker value={constellationChoice} onChange={setConstellationChoice}
-                options={(constellations?.constellations ?? []).map((c) => ({ value: c.abbr, label: CONSTELLATION_PL[c.abbr] ?? c.abbr })).sort((a, b) => a.label.localeCompare(b.label, 'pl'))} />
-              <button className={`toggle-chip${showStarNames ? ' on' : ''}`} aria-pressed={showStarNames} onClick={() => setShowStarNames((v) => !v)} title="Pokaż nazwy gwiazd z widocznych gwiazdozbiorów">Nazwy gwiazd</button>
-            </>
-          )}
-          <button
-            className={`toggle-chip${showConstellations ? ' on' : ''}`}
-            disabled={!constellations}
-            aria-pressed={showConstellations}
-            title={constellationError ? 'Nie udało się wczytać gwiazdozbiorów' : !constellations ? 'Ładowanie gwiazdozbiorów…' : 'Pokaż gwiazdy i cyjanowe linie w przestrzeni Drogi Mlecznej'}
-            onClick={() => setShowConstellations((v) => !v)}
-          >Gwiazdozbiory 3D{constellationError ? ' — błąd danych' : ''}</button>
-          <button className={`toggle-chip${filterOpen ? ' on' : ''}`} onClick={() => setFilterOpen((v) => !v)} aria-expanded={filterOpen}>
-            Obiekty {shownCount}/{typeCounts.length} <ChevronDown size={12} />
-          </button>
-          {filterOpen && (
-            <div className="popover type-filter">
-              <label>
-                <input type="checkbox" checked={shownCount === typeCounts.length && typeCounts.length > 0} onChange={() => setHiddenTypes(shownCount === typeCounts.length ? (Object.keys(TYPE_INFO) as ObjectType[]) : [])} />
-                Wszystkie
-              </label>
-              {typeCounts.map(({ type, count }) => (
-                <label key={type}>
-                  <input type="checkbox" checked={!hiddenTypes.includes(type)} onChange={() => setHiddenTypes((h) => (h.includes(type) ? h.filter((t) => t !== type) : [...h, type]))} />
-                  <span className="dot" style={{ background: `#${typeRGB[type].toString(16).padStart(6, '0')}` }} />
-                  {TYPE_INFO[type].plural}
-                  <span className="faint">{count}</span>
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-      {scale === 'universe' && (
-        <div className="sky-hud br hud-stack">
-          <label className="zoom-slider" title={GALAXY_LEVELS[galaxyLevel].title}>
-            <LayersIcon filled={false} />
-            <Range
-              min={0}
-              max={GALAXY_LEVELS.length - 1}
-              step={1}
-              value={galaxyLevel}
-              onChange={(e) => setGalaxyLevel(Number(e.target.value))}
-              aria-label="Liczba galaktyk"
-              aria-valuetext={GALAXY_LEVELS[galaxyLevel].title}
-            />
-            <LayersIcon filled />
-          </label>
-        </div>
-      )}
-      </div>
     </div>
   )
-}
-
-/** Własna lista zamiast <select>: systemowa lista nie przyjmuje stylu paska przewijania aplikacji. */
-function ConstellationPicker({ value, options, onChange }: { value: string; options: { value: string; label: string }[]; onChange(value: string): void }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  useOutside(ref, () => setOpen(false), open)
-  const all = [{ value: 'all', label: 'Wszystkie gwiazdozbiory' }, ...options]
-  return <div ref={ref} className="constellation-picker">
-    <button type="button" className="control constellation-select" aria-label="Gwiazdozbiór w przestrzeni 3D" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-      <span>{all.find((o) => o.value === value)?.label ?? value}</span><ChevronDown size={12} />
-    </button>
-    {open && <div className="popover constellation-list" role="listbox" aria-label="Gwiazdozbiór">
-      {all.map((o) => <button key={o.value} type="button" role="option" aria-selected={o.value === value} className={o.value === value ? 'on' : ''} ref={o.value === value ? (el) => el?.scrollIntoView({ block: 'nearest' }) : undefined}
-        onClick={() => { onChange(o.value); setOpen(false) }}>{o.label}</button>)}
-    </div>}
-  </div>
 }

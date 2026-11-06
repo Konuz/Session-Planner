@@ -99,12 +99,14 @@ export interface PlanItem {
 }
 
 export type Tab = 'sky' | 'catalog' | 'planner' | 'equipment' | 'horizon'
-export type CenterMode = 'dome' | 'framing' | '3d'
+export type CenterMode = 'dome' | 'framing'
 
 interface State {
   tab: Tab
   catalogPlanMode: 'single' | 'multiple' | null
   centerMode: CenterMode
+  /** Okno „Pozycja 3D” (modal nad Niebem); bez zapisu. */
+  space3DOpen: boolean
   location: Location
   savedLocations: Location[]
   nightDate: string
@@ -152,6 +154,7 @@ interface State {
 
   setTab(tab: Tab, catalogPlanMode?: State['catalogPlanMode']): void
   setCenterMode(mode: CenterMode): void
+  setSpace3DOpen(open: boolean): void
   setLocation(loc: Location): void
   saveLocation(loc: Location): void
   removeLocation(name: string): void
@@ -216,6 +219,7 @@ export const useStore = create<State>()(
       tab: 'sky',
       catalogPlanMode: null,
       centerMode: 'dome',
+      space3DOpen: false,
       location: HOME,
       savedLocations: [HOME],
       nightDate: nightDateOf(Date.now(), HOME.timeZone),
@@ -253,6 +257,7 @@ export const useStore = create<State>()(
 
       setTab: (tab, catalogPlanMode) => set({ tab, catalogPlanMode: tab === 'catalog' ? catalogPlanMode ?? null : null }),
       setCenterMode: (centerMode) => set({ centerMode }),
+      setSpace3DOpen: (space3DOpen) => set({ space3DOpen }),
       setLocation: (location) => set({ location, nightDate: nightDateOf(Date.now(), location.timeZone), timeMs: null }),
       saveLocation: (loc) => set((s) => ({ savedLocations: [loc, ...s.savedLocations.filter((l) => l.name !== loc.name)].slice(0, 12) })),
       removeLocation: (name) => set((s) => ({ savedLocations: s.savedLocations.filter((l) => l.name !== name) })),

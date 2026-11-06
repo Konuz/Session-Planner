@@ -1,22 +1,26 @@
-// Obserwatorium 3D zdjęcia (ładowane leniwie): gwiazdy Gaia i wycinki katalogowe wzdłuż linii widzenia.
+// Obserwatorium 3D zdjęcia: gwiazdy Gaia i wycinki katalogowe wzdłuż linii widzenia. Treść stanu zdjęcia okna
+// „Pozycja 3D”: scena i podpisy trafiają do wspólnej sceny okna, przełączniki do jego paska, panele do siatki okna.
 // Układ i interakcje wzorowane na SyQon Studio („3D distances”), kolory i krój z tokenów aplikacji.
 import { Pause, Play, SkipBack, SkipForward } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { fmtDistance, fmtNum } from '../../lib/format'
 import { CATEGORY_LABELS, byDistance, categoryCounts, distanceDomain, distanceHistogram, fieldOfView, matchesFilter, observatoryItems, type CategoryFilter, type ObservatoryItem } from '../../lib/observatory'
-import type { PhotoProject, PhotoStars } from '../../lib/photo'
-import { CloseButton } from '../CloseButton'
+import type { PhotoProject } from '../../lib/photo'
 import { Range } from '../Range'
+import type { StarsStatus } from '../space3d/photoSession'
 import { DistanceHistogram } from './DistanceHistogram'
 import { ObjectList, itemKind } from './ObjectList'
 import { ObservatoryScene, type ObservatoryView } from './scene'
 
+/** Miejsca w oknie „Pozycja 3D”: scena (pod nią płótno Drogi Mlecznej), pasek narzędzi i podsumowanie w nagłówku. */
+export interface ObservatorySlots { stage: HTMLElement; toolbar: HTMLElement; summary: HTMLElement }
+
 interface Props {
   project: PhotoProject
-  onStars(stars: PhotoStars): void
-  onClose(): void
-  /** Oddalenie do skali Drogi Mlecznej / Wszechświata lokalnego w widoku Space3D. */
-  onZoomOut(): void
+  slots: ObservatorySlots
+  stars: StarsStatus
+  onRetryStars(): void
 }
 
 const VIEWS: { id: ObservatoryView; label: string }[] = [
@@ -32,7 +36,7 @@ function thumbnail(image: HTMLImageElement, item: ObservatoryItem): string {
   return canvas.toDataURL('image/jpeg', 0.85)
 }
 
-export default function Observatory({ project, onStars, onClose, onZoomOut }: Props) {
+export default function Observatory({ project, slots, stars, onRetryStars }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<ObservatoryScene | null>(null)
   const [image, setImage] = useState<HTMLImageElement | null>(null)
@@ -44,8 +48,6 @@ export default function Observatory({ project, onStars, onClose, onZoomOut }: Pr
   const [selected, setSelected] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [descending, setDescending] = useState(false)
-  const [stars, setStars] = useState<{ status: 'idle' | 'loading' | 'error'; message?: string }>({ status: 'idle' })
-  const [retry, setRetry] = useState(0)
 
   const items = useMemo(() => observatoryItems(project), [project])
   const domain = useMemo(() => distanceDomain(items.map((item) => item.distLy)), [items])
@@ -68,23 +70,6 @@ export default function Observatory({ project, onStars, onClose, onZoomOut }: Pr
     img.onload = () => setImage(img)
     img.src = project.image
   }, [project.image])
-
-  // Gwiazdy Gaia: pobierane raz i zapisywane w projekcie (IndexedDB).
-  const hasStars = project.stars !== null
-  useEffect(() => {
-    if (hasStars) return
-    const abort = new AbortController()
-    setStars({ status: 'loading' })
-    fetch('/api/photo/stars', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ wcs: project.astrometry.wcs, width: project.width, height: project.height }), signal: abort.signal })
-      .then(async (response) => {
-        const data = await response.json() as { stars?: PhotoStars['stars']; magLimit?: number; error?: string }
-        if (!response.ok || !data.stars) throw new Error(data.error ?? 'Nie udało się pobrać gwiazd Gaia.')
-        if (!abort.signal.aborted) { onStars({ stars: data.stars, magLimit: data.magLimit ?? 0, fetchedAt: Date.now() }); setStars({ status: 'idle' }) }
-      })
-      .catch((e: Error) => { if (!abort.signal.aborted) setStars({ status: 'error', message: e.message }) })
-    return () => abort.abort()
-    // Projekt zmienia się przy każdym zapisie; zapytanie zależy tylko od zdjęcia i braku gwiazd.
-  }, [project.id, hasStars, retry])
 
   // Scena powstaje po wczytaniu obrazu i odtwarza się, gdy zmieni się zestaw obiektów (np. po pobraniu gwiazd).
   useEffect(() => {
@@ -120,112 +105,85 @@ export default function Observatory({ project, onStars, onClose, onZoomOut }: Pr
   // Po otwarciu rozkładanie rusza samo, gdy obraz jest wczytany i scena już stoi (przy ograniczonym ruchu od razu 100%).
   useEffect(() => { if (image && !reducedMotion()) setPlaying(true) }, [image])
 
-  // Okno modalne: fokus do środka po otwarciu (powrót do przycisku 3D robi PhotoExplorer).
-  const dialogRef = useRef<HTMLDivElement>(null)
-  useEffect(() => { dialogRef.current?.querySelector<HTMLElement>('.close-button')?.focus() }, [])
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
-
   function unfold() {
     if (reducedMotion()) { setProgress(1); return }
     if (progress >= 1) setProgress(0)
     setPlaying((p) => !p)
   }
-  async function zoomOut() {
-    await sceneRef.current?.zoomOut()
-    onZoomOut()
-  }
-
   const span = withDistance.length ? [Math.min(...withDistance.map((i) => i.distLy!)), Math.max(...withDistance.map((i) => i.distLy!))] : null
   const unknown = visibleItems.length - withDistance.length
 
-  return <div ref={dialogRef} className="observatory" role="dialog" aria-modal="true" aria-label="Obserwatorium 3D zdjęcia">
-    <div className="obs-window card">
-      <header className="obs-header">
-        <div>
-          <div className="kicker">KONUZASTRO / Obserwatorium 3D</div>
-          <div className="obs-title" title={project.name}>{project.name}</div>
-          <div className="dim">Obiekty zdjęcia wzdłuż linii widzenia</div>
-        </div>
-        <div className="obs-summary figures">
-          {span ? <><strong>Obiekty w 3D: {withDistance.length}</strong><span>{fmtDistance(span[0])} — {fmtDistance(span[1])}</span></> : <strong>Brak odległości w tej grupie</strong>}
-          {stars.status === 'loading' && <span className="accent">Pobieranie gwiazd Gaia DR3…</span>}
-        </div>
-        <div className="obs-header-actions">
-          <button type="button" className="button small" onClick={() => void zoomOut()} title="Przejdź do skali Drogi Mlecznej lub Wszechświata lokalnego">Droga Mleczna</button>
-          <CloseButton label="Zamknij obserwatorium" onClick={onClose} />
-        </div>
-      </header>
-      <div className="obs-toolbar">
-        <select className="control" aria-label="Grupa obiektów" value={category} onChange={(e) => setCategory(e.target.value as CategoryFilter)}>
-          {(Object.keys(CATEGORY_LABELS) as CategoryFilter[]).map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]} ({counts[c]})</option>)}
-        </select>
-        <div className="obs-tabs" role="tablist" aria-label="Widok kamery">
-          {VIEWS.map((v) => <button key={v.id} type="button" role="tab" aria-selected={view === v.id} className={`toggle-chip${view === v.id ? ' on' : ''}`} title={view === v.id ? 'Kliknij ponownie, aby dopasować widok' : undefined} onClick={() => { if (view === v.id) sceneRef.current?.setView(v.id); else setView(v.id) }}>{v.label}</button>)}
-        </div>
+  return <>
+    {createPortal(<>
+      {span ? <><strong>Obiekty w 3D: {withDistance.length}</strong><span>{fmtDistance(span[0])} — {fmtDistance(span[1])}</span></> : <strong>Brak odległości w tej grupie</strong>}
+      {stars.status === 'loading' && <span className="accent">Pobieranie gwiazd Gaia DR3…</span>}
+    </>, slots.summary)}
+    {createPortal(<>
+      <select className="control" aria-label="Grupa obiektów" value={category} onChange={(e) => setCategory(e.target.value as CategoryFilter)}>
+        {(Object.keys(CATEGORY_LABELS) as CategoryFilter[]).map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]} ({counts[c]})</option>)}
+      </select>
+      <div className="obs-tabs" role="tablist" aria-label="Widok kamery">
+        {VIEWS.map((v) => <button key={v.id} type="button" role="tab" aria-selected={view === v.id} className={`toggle-chip${view === v.id ? ' on' : ''}`} title={view === v.id ? 'Kliknij ponownie, aby dopasować widok' : undefined} onClick={() => { if (view === v.id) sceneRef.current?.setView(v.id); else setView(v.id) }}>{v.label}</button>)}
       </div>
-      <div className="obs-stage">
-        <div ref={hostRef} className="obs-canvas" />
-        <div className="obs-stage-title">
-          <strong>{progress < 0.02 ? 'Zdjęcie na niebie' : 'Wewnątrz kadru'}</strong>
-          <span className="faint">{progress < 0.02 ? 'Widok przejściowy · dokładne położenia przy 100%' : 'Perspektywa · oś odległości logarytmiczna, dekady na osi'}</span>
-        </div>
-        {view === 'earth' && fov && <div className="obs-fov figures">Pole {fmtNum(fov.widthDeg, 2)}° × {fmtNum(fov.heightDeg, 2)}° ≈ {fmtNum(fov.moons, 1)} tarczy Księżyca</div>}
-        {!withDistance.length && <div className="obs-empty" role="status">Brak odległości w tym przedziale lub grupie.<br />Poszerz zakres albo wybierz inną grupę obiektów.</div>}
-        {stars.status === 'error' && <div className="obs-error photo-error" role="alert">{stars.message}<button type="button" className="button small" onClick={() => setRetry((n) => n + 1)}>Ponów</button></div>}
-        <div className="obs-reference">
-          <span className="label">Zdjęcie źródłowe</span>
-          <div><img src={project.image} alt="" />{active && <span className="obs-crosshair" style={{ left: `${active.x / project.width * 100}%`, top: `${active.y / project.height * 100}%` }} />}</div>
-        </div>
-        <div className="obs-hint faint">Przeciągnij: obrót · prawy przycisk: przesunięcie · kółko: przybliżenie · WASD: ruch</div>
+    </>, slots.toolbar)}
+    {createPortal(<div className="obs-layer">
+      <div ref={hostRef} className="obs-canvas" />
+      <div className="obs-stage-title">
+        <strong>{progress < 0.02 ? 'Zdjęcie na niebie' : 'Wewnątrz kadru'}</strong>
+        <span className="faint">{progress < 0.02 ? 'Widok przejściowy · dokładne położenia przy 100%' : 'Perspektywa · oś odległości logarytmiczna, dekady na osi'}</span>
       </div>
-      <aside className="obs-aside">
-        <section className="obs-inspector" aria-live="polite">
-          <span className="label">Inspektor obiektu</span>
-          <div className="obs-inspector-head">
-            {thumb ? <img src={thumb} alt="" /> : <span className="obs-thumb-empty" />}
-            <div>
-              <strong>{active ? active.id : 'Wybierz obiekt'}</strong>
-              <span className="dim">{active ? `${itemKind(active)} · ${active.kind === 'star' ? 'Gaia DR3' : active.distLy ? 'pomiar z katalogu' : 'bez pomiaru'}` : 'Kliknij w scenie lub na liście'}</span>
-            </div>
+      {view === 'earth' && fov && <div className="obs-fov figures">Pole {fmtNum(fov.widthDeg, 2)}° × {fmtNum(fov.heightDeg, 2)}° ≈ {fmtNum(fov.moons, 1)} tarczy Księżyca</div>}
+      {!withDistance.length && <div className="obs-empty" role="status">Brak odległości w tym przedziale lub grupie.<br />Poszerz zakres albo wybierz inną grupę obiektów.</div>}
+      {stars.status === 'error' && <div className="obs-error photo-error" role="alert">{stars.message}<button type="button" className="button small" onClick={onRetryStars}>Ponów</button></div>}
+      <div className="obs-reference">
+        <span className="label">Zdjęcie źródłowe</span>
+        <div><img src={project.image} alt="" />{active && <span className="obs-crosshair" style={{ left: `${active.x / project.width * 100}%`, top: `${active.y / project.height * 100}%` }} />}</div>
+      </div>
+      <div className="obs-hint faint">Przeciągnij: obrót · prawy przycisk: przesunięcie · kółko: przybliżenie · WASD: ruch</div>
+    </div>, slots.stage)}
+    <aside className="obs-aside">
+      <section className="obs-inspector" aria-live="polite">
+        <span className="label">Inspektor obiektu</span>
+        <div className="obs-inspector-head">
+          {thumb ? <img src={thumb} alt="" /> : <span className="obs-thumb-empty" />}
+          <div>
+            <strong>{active ? active.id : 'Wybierz obiekt'}</strong>
+            <span className="dim">{active ? `${itemKind(active)} · ${active.kind === 'star' ? 'Gaia DR3' : active.distLy ? 'pomiar z katalogu' : 'bez pomiaru'}` : 'Kliknij w scenie lub na liście'}</span>
           </div>
-          <span className="label">Odległość od Ziemi</span>
-          <div className="obs-distance figures">{active ? active.distLy ? fmtDistance(active.distLy) : 'brak wiarygodnej odległości' : '—'}</div>
-          {active && <>
-            <div className="dim figures">RA {fmtNum(active.raDeg, 5)}° · Dec {fmtNum(active.decDeg, 5)}°<br />{active.kind === 'star' ? 'równikowe ICRS · epoka 2025,0' : 'równikowe J2000'}</div>
-            {active.distLy !== null && active.distLoLy !== null && active.distHiLy !== null && <div className="dim figures">Niepewność głębi −{fmtDistance(active.distLy - active.distLoLy)} / +{fmtDistance(active.distHiLy - active.distLy)}</div>}
-            <button type="button" className="button small" onClick={() => sceneRef.current?.flyTo(active.id)}>Leć do zaznaczenia</button>
-            <details>
-              <summary>Źródło i niepewność</summary>
-              <p>{active.source || 'Brak źródła odległości.'}</p>
-              {active.kind === 'star' && <p className="figures">G = {fmtNum(active.gMag ?? 0, 2)}{active.bpRp !== null && ` · BP−RP = ${fmtNum(active.bpRp, 2)}`}{active.parallaxOverError !== null && ` · ϖ/σ = ${fmtNum(active.parallaxOverError, 1)}`}<br />Odległość podajemy przy ϖ/σ ≥ 5; przedział to 16. i 84. percentyl.</p>}
-            </details>
-          </>}
-        </section>
-        <input className="control" type="search" placeholder="Znajdź obiekt…" aria-label="Znajdź obiekt" value={query} onChange={(e) => setQuery(e.target.value)} />
-        <ObjectList items={listed} selected={selected} onSelect={setSelected} descending={descending} onSort={() => setDescending((d) => !d)} />
-        <div className="faint figures">Z odległością: {withDistance.length} · bez odległości: {unknown}</div>
-      </aside>
-      <DistanceHistogram histogram={histogram} domain={domain} range={range} onRange={setRange} marker={active?.distLy ?? null} />
-      <div className="obs-bottom">
-        <div className="obs-timeline">
-          <button type="button" className="button small icon-button" aria-label={playing ? 'Wstrzymaj rozkładanie' : 'Rozłóż zdjęcie'} title={playing ? 'Wstrzymaj rozkładanie' : 'Rozłóż zdjęcie'} onClick={unfold}>{playing ? <Pause size={14} /> : <Play size={14} />}</button>
-          <button type="button" className={`button small icon-button${progress === 0 ? ' active' : ''}`} aria-pressed={progress === 0} aria-label="Początek: płaskie zdjęcie (0%)" title="Początek: płaskie zdjęcie (0%)" onClick={() => { setPlaying(false); setProgress(0) }}><SkipBack size={14} /></button>
-          <button type="button" className={`button small icon-button${progress === 1 ? ' active' : ''}`} aria-pressed={progress === 1} aria-label="Koniec: pełna głębia z odległości (100%)" title="Koniec: pełna głębia z odległości (100%)" onClick={() => { setPlaying(false); setProgress(1) }}><SkipForward size={14} /></button>
-          <Range aria-label="Rozłożenie zdjęcia w głąb" min={0} max={1} step={0.001} value={progress} onChange={(e) => { setPlaying(false); setProgress(Number(e.target.value)) }} />
-          <span className="figures obs-percent">{Math.round(progress * 100)}%</span>
         </div>
-        <div className="obs-legend">
-          <span><span className="obs-marker stars" />Gwiazdy</span>
-          <span><span className="obs-marker galaxies" />Galaktyki</span>
-          <span><span className="obs-marker nebulae" />Mgławice i gromady</span>
-          <span className="obs-spacer" />
-          <span className="faint">Gwiazdy: ESA/Gaia/DPAC (DR3, CC BY-NC 3.0 IGO), odległości Bailer-Jones i in. 2021 (CC BY 4.0) przy ϖ/σ ≥ 5 · obiekty bez odległości zostają na zdjęciu</span>
-        </div>
+        <span className="label">Odległość od Ziemi</span>
+        <div className="obs-distance figures">{active ? active.distLy ? fmtDistance(active.distLy) : 'brak wiarygodnej odległości' : '—'}</div>
+        {active && <>
+          <div className="dim figures">RA {fmtNum(active.raDeg, 5)}° · Dec {fmtNum(active.decDeg, 5)}°<br />{active.kind === 'star' ? 'równikowe ICRS · epoka 2025,0' : 'równikowe J2000'}</div>
+          {active.distLy !== null && active.distLoLy !== null && active.distHiLy !== null && <div className="dim figures">Niepewność głębi −{fmtDistance(active.distLy - active.distLoLy)} / +{fmtDistance(active.distHiLy - active.distLy)}</div>}
+          <button type="button" className="button small" onClick={() => sceneRef.current?.flyTo(active.id)}>Leć do zaznaczenia</button>
+          <details>
+            <summary>Źródło i niepewność</summary>
+            <p>{active.source || 'Brak źródła odległości.'}</p>
+            {active.kind === 'star' && <p className="figures">G = {fmtNum(active.gMag ?? 0, 2)}{active.bpRp !== null && ` · BP−RP = ${fmtNum(active.bpRp, 2)}`}{active.parallaxOverError !== null && ` · ϖ/σ = ${fmtNum(active.parallaxOverError, 1)}`}<br />Odległość podajemy przy ϖ/σ ≥ 5; przedział to 16. i 84. percentyl.</p>}
+          </details>
+        </>}
+      </section>
+      <input className="control" type="search" placeholder="Znajdź obiekt…" aria-label="Znajdź obiekt" value={query} onChange={(e) => setQuery(e.target.value)} />
+      <ObjectList items={listed} selected={selected} onSelect={setSelected} descending={descending} onSort={() => setDescending((d) => !d)} />
+      <div className="faint figures">Z odległością: {withDistance.length} · bez odległości: {unknown}</div>
+    </aside>
+    <DistanceHistogram histogram={histogram} domain={domain} range={range} onRange={setRange} marker={active?.distLy ?? null} />
+    <div className="obs-bottom">
+      <div className="obs-timeline">
+        <button type="button" className="button small icon-button" aria-label={playing ? 'Wstrzymaj rozkładanie' : 'Rozłóż zdjęcie'} title={playing ? 'Wstrzymaj rozkładanie' : 'Rozłóż zdjęcie'} onClick={unfold}>{playing ? <Pause size={14} /> : <Play size={14} />}</button>
+        <button type="button" className={`button small icon-button${progress === 0 ? ' active' : ''}`} aria-pressed={progress === 0} aria-label="Początek: płaskie zdjęcie (0%)" title="Początek: płaskie zdjęcie (0%)" onClick={() => { setPlaying(false); setProgress(0) }}><SkipBack size={14} /></button>
+        <button type="button" className={`button small icon-button${progress === 1 ? ' active' : ''}`} aria-pressed={progress === 1} aria-label="Koniec: pełna głębia z odległości (100%)" title="Koniec: pełna głębia z odległości (100%)" onClick={() => { setPlaying(false); setProgress(1) }}><SkipForward size={14} /></button>
+        <Range aria-label="Rozłożenie zdjęcia w głąb" min={0} max={1} step={0.001} value={progress} onChange={(e) => { setPlaying(false); setProgress(Number(e.target.value)) }} />
+        <span className="figures obs-percent">{Math.round(progress * 100)}%</span>
+      </div>
+      <div className="obs-legend">
+        <span><span className="obs-marker stars" />Gwiazdy</span>
+        <span><span className="obs-marker galaxies" />Galaktyki</span>
+        <span><span className="obs-marker nebulae" />Mgławice i gromady</span>
+        <span className="obs-spacer" />
+        <span className="faint">Gwiazdy: ESA/Gaia/DPAC (DR3, CC BY-NC 3.0 IGO), odległości Bailer-Jones i in. 2021 (CC BY 4.0) przy ϖ/σ ≥ 5 · obiekty bez odległości zostają na zdjęciu</span>
       </div>
     </div>
-  </div>
+  </>
 }

@@ -77,9 +77,11 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
   const simbad = `https://simbad.cds.unistra.fr/simbad/sim-id?Ident=${encodeURIComponent(o.aliases.find((a) => /^(NGC|IC|M) /.test(a)) ?? o.id)}`
   const aladin = `https://aladin.cds.unistra.fr/AladinLite/?target=${o.raDeg.toFixed(4)}%20${o.decDeg.toFixed(4)}&fov=${Math.max(0.3, (o.majArcmin / 60) * 3).toFixed(2)}&survey=CDS%2FP%2FDSS2%2Fcolor`
   const go = (mode: 'dome' | '3d') => {
-    setMode(mode)
     setTab('sky')
-    if (mode === 'dome') select(o.i, true)
+    if (mode === 'dome') {
+      setMode('dome')
+      select(o.i, true)
+    } else useStore.getState().setSpace3DOpen(true)
     onClose()
   }
 
