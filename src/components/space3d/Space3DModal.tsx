@@ -54,9 +54,22 @@ export default function Space3DModal() {
   const [summary, setSummary] = useState<HTMLDivElement | null>(null)
   const galaxy = settings.scale === 'galaxy'
   const diving = mode === 'in' || mode === 'out'
-  // Gwiazdy Gaia, które przyjdą w trakcie przejścia, trafiają do Obserwatorium dopiero po nim.
+  // Obserwatorium powstaje przy pierwszym nurkowaniu i zostaje (ukryte, wstrzymane) do zmiany zdjęcia lub skali:
+  // ponowne tworzenie i niszczenie kontekstu WebGL dawało białą klatkę na końcu powrotu.
+  const [obsAlive, setObsAlive] = useState(false)
+  useEffect(() => { setObsAlive(false) }, [project?.id, galaxy])
+  // Dane Obserwatorium: w stanie zdjęcia na bieżąco, poza nim dopiero przy nurkowaniu (edycja wycinków nie przebudowuje
+  // ukrytej sceny); gwiazdy Gaia, które przyjdą w trakcie przejścia, trafiają do niego po nim.
   const [obsProject, setObsProject] = useState(project)
-  useEffect(() => { if (!diving) setObsProject(project) }, [project, diving])
+  // Edycja wycinków nie przebudowuje ukrytej sceny przy każdym przesunięciu okręgu: dane dochodzą po jej zakończeniu.
+  useEffect(() => { if (mode === 'photo' || (mode === 'scale' && !session.editing)) setObsProject(project) }, [project, mode, session.editing])
+  // Scena Obserwatorium powstaje z wyprzedzeniem, w bezczynności po pokazaniu zdjęcia w Drodze Mlecznej: dekodowanie,
+  // wysyłka tekstur i kompilacja shaderów nie przypadają na start nurkowania.
+  useEffect(() => {
+    if (!project || !galaxy || obsAlive || mode !== 'scale' || session.editing || reducedMotion()) return
+    const idle = window.requestIdleCallback?.(() => setObsAlive(true), { timeout: 3000 }) ?? window.setTimeout(() => setObsAlive(true), 1000)
+    return () => { if (window.cancelIdleCallback) window.cancelIdleCallback(idle); else window.clearTimeout(idle) }
+  }, [project, galaxy, obsAlive, mode, session.editing])
   // Edycja wycinków to osobny widok okna: płaskie zdjęcie na scenie, panel edytora z prawej, scena 3D wstrzymana.
   const editing = mode === 'scale' && !!project && session.editing
   const guideRef = usePhotoGuide(handle, project, galaxy && mode !== 'photo' && !editing)
@@ -85,6 +98,8 @@ export default function Space3DModal() {
       settle(direction === 'in' ? 'photo' : 'scale')
       return
     }
+    setObsProject(project)
+    setObsAlive(true)
     const items = observatoryItems(project)
     const dive = new SpaceDive({
       direction, space: handle, guide,
@@ -182,7 +197,7 @@ export default function Space3DModal() {
       </>}
     </div>
     {editing && <PhotoCutEditor session={session} />}
-    {mode !== 'scale' && obsProject && stage && summary && <Observatory project={obsProject} slots={{ stage, toolbar: showPhoto ? toolbarSlot : null, summary: showPhoto ? summary : null }}
-      stars={stars} onRetryStars={retry} diving={diving} onScene={(scene) => { obsScene.current = scene }} />}
+    {(obsAlive || mode !== 'scale') && obsProject && stage && summary && <Observatory project={obsProject} slots={{ stage, toolbar: showPhoto ? toolbarSlot : null, summary: showPhoto ? summary : null }}
+      stars={stars} onRetryStars={retry} diving={diving} hidden={mode === 'scale'} onScene={(scene) => { obsScene.current = scene }} />}
   </SpaceWindow>
 }

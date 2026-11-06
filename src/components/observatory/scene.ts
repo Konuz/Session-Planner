@@ -100,6 +100,13 @@ export class ObservatoryScene {
   private raf = 0
   private dirty = true
   private disposables: { dispose(): void }[] = []
+  /** Obiekty i zasoby danych zdjęcia: podmieniane przy setData bez nowego kontekstu WebGL (utrata kontekstu
+   *  w trakcie pracy okna daje na D3D11 białą klatkę wszystkich płócien WebGL strony). */
+  private data = new THREE.Group()
+  private dataDisposables: { dispose(): void }[] = []
+  private photoTexture: THREE.Texture | null = null
+  private photoImage: HTMLImageElement | null = null
+  private earthMap: THREE.Texture | null = null
   private items: ObservatoryItem[] = []
   private visible = new Set<string>()
   private selected: string | null = null
@@ -162,7 +169,7 @@ export class ObservatoryScene {
     this.scene.add(this.ring)
     this.disposables.push(ringMap, ringMaterial)
 
-    this.scene.add(this.axis)
+    this.scene.add(this.axis, this.data)
     this.earthLabel = this.label('obs-label obs-earth', 'Ziemia')
 
     const pointer = { x: 0, y: 0 }
@@ -201,36 +208,48 @@ export class ObservatoryScene {
   }
 
   /** Zdjęcie jako płaszczyzna oraz karty wycinków i punkty gwiazd. */
-  setData(image: HTMLImageElement, size: { width: number; height: number }, items: ObservatoryItem[], domain: LogDomain) {
+  /** Scena gotowa do pokazania: dane wczytane, tekstury na GPU, shadery skompilowane (bez blokowania klatki). */
+  ready = false
+
+  setData(image: HTMLImageElement, size: { width: number; height: number }, items: ObservatoryItem[], domain: LogDomain, plane: ImageBitmap | null = null) {
+    this.clearData()
     this.image = size
     this.items = items
     this.domain = domain
-    const texture = new THREE.Texture(image)
-    texture.colorSpace = THREE.SRGBColorSpace
-    texture.needsUpdate = true
+    // Ta sama klatka zdjęcia (np. po pobraniu gwiazd Gaia) nie wysyła tekstury na GPU drugi raz.
+    if (this.photoImage !== image) {
+      this.photoTexture?.dispose()
+      this.photoTexture = new THREE.Texture(plane ?? image)
+      // Bitmapa jest już odwrócona (imageOrientation: 'flipY'); WebGL nie odwraca bitmap przy wysyłce.
+      if (plane) this.photoTexture.flipY = false
+      this.photoTexture.colorSpace = THREE.SRGBColorSpace
+      this.photoTexture.needsUpdate = true
+      this.photoImage = image
+    }
+    const texture = this.photoTexture!
     const planeHeight = PLANE_WIDTH * size.height / size.width
     const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, side: THREE.DoubleSide })
     this.photo = new THREE.Mesh(new THREE.PlaneGeometry(PLANE_WIDTH, planeHeight), material)
     this.photo.renderOrder = -1
-    this.scene.add(this.photo)
+    this.data.add(this.photo)
     const corners = [[-1, 1], [1, 1], [1, -1], [-1, -1]].map(([x, y]) => new THREE.Vector3(x * PLANE_WIDTH / 2, y * planeHeight / 2, 0))
     const frameMaterial = new THREE.LineBasicMaterial({ color: this.accent, transparent: true, opacity: 0.55 })
     this.frame = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(corners), frameMaterial)
-    this.scene.add(this.frame)
-    this.disposables.push(texture, material, this.photo.geometry, frameMaterial, this.frame.geometry)
+    this.data.add(this.frame)
+    this.dataDisposables.push(material, this.photo.geometry, frameMaterial, this.frame.geometry)
 
     // Ziemia i ostrosłup pola: od Ziemi do narożników kadru.
     const earthPos = new THREE.Vector3(0, 0, EARTH_Z)
     // Ta sama tekstura co w widoku Drogi Mlecznej (Space3D); scena nie ma świateł, więc materiał bez cieniowania.
-    const earthMap = new THREE.TextureLoader().load(`${import.meta.env.BASE_URL}textures/earth.webp`, () => { this.dirty = true })
+    const earthMap = this.earthMap ??= new THREE.TextureLoader().load(`${import.meta.env.BASE_URL}textures/earth.webp`, () => { this.dirty = true })
     earthMap.colorSpace = THREE.SRGBColorSpace
     const earthMaterial = new THREE.MeshBasicMaterial({ map: earthMap, transparent: true })
     const earth = this.earth = new THREE.Mesh(new THREE.SphereGeometry(1.5, 48, 32), earthMaterial)
     earth.position.copy(earthPos)
     const pyramidMaterial = new THREE.LineBasicMaterial({ color: this.accent, transparent: true, opacity: 0.35 })
     const pyramid = this.pyramid = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(corners.flatMap((c) => [earthPos, c])), pyramidMaterial)
-    this.scene.add(earth, pyramid)
-    this.disposables.push(earthMap, earthMaterial, earth.geometry, pyramidMaterial, pyramid.geometry)
+    this.data.add(earth, pyramid)
+    this.dataDisposables.push(earthMaterial, earth.geometry, pyramidMaterial, pyramid.geometry)
 
     // Oś linii widzenia z podziałką dekad.
     const axisMaterial = new THREE.LineDashedMaterial({ color: this.accent, dashSize: 2, gapSize: 2, transparent: true, opacity: 0.7 })
@@ -239,7 +258,7 @@ export class ObservatoryScene {
     this.axis.add(axisLine)
     const tickGeometry = new THREE.RingGeometry(1.2, 1.6, 24)
     const tickMaterial = this.tickMaterial = new THREE.MeshBasicMaterial({ color: this.accent, transparent: true, opacity: 0.6, side: THREE.DoubleSide })
-    this.disposables.push(axisMaterial, axisLine.geometry, tickGeometry, tickMaterial)
+    this.dataDisposables.push(axisMaterial, axisLine.geometry, tickGeometry, tickMaterial)
     for (let k = Math.round(Math.log10(domain.minLy)); 10 ** k <= domain.maxLy * 1.0001; k++) {
       const mesh = new THREE.Mesh(tickGeometry, tickMaterial)
       this.axis.add(mesh)
@@ -259,8 +278,8 @@ export class ObservatoryScene {
       const material = new THREE.ShaderMaterial({ vertexShader: starVertex, fragmentShader: starFragment, uniforms: { pixelRatio: { value: this.renderer.getPixelRatio() }, refDistance: { value: 150 } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })
       this.stars = new THREE.Points(geometry, material)
       this.stars.frustumCulled = false
-      this.scene.add(this.stars)
-      this.disposables.push(geometry, material)
+      this.data.add(this.stars)
+      this.dataDisposables.push(geometry, material)
     }
 
     for (const item of items) {
@@ -270,12 +289,40 @@ export class ObservatoryScene {
       const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false })
       const sprite = new THREE.Sprite(material)
       this.cards.set(item.id, sprite)
-      this.scene.add(sprite)
+      this.data.add(sprite)
       this.itemLabels.set(item.id, this.label('obs-label obs-card', `${item.id}\n${item.distLy ? `≈ ${fmtDistance(item.distLy)}` : 'odległość nieznana'}`))
-      this.disposables.push(texture, material)
+      this.dataDisposables.push(texture, material)
     }
     for (const item of items) this.visible.add(item.id)
     this.layout()
+    // Wysyłka tekstur (zdjęcie ma kilka megapikseli) i kompilacja shaderów od razu, przy budowie sceny: inaczej
+    // dzieje się to w pierwszej klatce, w której zdjęcie staje się widoczne (w nurkowaniu ok. 100 ms w ruchu).
+    this.renderer.initTexture(texture)
+    for (const card of this.cards.values()) if (card.material.map) this.renderer.initTexture(card.material.map)
+    this.ready = false
+    const token = ++this.dataToken
+    void this.renderer.compileAsync(this.scene, this.camera).catch(() => {}).then(() => { if (token === this.dataToken) { this.ready = true; this.dirty = true } })
+  }
+
+  private dataToken = 0
+
+  /** Usunięcie danych poprzedniego zdjęcia (obiekty, zasoby, podpisy); renderer i kontekst zostają. */
+  private clearData() {
+    this.data.clear()
+    this.axis.clear()
+    for (const d of this.dataDisposables) d.dispose()
+    this.dataDisposables = []
+    for (const tick of this.ticks) tick.label.remove()
+    for (const label of this.itemLabels.values()) label.remove()
+    this.labels.querySelector('.obs-star')?.remove()
+    this.ticks = []
+    this.itemLabels.clear()
+    this.cards.clear()
+    this.visible.clear()
+    this.stars = null
+    this.starIndex = []
+    this.photo = this.frame = this.earth = this.pyramid = this.axisLine = null
+    this.tickMaterial = null
   }
 
   setProgress(progress: number) {
@@ -574,6 +621,9 @@ export class ObservatoryScene {
 
   dispose() {
     cancelAnimationFrame(this.raf)
+    this.clearData()
+    this.photoTexture?.dispose()
+    this.earthMap?.dispose()
     this.resizeObserver.disconnect()
     this.controls.dispose()
     for (const d of this.disposables) d.dispose()

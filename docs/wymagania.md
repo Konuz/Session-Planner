@@ -61,6 +61,15 @@ Pomiary Playwrightem (Chromium, swiftshader) na zdjęciu IC 434 (Orion, obiekty 
 - Panele w fazie wejścia: rozmiar sceny idzie za krzywą przejścia CSS (17 wartości w 0,9 s, początek co ok. 16 ms); pod swiftshaderem zdarzają się pojedyncze klatki 150–280 ms, niesprawdzone na prawdziwej karcie graficznej. Przeglądarki bez `interpolate-size` (Firefox, Safari) przestawiają wysokość paneli od razu.
 - Telefon (390 × 844): pasek zdjęcia i przełączniki zawijają się, w stanie zdjęcia okno przewija się (scena, lista, histogram, oś).
 
+### Płynność nurkowania na GPU (6.11.2026)
+
+Chromium headless z ANGLE D3D11 na NVIDIA GeForce RTX 5070 (renderer z `WEBGL_debug_renderer_info`), 1920 × 1080, IC 434, odstępy klatek `requestAnimationFrame`, długie klatki (`long-animation-frame`), screencast CDP z jasnością sceny w każdej klatce:
+- Przed poprawką (aeb051b): pierwsze nurkowanie miało klatki 83–150 ms na starcie (budowa Obserwatorium, kamera jeszcze stała) i 100–136 ms w ruchu po ok. 1,3 s, także w kolejnych nurkowaniach: pierwsza widoczna klatka płaskiego zdjęcia wysyłała na GPU teksturę 2798 × 2827 (`texSubImage2D` 125 ms) i kompilowała shadery (`getProgramInfoLog` 92 ms); czas animacji z zegara przeskakiwał wtedy o całą klatkę. Na końcu części powrotów jedna klatka całej sceny była biała: `forceContextLoss()` przy odmontowaniu Obserwatorium (bez niego 0 białych klatek w 10 przejściach).
+- Po poprawce: Obserwatorium powstaje w bezczynności po pokazaniu zdjęcia w Drodze Mlecznej i zostaje między nurkowaniami (jeden kontekst WebGL, nowe dane podmieniają zawartość); płaszczyzna zdjęcia to bitmapa 2048 px z obiektu Blob (dekodowanie poza głównym wątkiem), shadery przez `compileAsync`, krok czasu przejścia najwyżej 33 ms. Pięć cykli naprzód i wstecz: p50 16,7 ms, p95 16,8 ms, max 33,4 ms, zero klatek > 50 ms (także w pierwszym nurkowaniu), zero białych klatek i skoków jasności.
+- Koszt przeniesiony na otwarcie okna: budowa Obserwatorium w bezczynności dodaje 3 klatki 83–183 ms ok. 1,4–1,8 s po otwarciu (kamera Drogi Mlecznej wtedy stoi); samo otwarcie okna już wcześniej miało klatki 400, 100, 67 i 250–267 ms (fragment z three.js, budowa sceny Space3D).
+- Czasy: nurkowanie 2,2 s i wejście 0,9 s (razem ok. 3,1 s, od zmiany z d26e5f3 bez osobnego ustawienia kamery); prompt zakładał 1,0 + 1,6 + 0,9 s. Nie zmienione.
+- Niesprawdzone: inne karty graficzne i przeglądarki, okno przeglądarki w trybie z oknem (headful), zegar 120 Hz.
+
 ## Moje zdjęcie obiektu (5.11.2026)
 
 - „Dodaj moje zdjęcie” w szczegółach obiektu: zdjęcie M 51 z konuzastro.pl rozwiązane lokalnie w 16 s. Środek siatki 17 × 17 z nowej komendy mostu `grid` leży 0,00025° od środka astrometrii. Zdjęcie trafia tylko do obiektu, dla którego je dodano. M 31 z tym samym zdjęciem dostaje „Obiektu M 31 nie ma na tym zdjęciu.”.

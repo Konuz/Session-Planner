@@ -15,6 +15,8 @@ import type { PhotoGuide } from './photoGuide'
 /** Na końcu nurkowania 1 jednostka Obserwatorium ≈ 1 lś: sąsiednie obiekty rozlatują się poza kadr. */
 const END_SCALE = 0.001
 const SPACE_FOV = 50
+/** Najdłuższy krok czasu przejścia w jednej klatce (ok. 30 kl./s). */
+const MAX_STEP_MS = 33
 const OBSERVATORY_FOV = 40
 const UP: Vec3 = [0, 1, 0]
 /** Promień Ziemi Obserwatorium (jednostki sceny). */
@@ -50,7 +52,9 @@ export interface DiveDev {
 
 export class SpaceDive {
   private raf = 0
-  private t0: number | null = null
+  /** Czas przejścia w ms: suma kroków klatek, każdy najwyżej MAX_STEP_MS (zacięcie zatrzymuje ruch zamiast przeskoku). */
+  private elapsed = 0
+  private last: number | null = null
   private phase: DivePhase | null = null
   private frozen: number | null = null
   private skipping = false
@@ -119,13 +123,12 @@ export class SpaceDive {
 
   private frame(now: number) {
     const obs = this.o.observatory()
-    this.t0 ??= now
-    let elapsed = this.skipping ? DIVE_TOTAL_MS : this.frozen !== null ? this.frozen * DIVE_TOTAL_MS : now - this.t0
+    const step = Math.min(MAX_STEP_MS, Math.max(0, now - (this.last ?? now)))
+    this.last = now
     // Scena Obserwatorium musi stać przed nurkowaniem: do tego czasu kamera Drogi Mlecznej stoi.
-    if (this.o.direction === 'in' && !obs) {
-      elapsed = 0
-      this.t0 = now
-    }
+    if (this.o.direction === 'in' && !obs?.ready) this.elapsed = 0
+    else this.elapsed += step
+    const elapsed = this.skipping ? DIVE_TOTAL_MS : this.frozen !== null ? this.frozen * DIVE_TOTAL_MS : this.elapsed
     const f = diveFrame(elapsed, this.o.direction)
     const seam: Pose = { ...this.o.seam, up: UP }
     if (f.phase !== this.phase) {
@@ -138,8 +141,8 @@ export class SpaceDive {
       this.o.onPhase(f.phase)
     }
     if (f.phase !== 'enter') this.applySpace(f.e, seam, now)
-    if (obs) this.applyObservatory(obs, f.phase, f.k, f.e, seam, now)
-    if (f.done && !this.finished && (obs || this.o.direction === 'out')) this.finish(obs)
+    if (obs?.ready) this.applyObservatory(obs, f.phase, f.k, f.e, seam, now)
+    if (f.done && !this.finished && (obs?.ready || this.o.direction === 'out')) this.finish(obs)
   }
 
   private applySpace(e: number, seam: Pose, now: number) {
@@ -178,7 +181,7 @@ export class SpaceDive {
     fadeLayers(space, guide, fades.layers, fades.labels)
     if (this.earthMaterial) this.earthMaterial.opacity = fades.spaceEarth
     if (space.earth) space.earth.visible = fades.spaceEarth > 0
-    guide.setOpacity(fades.guide, fades.cone)
+    guide.setOpacity(fades.guide, fades.cone, fades.coneFaces)
   }
 
   private applyObservatory(obs: ObservatoryScene, phase: DivePhase, k: number, e: number, seam: Pose, now: number) {
@@ -247,7 +250,7 @@ export function restoreSpace(space: Space3DHandle, guide: PhotoGuide | null, pos
   space.override.layerFade = 1
   if (guide) {
     fadeLayers(space, guide, 1)
-    guide.setOpacity(1, 1)
+    guide.setOpacity(1, 1, 1)
     guide.cone.scale.set(guide.fieldTan[0], guide.fieldTan[1], 1)
   }
   if (space.earth) {

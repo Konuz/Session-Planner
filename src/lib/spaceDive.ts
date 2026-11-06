@@ -165,6 +165,8 @@ export interface DiveFades {
   guide: number
   /** Droga Mleczna: stożek pola (gaśnie, gdy jego kąt zrówna się z ostrosłupem). */
   cone: number
+  /** Ścianki stożka: gasną wcześniej i łagodniej, bo rozchylony stożek wypełnia prawie cały kadr. */
+  coneFaces: number
   /** Droga Mleczna: znacznik Ziemi (przenikanie z Ziemią Obserwatorium). */
   spaceEarth: number
   /** Obserwatorium: Ziemia, ostrosłup, oś, płaskie zdjęcie (z gwiazdami i kartami) i siatka. */
@@ -181,6 +183,7 @@ export function diveFades(e: number): DiveFades {
     labels: 1 - ramp(e, 0, 0.15),
     guide: 1 - ramp(e, 0.5, 0.75),
     cone: 1 - ramp(e, 0.6, 0.75),
+    coneFaces: 1 - ramp(e, 0.2, 0.55),
     spaceEarth: 1 - ramp(e, 0.45, 0.6),
     earth: ramp(e, 0.4, 0.55),
     pyramid: ramp(e, 0.45, 0.6),

@@ -24,6 +24,8 @@ interface Props {
   onRetryStars(): void
   /** Nurkowanie w toku: scena bez własnej pętli i bez samoczynnego rozkładania (rusza po wejściu). */
   diving: boolean
+  /** Skala Drogi Mlecznej między nurkowaniami: scena czeka ukryta i wstrzymana (bez klatek i bez nowego kontekstu). */
+  hidden: boolean
   onScene?(scene: ObservatoryScene | null): void
 }
 
@@ -31,6 +33,9 @@ const VIEWS: { id: ObservatoryView; label: string }[] = [
   { id: 'structure', label: 'Struktura' }, { id: 'earth', label: 'Z Ziemi' }, { id: 'top', label: 'Z góry' }, { id: 'side', label: 'Z boku' },
 ]
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches
+
+/** Najdłuższy bok tekstury płaszczyzny zdjęcia w scenie. */
+const PLANE_TEXTURE_PX = 2048
 
 function thumbnail(image: HTMLImageElement, item: ObservatoryItem): string {
   const canvas = document.createElement('canvas')
@@ -40,10 +45,13 @@ function thumbnail(image: HTMLImageElement, item: ObservatoryItem): string {
   return canvas.toDataURL('image/jpeg', 0.85)
 }
 
-export default function Observatory({ project, slots, stars, onRetryStars, diving, onScene }: Props) {
+export default function Observatory({ project, slots, stars, onRetryStars, diving, hidden, onScene }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<ObservatoryScene | null>(null)
   const [image, setImage] = useState<HTMLImageElement | null>(null)
+  // Płaszczyzna zdjęcia: pomniejszona bitmapa przygotowana poza głównym wątkiem (wysyłka pełnych kilku megapikseli
+  // na GPU trwała ponad 100 ms w jednej klatce).
+  const [plane, setPlane] = useState<ImageBitmap | null>(null)
   const [progress, setProgress] = useState(() => reducedMotion() ? 1 : 0)
   const [playing, setPlaying] = useState(false)
   const [view, setView] = useState<ObservatoryView>('structure')
@@ -70,24 +78,39 @@ export default function Observatory({ project, slots, stars, onRetryStars, divin
   const thumb = useMemo(() => image && active ? thumbnail(image, active) : null, [image, active])
 
   useEffect(() => {
+    // Dekodowanie poza głównym wątkiem: inaczej robi je pierwsze rysowanie wycinków (klatka setek ms).
+    let live = true
     const img = new Image()
-    img.onload = () => setImage(img)
     img.src = project.image
+    img.decode().catch(() => {}).then(async () => {
+      const scale = Math.min(1, PLANE_TEXTURE_PX / Math.max(img.naturalWidth, img.naturalHeight))
+      // Z obiektu Blob dekodowanie i zmniejszenie idą poza głównym wątkiem (z elementu <img> nie).
+      const blob = await fetch(project.image).then((r) => r.blob()).catch(() => null)
+      const bitmap = await createImageBitmap(blob ?? img, { resizeWidth: Math.max(1, Math.round(img.naturalWidth * scale)), resizeHeight: Math.max(1, Math.round(img.naturalHeight * scale)), resizeQuality: 'high', imageOrientation: 'flipY' }).catch(() => null)
+      if (!live) { bitmap?.close(); return }
+      setPlane(bitmap)
+      setImage(img)
+    })
+    return () => { live = false }
   }, [project.image])
 
   // Scena powstaje po wczytaniu obrazu i odtwarza się, gdy zmieni się zestaw obiektów (np. po pobraniu gwiazd).
-  const divingRef = useRef(diving)
-  divingRef.current = diving
+  const idleRef = useRef(diving || hidden)
+  idleRef.current = diving || hidden
   const onSceneRef = useRef(onScene)
   onSceneRef.current = onScene
+  // Jedna scena (i jeden kontekst WebGL) na czas życia komponentu: nowe dane podmieniają zawartość.
+  useEffect(() => () => {
+    onSceneRef.current?.(null)
+    sceneRef.current?.dispose()
+    sceneRef.current = null
+  }, [])
   useEffect(() => {
     if (!image || !hostRef.current) return
-    const scene = new ObservatoryScene(hostRef.current, { reducedMotion: reducedMotion(), onSelect: setSelected, external: divingRef.current })
-    scene.setData(image, { width: project.width, height: project.height }, items, domain)
-    sceneRef.current = scene
-    onSceneRef.current?.(scene)
-    return () => { onSceneRef.current?.(null); scene.dispose(); sceneRef.current = null }
-  }, [image, items, domain, project.width, project.height])
+    sceneRef.current ??= new ObservatoryScene(hostRef.current, { reducedMotion: reducedMotion(), onSelect: setSelected, external: idleRef.current })
+    sceneRef.current.setData(image, { width: project.width, height: project.height }, items, domain, plane)
+    onSceneRef.current?.(sceneRef.current)
+  }, [image, plane, items, domain, project.width, project.height])
 
   useEffect(() => { sceneRef.current?.setProgress(progress) }, [progress, image, items])
   useEffect(() => { sceneRef.current?.setVisible(new Set(visibleItems.map((item) => item.id))) }, [visibleItems, image])
@@ -114,9 +137,14 @@ export default function Observatory({ project, slots, stars, onRetryStars, divin
   // Po wejściu rozkładanie rusza samo, gdy obraz jest wczytany i scena już stoi (przy ograniczonym ruchu od razu 100%).
   // W nurkowaniu stoi: powrót zwija postęp do zera, a wejście kończy się na płaskim zdjęciu.
   useEffect(() => {
-    if (diving) setPlaying(false)
-    else if (image && !reducedMotion()) setPlaying(true)
-  }, [image, diving])
+    if (diving || hidden) {
+      setPlaying(false)
+      // Postęp prowadzi sterownik nurkowania: stan zgodny ze sceną, żeby efekt postępu niczego nie przestawił.
+      setProgress(sceneRef.current?.getProgress() ?? 0)
+      viewRef.current = 'structure'
+      setView('structure')
+    } else if (image && !reducedMotion()) setPlaying(true)
+  }, [image, diving, hidden])
 
   function unfold() {
     if (reducedMotion()) { setProgress(1); return }
@@ -139,7 +167,7 @@ export default function Observatory({ project, slots, stars, onRetryStars, divin
         {VIEWS.map((v) => <button key={v.id} type="button" role="tab" aria-selected={view === v.id} className={`toggle-chip${view === v.id ? ' on' : ''}`} title={view === v.id ? 'Kliknij ponownie, aby dopasować widok' : undefined} onClick={() => { if (view === v.id) sceneRef.current?.setView(v.id); else setView(v.id) }}>{v.label}</button>)}
       </div>
     </>, slots.toolbar)}
-    {createPortal(<div className="obs-layer">
+    {createPortal(<div className={`obs-layer${hidden ? ' is-hidden' : ''}`}>
       <div ref={hostRef} className="obs-canvas" />
       <div className="obs-stage-title">
         <strong>{progress < 0.02 ? 'Zdjęcie na niebie' : 'Wewnątrz kadru'}</strong>

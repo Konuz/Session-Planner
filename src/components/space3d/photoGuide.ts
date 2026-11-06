@@ -27,7 +27,7 @@ export interface PhotoGuide {
   frameCamera(): void
   labels: HTMLDivElement
   /** Krycie linii widzenia ze znacznikami i osobno stożka pola (nurkowanie). */
-  setOpacity(opacity: number, cone?: number): void
+  setOpacity(opacity: number, cone?: number, faces?: number): void
   /** Ukrycie na czas edycji okręgów (płaskie zdjęcie nad sceną). */
   setVisible(visible: boolean): void
   dispose(): void
@@ -115,7 +115,8 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, c
   faceMesh.renderOrder = -1
   cone.add(faceMesh)
   disposables.push(coneGeometry, coneMaterial, faceGeometry, faceMaterial)
-  coneMaterial.userData.cone = faceMaterial.userData.cone = true
+  coneMaterial.userData.cone = true
+  faceMaterial.userData.faces = true
   materials.push(coneMaterial, faceMaterial)
 
   // Znaczniki i podpisy.
@@ -197,10 +198,10 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, c
       controls.update()
       handle.invalidate()
     },
-    setOpacity(opacity, cone = opacity) {
+    setOpacity(opacity, cone = opacity, faces = cone) {
       for (const m of materials) {
         m.userData.base ??= m.opacity
-        m.opacity = (m.userData.base as number) * (m.userData.cone ? cone : opacity)
+        m.opacity = (m.userData.base as number) * (m.userData.faces ? faces : m.userData.cone ? cone : opacity)
       }
       labels.style.opacity = String(opacity)
       handle.invalidate()
