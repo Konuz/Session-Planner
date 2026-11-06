@@ -49,7 +49,7 @@ Wszystkie punkty zrealizowane i sprawdzone (22 testy Vitest, build, zrzuty Playw
 
 ## Pozycja 3D w oknie i nurkowanie (6.11.2026)
 
-Pomiary Playwrightem (Chromium, swiftshader) na zdjęciu IC 434 (zapisanego projektu M 42 nie było w tej sesji):
+Pomiary Playwrightem (Chromium, swiftshader) na zdjęciu IC 434 (Orion, obiekty 1,3–1,6 tys. lś) zamiast M 42 z promptu, bo projektu M 42 nie ma; Wszechświat lokalny i nurkowanie z niego na M 51:
 - Okno ma wymiary dawnego Obserwatorium: 1876 × 1044 px przy 1920 × 1080 i 1322 × 732 px przy 1366 × 768 (oba w x = y = 18). Esc i krzyżyk zamykają okno, fokus wraca na „Pozycja 3D”, płótno kopuły pod spodem jest to samo.
 - Baza kadru: trzy gwiazdy Gaia z rogów kadru IC 434 trafiają przez bazę w swoje kierunki z RA/Dec z błędem < 2% szerokości pola; kadr odbity w poziomie także (test `frameBasis`).
 - Droga Mleczna: linia widzenia biegnie od Ziemi przez pas Oriona (Alnitak, Alnilam), B 33 stoi 1,5 tys. lś od Ziemi. Przesunięcie okręgu w edycji zmienia położenie karty i celownika w Obserwatorium (x: 63,61% → 69,16% szerokości). Wszechświat lokalny ze zdjęciem M 51 ma te same kolumny, linie i podpisy co przed zmianą.

@@ -4,7 +4,7 @@ import { frameBasis, halfFieldTan, pixelDirection } from './frameBasis'
 import { toScene } from './space3d'
 
 // Zdjęcie IC 434 z konuzastro.pl (2798 × 2827 px): WCS solvera i trzy gwiazdy Gaia z rogów kadru (piksel i RA/Dec).
-// Zastępuje zdjęcie M 42 z promptu (to samo pole Oriona, zapisany projekt M 42 był niedostępny w tej sesji).
+// Zastępuje zdjęcie M 42 z promptu: projektu M 42 nie ma, IC 434 leży w tym samym polu Oriona.
 const width = 2798
 const height = 2827
 const astrometry = {
