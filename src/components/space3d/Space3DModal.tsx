@@ -1,12 +1,12 @@
 // Okno „Pozycja 3D” (ładowane leniwie z widoku Niebo): skale Droga Mleczna i Wszechświat lokalny, a dla zdjęcia
 // w Drodze Mlecznej stan Obserwatorium, do którego prowadzi nurkowanie (i z którego wraca). Kopuła Nieba zostaje
 // pod spodem bez zmian.
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { fmtDistance } from '../../lib/format'
 import { distanceDomain, observatoryItems, structureViewPose } from '../../lib/observatory'
 import type { PhotoSceneFrame } from '../../lib/photo'
 import type { SpaceScale } from '../../lib/space3d'
-import type { DiveDirection, Pose } from '../../lib/spaceDive'
+import { DIVE_PHASE_MS, type DiveDirection, type Pose } from '../../lib/spaceDive'
 import { useSelected } from '../../state/data'
 import { useStore } from '../../state/store'
 import Observatory from '../observatory/Observatory'
@@ -179,6 +179,8 @@ export default function Space3DModal() {
     summaryRef={setSummary}
     summary={!showPhoto && o ? <strong>{dist !== null ? `Odległość ≈ ${fmtDistance(dist)}` : 'Odległość nieznana'}</strong> : null}
     className={`space-window ${panels ? 'is-photo' : 'is-scale'}${diving ? ' is-diving' : ''}${editing ? ' is-editing' : ''}`}
+    // Panele wsuwają się i zwijają przez całą fazę wejścia danego kierunku (naprzód dłużej niż wstecz).
+    style={diving ? { '--dive-enter': `${DIVE_PHASE_MS[mode].enter}ms` } as CSSProperties : undefined}
     onClose={close}
   >
     <SpaceToolbar o={o} settings={settings} onScale={chooseScale} crumb={showPhoto ? project.name : undefined}>

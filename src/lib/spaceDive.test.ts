@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import type { Vec3 } from './astro'
-import { DIVE_PHASE_MS, DIVE_TOTAL_MS, bridgePoint, bridgePose, bridgeVector, coneTan, diveFades, diveFrame, divePose, diveScale, lerpPose, makeBridge, nearFar, startScale, unbridgePoint, type Pose } from './spaceDive'
+import { ALIGN_K, DIVE_PHASE_MS, bridgePoint, bridgePose, bridgeVector, coneTan, diveFades, diveFrame, divePose, diveScale, diveTotalMs, ease, lerpPose, makeBridge, nearFar, startScale, turnWeight, unbridgePoint, type DiveDirection, type Pose } from './spaceDive'
 
 // Baza kadru: dowolny obrót (osie ortonormalne, x × y = −center).
 const center: Vec3 = [0.6, 0.48, 0.64]
@@ -10,26 +10,85 @@ const bridge = makeBridge([-26.7, 0, 0], { center, x, y }, [0, 0, 70])
 const seam: Pose = { position: [0, 42, 185], target: [0, 8, -30], up: [0, 1, 0] }
 const close = (a: Vec3, b: Vec3, digits = 9) => a.forEach((v, i) => expect(v).toBeCloseTo(b[i], digits))
 
+const IN_MS = diveTotalMs('in')
+const OUT_MS = diveTotalMs('out')
+
 it('oś czasu: początek i koniec w obu kierunkach, fazy w kolejności nurkowanie → wejście', () => {
   expect(diveFrame(0, 'in')).toEqual({ s: 0, phase: 'dive', k: 0, e: 0, done: false })
-  expect(diveFrame(DIVE_TOTAL_MS, 'in')).toEqual({ s: 1, phase: 'enter', k: 1, e: 1, done: true })
+  expect(diveFrame(IN_MS, 'in')).toEqual({ s: 1, phase: 'enter', k: 1, e: 1, done: true })
   expect(diveFrame(0, 'out')).toMatchObject({ s: 1, phase: 'enter', e: 1, done: false })
-  expect(diveFrame(DIVE_TOTAL_MS + 500, 'out')).toEqual({ s: 0, phase: 'dive', k: 0, e: 0, done: true })
-  expect(diveFrame(DIVE_PHASE_MS.dive / 2, 'in').e).toBeCloseTo(0.5, 9)
-  expect(diveFrame(DIVE_PHASE_MS.dive + 1, 'in').phase).toBe('enter')
+  expect(diveFrame(OUT_MS + 500, 'out')).toEqual({ s: 0, phase: 'dive', k: 0, e: 0, done: true })
+  expect(diveFrame(DIVE_PHASE_MS.in.dive / 2, 'in').e).toBeCloseTo(0.5, 9)
+  expect(diveFrame(DIVE_PHASE_MS.in.dive + 1, 'in').phase).toBe('enter')
+  expect(diveFrame(DIVE_PHASE_MS.out.enter - 1, 'out').phase).toBe('enter')
+  expect(diveFrame(DIVE_PHASE_MS.out.enter + 1, 'out').phase).toBe('dive')
 })
 
-it('ruch wstecz jest lustrem ruchu naprzód (t → 1 − t)', () => {
-  for (let t = 0; t <= DIVE_TOTAL_MS; t += 175) {
-    const back = diveFrame(t, 'out')
-    const forward = diveFrame(DIVE_TOTAL_MS - t, 'in')
-    expect(back.s).toBeCloseTo(forward.s, 12)
+it('wejście do Obserwatorium trwa 1,25 raza dłużej niż powrót, w każdej fazie', () => {
+  expect(IN_MS).toBeCloseTo(1.25 * OUT_MS, 9)
+  expect(DIVE_PHASE_MS.in.dive).toBeCloseTo(1.25 * DIVE_PHASE_MS.out.dive, 9)
+  expect(DIVE_PHASE_MS.in.enter).toBeCloseTo(1.25 * DIVE_PHASE_MS.out.enter, 9)
+})
+
+it('ruch wstecz jest lustrem ruchu naprzód w tym samym położeniu s (każdy kierunek w swoim czasie)', () => {
+  for (let f = 0; f <= 1.0001; f += 0.02) {
+    const back = diveFrame(f * OUT_MS, 'out')
+    const forward = diveFrame((1 - f) * IN_MS, 'in')
+    expect(back.s).toBeCloseTo(forward.s, 9)
     expect(back.phase).toBe(forward.phase)
-    expect(back.k).toBeCloseTo(forward.k, 12)
-    expect(back.e).toBeCloseTo(forward.e, 12)
-    const a = diveFades(back.e), b = diveFades(forward.e)
+    expect(back.k).toBeCloseTo(forward.k, 9)
+    expect(back.e).toBeCloseTo(forward.e, 9)
+    const a = diveFades(back.k), b = diveFades(forward.k)
     for (const key of Object.keys(a) as (keyof typeof a)[]) expect(a[key]).toBeCloseTo(b[key], 9)
   }
+})
+
+/** Krycie warstwy w chwili ms przejścia (w fazie wejścia jak na końcu nurkowania). */
+function fadeAt(ms: number, direction: DiveDirection, key: keyof ReturnType<typeof diveFades>): number {
+  const f = diveFrame(ms, direction)
+  return diveFades(f.phase === 'dive' ? f.k : 1)[key]
+}
+
+it('przenikanie scen trwa co najmniej 0,5 s w każdym elemencie i kierunku, bez skoku w jednej klatce', () => {
+  const frame = 1000 / 60
+  for (const direction of ['in', 'out'] as DiveDirection[]) {
+    for (const key of Object.keys(diveFades(0)) as (keyof ReturnType<typeof diveFades>)[]) {
+      let first = Infinity, last = -Infinity, worst = 0
+      for (let ms = 0; ms <= diveTotalMs(direction); ms += 1) {
+        const v = fadeAt(ms, direction, key)
+        if (v > 1e-6 && v < 1 - 1e-6) { first = Math.min(first, ms); last = Math.max(last, ms) }
+        if (ms >= frame) worst = Math.max(worst, Math.abs(v - fadeAt(ms - frame, direction, key)))
+      }
+      expect(last - first, `${key} (${direction})`).toBeGreaterThanOrEqual(500)
+      // Najszybsza zmiana krycia w jednej klatce 60 Hz.
+      expect(worst, `${key} (${direction})`).toBeLessThanOrEqual(0.05)
+    }
+  }
+})
+
+it('krańce nurkowania: pełna Droga Mleczna albo pełne Obserwatorium (faza wejścia bez skoku krycia)', () => {
+  const start = diveFades(0), end = diveFades(1)
+  for (const key of ['layers', 'labels', 'guide', 'cone', 'coneFaces', 'spaceEarth'] as const) {
+    expect(start[key]).toBe(1)
+    expect(end[key]).toBe(0)
+  }
+  for (const key of ['earth', 'pyramid', 'axis', 'photo', 'grid'] as const) {
+    expect(start[key]).toBe(0)
+    expect(end[key]).toBe(1)
+  }
+})
+
+it('elementy Obserwatorium pojawiają się dopiero, gdy obie sceny pokrywają się na ekranie', () => {
+  // Obrót kamery i stożek kończą się w ALIGN_K; od tej chwili most pokrywa obie sceny.
+  expect(turnWeight(ALIGN_K)).toBe(1)
+  const real: [number, number] = [0.0087, 0.0088], pyramid: [number, number] = [50 / 70, 50.5 / 70]
+  coneTan(ALIGN_K, real, pyramid).forEach((v, i) => expect(v).toBeCloseTo(pyramid[i], 12))
+  close(divePose({ position: [-20, 6, 5], target: [-24, 0, 1], up: [0, 1, 0] }, bridge, seam, { e: ease(ALIGN_K), k: ALIGN_K }, 0.3, 0.001).position,
+    bridgePose(bridge, seam, diveScale(ease(ALIGN_K), 0.3, 0.001)).position)
+  const before = diveFades(ALIGN_K - 1e-9)
+  for (const key of ['earth', 'pyramid', 'axis', 'photo', 'grid'] as const) expect(before[key]).toBe(0)
+  // Odpowiedniki z Drogi Mlecznej (linia widzenia, stożek, Ziemia) są jeszcze w pełni widoczne.
+  for (const key of ['guide', 'cone', 'spaceEarth'] as const) expect(before[key]).toBe(1)
 })
 
 it('skala mostu jest logarytmiczna: u(0,5) = √(u0·u1)', () => {
@@ -62,10 +121,10 @@ it('kąt stożka zmienia się w sposób ciągły od pola zdjęcia do ostrosłupa
   coneTan(0, real, pyramid).forEach((v, i) => expect(v).toBeCloseTo(real[i], 12))
   coneTan(1, real, pyramid).forEach((v, i) => expect(v).toBeCloseTo(pyramid[i], 12))
   let last = coneTan(0, real, pyramid)[0]
-  for (let e = 0.001; e <= 1; e += 0.001) {
-    const now = coneTan(e, real, pyramid)[0]
+  for (let k = 0.001; k <= 1; k += 0.001) {
+    const now = coneTan(k, real, pyramid)[0]
     expect(now).toBeGreaterThanOrEqual(last)
-    // Krok 0,001 w e zmienia kąt najwyżej o kilka procent (bez skoków).
+    // Krok 0,001 w k zmienia kąt najwyżej o kilka procent (bez skoków).
     expect(now / last).toBeLessThan(1.05)
     last = now
   }
@@ -87,14 +146,14 @@ it('nurkowanie zaczyna się w bieżącej kamerze, kończy w pozie szwu i nigdy s
   const u1 = 0.001
   const u0 = startScale(start, bridge, seam, u1)
   const distance = (p: Vec3) => Math.hypot(p[0] + 26.7, p[1], p[2])
-  close(divePose(start, bridge, seam, 0, u0, u1).position, start.position)
-  close(divePose(start, bridge, seam, 0, u0, u1).target, start.target)
+  close(divePose(start, bridge, seam, { e: 0, k: 0 }, u0, u1).position, start.position)
+  close(divePose(start, bridge, seam, { e: 0, k: 0 }, u0, u1).target, start.target)
   const end = bridgePose(bridge, seam, u1)
-  close(divePose(start, bridge, seam, 1, u0, u1).position, end.position)
-  close(divePose(start, bridge, seam, 1, u0, u1).up, end.up)
+  close(divePose(start, bridge, seam, { e: 1, k: 1 }, u0, u1).position, end.position)
+  close(divePose(start, bridge, seam, { e: 1, k: 1 }, u0, u1).up, end.up)
   let last = Infinity
-  for (let e = 0; e <= 1.0001; e += 0.01) {
-    const d = distance(divePose(start, bridge, seam, e, u0, u1).position)
+  for (let k = 0; k <= 1.0001; k += 0.01) {
+    const d = distance(divePose(start, bridge, seam, { e: ease(k), k }, u0, u1).position)
     expect(d).toBeLessThanOrEqual(last + 1e-9)
     last = d
   }

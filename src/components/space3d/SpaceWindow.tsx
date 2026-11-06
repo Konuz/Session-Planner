@@ -1,6 +1,6 @@
 // Powłoka okna modalnego „Pozycja 3D” (wymiary i klasy dawnego okna Obserwatorium): nagłówek z kickerem i tytułem,
 // podsumowanie, krzyżyk, Esc, fokus i powrót fokusu do przycisku, który okno otworzył.
-import { useEffect, useRef, type ReactNode, type Ref } from 'react'
+import { useEffect, useRef, type CSSProperties, type ReactNode, type Ref } from 'react'
 import { CloseButton } from '../CloseButton'
 
 interface Props {
@@ -12,11 +12,13 @@ interface Props {
   summaryRef?: Ref<HTMLDivElement>
   summary?: ReactNode
   className?: string
+  /** Styl okna (np. czas przejść paneli w nurkowaniu jako zmienna CSS). */
+  style?: CSSProperties
   onClose(): void
   children: ReactNode
 }
 
-export function SpaceWindow({ label, kicker, title, subtitle, summaryRef, summary, className = '', onClose, children }: Props) {
+export function SpaceWindow({ label, kicker, title, subtitle, summaryRef, summary, className = '', style, onClose, children }: Props) {
   const dialogRef = useRef<HTMLDivElement>(null)
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
@@ -35,7 +37,7 @@ export function SpaceWindow({ label, kicker, title, subtitle, summaryRef, summar
   }, [])
 
   return <div ref={dialogRef} className="observatory" role="dialog" aria-modal="true" aria-label={label}>
-    <div className={`obs-window card ${className}`}>
+    <div className={`obs-window card ${className}`} style={style}>
       <header className="obs-header">
         <div>
           <div className="kicker">{kicker}</div>

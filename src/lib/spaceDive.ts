@@ -8,9 +8,13 @@ import { orbitOffset } from './observatory'
 export type DiveDirection = 'in' | 'out'
 export type DivePhase = 'dive' | 'enter'
 
-/** Czasy faz w ms: nurkowanie (z obrotem kamery do pozy mostu) i wejście do Obserwatorium (panele). */
-export const DIVE_PHASE_MS: Record<DivePhase, number> = { dive: 2200, enter: 900 }
-export const DIVE_TOTAL_MS = DIVE_PHASE_MS.dive + DIVE_PHASE_MS.enter
+/** Czasy faz w ms dla kierunku: nurkowanie (z obrotem kamery do pozy mostu) i wejście do Obserwatorium (panele).
+ *  Droga do Obserwatorium trwa 1,25 raza dłużej niż powrót (te same proporcje faz). */
+export const DIVE_PHASE_MS: Record<DiveDirection, Record<DivePhase, number>> = {
+  in: { dive: 2750, enter: 1125 },
+  out: { dive: 2200, enter: 900 },
+}
+export const diveTotalMs = (direction: DiveDirection) => DIVE_PHASE_MS[direction].dive + DIVE_PHASE_MS[direction].enter
 
 export interface DiveFrame {
   /** Położenie na drodze naprzód (0: Droga Mleczna, 1: Obserwatorium); wstecz s = 1 − t. */
@@ -30,10 +34,10 @@ export const ease = (t: number) => { const x = clamp01(t); return x < 0.5 ? 4 * 
 export const ramp = (t: number, a: number, b: number) => { const x = clamp01((t - a) / (b - a)); return x * x * (3 - 2 * x) }
 
 export function diveFrame(elapsedMs: number, direction: DiveDirection): DiveFrame {
-  const t = clamp01(elapsedMs / DIVE_TOTAL_MS)
+  const { dive, enter } = DIVE_PHASE_MS[direction]
+  const t = clamp01(elapsedMs / (dive + enter))
   const s = direction === 'in' ? t : 1 - t
-  const ms = s * DIVE_TOTAL_MS
-  const { dive, enter } = DIVE_PHASE_MS
+  const ms = s * (dive + enter)
   if (ms < dive) {
     const k = ms / dive
     return { s, phase: 'dive', k, e: ease(k), done: t >= 1 }
@@ -113,22 +117,30 @@ export function startScale(start: Pose, b: Bridge, seam: Pose, u1: number): numb
   return Math.max(u1, d / D)
 }
 
-/** Obrót od bieżącej kamery do pozy mostu w pierwszej części nurkowania (0–1). */
-export const turnWeight = (e: number) => ramp(e, 0, 0.6)
+/** Chwila nurkowania (k, liniowy czas), w której kamera kończy obrót do pozy mostu, a stożek pola zrównuje się
+ *  z ostrosłupem: od niej Ziemia, linia widzenia i stożek obu scen pokrywają się na ekranie w każdej skali mostu. */
+export const ALIGN_K = 0.6
 
 /**
- * Kamera Drogi Mlecznej w nurkowaniu: bieżąca poza zbliżana do Ziemi w skali u/u0 i poza mostu w skali u leżą zawsze
- * w tej samej odległości od Ziemi, więc przejście między nimi to obrót wokół Ziemi (bez oddalania i przybliżania).
+ * Obrót od bieżącej kamery do pozy mostu (0–1) w liniowym czasie k, nie w wygładzonym e: w e cały obrót i rozchylenie
+ * stożka wypadały w ok. 0,2 s najszybszej części zbliżania i urywały się tuż przed przenikaniem scen.
  */
-export function divePose(start: Pose, b: Bridge, seam: Pose, e: number, u0: number, u1: number): Pose {
+export const turnWeight = (k: number) => ramp(k, 0, ALIGN_K)
+
+/**
+ * Kamera Drogi Mlecznej w nurkowaniu (skala mostu z e, obrót z k): bieżąca poza zbliżana do Ziemi w skali u/u0 i poza
+ * mostu w skali u leżą zawsze w tej samej odległości od Ziemi, więc przejście między nimi to obrót wokół Ziemi
+ * (bez oddalania i przybliżania).
+ */
+export function divePose(start: Pose, b: Bridge, seam: Pose, { e, k }: Pick<DiveFrame, 'e' | 'k'>, u0: number, u1: number): Pose {
   const u = diveScale(e, u0, u1)
-  const k = u / u0
+  const scale = u / u0
   const o = b.origin
   const rel = (p: Vec3, f: number): Vec3 => [(p[0] - o[0]) * f, (p[1] - o[1]) * f, (p[2] - o[2]) * f]
   const bridged = bridgePose(b, seam, u)
-  const w = turnWeight(e)
-  const offset = orbitOffset(rel(start.position, k), rel(bridged.position, 1), w)
-  const from = rel(start.target, k), to = rel(bridged.target, 1)
+  const w = turnWeight(k)
+  const offset = orbitOffset(rel(start.position, scale), rel(bridged.position, 1), w)
+  const from = rel(start.target, scale), to = rel(bridged.target, 1)
   return {
     position: [o[0] + offset[0], o[1] + offset[1], o[2] + offset[2]],
     target: [0, 1, 2].map((i) => o[i] + from[i] + (to[i] - from[i]) * w) as Vec3,
@@ -147,14 +159,20 @@ export function lerpPose(a: Pose, b: Pose, t: number): Pose {
 
 /**
  * Tangensy połowy kąta stożka pola: od prawdziwego pola zdjęcia do kąta ostrosłupa Obserwatorium (zabieg poglądowy:
- * ostrosłup jest umowny, ok. 71° wobec zwykle 0,5–5° pola). Interpolacja logarytmiczna w e ∈ [0,15; 0,6].
+ * ostrosłup jest umowny, ok. 71° wobec zwykle 0,5–5° pola). Interpolacja logarytmiczna w k ∈ [0,3; ALIGN_K]: stożek
+ * rozchyla się dopiero przy Ziemi, nie na całą galaktykę.
  */
-export function coneTan(e: number, real: [number, number], pyramid: [number, number]): [number, number] {
-  const c = ramp(e, 0.15, 0.6)
+export function coneTan(k: number, real: [number, number], pyramid: [number, number]): [number, number] {
+  const c = ramp(k, 0.3, ALIGN_K)
   return [Math.exp(Math.log(real[0]) * (1 - c) + Math.log(pyramid[0]) * c), Math.exp(Math.log(real[1]) * (1 - c) + Math.log(pyramid[1]) * c)]
 }
 
-/** Krycia warstw obu scen w funkcji e (Droga Mleczna gaśnie, elementy Obserwatorium pojawiają się kolejno). */
+/**
+ * Krycia warstw obu scen w funkcji k, liniowego czasu nurkowania (nie wygładzonego e): w e przenikanie wypadało
+ * w najszybszej części ruchu i trwało ok. 0,2 s, a koniec nurkowania stał bez zmian. Elementy Obserwatorium
+ * pojawiają się dopiero od ALIGN_K, gdy obie sceny pokrywają się na ekranie, i każde przenikanie trwa ≥ 0,23 czasu
+ * nurkowania (≥ 0,5 s także w szybszym powrocie).
+ */
 export interface DiveFades {
   /** Droga Mleczna: tło (punkty galaktyki, obiekty, gwiazdozbiory, podpisy obiektów tła). */
   layers: number
@@ -177,19 +195,21 @@ export interface DiveFades {
   grid: number
 }
 
-export function diveFades(e: number): DiveFades {
+export function diveFades(k: number): DiveFades {
+  const a = ALIGN_K
   return {
-    layers: 1 - ramp(e, 0.5, 0.85),
-    labels: 1 - ramp(e, 0, 0.15),
-    guide: 1 - ramp(e, 0.5, 0.75),
-    cone: 1 - ramp(e, 0.6, 0.75),
-    coneFaces: 1 - ramp(e, 0.2, 0.55),
-    spaceEarth: 1 - ramp(e, 0.45, 0.6),
-    earth: ramp(e, 0.4, 0.55),
-    pyramid: ramp(e, 0.45, 0.6),
-    axis: ramp(e, 0.4, 0.6),
-    photo: ramp(e, 0.6, 0.8),
-    grid: ramp(e, 0.8, 0.95),
+    layers: 1 - ramp(k, 0.45, 0.85),
+    labels: 1 - ramp(k, 0, 0.33),
+    // Linia widzenia i stożek gasną dopiero, gdy ich odpowiedniki z Obserwatorium już się pokazują.
+    guide: 1 - ramp(k, a + 0.07, 0.9),
+    cone: 1 - ramp(k, a + 0.07, 0.93),
+    coneFaces: 1 - ramp(k, 0.3, a),
+    spaceEarth: 1 - ramp(k, a + 0.1, a + 0.33),
+    earth: ramp(k, a, a + 0.23),
+    pyramid: ramp(k, a, a + 0.25),
+    axis: ramp(k, a, a + 0.23),
+    photo: ramp(k, a + 0.04, 0.94),
+    grid: ramp(k, 0.77, 1),
   }
 }
 

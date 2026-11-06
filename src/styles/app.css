@@ -893,16 +893,17 @@ input[type='checkbox']:checked::after {
 /* Odstępy jako marginesy: w skali (i na początku nurkowania) panele Obserwatorium zwijają się płynnie do zera,
    a scena rośnie razem z nimi (interpolate-size; bez tej własności panele pojawiają się od razu). */
 .obs-window.space-window { row-gap: 0; interpolate-size: allow-keywords; }
-/* Panele przesuwają się płynnie tylko w nurkowaniu; przełączanie skal i edycji jest natychmiastowe. */
-.obs-window.space-window.is-diving { transition: grid-template-columns 0.9s var(--ease-std), column-gap 0.9s var(--ease-std); }
+/* Panele przesuwają się płynnie tylko w nurkowaniu, przez fazę wejścia kierunku (--dive-enter z DIVE_PHASE_MS);
+   przełączanie skal i edycji jest natychmiastowe. */
+.obs-window.space-window.is-diving { transition: grid-template-columns var(--dive-enter, 0.9s) var(--ease-std), column-gap var(--dive-enter, 0.9s) var(--ease-std); }
 .space-window > .obs-toolbar, .space-window > .obs-stage, .space-window > .obs-aside, .space-window > .obs-histogram, .space-window > .obs-bottom { margin-top: 10px; }
 .space-window .obs-stage { grid-column: 1; grid-row: 3; }
 .space-window > .obs-histogram, .space-window > .obs-bottom, .space-window > .obs-aside { overflow: clip; }
-.space-window.is-diving > .obs-histogram, .space-window.is-diving > .obs-bottom, .space-window.is-diving > .obs-aside { transition: height 0.9s var(--ease-std), margin 0.9s var(--ease-std), padding 0.9s var(--ease-std), opacity 0.9s var(--ease-std); }
+.space-window.is-diving > .obs-histogram, .space-window.is-diving > .obs-bottom, .space-window.is-diving > .obs-aside { transition: height var(--dive-enter, 0.9s) var(--ease-std), margin var(--dive-enter, 0.9s) var(--ease-std), padding var(--dive-enter, 0.9s) var(--ease-std), opacity var(--dive-enter, 0.9s) var(--ease-std); }
 .obs-window.space-window.is-scale { grid-template-columns: minmax(0, 1fr) 0px; column-gap: 0; }
 .space-window.is-scale > .obs-histogram, .space-window.is-scale > .obs-bottom { height: 0; margin-top: 0; padding-top: 0; padding-bottom: 0; border-width: 0; opacity: 0; }
 .space-window.is-scale > .obs-aside { height: 0; margin-top: 0; padding: 0; border-width: 0; opacity: 0; }
-.space-window.is-diving .obs-layer > :not(.obs-canvas) { transition: opacity 0.9s var(--ease-std), visibility 0.9s; }
+.space-window.is-diving .obs-layer > :not(.obs-canvas) { transition: opacity var(--dive-enter, 0.9s) var(--ease-std), visibility var(--dive-enter, 0.9s); }
 /* Widok edycji wycinków: płaskie zdjęcie na scenie, panel edytora w kolumnie z prawej (jak panel Obserwatorium). */
 .obs-window.space-window.is-scale.is-editing { grid-template-columns: minmax(0, 1fr) 330px; column-gap: 10px; }
 .space-window > .photo-editor { position: static; grid-column: 2; grid-row: 3; width: auto; max-height: none; min-height: 0; margin-top: 10px; overflow-y: auto; z-index: auto; padding: 12px; border-color: var(--border); background: var(--card-solid); }

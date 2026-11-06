@@ -5,8 +5,8 @@ import * as THREE from 'three'
 import type { Vec3 } from '../../lib/astro'
 import { EARTH_Z, PLANE_WIDTH } from '../../lib/observatory'
 import {
-  DIVE_TOTAL_MS, coneTan, diveFades, diveFrame, diveScale, divePose, ease, lerpPose, makeBridge, nearFar, startScale, turnWeight,
-  type DiveDirection, type DivePhase, type Pose,
+  coneTan, diveFades, diveFrame, diveScale, divePose, diveTotalMs, ease, lerpPose, makeBridge, nearFar, startScale, turnWeight,
+  type DiveDirection, type DiveFrame, type DivePhase, type Pose,
 } from '../../lib/spaceDive'
 import type { ObservatoryScene } from '../observatory/scene'
 import type { Space3DHandle } from '../Space3D'
@@ -128,7 +128,8 @@ export class SpaceDive {
     // Scena Obserwatorium musi stać przed nurkowaniem: do tego czasu kamera Drogi Mlecznej stoi.
     if (this.o.direction === 'in' && !obs?.ready) this.elapsed = 0
     else this.elapsed += step
-    const elapsed = this.skipping ? DIVE_TOTAL_MS : this.frozen !== null ? this.frozen * DIVE_TOTAL_MS : this.elapsed
+    const total = diveTotalMs(this.o.direction)
+    const elapsed = this.skipping ? total : this.frozen !== null ? this.frozen * total : this.elapsed
     const f = diveFrame(elapsed, this.o.direction)
     const seam: Pose = { ...this.o.seam, up: UP }
     if (f.phase !== this.phase) {
@@ -140,25 +141,26 @@ export class SpaceDive {
       if (f.phase === 'enter') this.fadeSpace(1)
       this.o.onPhase(f.phase)
     }
-    if (f.phase !== 'enter') this.applySpace(f.e, seam, now)
-    if (obs?.ready) this.applyObservatory(obs, f.phase, f.k, f.e, seam, now)
+    if (f.phase !== 'enter') this.applySpace(f, seam, now)
+    if (obs?.ready) this.applyObservatory(obs, f, seam, now)
     if (f.done && !this.finished && (obs?.ready || this.o.direction === 'out')) this.finish(obs)
   }
 
-  private applySpace(e: number, seam: Pose, now: number) {
+  private applySpace({ e, k }: DiveFrame, seam: Pose, now: number) {
     const { space, guide } = this.o
     const { camera, controls } = space
     // Start z bieżącej kamery: skala mostu daje tę samą odległość od Ziemi, więc nie ma oddalania na początku.
     const u0 = startScale(this.spacePose, this.bridge, seam, END_SCALE)
-    const pose = divePose(this.spacePose, this.bridge, seam, e, u0, END_SCALE)
-    const w = turnWeight(e)
+    const pose = divePose(this.spacePose, this.bridge, seam, { e, k }, u0, END_SCALE)
+    // Ten sam obrót (z k) dla pozy, pola widzenia, Ziemi i stożka: inaczej sceny rozjadą się po ALIGN_K.
+    const w = turnWeight(k)
     const fov = SPACE_FOV + (OBSERVATORY_FOV - SPACE_FOV) * w
     const u = diveScale(e, u0, END_SCALE)
     // Ziemia przechodzi płynnie od znacznika (do 16 px) do Ziemi Obserwatorium w skali mostu: na szwie oba się pokrywają.
     space.override.earthRadius = EARTH_RADIUS * u
     space.override.earthBlend = w
-    this.fadeSpace(e)
-    const [tx, ty] = coneTan(e, this.real, this.pyramid)
+    this.fadeSpace(k)
+    const [tx, ty] = coneTan(k, this.real, this.pyramid)
     guide.cone.scale.set(tx, ty, 1)
     camera.up.set(...pose.up)
     camera.position.set(...pose.position)
@@ -173,10 +175,11 @@ export class SpaceDive {
     space.step(now)
   }
 
-  /** Krycia warstw Drogi Mlecznej bez rysowania klatki (na wejściu: wszystko wygaszone, także podpisy w DOM). */
-  private fadeSpace(e: number) {
+  /** Krycia warstw Drogi Mlecznej (k: liniowy czas nurkowania) bez rysowania klatki (na wejściu: wszystko wygaszone,
+   *  także podpisy w DOM). */
+  private fadeSpace(k: number) {
     const { space, guide } = this.o
-    const fades = diveFades(e)
+    const fades = diveFades(k)
     space.override.layerFade = fades.layers
     fadeLayers(space, guide, fades.layers, fades.labels)
     if (this.earthMaterial) this.earthMaterial.opacity = fades.spaceEarth
@@ -184,7 +187,7 @@ export class SpaceDive {
     guide.setOpacity(fades.guide, fades.cone, fades.coneFaces)
   }
 
-  private applyObservatory(obs: ObservatoryScene, phase: DivePhase, k: number, e: number, seam: Pose, now: number) {
+  private applyObservatory(obs: ObservatoryScene, { phase, k }: DiveFrame, seam: Pose, now: number) {
     obs.setExternal(true)
     obs.setInteractive(false)
     if (phase === 'enter') {
@@ -195,7 +198,7 @@ export class SpaceDive {
       obs.setFade({ earth: 1, pyramid: 1, axis: 1, photo: 1, grid: 1 })
       if (this.o.direction === 'out') obs.setProgress(this.obsProgress * t)
     } else {
-      const fades = diveFades(e)
+      const fades = diveFades(k)
       obs.setPose(seam.position, seam.target)
       obs.setFade({ earth: fades.earth, pyramid: fades.pyramid, axis: fades.axis, photo: fades.photo, grid: fades.grid })
       obs.setProgress(0)

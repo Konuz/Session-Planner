@@ -70,6 +70,40 @@ Chromium headless z ANGLE D3D11 na NVIDIA GeForce RTX 5070 (renderer z `WEBGL_de
 - Czasy: nurkowanie 2,2 s i wejście 0,9 s (razem ok. 3,1 s, od zmiany z d26e5f3 bez osobnego ustawienia kamery); prompt zakładał 1,0 + 1,6 + 0,9 s. Nie zmienione.
 - Niesprawdzone: inne karty graficzne i przeglądarki, okno przeglądarki w trybie z oknem (headful), zegar 120 Hz.
 
+### Biała klatka, płynna zamiana scen i dłuższe wejście (6.11.2026)
+
+Chromium 148 z oknem (headful) z ANGLE D3D11 na NVIDIA GeForce RTX 5070 (renderer z `WEBGL_debug_renderer_info`), 1920 × 1080 przy DPR 1, IC 434. Obraz ze screencastu CDP (wyjście kompozytora, ok. 35–47 z 60 klatek/s), klatki pominięte ze śladu CDP Tracing. W czasie pomiarów na pierwszym planie działała pełnoekranowa gra na tej samej karcie. Zasłaniała okno przeglądarki, które renderowało dalej, więc zrzutu samego ekranu nie było.
+- Biała klatka na końcu powrotu:
+  - aeb051b (`main`): całkowicie białe klatki (jasność 255) 22–35 ms po końcu powrotu w 2 z 4 powrotów.
+  - bceedc9: 0 białych i 0 odstających klatek w 10 powrotach, w 2 powrotach po zmianie zdjęcia, przy samej zmianie zdjęcia, przy przełączeniu na Wszechświat lokalny i przy zamknięciu okna.
+  - Wniosek: biała klatka (`forceContextLoss()` przy odmontowaniu Obserwatorium) była na `main`, a bceedc9 ją usuwa.
+  - Po zmianach poniżej: Chromium 0/10, te same zdarzenia 0, Chrome 156 i Edge 156 po 0/5, DPR 1,25 (1728 × 1002) 0/5.
+- Zamiana scen przed zmianą: krycia szły za wygładzonym e (sześcienne ease).
+  - Zdjęcie pojawiało się w ok. 0,2 s.
+  - Ziemia, ostrosłup i oś Obserwatorium pojawiały się, zanim kamera skończyła obrót, czyli zanim sceny się pokrywały.
+  - Potem przez ok. 0,5 s obraz stał bez zmian.
+  - Obrót kamery do pozy mostu i rozchylenie stożka z ok. 0,5° do 71° wypadały w najszybszej części zbliżania (środkowe 80 % obrotu: 0,41 s z wzoru) i urywały się w 4 klatkach tuż przed przenikaniem.
+- Zamiana scen po zmianie: krycia, obrót i stożek idą za liniowym czasem k.
+  - Obrót i stożek kończą się w `ALIGN_K` = 0,6 (środkowe 80 % obrotu: 1,0 s naprzód, 0,8 s wstecz).
+  - Od tej chwili Ziemia (4,2 px, ten sam środek) i linia widzenia (−19,3°) pokrywają się w obu scenach: `seam()` przy k 0,6–0,99, naprzód i wstecz.
+  - Elementy Obserwatorium pojawiają się dopiero od k = 0,6. Każde przenikanie trwa ≥ 0,23 czasu nurkowania (test: ≥ 0,5 s i ≤ 0,05 krycia na klatkę w obu kierunkach).
+  - Samo zdjęcie pojawia się przez 0,83 s naprzód i 0,66 s wstecz; całe okno przenikania trwa 1,1 s naprzód i 0,87 s wstecz.
+- Kryterium płynności: średnia bezwzględna różnica pikseli sceny między kolejnymi klatkami screencastu. Największa różnica w oknie przenikania podzielona przez medianę różnic części nurkowania z ruchem kamery (od k = 0,1 do początku okna):
+  - przed: naprzód 2,08 (1,94 / 0,93), wstecz 1,95;
+  - po (3 przebiegi w każdą stronę): naprzód 0,26–0,48, wstecz 0,24–0,44.
+  - Szczyt różnic w całym nurkowaniu spadł z 1,94 do 1,80. Wyhamowanie ruchu przed przenikaniem (od 80 do 20 % ponad poziom przenikania) wydłużyło się z 76–83 ms do 167–192 ms.
+- Czasy faz z klas okna (3 przebiegi):
+  - naprzód: nurkowanie 2,23 → 2,77 s, wejście 0,91 → 1,13 s, razem 3,13 → 3,90 s (× 1,25);
+  - wstecz bez zmian: 3,11 s;
+  - przejścia CSS paneli trwają tyle co faza wejścia kierunku (`--dive-enter` z `DIVE_PHASE_MS`);
+  - rozkładanie zdjęcia (5 s) bez zmian.
+- Ślad wydajności całego przejścia:
+  - naprzód: 1 pominięta klatka tuż przed wejściem paneli i 1 klatka głównego wątku 32 ms (synchroniczne `GetGLError` przy zmianie rozmiaru płótna w czasie rasteryzacji paneli);
+  - wstecz: 1 pominięta klatka na starcie;
+  - przerwa ok. 250 ms w screencaście na początku wejścia to artefakt screencastu, bo kompozytor rysował co 16,7 ms.
+- Zostaje w jednej klatce (DOM poza sceną): pasek zdjęcia znika na starcie nurkowania i wraca na końcu powrotu; tytuł okna i pasek narzędzi zmieniają się na początku wejścia.
+- Niesprawdzone: obraz na ekranie po kompozycji DWM (screencast pokazuje wyjście kompozytora Chromium), inne karty graficzne, Firefox i Safari, zegar 120 Hz, praca bez innej aplikacji obciążającej GPU.
+
 ## Moje zdjęcie obiektu (5.11.2026)
 
 - „Dodaj moje zdjęcie” w szczegółach obiektu: zdjęcie M 51 z konuzastro.pl rozwiązane lokalnie w 16 s. Środek siatki 17 × 17 z nowej komendy mostu `grid` leży 0,00025° od środka astrometrii. Zdjęcie trafia tylko do obiektu, dla którego je dodano. M 31 z tym samym zdjęciem dostaje „Obiektu M 31 nie ma na tym zdjęciu.”.
