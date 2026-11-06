@@ -25,6 +25,7 @@ Każda linia ma dowód: test (T), sprawdzenie w przeglądarce przy 1440 px (P) a
 | 17 | Szybkość: JS na start < 200 KB gzip, 3D ładowane leniwie, obliczenia w workerze, `prefers-reduced-motion` | build + P | ☑ |
 | 18 | Wygląd spójny ze stroną (tokeny, krój mono, klamry narożne, odnośnik do konuzastro.pl) | P | ☑ |
 | 19 | Obserwatorium 3D zdjęcia: gwiazdy Gaia DR3 (odległości Bailer-Jones, ϖ/σ ≥ 5) i wycinki na osi linii widzenia, suwak zdjęcie ↔ przestrzeń, widoki Struktura / Z Ziemi / Z góry / Z boku, histogram z przedziałem, lista i inspektor, przejście do Drogi Mlecznej | T (`observatory`, `photoStarsServer`, `photo`) + P + S (GAVO) | ☑ |
+| 20 | „Pozycja 3D” w oknie o wymiarach Obserwatorium (skale Droga Mleczna / Wszechświat lokalny, Esc, fokus), zdjęcie w Drodze Mlecznej jako linia widzenia, stożek pola i znaczniki, nurkowanie do rozłożonego zdjęcia i z powrotem | T (`frameBasis`, `spaceDive`) + P | ☑ |
 
 ## Stan na 22.10.2026
 
@@ -45,6 +46,17 @@ Wszystkie punkty zrealizowane i sprawdzone (22 testy Vitest, build, zrzuty Playw
 - Scena rysuje tylko przy ruchu: w spoczynku zero wywołań rysowania przez 3 s, także po przelocie kamery. Startowy JS ma 149,1 KB gzip, obserwatorium to leniwy fragment 10,6 KB.
 - Eksport wideo pominięto (decyzja użytkownika).
 - 6.11.2026: po otwarciu okna rozkładanie rusza samo od 0% i trwa 5 s (wcześniej 4 s, na przycisk; na M 51 pod swiftshaderem 5,17 s zegara, bo 10 klatek przekroczyło limit kroku 100 ms); kadr widoków liczony dla pełnego rozłożenia. Przelot kamery po sferze wokół celu: na M 51 kąt osi na ekranie przy przejściu Struktura → Z góry maleje płynnie z 70,7° do 0° (ostatnie klatki 0,2° → 0,1° → 0°), bez obrotu na końcu.
+
+## Pozycja 3D w oknie i nurkowanie (6.11.2026)
+
+Pomiary Playwrightem (Chromium, swiftshader) na zdjęciu IC 434 (zapisanego projektu M 42 nie było w tej sesji):
+- Okno ma wymiary dawnego Obserwatorium: 1876 × 1044 px przy 1920 × 1080 i 1322 × 732 px przy 1366 × 768 (oba w x = y = 18). Esc i krzyżyk zamykają okno, fokus wraca na „Pozycja 3D”, płótno kopuły pod spodem jest to samo.
+- Baza kadru: trzy gwiazdy Gaia z rogów kadru IC 434 trafiają przez bazę w swoje kierunki z RA/Dec z błędem < 2% szerokości pola; kadr odbity w poziomie także (test `frameBasis`).
+- Droga Mleczna: linia widzenia biegnie od Ziemi przez pas Oriona (Alnitak, Alnilam), B 33 stoi 1,5 tys. lś od Ziemi. Przesunięcie okręgu w edycji zmienia położenie karty i celownika w Obserwatorium (x: 63,61% → 69,16% szerokości). Wszechświat lokalny ze zdjęciem M 51 ma te same kolumny, linie i podpisy co przed zmianą.
+- Szew nurkowania: środek Ziemi różni się między scenami o 0,00 px, a kierunek linii widzenia na ekranie o 0,00°, naprzód i wstecz, przy obu rozdzielczościach.
+- Po rozłożeniu przez 2 s żadna scena nie rysuje klatek (Obserwatorium 200 → 200, Droga Mleczna 108 → 108); w stanie zdjęcia płótno Drogi Mlecznej stoi.
+- Pod swiftshaderem scena Obserwatorium (dekodowanie zdjęcia 2798 × 2827 i karty) bywa gotowa ok. 0,8 s po końcu fazy ustawienia; kamera czeka wtedy w pozie szwu. Klik w trakcie przejścia kończy je od razu po zbudowaniu sceny.
+- Startowy JS: 153,3 KB gzip; okno z three.js to leniwy fragment 183,5 KB gzip (ze Space3D i Obserwatorium).
 
 ## Moje zdjęcie obiektu (5.11.2026)
 

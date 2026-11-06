@@ -1,8 +1,18 @@
 # Zdjęcia w widoku 3D
 
-W widoku **Niebo → Pozycja 3D → Rozłóż zdjęcie** można przesłać JPEG, PNG, WebP, TIFF lub FITS o rozmiarze do 40 MiB. Dla JPEG, PNG, WebP i TIFF obowiązuje też limit 64 mln pikseli. Obraz jest orientowany według EXIF i pomniejszany do maksymalnie 3200 pikseli dłuższego boku. Ten sam obraz otrzymuje rozwiązanie WCS i służy jako źródło wszystkich wycinków. FITS jest przedstawiany jako automatycznie rozciągnięty podgląd monochromatyczny.
+W oknie **Niebo → Pozycja 3D** (modal o wymiarach Obserwatorium, przełącznik skal Droga Mleczna i Wszechświat lokalny w pasku narzędzi; Esc zamyka okno) przycisk **Rozłóż zdjęcie** pozwala przesłać JPEG, PNG, WebP, TIFF lub FITS o rozmiarze do 40 MiB. Dla JPEG, PNG, WebP i TIFF obowiązuje też limit 64 mln pikseli. Obraz jest orientowany według EXIF i pomniejszany do maksymalnie 3200 pikseli dłuższego boku. Ten sam obraz otrzymuje rozwiązanie WCS i służy jako źródło wszystkich wycinków. FITS jest przedstawiany jako automatycznie rozciągnięty podgląd monochromatyczny.
 
-Po imporcie sprawdź propozycje katalogowe, zaznacz widoczne obiekty i popraw okręgi przez przeciąganie. Cyjanowy uchwyt zmienia promień. Pola X, Y i promienia tylko wyświetlają aktualne wartości. Korekta okręgu nie przesuwa pozycji astronomicznej. Suwak i przycisk odtwarzania pokazują przejście od fotografii do adnotacji na mapie. Mapa nadal obsługuje obrót i powiększanie. Przycisk **3D** otwiera Obserwatorium 3D (niżej), w którym oprócz wycinków pokazujemy gwiazdy Gaia z kadru.
+Po imporcie sprawdź propozycje katalogowe, zaznacz widoczne obiekty i popraw okręgi przez przeciąganie. Cyjanowy uchwyt zmienia promień. Pola X, Y i promienia tylko wyświetlają aktualne wartości. Korekta okręgu nie przesuwa pozycji astronomicznej. Edycja (przycisk **Edytuj wycinki**) pokazuje nad sceną płaskie zdjęcie z okręgami i panel wycinków w obu skalach.
+
+- **Droga Mleczna:** zdjęcie widać w scenie 3D jako przerywaną linię widzenia od Ziemi, stożek pola (cztery promienie do narożników kadru, w prawdziwym kącie zdjęcia) i znaczniki wycinków w kolorach typów. Wycinek z odległością stoi w swoim położeniu; dalszy niż 150 tys. lś leży na końcu linii z podpisem „poza skalą”, a bez odległości na linii 28 tys. lś od Ziemi z przerywanym obrysem i podpisem „odległość nieznana” (takie wycinki dzielą jeden znacznik i podpis). Kierunek i osie kadru wynikają z WCS (środek i macierz CD; kadr lustrzany dostaje obrót z odwróconą osią x). Pasek zdjęcia: **Rozłóż zdjęcie 3D**, **Edytuj wycinki**, **Zmień zdjęcie**, **Usuń**.
+- **Wszechświat lokalny:** bez zmian: suwak i przycisk odtwarzania pokazują przejście od fotografii do kolumn z liniami do położeń w scenie. Przycisk **3D** przełącza na Drogę Mleczną i od razu nurkuje do Obserwatorium. Skala po wczytaniu zdjęcia wynika z jego wycinków (same galaktyki: Wszechświat lokalny).
+
+**Nurkowanie** (Rozłóż zdjęcie 3D) prowadzi jedną ciągłą sceną do Obserwatorium 3D (niżej), w ok. 3,5 s:
+1. ustawienie (1,0 s): kamera Drogi Mlecznej przelatuje za Ziemię, ok. 40 tys. lś wstecz wzdłuż linii widzenia, pole widzenia 50° → 40°;
+2. nurkowanie (1,6 s): skala maleje logarytmicznie do ok. 1 lś na jednostkę Obserwatorium; tło Drogi Mlecznej gaśnie, stożek rozchyla się do kąta ostrosłupa Obserwatorium (zabieg poglądowy: ostrosłup jest umowny, ok. 71°, pole zdjęcia zwykle 0,5–5°), pojawiają się Ziemia, ostrosłup, oś, płaskie zdjęcie i siatka;
+3. wejście (0,9 s): kamera Obserwatorium przelatuje do widoku Struktura, panele wsuwają się, potem samo rusza rozkładanie (5 s).
+
+Szwem jest widok Obserwatorium „Z Ziemi”: most układów `p_DM = Ziemia + R · (p_obs − Ziemia_obs) · u` (R z bazy kadru, u w tys. lś na jednostkę) daje w obu scenach tę samą Ziemię i linię widzenia. Przycisk **Droga Mleczna** w stanie zdjęcia odtwarza nurkowanie wstecz (zwijając rozkładanie do 0%) i wraca do pozy kamery sprzed wejścia. Klik albo klawisz w trakcie przejścia przeskakuje do stanu końcowego. Przy ograniczonym ruchu (`prefers-reduced-motion`) przejście jest cięciem: od razu rozłożone zdjęcie (100%) i z powrotem.
 
 Lista „Źródło odległości” pozwala wybrać wartość z katalogu aplikacji (Wikidata) lub konkretny opublikowany pomiar z SIMBAD i, dla galaktyk/grup galaktyk, NED. Każda opcja pokazuje odległość, źródło, kod publikacji i metodę, jeśli podano. Wybrany pomiar ustawia pozycję 3D i zapisuje się razem ze zdjęciem. Nie uśredniamy różnych publikacji ani automatycznie nie wybieramy najnowszej. Zakres pomiaru (obiekt/kompleks) nadal ustawiasz samodzielnie; nie przypisujemy odległości pobliskiego obiektu. Stare, zapisane wartości pozostają dostępne. Brak danych i awaria usługi mają odrębne komunikaty.
 
@@ -14,7 +24,7 @@ Ostatnie zdjęcie wraz z WCS, zaznaczeniami i korektami zapisuje się lokalnie w
 
 ## Obserwatorium 3D
 
-Przycisk **3D** przy zdjęciu otwiera okno, w którym gwiazdy z kadru i włączone wycinki stoją w swoich odległościach wzdłuż linii widzenia. Układ i interakcje wzorowaliśmy na oknie „3D distances” SyQon Studio; kolory, krój i nazwy są własne.
+Stan zdjęcia w oknie „Pozycja 3D” (po nurkowaniu), w którym gwiazdy z kadru i włączone wycinki stoją w swoich odległościach wzdłuż linii widzenia. Układ i interakcje wzorowaliśmy na oknie „3D distances” SyQon Studio; kolory, krój i nazwy są własne.
 
 - **Gwiazdy:** 1000 najjaśniejszych gwiazd Gaia DR3 w kadrze. Pozycje przenosimy ruchem własnym na epokę 2025,0 (tę samą co katalog solvera) i rzutujemy na piksele tym samym WCS i tą samą funkcją mostu (`tracker-skyshot project`) co wycinki. Barwa punktu wynika z BP−RP, rozmiar z jasności G.
 - **Odległości gwiazd:** geometryczne odległości Bailer-Jones i in. (2021) z paralaks Gaia EDR3 (mediana i przedział 16.–84. percentyla). Podajemy je tylko przy ϖ/σ ≥ 5, czyli błędzie względnym paralaksy do 20%. Słabsze, ujemne i brakujące paralaksy dają gwiazdę bez odległości: zostaje na zdjęciu, nie dostaje fikcyjnej głębi.
@@ -25,10 +35,10 @@ Przycisk **3D** przy zdjęciu otwiera okno, w którym gwiazdy z kadru i włączo
   - grupy obiektów (wszystko, gwiazdy, mgławice i gromady, galaktyki) z komunikatem przy pustej grupie;
   - histogram odległości w skali logarytmicznej: przeciągnięcie wybiera przedział, dwuklik go usuwa, a dwa suwaki pod spodem obsługują klawiaturę;
   - wirtualizowana lista po odległości z wyszukiwaniem i inspektorem obiektu (miniatura z wycinka zdjęcia, odległość, przedział, źródło).
-- **Droga Mleczna:** oddala kamerę i przechodzi do skal Drogi Mlecznej / Wszechświata lokalnego. Wycinki lecą tam do swoich położeń, z liniami widzenia od Słońca.
+- **Droga Mleczna** (zakładka skali, obok ścieżka „Droga Mleczna › nazwa zdjęcia”): nurkowanie wstecz do sceny Drogi Mlecznej z linią widzenia; **Wszechświat lokalny** przełącza od razu, bez nurkowania.
 - **Brak eksportu wideo:** zdecydował tak użytkownik 5.11.2026.
 
-Gwiazdy pobieramy raz po otwarciu obserwatorium i zapisujemy w projekcie (IndexedDB, `PhotoProject` w wersji 2). Starsze zapisy przechodzą migrację z `stars: null` i pobierają gwiazdy przy pierwszym otwarciu. Serwer dodatkowo buforuje udane odpowiedzi według WCS. Prywatność bez zmian: do GAVO trafiają tylko środek i promień pola, a zdjęcie i WCS nie opuszczają serwera.
+Gwiazdy pobieramy raz, gdy zdjęcie pojawi się w skali Drogi Mlecznej (scena Obserwatorium jest wtedy kompletna przed nurkowaniem), i zapisujemy w projekcie (IndexedDB, `PhotoProject` w wersji 2). Starsze zapisy przechodzą migrację z `stars: null` i pobierają gwiazdy przy pierwszym otwarciu. Serwer dodatkowo buforuje udane odpowiedzi według WCS. Prywatność bez zmian: do GAVO trafiają tylko środek i promień pola, a zdjęcie i WCS nie opuszczają serwera.
 
 Sprawdzenie na zdjęciu IC 434 z konuzastro.pl (2798 × 2827 px, 1,28″/px):
 - 510 z 580 gwiazd wykrytych przez solver dopasowano do Gaia (≤ 1″);
