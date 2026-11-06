@@ -1,15 +1,16 @@
 // Nurkowanie z Drogi Mlecznej do rozłożonego zdjęcia (i z powrotem), bez three.js: oś czasu faz, logarytmiczna
 // skala mostu między układami, pozy kamer, kąt stożka pola i krycia warstw. Jeden wirtualny kamerzysta prowadzi
-// obie sceny; szwem jest widok Obserwatorium „Z Ziemi” (zdjęcie płasko, progress = 0).
+// obie sceny; szwem jest widok Obserwatorium „Struktura” (zdjęcie płasko, progress = 0). Nurkowanie zaczyna się
+// od bieżącej kamery Drogi Mlecznej (bez oddalania): zbliża ją logarytmicznie do Ziemi i obraca do pozy mostu.
 import type { Vec3 } from './astro'
 import { orbitOffset } from './observatory'
 
 export type DiveDirection = 'in' | 'out'
-export type DivePhase = 'setup' | 'dive' | 'enter'
+export type DivePhase = 'dive' | 'enter'
 
-/** Czasy faz w ms: ustawienie kamery Drogi Mlecznej, nurkowanie, wejście do Obserwatorium. */
-export const DIVE_PHASE_MS: Record<DivePhase, number> = { setup: 1000, dive: 1600, enter: 900 }
-export const DIVE_TOTAL_MS = DIVE_PHASE_MS.setup + DIVE_PHASE_MS.dive + DIVE_PHASE_MS.enter
+/** Czasy faz w ms: nurkowanie (z obrotem kamery do pozy mostu) i wejście do Obserwatorium (panele). */
+export const DIVE_PHASE_MS: Record<DivePhase, number> = { dive: 2200, enter: 900 }
+export const DIVE_TOTAL_MS = DIVE_PHASE_MS.dive + DIVE_PHASE_MS.enter
 
 export interface DiveFrame {
   /** Położenie na drodze naprzód (0: Droga Mleczna, 1: Obserwatorium); wstecz s = 1 − t. */
@@ -17,7 +18,7 @@ export interface DiveFrame {
   phase: DivePhase
   /** Postęp w fazie (0–1, w kierunku drogi naprzód). */
   k: number
-  /** Wygładzony postęp nurkowania: 0 w fazie ustawienia, 1 w fazie wejścia. */
+  /** Wygładzony postęp nurkowania: 0 na jego początku, 1 w fazie wejścia. */
   e: number
   done: boolean
 }
@@ -32,13 +33,12 @@ export function diveFrame(elapsedMs: number, direction: DiveDirection): DiveFram
   const t = clamp01(elapsedMs / DIVE_TOTAL_MS)
   const s = direction === 'in' ? t : 1 - t
   const ms = s * DIVE_TOTAL_MS
-  const { setup, dive, enter } = DIVE_PHASE_MS
-  if (ms < setup) return { s, phase: 'setup', k: ms / setup, e: 0, done: t >= 1 }
-  if (ms < setup + dive) {
-    const k = (ms - setup) / dive
+  const { dive, enter } = DIVE_PHASE_MS
+  if (ms < dive) {
+    const k = ms / dive
     return { s, phase: 'dive', k, e: ease(k), done: t >= 1 }
   }
-  return { s, phase: 'enter', k: Math.min(1, (ms - setup - dive) / enter), e: 1, done: t >= 1 }
+  return { s, phase: 'enter', k: Math.min(1, (ms - dive) / enter), e: 1, done: t >= 1 }
 }
 
 /** Tysiące lś na jednostkę Obserwatorium: logarytmicznie od u0 (e = 0) do u1 (e = 1), jak w „potęgach dziesięciu”. */
@@ -103,6 +103,37 @@ export function slerpDirection(a: Vec3, b: Vec3, t: number): Vec3 {
   const s = Math.sin(angle)
   const wa = Math.sin((1 - t) * angle) / s, wb = Math.sin(t * angle) / s
   return unit([ua[0] * wa + ub[0] * wb, ua[1] * wa + ub[1] * wb, ua[2] * wa + ub[2] * wb])
+}
+
+/** Skala mostu na początku nurkowania: kamera mostu w tej samej odległości od Ziemi co bieżąca kamera
+ *  (nie mniej niż u1, żeby nurkowanie nigdy nie oddalało). */
+export function startScale(start: Pose, b: Bridge, seam: Pose, u1: number): number {
+  const d = Math.hypot(start.position[0] - b.origin[0], start.position[1] - b.origin[1], start.position[2] - b.origin[2])
+  const D = Math.hypot(seam.position[0] - b.earth[0], seam.position[1] - b.earth[1], seam.position[2] - b.earth[2])
+  return Math.max(u1, d / D)
+}
+
+/** Obrót od bieżącej kamery do pozy mostu w pierwszej części nurkowania (0–1). */
+export const turnWeight = (e: number) => ramp(e, 0, 0.6)
+
+/**
+ * Kamera Drogi Mlecznej w nurkowaniu: bieżąca poza zbliżana do Ziemi w skali u/u0 i poza mostu w skali u leżą zawsze
+ * w tej samej odległości od Ziemi, więc przejście między nimi to obrót wokół Ziemi (bez oddalania i przybliżania).
+ */
+export function divePose(start: Pose, b: Bridge, seam: Pose, e: number, u0: number, u1: number): Pose {
+  const u = diveScale(e, u0, u1)
+  const k = u / u0
+  const o = b.origin
+  const rel = (p: Vec3, f: number): Vec3 => [(p[0] - o[0]) * f, (p[1] - o[1]) * f, (p[2] - o[2]) * f]
+  const bridged = bridgePose(b, seam, u)
+  const w = turnWeight(e)
+  const offset = orbitOffset(rel(start.position, k), rel(bridged.position, 1), w)
+  const from = rel(start.target, k), to = rel(bridged.target, 1)
+  return {
+    position: [o[0] + offset[0], o[1] + offset[1], o[2] + offset[2]],
+    target: [0, 1, 2].map((i) => o[i] + from[i] + (to[i] - from[i]) * w) as Vec3,
+    up: slerpDirection(start.up, bridged.up, w),
+  }
 }
 
 /** Przelot kamery: cel liniowo, położenie względem celu po sferze (orbitOffset), kierunek „w górę” po łuku. */

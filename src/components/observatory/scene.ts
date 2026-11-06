@@ -560,8 +560,8 @@ export class ObservatoryScene {
       if (!el) continue
       const card = this.cards.get(item.id)!
       el.classList.toggle('selected', isSelected)
-      // Obiekty bez odległości zostają na zdjęciu; w przestrzeni ich podpis tylko po zaznaczeniu.
-      place(el, card.position.clone().add(new THREE.Vector3(0, card.scale.y / 2, 0)), this.visible.has(item.id) && (item.distLy !== null || e < 0.3 || isSelected))
+      // Obiekty bez odległości zostają na zdjęciu bez podpisu (podpis tylko po zaznaczeniu).
+      place(el, card.position.clone().add(new THREE.Vector3(0, card.scale.y / 2, 0)), this.visible.has(item.id) && (item.distLy !== null || isSelected))
     }
     let starLabel = this.labels.querySelector<HTMLDivElement>('.obs-star')
     const selected = this.items.find((item) => item.id === this.selected && item.kind === 'star')

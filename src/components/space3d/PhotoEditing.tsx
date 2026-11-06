@@ -34,23 +34,26 @@ export function PhotoMessages({ session }: { session: PhotoSession }) {
   </>
 }
 
-/** Płaskie zdjęcie z okręgami wycinków nad sceną: przeciąganie okręgu i jego uchwytu (promień). */
+/** Widok edycji: płaskie zdjęcie z okręgami wycinków na całej scenie (nad paskiem zdjęcia); przeciąganie okręgu
+ *  i jego uchwytu (promień). */
 export function PhotoFlatView({ session }: { session: PhotoSession }) {
   const { project, updateCut, activeId, setActiveId } = session
   const svgRef = useRef<SVGSVGElement>(null)
-  const [size, setSize] = useState({ width: 800, height: 520 })
+  const [size, setSize] = useState({ width: 800, height: 520, bar: 63 })
   const prefix = useId().replace(/:/g, '')
   const dragRef = useRef<{ id: string; x: number; y: number; original: PhotoCut; resize: boolean } | null>(null)
   useEffect(() => {
     const svg = svgRef.current
     if (!svg) return
-    const ro = new ResizeObserver(() => setSize({ width: Math.max(1, svg.clientWidth), height: Math.max(1, svg.clientHeight) }))
+    // Zdjęcie kończy się nad paskiem zdjęcia (na telefonie pasek ma dwa wiersze przycisków).
+    const bar = () => svg.parentElement?.querySelector<HTMLElement>('.photo-controls')?.offsetHeight ?? 0
+    const ro = new ResizeObserver(() => setSize({ width: Math.max(1, svg.clientWidth), height: Math.max(1, svg.clientHeight), bar: bar() }))
     ro.observe(svg)
     return () => ro.disconnect()
   }, [])
   if (!project) return null
   const { width, height } = size
-  const frame = photoFrame(width, height, project)
+  const frame = photoFrame(width, height, project, { top: 16, bottom: (size.bar ? size.bar + 12 : 0) + 16, side: 16 })
   const enabled = project.cuts.filter((c) => c.enabled)
   const circles = enabled.map((cut) => ({ cut, x: frame.x + cut.x * frame.scale, y: frame.y + cut.y * frame.scale, radius: cut.radius * frame.scale }))
   const covered = coveredPhotoCircles(circles)

@@ -5,15 +5,13 @@ import * as THREE from 'three'
 import type { Vec3 } from '../../lib/astro'
 import { EARTH_Z, PLANE_WIDTH } from '../../lib/observatory'
 import {
-  DIVE_PHASE_MS, DIVE_TOTAL_MS, bridgePose, coneTan, diveFades, diveFrame, diveScale, ease, lerpPose, makeBridge, nearFar,
+  DIVE_TOTAL_MS, coneTan, diveFades, diveFrame, diveScale, divePose, ease, lerpPose, makeBridge, nearFar, startScale, turnWeight,
   type DiveDirection, type DivePhase, type Pose,
 } from '../../lib/spaceDive'
 import type { ObservatoryScene } from '../observatory/scene'
 import type { Space3DHandle } from '../Space3D'
 import type { PhotoGuide } from './photoGuide'
 
-/** Kamera Drogi Mlecznej na początku nurkowania: ok. 40 tys. lś za Ziemią (widać dysk). */
-const START_DISTANCE_KLY = 40
 /** Na końcu nurkowania 1 jednostka Obserwatorium ≈ 1 lś: sąsiednie obiekty rozlatują się poza kadr. */
 const END_SCALE = 0.001
 const SPACE_FOV = 50
@@ -26,7 +24,7 @@ export interface DiveOptions {
   direction: DiveDirection
   space: Space3DHandle
   guide: PhotoGuide
-  /** Scena Obserwatorium; null, dopóki nie powstanie (kamera czeka wtedy w pozie szwu na końcu ustawienia). */
+  /** Scena Obserwatorium; null, dopóki nie powstanie (nurkowanie czeka wtedy na starcie). */
   observatory(): ObservatoryScene | null
   /** Poza szwu: widok Obserwatorium „Struktura” (płaskie zdjęcie, Ziemia, oś), w który wchodzi most z Drogi Mlecznej. */
   seam: { position: Vec3; target: Vec3 }
@@ -46,6 +44,8 @@ export interface DiveDev {
   seam(): { space: [number, number]; observatory: [number, number]; spaceAngle: number; observatoryAngle: number; spaceEarthPx: number; observatoryEarthPx: number } | null
   /** Promień Ziemi Drogi Mlecznej na ekranie (piksele) w bieżącej klatce. */
   earthPx(): number
+  /** Odległość kamery Drogi Mlecznej od Ziemi (tys. lś). */
+  distance(): number
 }
 
 export class SpaceDive {
@@ -77,7 +77,7 @@ export class SpaceDive {
     space.override.camera = true
     space.controls.enabled = false
     if (this.earthMaterial) this.earthMaterial.transparent = true
-    if (import.meta.env.DEV) (window as unknown as { __spaceDive?: DiveDev }).__spaceDive = { freeze: (t) => { this.frozen = t }, seam: () => this.seamCheck(), earthPx: () => this.spaceEarthPx() }
+    if (import.meta.env.DEV) (window as unknown as { __spaceDive?: DiveDev }).__spaceDive = { freeze: (t) => { this.frozen = t }, seam: () => this.seamCheck(), earthPx: () => this.spaceEarthPx(), distance: () => this.o.space.camera.position.distanceTo(this.o.space.sunPos) }
     this.raf = requestAnimationFrame(this.loop)
   }
 
@@ -121,10 +121,10 @@ export class SpaceDive {
     const obs = this.o.observatory()
     this.t0 ??= now
     let elapsed = this.skipping ? DIVE_TOTAL_MS : this.frozen !== null ? this.frozen * DIVE_TOTAL_MS : now - this.t0
-    // Scena Obserwatorium musi stać przed nurkowaniem: do tego czasu kamera czeka w pozie szwu.
-    if (this.o.direction === 'in' && !obs && elapsed > DIVE_PHASE_MS.setup) {
-      elapsed = DIVE_PHASE_MS.setup
-      this.t0 = now - elapsed
+    // Scena Obserwatorium musi stać przed nurkowaniem: do tego czasu kamera Drogi Mlecznej stoi.
+    if (this.o.direction === 'in' && !obs) {
+      elapsed = 0
+      this.t0 = now
     }
     const f = diveFrame(elapsed, this.o.direction)
     const seam: Pose = { ...this.o.seam, up: UP }
@@ -137,27 +137,23 @@ export class SpaceDive {
       if (f.phase === 'enter') this.fadeSpace(1)
       this.o.onPhase(f.phase)
     }
-    if (f.phase !== 'enter') this.applySpace(f.phase, f.k, f.e, seam, now)
+    if (f.phase !== 'enter') this.applySpace(f.e, seam, now)
     if (obs) this.applyObservatory(obs, f.phase, f.k, f.e, seam, now)
     if (f.done && !this.finished && (obs || this.o.direction === 'out')) this.finish(obs)
   }
 
-  private applySpace(phase: DivePhase, k: number, e: number, seam: Pose, now: number) {
+  private applySpace(e: number, seam: Pose, now: number) {
     const { space, guide } = this.o
     const { camera, controls } = space
-    const u0 = START_DISTANCE_KLY / Math.hypot(seam.position[0], seam.position[1], seam.position[2] - EARTH_Z)
-    let pose: Pose
-    let fov = OBSERVATORY_FOV
-    if (phase === 'setup') {
-      const t = ease(k)
-      pose = lerpPose(this.spacePose, bridgePose(this.bridge, seam, u0), t)
-      fov = SPACE_FOV + (OBSERVATORY_FOV - SPACE_FOV) * t
-    } else pose = bridgePose(this.bridge, seam, diveScale(e, u0, END_SCALE))
+    // Start z bieżącej kamery: skala mostu daje tę samą odległość od Ziemi, więc nie ma oddalania na początku.
+    const u0 = startScale(this.spacePose, this.bridge, seam, END_SCALE)
+    const pose = divePose(this.spacePose, this.bridge, seam, e, u0, END_SCALE)
+    const w = turnWeight(e)
+    const fov = SPACE_FOV + (OBSERVATORY_FOV - SPACE_FOV) * w
     const u = diveScale(e, u0, END_SCALE)
-    // W nurkowaniu Ziemia ma promień Ziemi Obserwatorium w skali mostu (na szwie oba znaczniki się pokrywają);
-    // w ustawieniu wielkość przechodzi płynnie od znacznika (do 16 px) do tej wartości.
+    // Ziemia przechodzi płynnie od znacznika (do 16 px) do Ziemi Obserwatorium w skali mostu: na szwie oba się pokrywają.
     space.override.earthRadius = EARTH_RADIUS * u
-    space.override.earthBlend = phase === 'dive' ? 1 : ease(k)
+    space.override.earthBlend = w
     this.fadeSpace(e)
     const [tx, ty] = coneTan(e, this.real, this.pyramid)
     guide.cone.scale.set(tx, ty, 1)

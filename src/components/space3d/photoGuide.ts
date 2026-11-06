@@ -101,15 +101,28 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, c
   const fieldTan = halfFieldTan(basis, project.width, project.height)
   cone.scale.set(fieldTan[0], fieldTan[1], 1)
   group.add(cone)
-  disposables.push(coneGeometry, coneMaterial)
-  coneMaterial.userData.cone = true
-  materials.push(coneMaterial)
+  // Półprzezroczyste ścianki: cztery trójkąty od Ziemi do sąsiednich narożników kadru.
+  const faces: number[] = []
+  const corner = (i: number) => [[1, 1], [-1, 1], [-1, -1], [1, -1]][i % 4]
+  for (let i = 0; i < 4; i++) {
+    const [ax, ay] = corner(i), [bx, by] = corner(i + 1)
+    faces.push(0, 0, 0, ax * length, ay * length, -length, bx * length, by * length, -length)
+  }
+  const faceGeometry = new THREE.BufferGeometry()
+  faceGeometry.setAttribute('position', new THREE.Float32BufferAttribute(faces, 3))
+  const faceMaterial = new THREE.MeshBasicMaterial({ color: accent, transparent: true, opacity: 0.07, side: THREE.DoubleSide, depthWrite: false })
+  const faceMesh = new THREE.Mesh(faceGeometry, faceMaterial)
+  faceMesh.renderOrder = -1
+  cone.add(faceMesh)
+  disposables.push(coneGeometry, coneMaterial, faceGeometry, faceMaterial)
+  coneMaterial.userData.cone = faceMaterial.userData.cone = true
+  materials.push(coneMaterial, faceMaterial)
 
   // Znaczniki i podpisy.
   const labels = document.createElement('div')
   labels.className = 'obs-labels space-photo-labels'
   handle.mount.appendChild(labels)
-  const marks: { position: THREE.Vector3; label: HTMLDivElement; height: number }[] = []
+  const marks: { position: THREE.Vector3; label: HTMLDivElement; width: number; height: number }[] = []
   // Wycinki bez odległości i poza skalą leżą w jednym punkcie linii: jeden znacznik i jeden podpis na grupę.
   const groups = new Map<string, typeof cuts>()
   for (const entry of cuts) {
@@ -134,14 +147,16 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, c
     const lines = Array.from({ length: Math.ceil(ids.length / 3) }, (_, i) => ids.slice(i * 3, i * 3 + 3).join(', '))
     const label = document.createElement('div')
     label.className = `obs-label space-photo-label${kind === 'position' ? '' : ' dashed'}`
-    label.textContent = [...lines, kind === 'outside' ? 'poza skalą' : kind === 'direction' ? 'odległość nieznana' : `≈ ${fmtDistance(cut.distLy!)}`].join('\n')
+    const text = [...lines, kind === 'outside' ? 'poza skalą' : kind === 'direction' ? 'odległość nieznana' : `≈ ${fmtDistance(cut.distLy!)}`]
+    label.textContent = text.join('\n')
     labels.appendChild(label)
-    // Wysokość podpisu w pikselach (wiersze po 13,5 px i obramowanie) do rozsuwania nakładających się podpisów.
-    marks.push({ position: world, label, height: (lines.length + 1) * 13.5 + 8 })
+    // Wymiary podpisu w pikselach (krój 10 px ≈ 6,1 px na znak, wiersze po 13,5 px, obramowanie) do rozmieszczania.
+    marks.push({ position: world, label, width: Math.max(...text.map((line) => line.length)) * 6.1 + 16, height: text.length * 13.5 + 8 })
   }
   handle.scene.add(group)
 
-  // Podpisy przesuwamy tylko przy zmianie kamery lub rozmiaru; nakładające się schodzą w dół.
+  // Podpisy przesuwamy tylko przy zmianie kamery lub rozmiaru. Każdy stoi przy swoim znaczniku: z prawej, z lewej,
+  // nad nim albo pod nim, w pierwszym miejscu bez nakładania; gdy wszystkie są zajęte, zostaje z prawej.
   const lastCamera = new THREE.Matrix4()
   const lastProjection = new THREE.Matrix4()
   let lastW = 0, lastH = 0
@@ -153,17 +168,19 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, c
     lastW = w; lastH = h
     lastCamera.copy(camera.matrixWorld)
     lastProjection.copy(camera.projectionMatrix)
-    const boxes: { x: number; top: number; bottom: number }[] = []
+    const boxes: { left: number; top: number; right: number; bottom: number }[] = []
     for (const mark of marks) {
       v.copy(mark.position).project(camera)
       const on = group.visible && v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1
       mark.label.style.display = on ? '' : 'none'
       if (!on) continue
-      const x = (v.x + 1) / 2 * w
-      let y = (1 - v.y) / 2 * h
-      for (let hit = boxes.find((b) => Math.abs(b.x - x) < 160 && y < b.bottom && y + mark.height > b.top); hit; hit = boxes.find((b) => Math.abs(b.x - x) < 160 && y < b.bottom && y + mark.height > b.top)) y = hit.bottom + 2
-      boxes.push({ x, top: y, bottom: y + mark.height })
-      mark.label.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`
+      const x = (v.x + 1) / 2 * w, y = (1 - v.y) / 2 * h
+      const { width: lw, height: lh } = mark
+      const spots: [number, number][] = [[x + 13, y - 9], [x - 13 - lw, y - 9], [x - lw / 2, y - 14 - lh], [x - lw / 2, y + 14], [x + 13, y - lh - 4], [x + 13, y + 4]]
+      const free = (sx: number, sy: number) => !boxes.some((b) => sx < b.right && sx + lw > b.left && sy < b.bottom && sy + lh > b.top)
+      const [lx, ly] = spots.find(([sx, sy]) => free(sx, sy)) ?? spots[0]
+      boxes.push({ left: lx, top: ly, right: lx + lw, bottom: ly + lh })
+      mark.label.style.transform = `translate(${lx.toFixed(1)}px, ${ly.toFixed(1)}px)`
     }
   }
   handle.hooks.add(place)

@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import type { Vec3 } from './astro'
-import { DIVE_PHASE_MS, DIVE_TOTAL_MS, bridgePoint, bridgePose, bridgeVector, coneTan, diveFades, diveFrame, diveScale, lerpPose, makeBridge, nearFar, unbridgePoint, type Pose } from './spaceDive'
+import { DIVE_PHASE_MS, DIVE_TOTAL_MS, bridgePoint, bridgePose, bridgeVector, coneTan, diveFades, diveFrame, divePose, diveScale, lerpPose, makeBridge, nearFar, startScale, unbridgePoint, type Pose } from './spaceDive'
 
 // Baza kadru: dowolny obrót (osie ortonormalne, x × y = −center).
 const center: Vec3 = [0.6, 0.48, 0.64]
@@ -10,14 +10,13 @@ const bridge = makeBridge([-26.7, 0, 0], { center, x, y }, [0, 0, 70])
 const seam: Pose = { position: [0, 42, 185], target: [0, 8, -30], up: [0, 1, 0] }
 const close = (a: Vec3, b: Vec3, digits = 9) => a.forEach((v, i) => expect(v).toBeCloseTo(b[i], digits))
 
-it('oś czasu: początek i koniec w obu kierunkach, fazy w kolejności ustawienie → nurkowanie → wejście', () => {
-  expect(diveFrame(0, 'in')).toEqual({ s: 0, phase: 'setup', k: 0, e: 0, done: false })
+it('oś czasu: początek i koniec w obu kierunkach, fazy w kolejności nurkowanie → wejście', () => {
+  expect(diveFrame(0, 'in')).toEqual({ s: 0, phase: 'dive', k: 0, e: 0, done: false })
   expect(diveFrame(DIVE_TOTAL_MS, 'in')).toEqual({ s: 1, phase: 'enter', k: 1, e: 1, done: true })
   expect(diveFrame(0, 'out')).toMatchObject({ s: 1, phase: 'enter', e: 1, done: false })
-  expect(diveFrame(DIVE_TOTAL_MS + 500, 'out')).toEqual({ s: 0, phase: 'setup', k: 0, e: 0, done: true })
-  expect(diveFrame(DIVE_PHASE_MS.setup + 1, 'in').phase).toBe('dive')
-  expect(diveFrame(DIVE_PHASE_MS.setup + DIVE_PHASE_MS.dive / 2, 'in').e).toBeCloseTo(0.5, 9)
-  expect(diveFrame(DIVE_PHASE_MS.setup + DIVE_PHASE_MS.dive + 1, 'in').phase).toBe('enter')
+  expect(diveFrame(DIVE_TOTAL_MS + 500, 'out')).toEqual({ s: 0, phase: 'dive', k: 0, e: 0, done: true })
+  expect(diveFrame(DIVE_PHASE_MS.dive / 2, 'in').e).toBeCloseTo(0.5, 9)
+  expect(diveFrame(DIVE_PHASE_MS.dive + 1, 'in').phase).toBe('enter')
 })
 
 it('ruch wstecz jest lustrem ruchu naprzód (t → 1 − t)', () => {
@@ -28,7 +27,8 @@ it('ruch wstecz jest lustrem ruchu naprzód (t → 1 − t)', () => {
     expect(back.phase).toBe(forward.phase)
     expect(back.k).toBeCloseTo(forward.k, 12)
     expect(back.e).toBeCloseTo(forward.e, 12)
-    expect(diveFades(back.e)).toEqual(diveFades(forward.e))
+    const a = diveFades(back.e), b = diveFades(forward.e)
+    for (const key of Object.keys(a) as (keyof typeof a)[]) expect(a[key]).toBeCloseTo(b[key], 9)
   }
 })
 
@@ -80,4 +80,24 @@ it('przelot kamery zaczyna się i kończy w pozach krańcowych, near rośnie z o
   expect(nearFar(10)).toEqual({ near: 0.1, far: 5000 })
   expect(nearFar(0.12).near).toBeCloseTo(0.0012, 12)
   expect(nearFar(0.12).far).toBeGreaterThan(300)
+})
+
+it('nurkowanie zaczyna się w bieżącej kamerze, kończy w pozie szwu i nigdy się nie oddala od Ziemi', () => {
+  const start: Pose = { position: [-20, 6, 5], target: [-24, 0, 1], up: [0, 1, 0] }
+  const u1 = 0.001
+  const u0 = startScale(start, bridge, seam, u1)
+  const distance = (p: Vec3) => Math.hypot(p[0] + 26.7, p[1], p[2])
+  close(divePose(start, bridge, seam, 0, u0, u1).position, start.position)
+  close(divePose(start, bridge, seam, 0, u0, u1).target, start.target)
+  const end = bridgePose(bridge, seam, u1)
+  close(divePose(start, bridge, seam, 1, u0, u1).position, end.position)
+  close(divePose(start, bridge, seam, 1, u0, u1).up, end.up)
+  let last = Infinity
+  for (let e = 0; e <= 1.0001; e += 0.01) {
+    const d = distance(divePose(start, bridge, seam, e, u0, u1).position)
+    expect(d).toBeLessThanOrEqual(last + 1e-9)
+    last = d
+  }
+  // Kamera bliżej Ziemi niż koniec nurkowania: skala startowa nie spada poniżej u1 (bez oddalania na końcu).
+  expect(startScale({ ...start, position: [-26.7, 0, 0.0001] }, bridge, seam, u1)).toBe(u1)
 })

@@ -57,7 +57,9 @@ export default function Space3DModal() {
   // Gwiazdy Gaia, które przyjdą w trakcie przejścia, trafiają do Obserwatorium dopiero po nim.
   const [obsProject, setObsProject] = useState(project)
   useEffect(() => { if (!diving) setObsProject(project) }, [project, diving])
-  const guideRef = usePhotoGuide(handle, project, galaxy && mode !== 'photo' && !session.editing)
+  // Edycja wycinków to osobny widok okna: płaskie zdjęcie na scenie, panel edytora z prawej, scena 3D wstrzymana.
+  const editing = mode === 'scale' && !!project && session.editing
+  const guideRef = usePhotoGuide(handle, project, galaxy && mode !== 'photo' && !editing)
 
   /** Stan końcowy bez animacji: ograniczony ruch, kliknięcie w trakcie przebudowy sceny, zmiana skali. */
   const settle = useCallback((target: 'scale' | 'photo') => {
@@ -136,6 +138,12 @@ export default function Space3DModal() {
     ;(window as unknown as { __spaceFrames?: () => { space: number | null; observatory: number | null } }).__spaceFrames = () => ({ space: handle?.renderer.info.render.frame ?? null, observatory: obsScene.current?.frames ?? null })
   }, [handle])
   useEffect(() => { if (!project && mode !== 'scale') settle('scale') }, [project, mode, settle])
+  useEffect(() => {
+    if (!handle || !editing) return
+    handle.setExternal(true)
+    // Nurkowanie startujące z edycji samo przejmuje klatki sceny.
+    return () => { if (!diveRef.current) handle.setExternal(false) }
+  }, [handle, editing])
 
   // Klik albo klawisz (poza Esc, który zamyka okno) w trakcie przejścia: od razu stan końcowy.
   useEffect(() => {
@@ -155,24 +163,25 @@ export default function Space3DModal() {
     subtitle={showPhoto ? 'Obiekty zdjęcia wzdłuż linii widzenia' : SUBTITLE[settings.scale]}
     summaryRef={setSummary}
     summary={!showPhoto && o ? <strong>{dist !== null ? `Odległość ≈ ${fmtDistance(dist)}` : 'Odległość nieznana'}</strong> : null}
-    className={`space-window ${panels ? 'is-photo' : 'is-scale'}${diving ? ' is-diving' : ''}`}
+    className={`space-window ${panels ? 'is-photo' : 'is-scale'}${diving ? ' is-diving' : ''}${editing ? ' is-editing' : ''}`}
     onClose={close}
   >
     <SpaceToolbar o={o} settings={settings} onScale={chooseScale} crumb={showPhoto ? project.name : undefined}>
       {showPhoto && <div ref={setToolbarSlot} className="space-toolbar-slot" />}
     </SpaceToolbar>
     <div ref={setStage} className="obs-stage space-stage" style={{ minHeight: mode === 'scale' && project && !galaxy ? photoStageHeight(project.cuts) : undefined }}>
-      <div className={`space-scene${mode === 'photo' ? ' is-hidden' : ''}`}>
+      <div className={`space-scene${mode === 'photo' || editing ? ' is-hidden' : ''}`}>
         <Space3D settings={settings} photo={project} frameRef={frameRef} fitRef={fitRef} onHandle={setHandle} />
       </div>
       {mode === 'scale' && <>
-        <PhotoImport session={session} inputRef={inputRef} showButton={!project || !galaxy} />
+        <PhotoImport session={session} inputRef={inputRef} showButton={!project || (!galaxy && !editing)} />
         <PhotoMessages session={session} />
         {project && !galaxy && <PhotoUnfold key={project.id} session={session} frameRef={frameRef} fitRef={fitRef} onObservatory={unfold} />}
         {project && galaxy && <GalaxyPhotoBar session={session} stars={stars} onUnfold={unfold} onPick={() => inputRef.current?.click()} onRetryStars={retry} />}
-        {project && session.editing && <><PhotoFlatView session={session} /><PhotoCutEditor session={session} /></>}
+        {editing && <PhotoFlatView session={session} />}
       </>}
     </div>
+    {editing && <PhotoCutEditor session={session} />}
     {mode !== 'scale' && obsProject && stage && summary && <Observatory project={obsProject} slots={{ stage, toolbar: showPhoto ? toolbarSlot : null, summary: showPhoto ? summary : null }}
       stars={stars} onRetryStars={retry} diving={diving} onScene={(scene) => { obsScene.current = scene }} />}
   </SpaceWindow>
