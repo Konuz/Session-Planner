@@ -3,16 +3,16 @@
 // obie sceny; szwem jest widok Obserwatorium „Struktura”. Nurkowanie zaczyna się
 // od bieżącej kamery Drogi Mlecznej (bez oddalania): zbliża ją logarytmicznie do Ziemi i obraca do pozy mostu.
 import type { Vec3 } from './astro'
-import { EARTH_Z, orbitOffset } from './observatory'
+import { EARTH_Z, PHOTO_UNFOLD_MS, orbitOffset } from './observatory'
 
 export type DiveDirection = 'in' | 'out'
 export type DivePhase = 'dive' | 'enter'
 
-/** Czasy faz w ms dla kierunku: nurkowanie (z obrotem kamery do pozy mostu) i wejście do Obserwatorium (panele).
- *  Droga do Obserwatorium trwa 1,25 raza dłużej niż powrót (te same proporcje faz). */
+/** Czasy faz w ms: nurkowanie z obrotem kamery oraz rozkładanie/składanie zdjęcia w tempie Play.
+ *  Samo nurkowanie do Obserwatorium trwa 1,25 raza dłużej niż powrót. */
 export const DIVE_PHASE_MS: Record<DiveDirection, Record<DivePhase, number>> = {
-  in: { dive: 4250, enter: 1125 },
-  out: { dive: 3400, enter: 900 },
+  in: { dive: 4250, enter: PHOTO_UNFOLD_MS },
+  out: { dive: 3400, enter: PHOTO_UNFOLD_MS },
 }
 export const diveTotalMs = (direction: DiveDirection) => DIVE_PHASE_MS[direction].dive + DIVE_PHASE_MS[direction].enter
 
@@ -24,6 +24,8 @@ export interface DiveFrame {
   k: number
   /** Wygładzony postęp nurkowania: 0 na jego początku, 1 w fazie wejścia. */
   e: number
+  /** Rozłożenie zdjęcia: płaskie podczas nurkowania, pełna głębia na końcu wejścia. */
+  photoProgress: number
   done: boolean
 }
 
@@ -40,9 +42,10 @@ export function diveFrame(elapsedMs: number, direction: DiveDirection): DiveFram
   const ms = s * (dive + enter)
   if (ms < dive) {
     const k = ms / dive
-    return { s, phase: 'dive', k, e: ramp(k, 0, 1), done: t >= 1 }
+    return { s, phase: 'dive', k, e: ramp(k, 0, 1), photoProgress: 0, done: t >= 1 }
   }
-  return { s, phase: 'enter', k: Math.min(1, (ms - dive) / enter), e: 1, done: t >= 1 }
+  const k = Math.min(1, (ms - dive) / enter)
+  return { s, phase: 'enter', k, e: 1, photoProgress: k, done: t >= 1 }
 }
 
 /** Tysiące lś na jednostkę Obserwatorium: logarytmicznie od u0 (e = 0) do u1 (e = 1), jak w „potęgach dziesięciu”. */

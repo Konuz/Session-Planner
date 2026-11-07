@@ -2,10 +2,11 @@ import type { PhotoStar } from '../src/lib/photo.ts'
 import { readResponseText } from './readResponseText.ts'
 
 // Gwiazdy Gaia DR3 z odległościami Bailer-Jones et al. 2021 (EDR3) przez GAVO DC (Heidelberg).
-// ESA Gaia Archive i CDS bywają nieosiągalne; gaia.dr3lite łączymy z gedr3dist.main po source_id.
 const tapUrl = 'https://dc.zah.uni-heidelberg.de/tap/sync'
+const mirrorTapUrl = 'https://data.xao.ac.cn/tap/sync'
 const maxResponseBytes = 4 * 1024 * 1024
-const queryMs = 30_000
+const gavoConeMs = 24_000
+const queryMs = 60_000
 const LY_PER_PC = 3.26156
 /** Katalog D80 solvera (Gaia DR3) ma epokę 2025,0; dopasowujemy do niej pozycje J2016,0. */
 const EPOCH_YEARS = 2025 - 2016
@@ -27,10 +28,10 @@ export function magnitudeLimit(radiusDeg: number): number {
   return Math.round(Math.min(18, Math.max(10, limit)) * 10) / 10
 }
 
-function csvRows(text: string): Record<string, string>[] {
+function csvRows(text: string, requiredColumn = 'r_med_geo'): Record<string, string>[] {
   const lines = text.trim().split(/\r?\n/)
   const head = lines.shift()?.split(',') ?? []
-  if (!head.includes('source_id') || !head.includes('r_med_geo')) throw new Error('GAVO')
+  if (!head.includes('source_id') || !head.includes(requiredColumn)) throw new Error('Nieoczekiwany format danych Gaia.')
   return lines.map((line) => {
     const cells = line.split(',')
     return Object.fromEntries(head.map((name, i) => [name, cells[i] ?? '']))
@@ -39,13 +40,36 @@ function csvRows(text: string): Record<string, string>[] {
 
 const num = (value: string | undefined) => value === undefined || value.trim() === '' ? null : Number.isFinite(Number(value)) ? Number(value) : null
 
+const tapParams = (query: string) => new URLSearchParams({ REQUEST: 'doQuery', LANG: 'ADQL', FORMAT: 'csv', QUERY: query })
+
 async function queryGaia(raDeg: number, decDeg: number, radiusDeg: number, magLimit: number, fetchImpl: typeof fetch, signal: AbortSignal) {
+  const select = `SELECT TOP ${candidates} g.source_id, g.ra, g.dec, g.pmra, g.pmdec, g.phot_g_mean_mag, g.phot_bp_mean_mag, g.phot_rp_mean_mag, g.parallax, g.parallax_error`
+  const cone = `WHERE 1 = CONTAINS(POINT('ICRS', g.ra, g.dec), CIRCLE('ICRS', ${raDeg.toFixed(6)}, ${decDeg.toFixed(6)}, ${radiusDeg.toFixed(6)})) AND g.phot_g_mean_mag < ${magLimit} ORDER BY g.phot_g_mean_mag`
   // LEFT JOIN: gwiazdy bez paralaksy (brak w gedr3dist) zostają na zdjęciu bez odległości.
-  const query = `SELECT TOP ${candidates} g.source_id, g.ra, g.dec, g.pmra, g.pmdec, g.phot_g_mean_mag, g.phot_bp_mean_mag, g.phot_rp_mean_mag, g.parallax, g.parallax_error, d.r_med_geo, d.r_lo_geo, d.r_hi_geo FROM gaia.dr3lite AS g LEFT OUTER JOIN gedr3dist.main AS d ON d.source_id = g.source_id WHERE 1 = CONTAINS(POINT('ICRS', g.ra, g.dec), CIRCLE('ICRS', ${raDeg.toFixed(6)}, ${decDeg.toFixed(6)}, ${radiusDeg.toFixed(6)})) AND g.phot_g_mean_mag < ${magLimit} ORDER BY g.phot_g_mean_mag`
-  const url = new URL(tapUrl)
-  url.search = new URLSearchParams({ REQUEST: 'doQuery', LANG: 'ADQL', FORMAT: 'csv', QUERY: query }).toString()
-  const response = await fetchImpl(url, { signal })
-  return csvRows(await readResponseText(response, maxResponseBytes))
+  const query = `${select}, d.r_med_geo, d.r_lo_geo, d.r_hi_geo FROM gaia.dr3lite AS g LEFT OUTER JOIN gedr3dist.main AS d ON d.source_id = g.source_id ${cone}`
+  const gavoSignal = AbortSignal.any([signal, AbortSignal.timeout(gavoConeMs)])
+  try {
+    const response = await fetchImpl(new URL(`${tapUrl}?${tapParams(query)}`), { signal: gavoSignal })
+    if (response.status < 500) return csvRows(await readResponseText(response, maxResponseBytes))
+    void response.body?.cancel().catch(() => {})
+  } catch (error) {
+    signal.throwIfAborted()
+    if (!gavoSignal.aborted && !(error instanceof TypeError)) throw error
+  }
+
+  // GAVO może przerwać wyszukiwanie w gęstym polu. Lustro XAO ma tę samą tabelę
+  // Gaia DR3, a GAVO nadal może odczytać odległości po indeksowanym source_id.
+  const mirror = await fetchImpl(new URL(`${mirrorTapUrl}?${tapParams(`${select} FROM gaia.dr3lite AS g ${cone}`)}`), { signal })
+  const rows = csvRows(await readResponseText(mirror, maxResponseBytes), 'phot_g_mean_mag')
+  if (rows.length === 0) return rows
+  const ids = rows.map((row) => row.source_id)
+  if (ids.some((id) => !/^\d{1,19}$/.test(id))) throw new Error('Niepoprawny identyfikator Gaia DR3.')
+  const distances = await fetchImpl(tapUrl, {
+    method: 'POST', signal,
+    body: tapParams(`SELECT TOP ${ids.length} source_id, r_med_geo, r_lo_geo, r_hi_geo FROM gedr3dist.main WHERE source_id IN (${ids.join(',')})`),
+  })
+  const byId = new Map(csvRows(await readResponseText(distances, maxResponseBytes)).map((row) => [row.source_id, row]))
+  return rows.map((row) => ({ ...row, ...byId.get(row.source_id) }))
 }
 
 function propagate(row: Record<string, string>): [number, number] {

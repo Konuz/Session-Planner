@@ -14,21 +14,44 @@ const close = (a: Vec3, b: Vec3, digits = 9) => a.forEach((v, i) => expect(v).to
 const IN_MS = diveTotalMs('in')
 const OUT_MS = diveTotalMs('out')
 
+it('zdjęcie rozkłada się dopiero po nurkowaniu i składa przed powrotem do galaktyki', () => {
+  for (const direction of ['in', 'out'] as const) {
+    const { dive, enter } = DIVE_PHASE_MS[direction]
+    const elapsed = (ms: number) => direction === 'in' ? ms : dive + enter - ms
+    const progress = (ms: number) => diveFrame(elapsed(ms), direction).photoProgress
+    expect(progress(0)).toBe(0)
+    expect(progress(dive / 2)).toBe(0)
+    expect(progress(dive)).toBeCloseTo(0, 9)
+    expect(progress(dive + enter / 4)).toBeGreaterThan(0)
+    expect(progress(dive + enter / 2)).toBeCloseTo(0.5, 9)
+    expect(progress(dive + enter * 3 / 4)).toBeLessThan(1)
+    expect(progress(dive + enter)).toBe(1)
+  }
+})
+
 it('oś czasu: początek i koniec w obu kierunkach, fazy w kolejności nurkowanie → wejście', () => {
-  expect(diveFrame(0, 'in')).toEqual({ s: 0, phase: 'dive', k: 0, e: 0, done: false })
-  expect(diveFrame(IN_MS, 'in')).toEqual({ s: 1, phase: 'enter', k: 1, e: 1, done: true })
+  expect(diveFrame(0, 'in')).toEqual({ s: 0, phase: 'dive', k: 0, e: 0, photoProgress: 0, done: false })
+  expect(diveFrame(IN_MS, 'in')).toEqual({ s: 1, phase: 'enter', k: 1, e: 1, photoProgress: 1, done: true })
   expect(diveFrame(0, 'out')).toMatchObject({ s: 1, phase: 'enter', e: 1, done: false })
-  expect(diveFrame(OUT_MS + 500, 'out')).toEqual({ s: 0, phase: 'dive', k: 0, e: 0, done: true })
+  expect(diveFrame(OUT_MS + 500, 'out')).toEqual({ s: 0, phase: 'dive', k: 0, e: 0, photoProgress: 0, done: true })
   expect(diveFrame(DIVE_PHASE_MS.in.dive / 2, 'in').e).toBeCloseTo(0.5, 9)
   expect(diveFrame(DIVE_PHASE_MS.in.dive + 1, 'in').phase).toBe('enter')
   expect(diveFrame(DIVE_PHASE_MS.out.enter - 1, 'out').phase).toBe('enter')
   expect(diveFrame(DIVE_PHASE_MS.out.enter + 1, 'out').phase).toBe('dive')
 })
 
-it('wejście do Obserwatorium trwa 1,25 raza dłużej niż powrót, w każdej fazie', () => {
-  expect(IN_MS).toBeCloseTo(1.25 * OUT_MS, 9)
+it('rozkładanie i składanie mają tempo Play: liniowy postęp przez 5 sekund', () => {
+  for (const direction of ['in', 'out'] as const) {
+    expect(DIVE_PHASE_MS[direction].enter).toBe(5000)
+    for (const ms of [0, 1250, 2500, 3750, 5000]) {
+      const elapsed = direction === 'in' ? DIVE_PHASE_MS.in.dive + ms : ms
+      expect(diveFrame(elapsed, direction).photoProgress).toBeCloseTo(direction === 'in' ? ms / 5000 : 1 - ms / 5000, 9)
+    }
+  }
+})
+
+it('samo nurkowanie do Obserwatorium trwa 1,25 raza dłużej niż powrót', () => {
   expect(DIVE_PHASE_MS.in.dive).toBeCloseTo(1.25 * DIVE_PHASE_MS.out.dive, 9)
-  expect(DIVE_PHASE_MS.in.enter).toBeCloseTo(1.25 * DIVE_PHASE_MS.out.enter, 9)
 })
 
 it('zbliżenie przed Obserwatorium ogranicza zmianę skali w jednej klatce', () => {
@@ -60,11 +83,10 @@ it('kamera w połowie obrotu leży na krótszym łuku wokół Ziemi', () => {
   close(divePose(start, bridge, seam, { e: 0, k }, u0, u1).position, expected)
 })
 
-it('ruch wstecz jest lustrem ruchu naprzód w tym samym położeniu s (każdy kierunek w swoim czasie)', () => {
+it('ruch wstecz jest lustrem ruchu naprzód w tej samej fazie (każdy kierunek w swoim czasie)', () => {
   for (let f = 0; f <= 1.0001; f += 0.02) {
-    const back = diveFrame(f * OUT_MS, 'out')
-    const forward = diveFrame((1 - f) * IN_MS, 'in')
-    expect(back.s).toBeCloseTo(forward.s, 9)
+    const back = diveFrame(DIVE_PHASE_MS.out.enter + f * DIVE_PHASE_MS.out.dive, 'out')
+    const forward = diveFrame((1 - f) * DIVE_PHASE_MS.in.dive, 'in')
     expect(back.phase).toBe(forward.phase)
     expect(back.k).toBeCloseTo(forward.k, 9)
     expect(back.e).toBeCloseTo(forward.e, 9)

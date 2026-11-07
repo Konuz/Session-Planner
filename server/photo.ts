@@ -9,12 +9,14 @@ import { promisify } from 'node:util'
 import sharp from 'sharp'
 import { parseCatalog, type DSO } from '../src/lib/catalog.ts'
 import { blackBorderMask } from '../src/lib/blackBorderMask.ts'
+import { catalogDistance } from '../src/lib/distance.ts'
 import type { OwnPhotoSolved } from '../src/lib/ownPhoto.ts'
 import type { PhotoProject } from '../src/lib/photo.ts'
 import { loadPhotoDistances } from './photoDistances.ts'
+import { regressorApi, regressorService, type RegressorEnv } from './regressor.ts'
 import { loadPhotoStars, type FieldProjection } from './photoStars.ts'
 
-export type PhotoEnv = { SKYSHOT_BRIDGE?: string; SKYSHOT_INDEX?: string }
+export type PhotoEnv = { SKYSHOT_BRIDGE?: string; SKYSHOT_INDEX?: string } & RegressorEnv
 const execute = promisify(execFile)
 const maxBytes = 40 * 1024 * 1024
 const maxStarsRequestBytes = 2 * 1024 * 1024
@@ -32,7 +34,7 @@ const starsCache = new Map<string, Awaited<ReturnType<typeof loadPhotoStars>>>()
 
 function getCatalogById(): Promise<Map<string, DSO>> {
   cachedCatalogById ??= readFile(catalogPath, 'utf8')
-    .then((raw) => new Map(parseCatalog(JSON.parse(raw).rows).map((o) => [o.id, o])))
+    .then((raw) => { const data = JSON.parse(raw); return new Map(parseCatalog(data.rows, data.sources, data.unresolved).map((o) => [o.id, o])) })
     .catch((err) => {
       cachedCatalogById = null
       throw err
@@ -83,6 +85,7 @@ export async function photoApi(req: IncomingMessage, res: ServerResponse, env: P
   const path = url.pathname
   const { binary, index } = paths(env)
   if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}` && req.headers.origin !== `https://${req.headers.host}`) { json(403, { error: 'Żądanie musi pochodzić z tej aplikacji.' }); return }
+  if (path.endsWith('/regressor')) { await regressorApi(req, res, regressorService(env)); return }
   if (path.endsWith('/distances')) {
     if (req.method !== 'GET') { res.setHeader('Allow', 'GET'); json(405, { error: 'Wymagane zapytanie GET.' }); return }
     const byId = await getCatalogById()
@@ -127,7 +130,7 @@ export async function photoApi(req: IncomingMessage, res: ServerResponse, env: P
     } catch (error) {
       if (abort.signal.aborted) return
       if (error instanceof RangeError) json(422, { error: error.message })
-      else json(502, { error: 'Nie udało się pobrać gwiazd Gaia (GAVO). Spróbuj ponownie.' })
+      else json(502, { error: 'Nie udało się wczytać gwiazd Gaia. Spróbuj ponownie.' })
     } finally {
       if (temp) await rm(temp, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }).catch(() => console.warn('Nie udało się usunąć tymczasowych plików gwiazd.'))
     }
@@ -224,10 +227,11 @@ export async function photoApi(req: IncomingMessage, res: ServerResponse, env: P
     const byId = await getCatalogById()
     const cuts = result.objects.flatMap((p) => {
       const o = byId.get(p.id)
-      return o ? [{ ...p, type: o.type, raDeg: o.raDeg, decDeg: o.decDeg, enabled: true, distLy: o.distLy, distanceSource: o.distLy ? 'Wikidata — katalog aplikacji' : '', uncertaintyLy: null, distanceScope: 'object' as const }] : []
+      // Gwiazda oświetlająca dochodzi później, z gwiazd Gaia pola (klient po pobraniu gwiazd).
+      return o ? [{ ...p, type: o.type, raDeg: o.raDeg, decDeg: o.decDeg, enabled: true, ...catalogDistance(o) }] : []
     }).sort((a, b) => a.id.localeCompare(b.id, 'pl', { numeric: true }))
     const { width, height, objects: _objects, ...astrometry } = result
-    const project: PhotoProject = { version: 2, id: createHash('sha256').update(image).digest('hex'), name, image: `data:image/jpeg;base64,${image.toString('base64')}`, width, height, createdAt: Date.now(), cuts, astrometry, stars: null }
+    const project: PhotoProject = { version: 3, id: createHash('sha256').update(image).digest('hex'), name, image: `data:image/jpeg;base64,${image.toString('base64')}`, width, height, createdAt: Date.now(), cuts, astrometry, stars: null }
     json(200, project)
   } catch (error) {
     if (!abort.signal.aborted) json(422, { error: 'Nie udało się jednoznacznie rozwiązać zdjęcia. Spróbuj obrazu z większą liczbą ostrych gwiazd.', detail: error instanceof Error && 'killed' in error && error.killed ? 'Przekroczono czas obliczeń.' : undefined })

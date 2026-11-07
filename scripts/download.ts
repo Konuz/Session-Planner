@@ -12,9 +12,10 @@ const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47]
 
 /**
  * Tekst z pamięci podręcznej albo z sieci. Do pamięci trafia tylko odpowiedź, która przeszła sprawdzenie
- * (nie strona HTML, a dla `.json` poprawny JSON), więc chwilowa awaria źródła nie zostaje w niej na stałe.
+ * (nie strona HTML, a dla `.json` poprawny JSON; `check` może dodać własne, np. błąd zapytania VizieR),
+ * więc chwilowa awaria źródła nie zostaje w niej na stałe.
  */
-export async function cachedText(cacheDir: string, name: string, url: string, init?: RequestInit): Promise<string> {
+export async function cachedText(cacheDir: string, name: string, url: string, init?: RequestInit, check?: (text: string) => void): Promise<string> {
   const path = join(cacheDir, name)
   if (existsSync(path)) return readFileSync(path, 'utf8')
   const res = await fetchBuildData(url, init)
@@ -22,6 +23,7 @@ export async function cachedText(cacheDir: string, name: string, url: string, in
   const text = await res.text()
   if (looksLikeHtml(text)) throw new Error(`${url}: zamiast danych przyszła strona HTML`)
   if (name.endsWith('.json')) JSON.parse(text)
+  check?.(text)
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, text)
   return text

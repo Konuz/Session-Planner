@@ -1,7 +1,8 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useEffect, useRef } from 'react'
 import { TYPE_INFO } from '../../lib/catalog'
-import { fmtDistance } from '../../lib/format'
+import { SCOPE_LABELS } from '../../lib/distance'
+import { fmtDistance, fmtNum } from '../../lib/format'
 import type { ObservatoryItem } from '../../lib/observatory'
 
 interface Props {
@@ -13,6 +14,14 @@ interface Props {
 }
 
 export const itemKind = (item: ObservatoryItem) => item.kind === 'star' ? 'Gwiazda' : item.type ? TYPE_INFO[item.type].label : 'Obiekt'
+
+/** Podpowiedź wiersza: wartość z niepewnością, zakres, metoda i źródło odległości w jednej linii. */
+export function distanceTooltip(item: ObservatoryItem): string {
+  const sigma = item.distLoLy !== null && item.distHiLy !== null && item.distLy !== null ? (item.distHiLy - item.distLoLy) / 2 : null
+  const value = `≈ ${fmtDistance(item.distLy)}${sigma ? ` ± ${fmtDistance(sigma)}` : ''}`
+  if (item.kind === 'star') return [value, item.parallaxOverError !== null ? `ϖ/σ = ${fmtNum(item.parallaxOverError, 1)}` : '', item.source].filter(Boolean).join(' · ')
+  return [value, `zakres: ${SCOPE_LABELS[item.scope]}`, item.method, item.source].filter(Boolean).join(' · ')
+}
 
 /** Lista obiektów posortowana po odległości; wirtualizowana (do ~1000 gwiazd). */
 export function ObjectList({ items, selected, onSelect, descending, onSort }: Props) {
@@ -34,10 +43,10 @@ export function ObjectList({ items, selected, onSelect, descending, onSort }: Pr
         {virtualizer.getVirtualItems().map((row) => {
           const item = items[row.index]
           return <div key={item.id} id={`obs-row-${row.index}`} role="option" aria-selected={item.id === selected} className={`obs-row${item.id === selected ? ' on' : ''}`}
-            style={{ transform: `translateY(${row.start}px)`, height: row.size }} onClick={() => onSelect(item.id)}>
+            style={{ transform: `translateY(${row.start}px)`, height: row.size }} title={distanceTooltip(item)} onClick={() => onSelect(item.id)}>
             <span className={`obs-marker ${item.category}`} aria-hidden="true" />
             <span className="obs-row-name"><span>{item.kind === 'star' ? item.id.replace('Gaia DR3 ', 'Gaia ') : item.id}</span><small>{itemKind(item)}</small></span>
-            <span className="obs-row-dist figures">{item.distLy ? fmtDistance(item.distLy) : '—'}</span>
+            <span className="obs-row-dist figures">{fmtDistance(item.distLy)}</span>
           </div>
         })}
       </div>

@@ -1,0 +1,3041 @@
+{
+ "position": [
+  {
+   "id": "B 113",
+   "simbad": "LDN 548",
+   "otype": "DNe",
+   "sepDeg": 0.736
+  },
+  {
+   "id": "B 120",
+   "simbad": "Barnard 120",
+   "otype": "DNe",
+   "sepDeg": 0.945
+  },
+  {
+   "id": "B 138",
+   "simbad": "LDN 627",
+   "otype": "DNe",
+   "sepDeg": 0.859
+  },
+  {
+   "id": "B 18",
+   "simbad": "NAME Kutner's Cloud",
+   "otype": "MoC",
+   "sepDeg": 0.348
+  },
+  {
+   "id": "B 203",
+   "simbad": "LDN 1448",
+   "otype": "DNe",
+   "sepDeg": 0.743
+  },
+  {
+   "id": "B 205",
+   "simbad": "LDN 1450",
+   "otype": "DNe",
+   "sepDeg": 0.324
+  },
+  {
+   "id": "B 228",
+   "simbad": "Barnard 228",
+   "otype": "cor",
+   "sepDeg": 0.545
+  },
+  {
+   "id": "B 231",
+   "simbad": "Sandqvist 21",
+   "otype": "DNe",
+   "sepDeg": 0.376
+  },
+  {
+   "id": "B 44",
+   "simbad": "LDN 1712",
+   "otype": "DNe",
+   "sepDeg": 0.682
+  },
+  {
+   "id": "B 45",
+   "simbad": "LDN 1744",
+   "otype": "DNe",
+   "sepDeg": 1.636
+  },
+  {
+   "id": "B 50",
+   "simbad": "[DB2002b] G350.03+5.78",
+   "otype": "DNe",
+   "sepDeg": 1.371
+  },
+  {
+   "id": "B 63",
+   "simbad": "Barnard 63",
+   "otype": "DNe",
+   "sepDeg": 0.741
+  },
+  {
+   "id": "SNR G007.5-01.7",
+   "simbad": "SNR G007.5-01.7",
+   "otype": "SNR",
+   "sepDeg": 0.278
+  },
+  {
+   "id": "SNR G027.8+00.6",
+   "simbad": "3EG J1837-0423",
+   "otype": "Rad",
+   "sepDeg": 0.273
+  },
+  {
+   "id": "SNR G113.0+00.2",
+   "simbad": "SNR G113.0+00.2",
+   "otype": "SNR",
+   "sepDeg": 1.169
+  },
+  {
+   "id": "SNR G150.3+04.5",
+   "simbad": "SNR G150.3+04.5",
+   "otype": "SNR",
+   "sepDeg": 0.84
+  },
+  {
+   "id": "SNR G189.6+03.3",
+   "simbad": "SNR G189.6+03.3",
+   "otype": "SNR",
+   "sepDeg": 0.253
+  },
+  {
+   "id": "SNR G249.5+24.5",
+   "simbad": "SNR G249.5+24.5",
+   "otype": "SNR",
+   "sepDeg": 0.483
+  },
+  {
+   "id": "SNR G260.4-03.4",
+   "simbad": "NAME Pup A",
+   "otype": "SNR",
+   "sepDeg": 0.357
+  },
+  {
+   "id": "SNR G290.1-00.8",
+   "simbad": "NAME MSH 11-61A",
+   "otype": "SNR",
+   "sepDeg": 0.582
+  },
+  {
+   "id": "SNR G315.1+02.7",
+   "simbad": "SNR G315.1+02.7",
+   "otype": "SNR",
+   "sepDeg": 1.215
+  },
+  {
+   "id": "SNR G347.3-00.5",
+   "simbad": "SNR G347.3-00.5",
+   "otype": "SNR",
+   "sepDeg": 0.273
+  },
+  {
+   "id": "IC 1008",
+   "simbad": "IC 1008",
+   "otype": "G",
+   "sepDeg": 0.427
+  },
+  {
+   "id": "IC 1009",
+   "simbad": "IC 1009",
+   "otype": "G",
+   "sepDeg": 1.182
+  },
+  {
+   "id": "IC 1038",
+   "simbad": "IC 1038",
+   "otype": "LSB",
+   "sepDeg": 1.466
+  },
+  {
+   "id": "IC 1090",
+   "simbad": "IC 1090",
+   "otype": "bCG",
+   "sepDeg": 0.36
+  },
+  {
+   "id": "IC 1274",
+   "simbad": "IC 1274",
+   "otype": "HII",
+   "sepDeg": 0.304
+  },
+  {
+   "id": "IC 1283",
+   "simbad": "IC 1283",
+   "otype": "HII",
+   "sepDeg": 0.27
+  },
+  {
+   "id": "IC 1301",
+   "simbad": "IC 1301",
+   "otype": "LSB",
+   "sepDeg": 0.367
+  },
+  {
+   "id": "IC 1604",
+   "simbad": "IC 1604",
+   "otype": "Sy2",
+   "sepDeg": 0.339
+  },
+  {
+   "id": "IC 1670",
+   "simbad": "IC 1670",
+   "otype": "G",
+   "sepDeg": 1.04
+  },
+  {
+   "id": "IC 1831",
+   "simbad": "IC 1831",
+   "otype": "?",
+   "sepDeg": 0.588
+  },
+  {
+   "id": "IC 1871",
+   "simbad": "IC 1871",
+   "otype": "HII",
+   "sepDeg": 0.745
+  },
+  {
+   "id": "IC 1988",
+   "simbad": "NGC 1425",
+   "otype": "EmG",
+   "sepDeg": 9.994
+  },
+  {
+   "id": "IC 1990",
+   "simbad": "IC 1990",
+   "otype": "ISM",
+   "sepDeg": 0.311
+  },
+  {
+   "id": "IC 2088",
+   "simbad": "IC 2088",
+   "otype": "?",
+   "sepDeg": 2.69
+  },
+  {
+   "id": "IC 2120",
+   "simbad": "IC 2120",
+   "otype": "HII",
+   "sepDeg": 0.678
+  },
+  {
+   "id": "IC 2489",
+   "simbad": "IC 2489",
+   "otype": "G",
+   "sepDeg": 25.952
+  },
+  {
+   "id": "IC 2888",
+   "simbad": "IC 2888",
+   "otype": "GiC",
+   "sepDeg": 97.616
+  },
+  {
+   "id": "IC 2944",
+   "simbad": "IC 2944",
+   "otype": "OpC",
+   "sepDeg": 0.455
+  },
+  {
+   "id": "IC 341",
+   "simbad": "IC 341",
+   "otype": "?",
+   "sepDeg": 0.296
+  },
+  {
+   "id": "IC 353",
+   "simbad": "IC 353",
+   "otype": "GNe",
+   "sepDeg": 0.649
+  },
+  {
+   "id": "IC 354",
+   "simbad": "IC 354",
+   "otype": "ISM",
+   "sepDeg": 0.266
+  },
+  {
+   "id": "IC 360",
+   "simbad": "IC 360",
+   "otype": "ISM",
+   "sepDeg": 1.037
+  },
+  {
+   "id": "IC 3829",
+   "simbad": "IC 3829",
+   "otype": "GiG",
+   "sepDeg": 2.063
+  },
+  {
+   "id": "IC 4096",
+   "simbad": "IC 4096",
+   "otype": "GiC",
+   "sepDeg": 1.375
+  },
+  {
+   "id": "IC 427",
+   "simbad": "IC 427",
+   "otype": "?",
+   "sepDeg": 0.412
+  },
+  {
+   "id": "IC 4385",
+   "simbad": "IC 4385",
+   "otype": "G",
+   "sepDeg": 0.252
+  },
+  {
+   "id": "IC 4411",
+   "simbad": "IC 4411",
+   "otype": "G",
+   "sepDeg": 0.344
+  },
+  {
+   "id": "IC 4441",
+   "simbad": "IC 4441",
+   "otype": "EmG",
+   "sepDeg": 0.282
+  },
+  {
+   "id": "IC 448",
+   "simbad": "IC 448",
+   "otype": "HII",
+   "sepDeg": 0.321
+  },
+  {
+   "id": "IC 4592",
+   "simbad": "IC 4592",
+   "otype": "RNe",
+   "sepDeg": 0.286
+  },
+  {
+   "id": "IC 4600",
+   "simbad": "IC 4600",
+   "otype": "Sy2",
+   "sepDeg": 0.474
+  },
+  {
+   "id": "IC 4606",
+   "simbad": "IC 4606",
+   "otype": "HII",
+   "sepDeg": 0.791
+  },
+  {
+   "id": "IC 872",
+   "simbad": "IC 872",
+   "otype": "GiG",
+   "sepDeg": 0.32
+  },
+  {
+   "id": "LBN 1037",
+   "simbad": "LBN 1037",
+   "otype": "RNe",
+   "sepDeg": 0.257
+  },
+  {
+   "id": "LBN 1047",
+   "simbad": "LBN 1047",
+   "otype": "HII",
+   "sepDeg": 0.351
+  },
+  {
+   "id": "LBN 1049",
+   "simbad": "LBN 1049",
+   "otype": "HII",
+   "sepDeg": 0.365
+  },
+  {
+   "id": "LBN 1059",
+   "simbad": "LBN 1059",
+   "otype": "HII",
+   "sepDeg": 1.887
+  },
+  {
+   "id": "LBN 1077",
+   "simbad": "LBN 1077",
+   "otype": "HII",
+   "sepDeg": 0.668
+  },
+  {
+   "id": "LBN 1093",
+   "simbad": "LBN 1093",
+   "otype": "HII",
+   "sepDeg": 0.639
+  },
+  {
+   "id": "LBN 1101",
+   "simbad": "* sig Sco",
+   "otype": "bC*",
+   "sepDeg": 0.259
+  },
+  {
+   "id": "LBN 1116",
+   "simbad": "LBN 1116",
+   "otype": "HII",
+   "sepDeg": 0.651
+  },
+  {
+   "id": "LBN 1125",
+   "simbad": "LBN 1125",
+   "otype": "HII",
+   "sepDeg": 0.354
+  },
+  {
+   "id": "LBN 13",
+   "simbad": "LBN 004.48+29.93",
+   "otype": "HII",
+   "sepDeg": 28.685
+  },
+  {
+   "id": "LBN 147",
+   "simbad": "LBN 064.22+04.16",
+   "otype": "HII",
+   "sepDeg": 0.302
+  },
+  {
+   "id": "LBN 169",
+   "simbad": "LBN 071.62-05.50",
+   "otype": "HII",
+   "sepDeg": 0.298
+  },
+  {
+   "id": "LBN 2",
+   "simbad": "LBN 000.09-00.61",
+   "otype": "HII",
+   "sepDeg": 0.274
+  },
+  {
+   "id": "LBN 24",
+   "simbad": "LBN 006.00+24.73",
+   "otype": "HII",
+   "sepDeg": 2.728
+  },
+  {
+   "id": "LBN 254",
+   "simbad": "LBN 079.15-12.08",
+   "otype": "HII",
+   "sepDeg": 0.429
+  },
+  {
+   "id": "LBN 287",
+   "simbad": "LBN 080.54-16.49",
+   "otype": "HII",
+   "sepDeg": 0.804
+  },
+  {
+   "id": "LBN 353",
+   "simbad": "IC 5067",
+   "otype": "ISM",
+   "sepDeg": 0.512
+  },
+  {
+   "id": "LBN 38",
+   "simbad": "LBN 008.55-00.88",
+   "otype": "HII",
+   "sepDeg": 0.507
+  },
+  {
+   "id": "LBN 391",
+   "simbad": "LBN 087.23-03.80",
+   "otype": "HII",
+   "sepDeg": 0.37
+  },
+  {
+   "id": "LBN 405",
+   "simbad": "LBN 089.56-08.04",
+   "otype": "HII",
+   "sepDeg": 2.22
+  },
+  {
+   "id": "LBN 411",
+   "simbad": "DG 171",
+   "otype": "RNe",
+   "sepDeg": 0.327
+  },
+  {
+   "id": "LBN 426",
+   "simbad": "LBN 094.79-01.77",
+   "otype": "HII",
+   "sepDeg": 0.377
+  },
+  {
+   "id": "LBN 428",
+   "simbad": "LBN 094.98-16.95",
+   "otype": "HII",
+   "sepDeg": 2.453
+  },
+  {
+   "id": "LBN 490",
+   "simbad": "LBN 104.28+02.09",
+   "otype": "HII",
+   "sepDeg": 0.572
+  },
+  {
+   "id": "LBN 502",
+   "simbad": "LBN 106.32-00.35",
+   "otype": "HII",
+   "sepDeg": 0.651
+  },
+  {
+   "id": "LBN 51",
+   "simbad": "LBN 012.95-00.58",
+   "otype": "HII",
+   "sepDeg": 0.253
+  },
+  {
+   "id": "LBN 515",
+   "simbad": "LBN 108.28+13.32",
+   "otype": "MoC",
+   "sepDeg": 0.252
+  },
+  {
+   "id": "LBN 520",
+   "simbad": "LBN 108.88+06.09",
+   "otype": "HII",
+   "sepDeg": 0.348
+  },
+  {
+   "id": "LBN 551",
+   "simbad": "LBN 112.52+03.75",
+   "otype": "HII",
+   "sepDeg": 0.674
+  },
+  {
+   "id": "LBN 554",
+   "simbad": "LBN 113.05-04.51",
+   "otype": "HII",
+   "sepDeg": 3.018
+  },
+  {
+   "id": "LBN 56",
+   "simbad": "LBN 56",
+   "otype": "PN",
+   "sepDeg": 1.365
+  },
+  {
+   "id": "LBN 566",
+   "simbad": "LBN 114.63-00.85",
+   "otype": "HII",
+   "sepDeg": 0.274
+  },
+  {
+   "id": "LBN 59",
+   "simbad": "LBN 59",
+   "otype": "HII",
+   "sepDeg": 0.34
+  },
+  {
+   "id": "LBN 590",
+   "simbad": "LBN 590",
+   "otype": "RNe",
+   "sepDeg": 1.011
+  },
+  {
+   "id": "LBN 617",
+   "simbad": "LBN 123.21+23.39",
+   "otype": "HII",
+   "sepDeg": 2.544
+  },
+  {
+   "id": "LBN 62",
+   "simbad": "LBN 016.31-00.12",
+   "otype": "HII",
+   "sepDeg": 1.152
+  },
+  {
+   "id": "LBN 677",
+   "simbad": "LBN 140.07+01.64",
+   "otype": "HII",
+   "sepDeg": 0.625
+  },
+  {
+   "id": "LBN 685",
+   "simbad": "LBN 143.37-02.20",
+   "otype": "HII",
+   "sepDeg": 0.489
+  },
+  {
+   "id": "LBN 701",
+   "simbad": "SH 2-205",
+   "otype": "HII",
+   "sepDeg": 1.082
+  },
+  {
+   "id": "LBN 706",
+   "simbad": "NGC 1491",
+   "otype": "HII",
+   "sepDeg": 0.353
+  },
+  {
+   "id": "LBN 72",
+   "simbad": "LBN 018.45+01.87",
+   "otype": "HII",
+   "sepDeg": 0.298
+  },
+  {
+   "id": "LBN 744",
+   "simbad": "SH 2-216",
+   "otype": "PN",
+   "sepDeg": 0.402
+  },
+  {
+   "id": "LBN 750",
+   "simbad": "LBN 159.84+12.50",
+   "otype": "HII",
+   "sepDeg": 1.224
+  },
+  {
+   "id": "LBN 754",
+   "simbad": "LBN 160.09+01.93",
+   "otype": "HII",
+   "sepDeg": 1.041
+  },
+  {
+   "id": "LBN 773",
+   "simbad": "IC 336",
+   "otype": "HII",
+   "sepDeg": 1.556
+  },
+  {
+   "id": "LBN 808",
+   "simbad": "SH 2-231",
+   "otype": "Y*O",
+   "sepDeg": 0.445
+  },
+  {
+   "id": "LBN 822",
+   "simbad": "LBN 180.05-01.66",
+   "otype": "HII",
+   "sepDeg": 0.433
+  },
+  {
+   "id": "LBN 839",
+   "simbad": "LBN 187.35-34.86",
+   "otype": "HII",
+   "sepDeg": 0.329
+  },
+  {
+   "id": "LBN 841",
+   "simbad": "LBN 188.69+04.25",
+   "otype": "HII",
+   "sepDeg": 0.607
+  },
+  {
+   "id": "LBN 85",
+   "simbad": "LBN 026.83+03.54",
+   "otype": "HII",
+   "sepDeg": 14.933
+  },
+  {
+   "id": "LBN 860",
+   "simbad": "LBN 193.74-22.66",
+   "otype": "HII",
+   "sepDeg": 0.279
+  },
+  {
+   "id": "LBN 865",
+   "simbad": "LBN 194.68-12.42",
+   "otype": "HII",
+   "sepDeg": 0.597
+  },
+  {
+   "id": "LBN 869",
+   "simbad": "LBN 194.80-16.54",
+   "otype": "HII",
+   "sepDeg": 0.369
+  },
+  {
+   "id": "LBN 873",
+   "simbad": "LBN 195.63-02.51",
+   "otype": "HII",
+   "sepDeg": 1.167
+  },
+  {
+   "id": "LBN 874",
+   "simbad": "LBN 195.63-02.51",
+   "otype": "HII",
+   "sepDeg": 0.802
+  },
+  {
+   "id": "LBN 923",
+   "simbad": "LBN 203.79-25.48",
+   "otype": "HII",
+   "sepDeg": 0.46
+  },
+  {
+   "id": "LBN 925",
+   "simbad": "LBN 204.03-15.35",
+   "otype": "RNe",
+   "sepDeg": 0.29
+  },
+  {
+   "id": "LBN 933",
+   "simbad": "LBN 933",
+   "otype": "RNe",
+   "sepDeg": 0.303
+  },
+  {
+   "id": "LBN 96",
+   "simbad": "SH 2-68",
+   "otype": "PN",
+   "sepDeg": 1.403
+  },
+  {
+   "id": "LBN 983",
+   "simbad": "LBN 211.65-01.51",
+   "otype": "HII",
+   "sepDeg": 0.498
+  },
+  {
+   "id": "LDN 1075",
+   "simbad": "LDN 1075",
+   "otype": "MoC",
+   "sepDeg": 0.452
+  },
+  {
+   "id": "LDN 1092",
+   "simbad": "LDN 1092",
+   "otype": "DNe",
+   "sepDeg": 5.264
+  },
+  {
+   "id": "LDN 125",
+   "simbad": "LDN 125",
+   "otype": "DNe",
+   "sepDeg": 1.166
+  },
+  {
+   "id": "LDN 1448",
+   "simbad": "LDN 1448",
+   "otype": "DNe",
+   "sepDeg": 0.774
+  },
+  {
+   "id": "LDN 146",
+   "simbad": "LDN 146",
+   "otype": "MoC",
+   "sepDeg": 0.274
+  },
+  {
+   "id": "LDN 1469",
+   "simbad": "LDN 1469",
+   "otype": "DNe",
+   "sepDeg": 0.519
+  },
+  {
+   "id": "LDN 1527",
+   "simbad": "LDN 1527",
+   "otype": "DNe",
+   "sepDeg": 0.546
+  },
+  {
+   "id": "LDN 1534",
+   "simbad": "LDN 1534",
+   "otype": "DNe",
+   "sepDeg": 0.395
+  },
+  {
+   "id": "LDN 1536",
+   "simbad": "LDN 1536",
+   "otype": "DNe",
+   "sepDeg": 0.392
+  },
+  {
+   "id": "LDN 1547",
+   "simbad": "LDN 1547",
+   "otype": "DNe",
+   "sepDeg": 119.805
+  },
+  {
+   "id": "LDN 1569",
+   "simbad": "LDN 1569",
+   "otype": "MoC",
+   "sepDeg": 0.739
+  },
+  {
+   "id": "LDN 1599",
+   "simbad": "LDN 1599",
+   "otype": "DNe",
+   "sepDeg": 0.281
+  },
+  {
+   "id": "LDN 1617",
+   "simbad": "LDN 1617",
+   "otype": "DNe",
+   "sepDeg": 0.74
+  },
+  {
+   "id": "LDN 1634",
+   "simbad": "NAME HH 240/241",
+   "otype": "DNe",
+   "sepDeg": 0.35
+  },
+  {
+   "id": "LDN 1641",
+   "simbad": "LDN 1641",
+   "otype": "MoC",
+   "sepDeg": 0.391
+  },
+  {
+   "id": "LDN 1653",
+   "simbad": "LDN 1653",
+   "otype": "DNe",
+   "sepDeg": 0.28
+  },
+  {
+   "id": "LDN 1679",
+   "simbad": "LDN 1679",
+   "otype": "MoC",
+   "sepDeg": 0.369
+  },
+  {
+   "id": "LDN 1688",
+   "simbad": "NAME Ophiuchus Molecular Cloud",
+   "otype": "SFR",
+   "sepDeg": 0.64
+  },
+  {
+   "id": "LDN 1689",
+   "simbad": "LDN 1689",
+   "otype": "DNe",
+   "sepDeg": 0.619
+  },
+  {
+   "id": "LDN 1690",
+   "simbad": "LDN 1690",
+   "otype": "DNe",
+   "sepDeg": 0.323
+  },
+  {
+   "id": "LDN 1695",
+   "simbad": "LDN 1695",
+   "otype": "DNe",
+   "sepDeg": 3.66
+  },
+  {
+   "id": "LDN 1699",
+   "simbad": "LDN 1699",
+   "otype": "DNe",
+   "sepDeg": 109.765
+  },
+  {
+   "id": "LDN 1709",
+   "simbad": "LDN 1709",
+   "otype": "DNe",
+   "sepDeg": 0.43
+  },
+  {
+   "id": "LDN 1721",
+   "simbad": "LDN 1721",
+   "otype": "DNe",
+   "sepDeg": 0.401
+  },
+  {
+   "id": "LDN 1769",
+   "simbad": "LDN 1769",
+   "otype": "DNe",
+   "sepDeg": 0.313
+  },
+  {
+   "id": "LDN 183",
+   "simbad": "LDN 183",
+   "otype": "MoC",
+   "sepDeg": 0.327
+  },
+  {
+   "id": "LDN 19",
+   "simbad": "LDN 19",
+   "otype": "DNe",
+   "sepDeg": 0.506
+  },
+  {
+   "id": "LDN 207",
+   "simbad": "LDN 207",
+   "otype": "DNe",
+   "sepDeg": 15.584
+  },
+  {
+   "id": "LDN 249",
+   "simbad": "LDN 249",
+   "otype": "DNe",
+   "sepDeg": 0.266
+  },
+  {
+   "id": "LDN 255",
+   "simbad": "LDN 255",
+   "otype": "DNe",
+   "sepDeg": 0.367
+  },
+  {
+   "id": "LDN 292",
+   "simbad": "LDN 292",
+   "otype": "DNe",
+   "sepDeg": 0.373
+  },
+  {
+   "id": "LDN 374",
+   "simbad": "LDN 374",
+   "otype": "DNe",
+   "sepDeg": 0.35
+  },
+  {
+   "id": "LDN 502",
+   "simbad": "LDN 502",
+   "otype": "DNe",
+   "sepDeg": 0.271
+  },
+  {
+   "id": "LDN 507",
+   "simbad": "LDN 507",
+   "otype": "MoC",
+   "sepDeg": 0.317
+  },
+  {
+   "id": "LDN 508",
+   "simbad": "LDN 508",
+   "otype": "DNe",
+   "sepDeg": 12.352
+  },
+  {
+   "id": "LDN 547",
+   "simbad": "LDN 547",
+   "otype": "DNe",
+   "sepDeg": 0.461
+  },
+  {
+   "id": "LDN 567",
+   "simbad": "LDN 567",
+   "otype": "DNe",
+   "sepDeg": 1.484
+  },
+  {
+   "id": "LDN 669",
+   "simbad": "LDN 669",
+   "otype": "DNe",
+   "sepDeg": 15.671
+  },
+  {
+   "id": "LDN 709",
+   "simbad": "LDN 709",
+   "otype": "DNe",
+   "sepDeg": 4.224
+  },
+  {
+   "id": "LDN 767",
+   "simbad": "LDN 767",
+   "otype": "MoC",
+   "sepDeg": 11.333
+  },
+  {
+   "id": "LDN 778",
+   "simbad": "LDN 778",
+   "otype": "DNe",
+   "sepDeg": 0.32
+  },
+  {
+   "id": "LDN 81",
+   "simbad": "LDN 81",
+   "otype": "DNe",
+   "sepDeg": 1.111
+  },
+  {
+   "id": "LDN 877",
+   "simbad": "LDN 877",
+   "otype": "DNe",
+   "sepDeg": 0.386
+  },
+  {
+   "id": "LDN 889",
+   "simbad": "LDN 889",
+   "otype": "DNe",
+   "sepDeg": 0.466
+  },
+  {
+   "id": "LDN 940",
+   "simbad": "LDN 940",
+   "otype": "DNe",
+   "sepDeg": 0.571
+  },
+  {
+   "id": "LDN 951",
+   "simbad": "LDN 951",
+   "otype": "DNe",
+   "sepDeg": 0.265
+  },
+  {
+   "id": "LDN 967",
+   "simbad": "LDN 967",
+   "otype": "DNe",
+   "sepDeg": 0.283
+  },
+  {
+   "id": "LDN 988",
+   "simbad": "LDN 988",
+   "otype": "DNe",
+   "sepDeg": 1.409
+  },
+  {
+   "id": "Mel 111",
+   "simbad": "Cl Melotte 111",
+   "otype": "OpC",
+   "sepDeg": 3.082
+  },
+  {
+   "id": "NGC 1037",
+   "simbad": "NGC 1037",
+   "otype": "Sy2",
+   "sepDeg": 0.51
+  },
+  {
+   "id": "NGC 1105",
+   "simbad": "NGC 1105",
+   "otype": "GiG",
+   "sepDeg": 2.07
+  },
+  {
+   "id": "NGC 1111",
+   "simbad": "NGC 1111",
+   "otype": "GiG",
+   "sepDeg": 0.311
+  },
+  {
+   "id": "NGC 1330",
+   "simbad": "NGC 1330",
+   "otype": "GiG",
+   "sepDeg": 0.288
+  },
+  {
+   "id": "NGC 1717",
+   "simbad": "UCAC2 31626222",
+   "otype": "*",
+   "sepDeg": 0.416
+  },
+  {
+   "id": "NGC 1901",
+   "simbad": "NGC 1901",
+   "otype": "OpC",
+   "sepDeg": 0.287
+  },
+  {
+   "id": "NGC 1909",
+   "simbad": "NGC 1909",
+   "otype": "RNe",
+   "sepDeg": 0.963
+  },
+  {
+   "id": "NGC 2029",
+   "simbad": "NGC 2029",
+   "otype": "SNR",
+   "sepDeg": 1.533
+  },
+  {
+   "id": "NGC 2030",
+   "simbad": "NGC 2030",
+   "otype": "HII",
+   "sepDeg": 1.517
+  },
+  {
+   "id": "NGC 2094",
+   "simbad": "NGC 2094",
+   "otype": "Cl*",
+   "sepDeg": 0.553
+  },
+  {
+   "id": "NGC 218",
+   "simbad": "NGC 218",
+   "otype": "LSB",
+   "sepDeg": 0.965
+  },
+  {
+   "id": "NGC 2184",
+   "simbad": "NGC 2184",
+   "otype": "OpC",
+   "sepDeg": 1.789
+  },
+  {
+   "id": "NGC 2185",
+   "simbad": "NGC 2185",
+   "otype": "RNe",
+   "sepDeg": 0.252
+  },
+  {
+   "id": "NGC 2246",
+   "simbad": "NGC 2246",
+   "otype": "GNe",
+   "sepDeg": 0.495
+  },
+  {
+   "id": "NGC 2253",
+   "simbad": "NGC 2253",
+   "otype": "AG?",
+   "sepDeg": 0.474
+  },
+  {
+   "id": "NGC 2586",
+   "simbad": "NGC 2586",
+   "otype": "Sy2",
+   "sepDeg": 0.261
+  },
+  {
+   "id": "NGC 2816",
+   "simbad": "NGC 2742",
+   "otype": "GiG",
+   "sepDeg": 4.12
+  },
+  {
+   "id": "NGC 295",
+   "simbad": "NGC 295",
+   "otype": "GiG",
+   "sepDeg": 0.973
+  },
+  {
+   "id": "NGC 2973",
+   "simbad": "NGC 2973",
+   "otype": "EmG",
+   "sepDeg": 0.782
+  },
+  {
+   "id": "NGC 3186",
+   "simbad": "NGC 3186",
+   "otype": "Sy2",
+   "sepDeg": 0.432
+  },
+  {
+   "id": "NGC 3229",
+   "simbad": "NGC 3229",
+   "otype": "AG?",
+   "sepDeg": 0.444
+  },
+  {
+   "id": "NGC 3247",
+   "simbad": "NGC 3247",
+   "otype": "OpC",
+   "sepDeg": 0.271
+  },
+  {
+   "id": "NGC 331",
+   "simbad": "NGC 331",
+   "otype": "G",
+   "sepDeg": 2.485
+  },
+  {
+   "id": "NGC 344",
+   "simbad": "NGC 344",
+   "otype": "EmG",
+   "sepDeg": 0.729
+  },
+  {
+   "id": "NGC 3520",
+   "simbad": "NGC 3520",
+   "otype": "EmG",
+   "sepDeg": 0.316
+  },
+  {
+   "id": "NGC 3541",
+   "simbad": "NGC 3541",
+   "otype": "Sy2",
+   "sepDeg": 0.475
+  },
+  {
+   "id": "NGC 3679",
+   "simbad": "NGC 3679",
+   "otype": "AG?",
+   "sepDeg": 1.094
+  },
+  {
+   "id": "NGC 3789",
+   "simbad": "NGC 3789",
+   "otype": "rG",
+   "sepDeg": 0.359
+  },
+  {
+   "id": "NGC 3915",
+   "simbad": "NGC 3915",
+   "otype": "EmG",
+   "sepDeg": 0.454
+  },
+  {
+   "id": "NGC 4057",
+   "simbad": "NGC 4057",
+   "otype": "AGN",
+   "sepDeg": 0.28
+  },
+  {
+   "id": "NGC 4529",
+   "simbad": "NGC 4529",
+   "otype": "GiC",
+   "sepDeg": 0.403
+  },
+  {
+   "id": "NGC 4603B",
+   "simbad": "NGC 4603B",
+   "otype": "GiG",
+   "sepDeg": 0.31
+  },
+  {
+   "id": "NGC 4912",
+   "simbad": "NGC 4914",
+   "otype": "GiG",
+   "sepDeg": 8.187
+  },
+  {
+   "id": "NGC 4916",
+   "simbad": "NGC 4916",
+   "otype": "AG?",
+   "sepDeg": 8.143
+  },
+  {
+   "id": "NGC 5045",
+   "simbad": "NGC 5045",
+   "otype": "OpC",
+   "sepDeg": 0.294
+  },
+  {
+   "id": "NGC 5469",
+   "simbad": "NGC 5469",
+   "otype": "G",
+   "sepDeg": 1.699
+  },
+  {
+   "id": "NGC 549",
+   "simbad": "NGC 549",
+   "otype": "EmG",
+   "sepDeg": 0.269
+  },
+  {
+   "id": "NGC 5527",
+   "simbad": "NGC 5527",
+   "otype": "AG?",
+   "sepDeg": 0.267
+  },
+  {
+   "id": "NGC 5665A",
+   "simbad": "NGC 5665A",
+   "otype": "EmG",
+   "sepDeg": 4.055
+  },
+  {
+   "id": "NGC 5632",
+   "simbad": "NGC 5632",
+   "otype": "G",
+   "sepDeg": 2.395
+  },
+  {
+   "id": "NGC 5658",
+   "simbad": "NGC 5658",
+   "otype": "GiG",
+   "sepDeg": 2.203
+  },
+  {
+   "id": "NGC 5744",
+   "simbad": "NGC 5744",
+   "otype": "EmG",
+   "sepDeg": 0.644
+  },
+  {
+   "id": "NGC 5782",
+   "simbad": "NGC 5782",
+   "otype": "Sy2",
+   "sepDeg": 0.283
+  },
+  {
+   "id": "NGC 6141",
+   "simbad": "NGC 6141",
+   "otype": "GiC",
+   "sepDeg": 0.383
+  },
+  {
+   "id": "NGC 6237",
+   "simbad": "NGC 6248",
+   "otype": "AG?",
+   "sepDeg": 0.337
+  },
+  {
+   "id": "NGC 6222",
+   "simbad": "NGC 6222",
+   "otype": "OpC",
+   "sepDeg": 1.831
+  },
+  {
+   "id": "NGC 6270",
+   "simbad": "NGC 6270",
+   "otype": "GiC",
+   "sepDeg": 0.277
+  },
+  {
+   "id": "NGC 6138",
+   "simbad": "NGC 6138",
+   "otype": "GiC",
+   "sepDeg": 10.874
+  },
+  {
+   "id": "NGC 6374",
+   "simbad": "NGC 6374",
+   "otype": "Cl*",
+   "sepDeg": 0.518
+  },
+  {
+   "id": "NGC 6461",
+   "simbad": "NGC 6461",
+   "otype": "G",
+   "sepDeg": 0.526
+  },
+  {
+   "id": "NGC 6526",
+   "simbad": "NGC 6526",
+   "otype": "RNe",
+   "sepDeg": 0.925
+  },
+  {
+   "id": "NGC 6647",
+   "simbad": "NGC 6647",
+   "otype": "Cl*",
+   "sepDeg": 0.341
+  },
+  {
+   "id": "NGC 6698",
+   "simbad": "NGC 6698",
+   "otype": "OpC",
+   "sepDeg": 0.401
+  },
+  {
+   "id": "NGC 6882",
+   "simbad": "NGC 6882",
+   "otype": "OpC",
+   "sepDeg": 0.329
+  },
+  {
+   "id": "NGC 734",
+   "simbad": "NGC 734",
+   "otype": "G",
+   "sepDeg": 0.376
+  },
+  {
+   "id": "NGC 7353",
+   "simbad": "NGC 7353",
+   "otype": "G",
+   "sepDeg": 0.641
+  },
+  {
+   "id": "NGC 7441",
+   "simbad": "NGC 7441",
+   "otype": "G",
+   "sepDeg": 0.766
+  },
+  {
+   "id": "NGC 7586",
+   "simbad": "NGC 7586",
+   "otype": "G",
+   "sepDeg": 0.338
+  },
+  {
+   "id": "NGC 7822",
+   "simbad": "NGC 7822",
+   "otype": "HII",
+   "sepDeg": 0.351
+  },
+  {
+   "id": "Sh2-103",
+   "simbad": "NAME Cyg Loop",
+   "otype": "SNR",
+   "sepDeg": 0.275
+  },
+  {
+   "id": "Sh2-108",
+   "simbad": "LBN 077.61+01.59",
+   "otype": "HII",
+   "sepDeg": 0.725
+  },
+  {
+   "id": "Sh2-11",
+   "simbad": "NGC 6357",
+   "otype": "OpC",
+   "sepDeg": 0.367
+  },
+  {
+   "id": "Sh2-126",
+   "simbad": "LBN 094.98-16.95",
+   "otype": "HII",
+   "sepDeg": 2.097
+  },
+  {
+   "id": "Sh2-134",
+   "simbad": "LBN 104.28+02.09",
+   "otype": "HII",
+   "sepDeg": 0.441
+  },
+  {
+   "id": "Sh2-150",
+   "simbad": "LBN 108.88+06.09",
+   "otype": "HII",
+   "sepDeg": 0.332
+  },
+  {
+   "id": "Sh2-16",
+   "simbad": "LBN 1124",
+   "otype": "HII",
+   "sepDeg": 0.284
+  },
+  {
+   "id": "Sh2-171",
+   "simbad": "NGC 7822",
+   "otype": "HII",
+   "sepDeg": 0.431
+  },
+  {
+   "id": "Sh2-20",
+   "simbad": "LBN 3",
+   "otype": "HII",
+   "sepDeg": 0.474
+  },
+  {
+   "id": "Sh2-205",
+   "simbad": "SH 2-205",
+   "otype": "HII",
+   "sepDeg": 0.624
+  },
+  {
+   "id": "Sh2-216",
+   "simbad": "SH 2-216",
+   "otype": "PN",
+   "sepDeg": 0.298
+  },
+  {
+   "id": "Sh2-220",
+   "simbad": "NGC 1499",
+   "otype": "HII",
+   "sepDeg": 0.569
+  },
+  {
+   "id": "Sh2-245",
+   "simbad": "LBN 187.35-34.86",
+   "otype": "HII",
+   "sepDeg": 0.953
+  },
+  {
+   "id": "Sh2-249",
+   "simbad": "LBN 188.69+04.25",
+   "otype": "HII",
+   "sepDeg": 0.377
+  },
+  {
+   "id": "Sh2-25",
+   "simbad": "M 8",
+   "otype": "OpC",
+   "sepDeg": 0.414
+  },
+  {
+   "id": "Sh2-268",
+   "simbad": "LBN 195.63-02.51",
+   "otype": "HII",
+   "sepDeg": 0.372
+  },
+  {
+   "id": "Sh2-27",
+   "simbad": "LBN 006.00+24.73",
+   "otype": "HII",
+   "sepDeg": 2.17
+  },
+  {
+   "id": "Sh2-277",
+   "simbad": "SH 2-277",
+   "otype": "HII",
+   "sepDeg": 0.666
+  },
+  {
+   "id": "Sh2-3",
+   "simbad": "SH 2-3",
+   "otype": "HII",
+   "sepDeg": 0.267
+  },
+  {
+   "id": "Sh2-310",
+   "simbad": "LBN 1059",
+   "otype": "HII",
+   "sepDeg": 2.851
+  },
+  {
+   "id": "Sh2-4",
+   "simbad": "SH 2-4",
+   "otype": "HII",
+   "sepDeg": 0.274
+  },
+  {
+   "id": "Sh2-52",
+   "simbad": "PN A66 65",
+   "otype": "PN",
+   "sepDeg": 0.283
+  },
+  {
+   "id": "Sh2-6",
+   "simbad": "NGC 6302",
+   "otype": "PN",
+   "sepDeg": 0.265
+  },
+  {
+   "id": "Sh2-62",
+   "simbad": "LBN 026.83+03.54",
+   "otype": "HII",
+   "sepDeg": 14.948
+  },
+  {
+   "id": "Al 1",
+   "simbad": "AL 1",
+   "otype": "Em*",
+   "sepDeg": 73.527
+  },
+  {
+   "id": "CTS 1",
+   "simbad": "LEDA 73264",
+   "otype": "Sy1",
+   "sepDeg": 83.793
+  },
+  {
+   "id": "PB 9",
+   "simbad": "PB 9",
+   "otype": "QSO",
+   "sepDeg": 88.482
+  },
+  {
+   "id": "PB 10",
+   "simbad": "PB 10",
+   "otype": "WD*",
+   "sepDeg": 87.146
+  },
+  {
+   "id": "PB 1",
+   "simbad": "QSO B1248+473",
+   "otype": "QSO",
+   "sepDeg": 98.011
+  },
+  {
+   "id": "PB 2",
+   "simbad": "PB 2",
+   "otype": "*",
+   "sepDeg": 108.414
+  },
+  {
+   "id": "PB 5",
+   "simbad": "PB 5",
+   "otype": "WD*",
+   "sepDeg": 103.424
+  },
+  {
+   "id": "PB 3",
+   "simbad": "PB 3",
+   "otype": "WD*",
+   "sepDeg": 108.57
+  },
+  {
+   "id": "PB 4",
+   "simbad": "[VV98] J125104.4+465610",
+   "otype": "QSO",
+   "sepDeg": 111.505
+  },
+  {
+   "id": "PB 6",
+   "simbad": "PB 6",
+   "otype": "*",
+   "sepDeg": 104.167
+  },
+  {
+   "id": "PB 8",
+   "simbad": "PB 8",
+   "otype": "WD*",
+   "sepDeg": 107.352
+  }
+ ],
+ "aliases": [
+  {
+   "id": "IC 1125",
+   "alias": "IC 1128",
+   "simbad": "IC 1128",
+   "sepDeg": 1.201
+  },
+  {
+   "id": "IC 434",
+   "alias": "LBN 953",
+   "simbad": "NAME Flame Nebula",
+   "sepDeg": 0.569
+  },
+  {
+   "id": "NGC 2238",
+   "alias": "LBN 948",
+   "simbad": "NAME Rosette Nebula",
+   "sepDeg": 0.493
+  },
+  {
+   "id": "NGC 281",
+   "alias": "IC 11",
+   "simbad": "IC 11",
+   "sepDeg": 4.536
+  },
+  {
+   "id": "NGC 3395",
+   "alias": "IC 2613",
+   "simbad": "NGC 3430",
+   "sepDeg": 0.495
+  },
+  {
+   "id": "NGC 3479",
+   "alias": "NGC 3502",
+   "simbad": "NGC 3502",
+   "sepDeg": 1.167
+  },
+  {
+   "id": "NGC 3630",
+   "alias": "NGC 3645",
+   "simbad": "NGC 3645",
+   "sepDeg": 0.346
+  },
+  {
+   "id": "NGC 3704",
+   "alias": "IC 703",
+   "simbad": "IC 703",
+   "sepDeg": 30.822
+  },
+  {
+   "id": "NGC 3922",
+   "alias": "NGC 3924",
+   "simbad": "NGC 3924",
+   "sepDeg": 0.258
+  },
+  {
+   "id": "NGC 3971",
+   "alias": "NGC 3984",
+   "simbad": "NGC 3984",
+   "sepDeg": 1.075
+  },
+  {
+   "id": "NGC 4005",
+   "alias": "NGC 4007",
+   "simbad": "NGC 4003",
+   "sepDeg": 1.998
+  },
+  {
+   "id": "NGC 4180",
+   "alias": "NGC 4182",
+   "simbad": "NGC 4182",
+   "sepDeg": 2.99
+  },
+  {
+   "id": "NGC 4310",
+   "alias": "NGC 4338",
+   "simbad": "NGC 4338",
+   "sepDeg": 0.36
+  },
+  {
+   "id": "NGC 4920",
+   "alias": "IC 4134",
+   "simbad": "IC 4134",
+   "sepDeg": 0.546
+  },
+  {
+   "id": "NGC 539",
+   "alias": "NGC 563",
+   "simbad": "NGC 563",
+   "sepDeg": 0.65
+  },
+  {
+   "id": "NGC 5438",
+   "alias": "NGC 5446",
+   "simbad": "NGC 5446",
+   "sepDeg": 0.37
+  },
+  {
+   "id": "M 101",
+   "alias": "M 102",
+   "simbad": "M 102",
+   "sepDeg": 9.151
+  },
+  {
+   "id": "NGC 5519",
+   "alias": "NGC 5570",
+   "simbad": "NGC 5570",
+   "sepDeg": 1.279
+  },
+  {
+   "id": "NGC 5607",
+   "alias": "NGC 5620",
+   "simbad": "NGC 5620",
+   "sepDeg": 2.011
+  },
+  {
+   "id": "NGC 5876",
+   "alias": "IC 1111",
+   "simbad": "IC 1111",
+   "sepDeg": 0.943
+  },
+  {
+   "id": "NGC 6044",
+   "alias": "IC 1172",
+   "simbad": "IC 1172",
+   "sepDeg": 0.383
+  },
+  {
+   "id": "NGC 6075",
+   "alias": "IC 4594",
+   "simbad": "IC 4594",
+   "sepDeg": 0.299
+  },
+  {
+   "id": "M 69",
+   "alias": "NGC 6634",
+   "simbad": "NGC 6634",
+   "sepDeg": 14.987
+  },
+  {
+   "id": "NGC 6888",
+   "alias": "Sh2-105",
+   "simbad": "SH 2-105",
+   "sepDeg": 2.056
+  },
+  {
+   "id": "NGC 6902",
+   "alias": "IC 4948",
+   "simbad": "IC 4948",
+   "sepDeg": 3.103
+  },
+  {
+   "id": "NGC 7155",
+   "alias": "IC 5143",
+   "simbad": "IC 5143",
+   "sepDeg": 0.499
+  },
+  {
+   "id": "NGC 7242 NED02",
+   "alias": "IC 5195",
+   "simbad": "NGC 705",
+   "sepDeg": 42.883
+  },
+  {
+   "id": "NGC 7294",
+   "alias": "IC 5225",
+   "simbad": "IC 5225",
+   "sepDeg": 0.252
+  },
+  {
+   "id": "NGC 7643",
+   "alias": "NGC 7644",
+   "simbad": "NGC 7651",
+   "sepDeg": 2.021
+  },
+  {
+   "id": "Simeis 147",
+   "alias": "SNR G180.0-01.7",
+   "simbad": "SNR G180.0-01.7",
+   "sepDeg": 0.519
+  }
+ ],
+ "types": [
+  {
+   "id": "SNR G012.0-00.1",
+   "simbad": "CORNISH G011.9446-00.0369",
+   "note": "SNR w aplikacji, Y*O (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "SNR G120.1+01.4",
+   "simbad": "SN 1572A",
+   "note": "SNR w aplikacji, SN* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "SNR G286.5-01.2",
+   "simbad": "V* V906 Car",
+   "note": "SNR w aplikacji, No* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "IC 136",
+   "simbad": "IC 136",
+   "note": "OC w aplikacji, ISM (mgławica) w SIMBAD"
+  },
+  {
+   "id": "IC 137",
+   "simbad": "IC 137",
+   "note": "OC w aplikacji, ISM (mgławica) w SIMBAD"
+  },
+  {
+   "id": "IC 1644",
+   "simbad": "HD 7113",
+   "note": "EN w aplikacji, Em* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "IC 1893",
+   "simbad": "IC 1893",
+   "note": "G w aplikacji, OpC (gromada) w SIMBAD"
+  },
+  {
+   "id": "IC 2087",
+   "simbad": "IRAS 0437+257P08",
+   "note": "EN w aplikacji, Or* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "IC 2116",
+   "simbad": "HD 32340",
+   "note": "EN w aplikacji, Em* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "IC 2145",
+   "simbad": "NGC 2086",
+   "note": "EN w aplikacji, Cl* (gromada) w SIMBAD"
+  },
+  {
+   "id": "IC 2631",
+   "simbad": "Ced 112",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "IC 2872",
+   "simbad": "HD 99898",
+   "note": "EN w aplikacji, ** (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "IC 3329",
+   "simbad": "NGC 4393",
+   "note": "EN w aplikacji, GiG (galaktyka) w SIMBAD"
+  },
+  {
+   "id": "IC 410",
+   "simbad": "IC 410",
+   "note": "EN w aplikacji, Cl* (gromada) w SIMBAD"
+  },
+  {
+   "id": "IC 4154",
+   "simbad": "LAMOST J130427.73+234038.5",
+   "note": "G w aplikacji, * (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "IC 420",
+   "simbad": "IC 420",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "IC 423",
+   "simbad": "IC 423",
+   "note": "EN w aplikacji, MoC (mgławica ciemna) w SIMBAD"
+  },
+  {
+   "id": "IC 424",
+   "simbad": "IC 424",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "IC 426",
+   "simbad": "IC 426",
+   "note": "EN w aplikacji, MoC (mgławica ciemna) w SIMBAD"
+  },
+  {
+   "id": "IC 429",
+   "simbad": "IC 429",
+   "note": "EN w aplikacji, G (galaktyka) w SIMBAD"
+  },
+  {
+   "id": "IC 430",
+   "simbad": "IC 430",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "IC 4628",
+   "simbad": "HD 152723",
+   "note": "EN w aplikacji, SB* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "IC 4703",
+   "simbad": "M 16",
+   "note": "EN w aplikacji, OpC (gromada) w SIMBAD"
+  },
+  {
+   "id": "IC 825",
+   "simbad": "IC 825",
+   "note": "G w aplikacji, HII (mgławica) w SIMBAD"
+  },
+  {
+   "id": "LBN 1003",
+   "simbad": "LBN 1003",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 1004",
+   "simbad": "LBN 1004",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 1015",
+   "simbad": "LBN 1015",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 1022",
+   "simbad": "LBN 1022",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 1023",
+   "simbad": "LBN 1023",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 103",
+   "simbad": "SH 2-71",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "LBN 1030",
+   "simbad": "HD 52721",
+   "note": "EN w aplikacji, Ae* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "LBN 1037",
+   "simbad": "LBN 1037",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 1052",
+   "simbad": "HD 50896",
+   "note": "EN w aplikacji, WR* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "LBN 1058",
+   "simbad": "Ced 96",
+   "note": "EN w aplikacji, Y*O (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "LBN 1067",
+   "simbad": "NGC 2467",
+   "note": "EN w aplikacji, OpC (gromada) w SIMBAD"
+  },
+  {
+   "id": "LBN 1092",
+   "simbad": "LBN 1092",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 1094",
+   "simbad": "LBN 1094",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 1101",
+   "simbad": "* sig Sco",
+   "note": "EN w aplikacji, bC* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "LBN 1108",
+   "simbad": "* alf Sco",
+   "note": "EN w aplikacji, s*r (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "LBN 111",
+   "simbad": "LBN 041.37-18.83",
+   "note": "EN w aplikacji, MoC (mgławica ciemna) w SIMBAD"
+  },
+  {
+   "id": "LBN 127",
+   "simbad": "Hen 2-427",
+   "note": "EN w aplikacji, WR* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "LBN 130",
+   "simbad": "LBN 055.40+01.87",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 133",
+   "simbad": "LBN 056.92+03.22",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 134",
+   "simbad": "LBN 057.03+03.02",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 149",
+   "simbad": "NGC 6842",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "LBN 403",
+   "simbad": "LBN 088.34+01.71",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 408",
+   "simbad": "DG 170",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 409",
+   "simbad": "DG 169",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 411",
+   "simbad": "DG 171",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 437",
+   "simbad": "LBN 096.26-14.97",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 441",
+   "simbad": "LBN 097.47+08.50",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 451",
+   "simbad": "LBN 098.83+04.12",
+   "note": "EN w aplikacji, MoC (mgławica ciemna) w SIMBAD"
+  },
+  {
+   "id": "LBN 452",
+   "simbad": "NAME Elephant Trunk Nebula",
+   "note": "EN w aplikacji, MoC (mgławica ciemna) w SIMBAD"
+  },
+  {
+   "id": "LBN 472",
+   "simbad": "* 6 Cep",
+   "note": "EN w aplikacji, Be* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "LBN 495",
+   "simbad": "LBN 105.17+13.40",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 496",
+   "simbad": "LBN 105.28+04.03",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 505",
+   "simbad": "SH 2-140",
+   "note": "EN w aplikacji, OpC (gromada) w SIMBAD"
+  },
+  {
+   "id": "LBN 508",
+   "simbad": "LBN 106.78+04.60",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 515",
+   "simbad": "LBN 108.28+13.32",
+   "note": "EN w aplikacji, MoC (mgławica ciemna) w SIMBAD"
+  },
+  {
+   "id": "LBN 523",
+   "simbad": "LBN 109.07+06.41",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 524",
+   "simbad": "LBN 109.57+02.41",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 531",
+   "simbad": "NAME Cave Nebula",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 534",
+   "simbad": "LBN 111.05-12.46",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 541",
+   "simbad": "LBN 111.54+13.70",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 543",
+   "simbad": "SH 2-159",
+   "note": "EN w aplikacji, Y*O (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "LBN 546",
+   "simbad": "LBN 111.84+14.10",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 56",
+   "simbad": "LBN 56",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "LBN 578",
+   "simbad": "LBN 117.68-03.69",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 585",
+   "simbad": "LBN 585",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 590",
+   "simbad": "LBN 590",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 591",
+   "simbad": "IC 10",
+   "note": "EN w aplikacji, rG (galaktyka) w SIMBAD"
+  },
+  {
+   "id": "LBN 594",
+   "simbad": "LBN 119.83-06.05",
+   "note": "EN w aplikacji, MoC (mgławica ciemna) w SIMBAD"
+  },
+  {
+   "id": "LBN 597",
+   "simbad": "SH 2-176",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "LBN 598",
+   "simbad": "LBN 120.29+18.39",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "LBN 599",
+   "simbad": "LBN 120.50-06.52",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 602",
+   "simbad": "LBN 121.48+06.62",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 610",
+   "simbad": "LBN 122.60-07.27",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 613",
+   "simbad": "LBN 122.71-12.11",
+   "note": "EN w aplikacji, MoC (mgławica ciemna) w SIMBAD"
+  },
+  {
+   "id": "LBN 621",
+   "simbad": "LBN 123.70-06.40",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 624",
+   "simbad": "PN HDW 1",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "LBN 633",
+   "simbad": "SH 2-188",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "LBN 636",
+   "simbad": "LBN 130.06+11.55",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 643",
+   "simbad": "LBN 133.46+08.48",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 659",
+   "simbad": "UGCA 34",
+   "note": "EN w aplikacji, GiG (galaktyka) w SIMBAD"
+  },
+  {
+   "id": "LBN 663",
+   "simbad": "LBN 136.29-00.46",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 674",
+   "simbad": "PN HDW 2",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "LBN 678",
+   "simbad": "LBN 140.14+03.85",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 680",
+   "simbad": "LBN 141.62-00.44",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 682",
+   "simbad": "LBN 142.14+01.97",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 688",
+   "simbad": "LBN 145.45-39.40",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 7",
+   "simbad": "LBN 001.27+21.09",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 721",
+   "simbad": "LBN 155.19-14.40",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 734",
+   "simbad": "LBN 157.58-20.59",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 737",
+   "simbad": "LBN 157.77+02.28",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 744",
+   "simbad": "SH 2-216",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "LBN 746",
+   "simbad": "LBN 159.31-21.67",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 777",
+   "simbad": "LBN 168.10-19.04",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 785",
+   "simbad": "LBN 169.30-14.89",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 788",
+   "simbad": "V* DG Tau",
+   "note": "EN w aplikacji, TT* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "LBN 798",
+   "simbad": "LBN 172.98-07.37",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 806",
+   "simbad": "LBN 173.48-13.73",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 808",
+   "simbad": "SH 2-231",
+   "note": "EN w aplikacji, Y*O (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "LBN 809",
+   "simbad": "LBN 809",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 812",
+   "simbad": "LBN 174.03-15.98",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 815",
+   "simbad": "LBN 174.71-15.34",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 817",
+   "simbad": "NGC 1554",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 818",
+   "simbad": "LBN 177.80-00.23",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 823",
+   "simbad": "LBN 180.71+04.30",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 824",
+   "simbad": "LBN 180.93+04.18",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 827",
+   "simbad": "LBN 182.41+00.27",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 828",
+   "simbad": "LBN 182.72-28.39",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 84",
+   "simbad": "EM* AS 310",
+   "note": "EN w aplikacji, Ae* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "LBN 845",
+   "simbad": "LBN 189.33+04.40",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 850",
+   "simbad": "LBN 851",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 851",
+   "simbad": "LBN 851",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 88",
+   "simbad": "LBN 027.67+23.44",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 894",
+   "simbad": "LBN 200.62-14.08",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 925",
+   "simbad": "LBN 204.03-15.35",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 926",
+   "simbad": "PN K 2-2",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "LBN 927",
+   "simbad": "LBN 204.09-15.38",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 928",
+   "simbad": "LBN 204.24-16.03",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 93",
+   "simbad": "SH 2-68",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "LBN 933",
+   "simbad": "LBN 933",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 96",
+   "simbad": "SH 2-68",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "LBN 960",
+   "simbad": "LP 657-18",
+   "note": "EN w aplikacji, PM* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "LBN 963",
+   "simbad": "LBN 207.80-19.58",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 968",
+   "simbad": "LBN 208.39-28.45",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 98",
+   "simbad": "LBN 031.88+05.05",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 990",
+   "simbad": "LBN 212.81-11.94",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 992",
+   "simbad": "LBN 213.43-19.98",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LBN 999",
+   "simbad": "LBN 213.91-12.48",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "LDN 1036",
+   "simbad": "LDN 1036",
+   "note": "DN w aplikacji, Y*O (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "LDN 1084",
+   "simbad": "2MASS J21430143+5456183",
+   "note": "DN w aplikacji, Y*O (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "LDN 1100",
+   "simbad": "LDN 1100",
+   "note": "DN w aplikacji, Y*O (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "LDN 1535",
+   "simbad": "IRAS 04325+2402",
+   "note": "DN w aplikacji, Y*O (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "LDN 528",
+   "simbad": "IRAS 18449-0454",
+   "note": "DN w aplikacji, Mi* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "NGC 1717",
+   "simbad": "UCAC2 31626222",
+   "note": "G w aplikacji, * (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "NGC 1743",
+   "simbad": "NGC 1743",
+   "note": "EN w aplikacji, Cl* (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 1745",
+   "simbad": "NGC 1745",
+   "note": "EN w aplikacji, Cl* (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 1748",
+   "simbad": "NGC 1748",
+   "note": "EN w aplikacji, As* (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 1769",
+   "simbad": "NGC 1769",
+   "note": "EN w aplikacji, As* (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 1837",
+   "simbad": "HD 269052",
+   "note": "OC w aplikacji, * (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "NGC 1877",
+   "simbad": "NGC 1877",
+   "note": "EN w aplikacji, Cl* (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 1880",
+   "simbad": "NGC 1880",
+   "note": "EN w aplikacji, Cl* (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 1895",
+   "simbad": "NGC 1895",
+   "note": "EN w aplikacji, Cl* (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 1919",
+   "simbad": "NGC 1919",
+   "note": "EN w aplikacji, Cl* (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 1920",
+   "simbad": "NGC 1920",
+   "note": "EN w aplikacji, Cl* (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 1933",
+   "simbad": "GSC 08890-00548",
+   "note": "OC w aplikacji, Pu* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "NGC 1935",
+   "simbad": "CD-68 294",
+   "note": "EN w aplikacji, As* (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 1949",
+   "simbad": "NGC 1949",
+   "note": "EN w aplikacji, Cl* (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 1955",
+   "simbad": "NGC 1955",
+   "note": "EN w aplikacji, As* (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 1962",
+   "simbad": "NGC 1962",
+   "note": "OC w aplikacji, ISM (mgławica) w SIMBAD"
+  },
+  {
+   "id": "NGC 1965",
+   "simbad": "NGC 1965",
+   "note": "OC w aplikacji, ISM (mgławica) w SIMBAD"
+  },
+  {
+   "id": "NGC 1970",
+   "simbad": "NGC 1970",
+   "note": "OC w aplikacji, ISM (mgławica) w SIMBAD"
+  },
+  {
+   "id": "NGC 2014",
+   "simbad": "NGC 2014",
+   "note": "EN w aplikacji, As* (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 2018",
+   "simbad": "NGC 2018",
+   "note": "EN w aplikacji, As* (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 2024",
+   "simbad": "NGC 2024",
+   "note": "EN w aplikacji, Cl* (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 2029",
+   "simbad": "NGC 2029",
+   "note": "OC w aplikacji, SNR (pozostałość po supernowej) w SIMBAD"
+  },
+  {
+   "id": "NGC 2037",
+   "simbad": "NGC 2037",
+   "note": "OC w aplikacji, ISM (mgławica) w SIMBAD"
+  },
+  {
+   "id": "NGC 2040",
+   "simbad": "NGC 2040",
+   "note": "EN w aplikacji, As* (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 2070",
+   "simbad": "NGC 2070",
+   "note": "EN w aplikacji, Cl* (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 2071",
+   "simbad": "NGC 2071",
+   "note": "CN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "NGC 2077",
+   "simbad": "NGC 2077",
+   "note": "EN w aplikacji, Cl* (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 2079",
+   "simbad": "NGC 2079",
+   "note": "EN w aplikacji, Cl* (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 2083",
+   "simbad": "NGC 2083",
+   "note": "EN w aplikacji, Cl* (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 2084",
+   "simbad": "NGC 2084",
+   "note": "EN w aplikacji, Cl* (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 2085",
+   "simbad": "NGC 2085",
+   "note": "EN w aplikacji, Cl* (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 2086",
+   "simbad": "NGC 2086",
+   "note": "EN w aplikacji, Cl* (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 2103",
+   "simbad": "NGC 2103",
+   "note": "EN w aplikacji, As* (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 2183",
+   "simbad": "NGC 2183",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "NGC 2185",
+   "simbad": "NGC 2185",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "NGC 2237",
+   "simbad": "NGC 2237",
+   "note": "EN w aplikacji, Cl* (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 2282",
+   "simbad": "NGC 2282",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "NGC 2296",
+   "simbad": "NGC 2296",
+   "note": "G w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "NGC 2316",
+   "simbad": "NGC 2316",
+   "note": "EN w aplikacji, Cl* (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 265",
+   "simbad": "[MA93] 163",
+   "note": "OC w aplikacji, Em* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "NGC 267",
+   "simbad": "NGC 267",
+   "note": "OC w aplikacji, HII (mgławica) w SIMBAD"
+  },
+  {
+   "id": "NGC 2818",
+   "simbad": "NGC 2818",
+   "note": "PN w aplikacji, OpC (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 2818A",
+   "simbad": "NGC 2818A",
+   "note": "CN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "NGC 3180",
+   "simbad": "NGC 3180",
+   "note": "EN w aplikacji, GiG (galaktyka) w SIMBAD"
+  },
+  {
+   "id": "NGC 3247",
+   "simbad": "NGC 3247",
+   "note": "EN w aplikacji, OpC (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 456",
+   "simbad": "NGC 456",
+   "note": "OC w aplikacji, HII (mgławica) w SIMBAD"
+  },
+  {
+   "id": "NGC 5451",
+   "simbad": "NGC 5451",
+   "note": "EN w aplikacji, PoG (galaktyka) w SIMBAD"
+  },
+  {
+   "id": "NGC 5455",
+   "simbad": "NGC 5455",
+   "note": "EN w aplikacji, H2G (galaktyka) w SIMBAD"
+  },
+  {
+   "id": "NGC 5471",
+   "simbad": "NGC 5471",
+   "note": "EN w aplikacji, EmG (galaktyka) w SIMBAD"
+  },
+  {
+   "id": "NGC 592",
+   "simbad": "VGHC 2-22",
+   "note": "OC w aplikacji, HII (mgławica) w SIMBAD"
+  },
+  {
+   "id": "NGC 6164",
+   "simbad": "HD 148937",
+   "note": "EN w aplikacji, SB* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "NGC 6165",
+   "simbad": "HD 148937",
+   "note": "EN w aplikacji, SB* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "NGC 6476",
+   "simbad": "NGC 6476",
+   "note": "OC w aplikacji, ISM (mgławica) w SIMBAD"
+  },
+  {
+   "id": "M 20",
+   "simbad": "M 20",
+   "note": "EN w aplikacji, OpC (gromada) w SIMBAD"
+  },
+  {
+   "id": "M 8",
+   "simbad": "M 8",
+   "note": "EN w aplikacji, OpC (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 6526",
+   "simbad": "NGC 6526",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "M 16",
+   "simbad": "M 16",
+   "note": "EN w aplikacji, OpC (gromada) w SIMBAD"
+  },
+  {
+   "id": "M 17",
+   "simbad": "NGC 6618",
+   "note": "EN w aplikacji, OpC (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 6813",
+   "simbad": "NGC 6813",
+   "note": "PN w aplikacji, ISM (mgławica) w SIMBAD"
+  },
+  {
+   "id": "NGC 6888",
+   "simbad": "HD 192163",
+   "note": "EN w aplikacji, WR* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "NGC 7000",
+   "simbad": "NGC 7000",
+   "note": "EN w aplikacji, Cl* (gromada) w SIMBAD"
+  },
+  {
+   "id": "NGC 7023",
+   "simbad": "NGC 7023",
+   "note": "EN w aplikacji, OpC (gromada) w SIMBAD"
+  },
+  {
+   "id": "Sh2-103",
+   "simbad": "NAME Cyg Loop",
+   "note": "EN w aplikacji, SNR (pozostałość po supernowej) w SIMBAD"
+  },
+  {
+   "id": "Sh2-11",
+   "simbad": "NGC 6357",
+   "note": "EN w aplikacji, OpC (gromada) w SIMBAD"
+  },
+  {
+   "id": "Sh2-116",
+   "simbad": "PN A66 71",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "Sh2-117",
+   "simbad": "NGC 7000",
+   "note": "EN w aplikacji, Cl* (gromada) w SIMBAD"
+  },
+  {
+   "id": "Sh2-140",
+   "simbad": "SH 2-140",
+   "note": "EN w aplikacji, OpC (gromada) w SIMBAD"
+  },
+  {
+   "id": "Sh2-158",
+   "simbad": "NGC 7538",
+   "note": "EN w aplikacji, OpC (gromada) w SIMBAD"
+  },
+  {
+   "id": "Sh2-159",
+   "simbad": "SH 2-159",
+   "note": "EN w aplikacji, Y*O (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "Sh2-174",
+   "simbad": "LBN 120.29+18.39",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "Sh2-176",
+   "simbad": "SH 2-176",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "Sh2-179",
+   "simbad": "PN BV 2",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "Sh2-188",
+   "simbad": "SH 2-188",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "Sh2-189",
+   "simbad": "PN A66 3",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "Sh2-191",
+   "simbad": "UGCA 34",
+   "note": "EN w aplikacji, GiG (galaktyka) w SIMBAD"
+  },
+  {
+   "id": "Sh2-197",
+   "simbad": "UGCA 39",
+   "note": "EN w aplikacji, GiG (galaktyka) w SIMBAD"
+  },
+  {
+   "id": "Sh2-200",
+   "simbad": "PN HDW 2",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "Sh2-208",
+   "simbad": "Cl Waterloo 1",
+   "note": "EN w aplikacji, OpC (gromada) w SIMBAD"
+  },
+  {
+   "id": "Sh2-216",
+   "simbad": "SH 2-216",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "Sh2-222",
+   "simbad": "NGC 1579",
+   "note": "EN w aplikacji, OpC (gromada) w SIMBAD"
+  },
+  {
+   "id": "Sh2-231",
+   "simbad": "SH 2-231",
+   "note": "EN w aplikacji, Y*O (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "Sh2-237",
+   "simbad": "NGC 1931",
+   "note": "EN w aplikacji, OpC (gromada) w SIMBAD"
+  },
+  {
+   "id": "Sh2-244",
+   "simbad": "M 1",
+   "note": "EN w aplikacji, SNR (pozostałość po supernowej) w SIMBAD"
+  },
+  {
+   "id": "Sh2-248",
+   "simbad": "IC 443",
+   "note": "EN w aplikacji, SNR (pozostałość po supernowej) w SIMBAD"
+  },
+  {
+   "id": "Sh2-25",
+   "simbad": "M 8",
+   "note": "EN w aplikacji, OpC (gromada) w SIMBAD"
+  },
+  {
+   "id": "Sh2-252",
+   "simbad": "NGC 2175",
+   "note": "EN w aplikacji, OpC (gromada) w SIMBAD"
+  },
+  {
+   "id": "Sh2-266",
+   "simbad": "EM* MWC 137",
+   "note": "EN w aplikacji, Ae* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "Sh2-273",
+   "simbad": "NGC 2264",
+   "note": "EN w aplikacji, OpC (gromada) w SIMBAD"
+  },
+  {
+   "id": "Sh2-274",
+   "simbad": "PN A66 21",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "Sh2-290",
+   "simbad": "PN A66 31",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "Sh2-292",
+   "simbad": "IC 2177",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "Sh2-293",
+   "simbad": "HD 52721",
+   "note": "EN w aplikacji, Ae* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "Sh2-308",
+   "simbad": "HD 50896",
+   "note": "EN w aplikacji, WR* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "Sh2-311",
+   "simbad": "NGC 2467",
+   "note": "EN w aplikacji, OpC (gromada) w SIMBAD"
+  },
+  {
+   "id": "Sh2-313",
+   "simbad": "PN A66 35",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "Sh2-37",
+   "simbad": "NGC 6590",
+   "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
+  },
+  {
+   "id": "Sh2-42",
+   "simbad": "LBN 56",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "Sh2-52",
+   "simbad": "PN A66 65",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "Sh2-6",
+   "simbad": "NGC 6302",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "Sh2-61",
+   "simbad": "EM* AS 310",
+   "note": "EN w aplikacji, Ae* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "Sh2-68",
+   "simbad": "SH 2-68",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "Sh2-71",
+   "simbad": "SH 2-71",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "Sh2-78",
+   "simbad": "SH 2-78",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "Sh2-80",
+   "simbad": "Hen 2-427",
+   "note": "EN w aplikacji, WR* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "Sh2-9",
+   "simbad": "* sig Sco",
+   "note": "EN w aplikacji, bC* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "Sh2-95",
+   "simbad": "NGC 6842",
+   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+  },
+  {
+   "id": "Sh2-97",
+   "simbad": "NGC 6847",
+   "note": "EN w aplikacji, OpC (gromada) w SIMBAD"
+  },
+  {
+   "id": "Al 1",
+   "simbad": "AL 1",
+   "note": "PN w aplikacji, Em* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "CTS 1",
+   "simbad": "LEDA 73264",
+   "note": "PN w aplikacji, Sy1 (galaktyka) w SIMBAD"
+  },
+  {
+   "id": "PB 9",
+   "simbad": "PB 9",
+   "note": "PN w aplikacji, QSO (galaktyka) w SIMBAD"
+  },
+  {
+   "id": "PB 10",
+   "simbad": "PB 10",
+   "note": "PN w aplikacji, WD* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "PHL 932",
+   "simbad": "PG 0057+155",
+   "note": "PN w aplikacji, HS* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "EGB 4",
+   "simbad": "EGB 4",
+   "note": "PN w aplikacji, CV* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "PP 40",
+   "simbad": "SH 2-235 A",
+   "note": "PN w aplikacji, HII (mgławica) w SIMBAD"
+  },
+  {
+   "id": "EGB 5",
+   "simbad": "EGB 5",
+   "note": "PN w aplikacji, HS* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "PB 1",
+   "simbad": "QSO B1248+473",
+   "note": "PN w aplikacji, QSO (galaktyka) w SIMBAD"
+  },
+  {
+   "id": "PB 2",
+   "simbad": "PB 2",
+   "note": "PN w aplikacji, * (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "PB 5",
+   "simbad": "PB 5",
+   "note": "PN w aplikacji, WD* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "PB 3",
+   "simbad": "PB 3",
+   "note": "PN w aplikacji, WD* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "PB 4",
+   "simbad": "[VV98] J125104.4+465610",
+   "note": "PN w aplikacji, QSO (galaktyka) w SIMBAD"
+  },
+  {
+   "id": "PB 6",
+   "simbad": "PB 6",
+   "note": "PN w aplikacji, * (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "PB 8",
+   "simbad": "PB 8",
+   "note": "PN w aplikacji, WD* (gwiazda) w SIMBAD"
+  },
+  {
+   "id": "ESO 279-14",
+   "simbad": "ESO 279-14",
+   "note": "PN w aplikacji, Sy2 (galaktyka) w SIMBAD"
+  }
+ ],
+ "known": [
+  {
+   "id": "NGC 1432",
+   "note": "mgławica refleksyjna (Maia), w aplikacji EN; SIMBAD: HII"
+  },
+  {
+   "id": "NGC 1435",
+   "note": "mgławica refleksyjna (Merope), w aplikacji EN; SIMBAD: ISM"
+  }
+ ]
+}

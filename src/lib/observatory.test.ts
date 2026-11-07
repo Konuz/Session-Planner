@@ -40,7 +40,7 @@ it('histogram liczy odległości w koszykach logarytmicznych i pomija brak danyc
   expect(distanceHistogram([1e4], { minLy: 100, maxLy: 1e4 }, 4).counts).toEqual([0, 0, 0, 1])
 })
 
-const item = (id: string, category: ObservatoryItem['category'], distLy: number | null, gMag: number | null = null): ObservatoryItem => ({ id, kind: category === 'stars' ? 'star' : 'object', category, type: null, x: 0, y: 0, radius: 0, distLy, distLoLy: null, distHiLy: null, gMag, bpRp: null, parallaxOverError: null, raDeg: 0, decDeg: 0, source: '' })
+const item = (id: string, category: ObservatoryItem['category'], distLy: number | null, gMag: number | null = null): ObservatoryItem => ({ id, kind: category === 'stars' ? 'star' : 'object', category, type: null, x: 0, y: 0, radius: 0, distLy, distLoLy: null, distHiLy: null, gMag, bpRp: null, parallaxOverError: null, raDeg: 0, decDeg: 0, source: '', method: '', ref: '', scope: 'object' })
 
 it('zakres 1000–2000 lś zostawia tylko obiekty z tego przedziału, kategoria zawęża dalej', () => {
   const items = [item('a', 'stars', 900), item('b', 'stars', 1000), item('c', 'nebulae', 1500), item('d', 'stars', 2000), item('e', 'stars', 2001), item('f', 'stars', null), item('g', 'galaxies', 2e7)]
@@ -52,13 +52,14 @@ it('zakres 1000–2000 lś zostawia tylko obiekty z tego przedziału, kategoria 
   expect([item('x', 'stars', null, 9), item('y', 'stars', 300), item('z', 'stars', null, 6)].sort(byDistance).map((i) => i.id)).toEqual(['y', 'z', 'x'])
 })
 
-it('łączy włączone wycinki i gwiazdy zdjęcia', () => {
-  const cut = (id: string, enabled: boolean, type: PhotoCut['type']): PhotoCut => ({ id, type, raDeg: 0, decDeg: 0, x: 10, y: 20, radius: 30, enabled, distLy: 1300, distanceSource: 'SIMBAD', uncertaintyLy: 100, distanceScope: 'object' })
+it('łączy włączone wycinki i gwiazdy zdjęcia, pomija obiekty bez ustalonej odległości', () => {
+  const cut = (id: string, enabled: boolean, type: PhotoCut['type'], distLy: number | null = 1300, uncertaintyLy: number | null = 100): PhotoCut => ({ id, type, raDeg: 0, decDeg: 0, x: 10, y: 20, radius: 30, enabled, distLy, uncertaintyLy, distanceScope: 'illuminator', distanceMethod: 'paralaksa HD 37903', distanceSource: 'Bailer-Jones i in. 2021', distanceRef: '2021AJ....161..147B', distanceOrigin: 'stars' })
   const star: PhotoStar = { id: 'Gaia DR3 1', x: 5, y: 6, raDeg: 0, decDeg: 0, gMag: 8, bpRp: 0.4, parallaxMas: 2.5, parallaxOverError: 30, distLy: 1290, distLoLy: 1250, distHiLy: 1330 }
-  const project = { cuts: [cut('IC 434', true, 'EN'), cut('NGC 2024', false, 'EN'), cut('NGC 2023', true, 'G')], stars: { stars: [star], magLimit: 15, fetchedAt: 0 } } as unknown as PhotoProject
+  const faint: PhotoStar = { ...star, id: 'Gaia DR3 2', parallaxOverError: 2, distLy: null, distLoLy: null, distHiLy: null }
+  const project = { cuts: [cut('IC 434', true, 'EN'), cut('NGC 2024', false, 'EN'), cut('NGC 2023', true, 'G'), cut('IC 435', true, 'RN', null, null), cut('NGC 5169', true, 'G', 1.8e8, 4.7e7)], stars: { stars: [star, faint], magLimit: 15, fetchedAt: 0 } } as unknown as PhotoProject
   const items = observatoryItems(project)
   expect(items.map((i) => [i.id, i.category])).toEqual([['IC 434', 'nebulae'], ['NGC 2023', 'galaxies'], ['Gaia DR3 1', 'stars']])
-  expect(items[0]).toMatchObject({ distLoLy: 1200, distHiLy: 1400, radius: 30 })
+  expect(items[0]).toMatchObject({ distLoLy: 1200, distHiLy: 1400, radius: 30, scope: 'illuminator', method: 'paralaksa HD 37903', ref: '2021AJ....161..147B' })
   expect(items[2]).toMatchObject({ kind: 'star', distLy: 1290, gMag: 8 })
   expect(observatoryItems({ ...project, stars: null })).toHaveLength(2)
 })

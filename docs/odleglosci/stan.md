@@ -1,0 +1,95 @@
+# Odległości obiektów zdjęcia: stan wdrożenia (6.11.2026)
+
+Wdrożenie rekomendacji pilotażu `output/odleglosci-pilotaz-2026-11-06/raport.md` (sekcja 8) i decyzji użytkownika
+(Wikidata, także zamiast pomiaru z σ > 20 %, i regresor jako wartości niezweryfikowane):
+obiekty bez ustalonej odległości nie pojawiają się w 3D ani na liście wyboru; bez nowych wykresów; źródło i zakres
+tylko jako podpowiedź i wiersz w inspektorze obserwatorium.
+
+## Co działa
+- **Model** (`src/lib/distance.ts`, `src/lib/photo.ts`): wycinek ma wartość, σ, zakres (`object`, `population`,
+  `illuminator`, `cloud`, `redshift`), metodę, źródło, bibcode i pochodzenie (`catalog`, `stars`, `user`).
+  `PhotoProject.version = 3`; migracja v1/v2: wartość „Wikidata — katalog aplikacji” i brak odległości odświeża nowy
+  katalog, wybór z SIMBAD/NED zostaje (`distanceOrigin: 'user'`), „cały kompleks” → `population`.
+- **Warunek 3D** (`hasDistance`, `cutsInThreeD`): odległość dodatnia i σ ≤ 20 % (jak `usable3D` pilotażu).
+  Dotyczy Obserwatorium, linii widzenia w Drodze Mlecznej, starej nakładki we Wszechświecie lokalnym i okręgów edycji.
+  Gwiazdy Gaia bez odległości (ϖ/σ < 5) też nie trafiają do sceny ani listy. W liście wyboru wycinków obiekt bez
+  odległości ma wyłączone pole; nazwę można kliknąć, żeby wybrać pomiar z SIMBAD/NED.
+- **Katalog** (`npm run build:data` → `scripts/catalogDistances.ts`): Hunt & Reffert 2023 (463 gromady, po nazwie
+  i pozycji), Cosmicflows-4 (3008 galaktyk, pozycja ≤ 0,5′ jeden do jednego), z z SIMBAD (4820, cz_CMB ≥ 3000 km/s,
+  H₀ = 70), Zucker i in. 2020 (90 mgławic ciemnych, linie widzenia w obrysie), Wikidata na końcu jako
+  „niezweryfikowane” (975 bez innego źródła). Decyzja 7.11.2026: gdy pomiar z łańcucha ma σ > 20 % (nie trafiłby
+  do 3D), a Wikidata ma wartość, bierzemy Wikidata (1048 obiektów, głównie galaktyki CF4 z TF i płaszczyzną
+  podstawową, np. NGC 5169); `withWikidataFallback`. Pomiar zostaje do wyboru w edycji wycinka (SIMBAD/NED).
+  Pozostałości po supernowych (8.11.2026): Ranasinghe & Leahy 2022 (J/ApJ/940/63, 180 SNR katalogu, po oznaczeniu
+  Greena z pozycją w obrysie; odległość zrewidowana przez autorów, a bez niej z literatury; granice pomijane).
+  Razem 10 584 obiekty z odległością (wcześniej 6628, wszystkie z Wikidata).
+- **Mgławice planetarne spoza OpenNGC** (8.11.2026, `scripts/planetaryNebulae.ts`): 964 pewne PN ze Strasbourg-ESO
+  (Acker i in. 1992, VizieR V/84) dopisane na końcu katalogu (indeksy dawnych obiektów bez zmian), z oznaczeniem
+  „PN G…” jako aliasem i średnicą optyczną z V/84/diam; pominięte, gdy oznaczenie lub mgławica katalogu w promieniu
+  max(1′, połowa średnicy) już jest. „A N” → „Abell N” (w SIMBAD „PN A66 N”); `catalogOf` uznaje za Messiera tylko
+  „M N” (nie „M 2-19”). Na zdjęciu HFG1 wykrywane są teraz HFG 1 i Abell 6.
+- **Odległości mgławic planetarnych** (8.11.2026): Chornay & Walton 2021 (J/A+A/656/A110, gwiazdy centralne Gaia
+  EDR3, odległość łączona z priorem statystycznym; Rel ≥ 0,5, RUWE < 1,4), po „PN G…” albo pozycji w promieniu
+  mgławicy: 416 PN, np. HFG 1 706 pc ± 1 %, Abell 6 1224 pc ± 16 %, M 57 790 pc, NGC 7293 199 pc.
+  `catalog.json` v2: tabela `sources` + kolumny 16–18 tylko w wierszach z odległością lub gwiazdą oświetlającą;
+  1,37 → 1,48 MB, gzip 367 → 412 KB. Startowy JS bez zmian (157,3 KB gzip; HEAD 157,1 KB).
+- **Gwiazda oświetlająca** (182 obiekty): vdB z gwiazdą z VII/21 (HD/BD), NGC/IC RN/EN/CN ≤ 1′ od gwiazdy vdB.
+  Odległość po pobraniu gwiazd Gaia pola (`useCutDistances` → `refreshCutDistances`): gwiazda ≤ 20″ i |G − V| ≤ 1,5;
+  gwiazda w gromadzie HR23 z katalogu (w promieniu pływowym, odległość zgodna w 3σ lub 10 %) dostaje odległość gromady.
+- **Kontrola tożsamości** (`docs/odleglosci/tozsamosc.json`, generowany): 247 obiektów z pozycją SIMBAD > 0,25° od
+  katalogu (bez odległości, pozycji nie zmieniamy), 30 aliasów należących do innych obiektów (pomijane przy szukaniu
+  odległości), 243 rozbieżności typów (tylko do przeglądu). Znane z pilotażu: Sh2-277 (0,67°), LBN 773 → IC 336
+  (1,56°), alias LBN 953 przy IC 434 (Mgławica Płomień), NGC 2024 (gromada w SIMBAD); NGC 1432 i NGC 1435
+  (refleksyjne, w SIMBAD HII i ISM, więc automat ich nie wykrywa) są wpisane ręcznie w `known`.
+- **Edycja wycinka** (`server/photoDistances.ts`): wiersz SIMBAD przypisany do gwiazdy (vdB 20–23, vdB 57) ma zakres
+  „gwiazda oświetlająca”; galaktyka bez pomiaru dostaje odległość z z (SIMBAD i NED ObjectLookup) jako oszacowanie
+  pośrednie; identyfikatory w zapisie SIMBAD (`Barnard 33`, `SH 2-277`, `VDB 52`).
+- **Test referencyjny** (`src/lib/distancePilot.test.ts`, fixture 40 wycinków): 20 obiektów ze sprawdzoną odległością
+  zgodną z pilotażem (w 2σ, min. 2 %), 3 z Wikidata; kandydaci i obiekty bez danych zawsze bez odległości.
+
+## Znane różnice względem pilotażu (w fixture z powodem)
+Wymagały literatury: IC 434 i B 33 (σ Ori), NGC 2024 (VLBA), NGC 1435 (Merope 11′ od mgławicy). B 33 pokazuje
+Wikidata 1500 lś (niezweryfikowane). vdB 23: Alcyone bez paralaksy w Gaia DR3. IC 4278: z tylko w NED (dostępne
+w edycji). IC 4282, NGC 5198 i NGC 5169 (zamiast CF4 z σ 26 %): Wikidata (niezweryfikowane).
+
+## Regresor (krok 6): oszacowania niezweryfikowane dla obiektów bez odległości
+Decyzja użytkownika 7.11.2026: regresor uzupełnia wycinki, które nie mają żadnej odległości, z dopiskiem
+„niezweryfikowane” i metodą modelu (np. „regresor, niezweryfikowane: grupa 44 gwiazd Gaia DR3 (HDBSCAN 5D + MLE
+paralaks), stożek 0,45°”).
+- **Kiedy**: wycinek bez odległości z łańcucha, nie wybór użytkownika, tożsamość rozstrzygnięta (`unresolved` w
+  `catalog.json`), typ EN, RN, CN, OC, GC, G lub GG. Bez mgławic ciemnych (skok ekstynkcji ma w regresorze stałe
+  ±7 %), planetarnych, pozostałości po supernowych i „innych”. Wartość pokazujemy, gdy jest sensowna: grupa ≥ 5 gwiazd,
+  σ ≤ 20 %, z galaktyki z widma SDSS przeliczane tak jak w katalogu (CMB, H₀ = 70, cz_CMB ≥ 3000 km/s).
+- **Przepływ**: klient (`useRegressor`) zgłasza wycinki w tle po astrometrii (`POST /api/photo/regressor`, pozycja
+  i promień wycinka z WCS) i odpytuje co 15 s; serwer (`server/regressor.ts`) uruchamia po jednym
+  `pixi run … python scripts/regressor/cut_distance.py` (limit 10 min, zabicie drzewa procesów). Wyniki „ok” i odmowy
+  w `scripts/.cache/regressor/<klucz>.json` (klucz z wersją wrappera); awarie usług (np. 503 Gaia) nie są zapamiętywane.
+  Bez pixi lub `astro-regressor-main` usługa jest wyłączona (produkcja). Katalog lub gwiazda oświetlająca zastępują
+  wartość regresora przy odświeżeniu.
+- **Zmiany w `astro-regressor-main` (katalog poza git; kopie oryginałów w notatkach sesji)**:
+  - `catalogs.py`: `EXTENDED_OTYPES` + `RefNeb`, `GalNeb`, `GNe`, `EmissionNeb`.
+  - `estimators.py`: galaktyka po jawnej liście typów `GALAXY_OTYPES` (dawny test `"G" in obj_type` łapał GalNeb,
+    GlC, GNe i gubił Seyfert2); pusta tabela CF4 z lustra VizieR bez TypeError (konwersja na liczby);
+    `use_registry` (wyłącza `CURATED_CLOUDS`, których wartości nie da się odtworzyć z Zucker 2020); `prefer_nearest`
+    w `synthesize_region_distance` (lokalne szczyty KDE od najbliższego, pierwszy z grupą spójną kinematycznie;
+    pilotaż: IC 1990 dostał tło 1139 pc zamiast Plejad) z progiem dyspersji prędkości poprzecznej grupy
+    `MAX_GROUP_VT_KMS = 5` (σv z MAD ruchów własnych × odległość). Kalibracja na grupach pilotażu: gromady i asocjacje
+    0,2–1,4 km/s (Plejady, Praesepe, σ Ori, NGC 2024), grupy tła 8,6 km/s (LBN 774) i 12,5 km/s (IC 1990).
+- **Wrapper** (`scripts/regressor/cut_distance.py`, w repozytorium): pozycja i promień zamiast nazwy (bez resolvera
+  MAST), bez rejestru, `prefer_nearest` dla mgławic, błąd zapytania Gaia/SDSS/CF4 → `error` zamiast odmowy.
+- **Przebiegi kontrolne** (wiersz poleceń, 7.11.2026, 2–6 min na obiekt): LBN 950 → 395,7 pc, σv 0,8 km/s (region
+  σ Ori 387–407 pc); LBN 770 → 135,5 pc (Plejady); LBN 774 → odmowa (bez filtra σv: tło 1167 pc); IC 1990 → odmowa
+  (σv 9,6 km/s; pilotaż: tło 1139 pc); IC 4278 → błąd (SkyServer SDSS nie odpowiadał), do ponowienia.
+- **W aplikacji** (serwer + przeglądarka, Playwright, zrzuty `*-regresor-*`):
+  - IC 434: 9/10 w 3D. Regresor dodał IC 434 395 pc (57 gwiazd, σv 0,6 km/s), LBN 950 396 pc (44, σv 0,8 km/s)
+    i NGC 2024 391 pc (75, σv 1,3 km/s; VLBA 403 ± 5 pc). Sh2-277 bez odległości (tożsamość).
+  - M51: 8/10 w 3D (9/10 po decyzji o Wikidata: NGC 5169). IC 4278: z = 0,01672 z widma SDSS → 241 mln lś
+    (pilotaż z NED: −1,9 %). IC 4277: odmowa (brak z i CF4).
+  - Pasek pokazuje „Regresor: N w toku”, liczba obiektów w 3D rośnie po wyniku; zapis w IndexedDB z `distanceOrigin: 'regressor'`.
+
+## Weryfikacja
+`npm test`, `npm run typecheck`, `npm run build`; zrzuty Playwright (IC 434, M51) w
+`output/odleglosci-wdrozenie-2026-11-06/` po ponownej astrometrii przez `/api/photo/solve` i pobraniu gwiazd.
+Ścieżka migracji na zapisanych projektach (`scripts/.cache/observatory-photos/`: IC 434 w wersji 1, M51 w wersji 2,
+bez gwiazd; zrzuty `*-zapisany-*`): ten sam wynik (6/10 i 7/10 w 3D), wartości z Wikidata zastąpione katalogiem
+(M 51: 24,8 → 27,2 mln lś), gwiazdy pobrane, gwiazdy oświetlające przypisane, w IndexedDB zapis w wersji 3.

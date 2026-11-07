@@ -4,8 +4,8 @@
 import { Box, ImagePlus, Settings2, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type RefObject } from 'react'
 import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO } from '../../lib/catalog'
-import { fmtDistance } from '../../lib/format'
-import { coveredPhotoCircles, photoFrame, type PhotoCut, type PhotoDistances } from '../../lib/photo'
+import { hasDistance, MAX_RELATIVE_UNCERTAINTY, NO_DISTANCE, SCOPE_LABELS, type DistanceScope } from '../../lib/distance'
+import { coveredPhotoCircles, cutsInThreeD, distanceSummary, photoFrame, type PhotoCut, type PhotoDistance, type PhotoDistances } from '../../lib/photo'
 import { hasUnsavedPhoto } from '../../lib/photoStorage'
 import { CloseButton } from '../CloseButton'
 import type { PhotoSession, StarsStatus } from './photoSession'
@@ -54,7 +54,8 @@ export function PhotoFlatView({ session }: { session: PhotoSession }) {
   if (!project) return null
   const { width, height } = size
   const frame = photoFrame(width, height, project, { top: 16, bottom: (size.bar ? size.bar + 12 : 0) + 16, side: 16 })
-  const enabled = project.cuts.filter((c) => c.enabled)
+  // Okręgi tylko obiektów pokazywanych w 3D (z ustaloną odległością).
+  const enabled = cutsInThreeD(project.cuts)
   const circles = enabled.map((cut) => ({ cut, x: frame.x + cut.x * frame.scale, y: frame.y + cut.y * frame.scale, radius: cut.radius * frame.scale }))
   const covered = coveredPhotoCircles(circles)
 
@@ -79,9 +80,8 @@ export function PhotoFlatView({ session }: { session: PhotoSession }) {
   return <svg ref={svgRef} className="photo-overlay" viewBox={`0 0 ${width} ${height}`} aria-label="Zdjęcie z wycinkami obiektów" onPointerMove={drag} onPointerUp={() => { dragRef.current = null }} onPointerCancel={() => { dragRef.current = null }}>
     <image id={`${prefix}-image`} href={project.image} width={project.width} height={project.height} transform={`translate(${frame.x} ${frame.y}) scale(${frame.scale})`} />
     {circles.map(({ cut, x, y, radius }, i) => {
-      const caption = cut.distLy ? `≈ ${fmtDistance(cut.distLy)}${cut.uncertaintyLy ? ` ± ${fmtDistance(cut.uncertaintyLy)}` : ''}` : 'odległość nieznana'
       return <g key={cut.id}>
-        <circle cx={x} cy={y} r={radius} fill="transparent" stroke={activeId === cut.id ? 'var(--accent)' : DEFAULT_ANNOTATION_COLORS[cut.type]} strokeWidth={activeId === cut.id ? 2 : 1.4} strokeDasharray={covered[i] ? '5 4' : undefined} className="photo-draggable" onPointerDown={(e) => startDrag(e, cut, false)} onClick={() => setActiveId(cut.id)}><title>{`${cut.id}: ${caption}${cut.distanceSource ? ` — ${cut.distanceSource}` : ''}${cut.distanceScope === 'complex' ? ' (pomiar całego kompleksu)' : ''}`}</title></circle>
+        <circle cx={x} cy={y} r={radius} fill="transparent" stroke={activeId === cut.id ? 'var(--accent)' : DEFAULT_ANNOTATION_COLORS[cut.type]} strokeWidth={activeId === cut.id ? 2 : 1.4} strokeDasharray={covered[i] ? '5 4' : undefined} className="photo-draggable" onPointerDown={(e) => startDrag(e, cut, false)} onClick={() => setActiveId(cut.id)}><title>{`${cut.id}: ${distanceSummary(cut)}`}</title></circle>
         {activeId === cut.id && <circle cx={x + radius} cy={y} r={5} fill="var(--accent)" className="photo-resize" onPointerDown={(e) => startDrag(e, cut, true)} />}
         <text x={x} y={y + radius + 14} className="photo-label">{cut.id}</text>
       </g>
@@ -90,14 +90,15 @@ export function PhotoFlatView({ session }: { session: PhotoSession }) {
 }
 
 /** Panel wycinków: widoczność, wybór źródła odległości i zakres pomiaru, dokładność astrometrii. */
-export function PhotoCutEditor({ session }: { session: PhotoSession }) {
+export function PhotoCutEditor({ session, regressing = [] }: { session: PhotoSession; regressing?: string[] }) {
   const { project, updateCut, activeId, setActiveId } = session
   const [distances, setDistances] = useState<{ key: string; data: PhotoDistances } | null>(null)
   const [distanceRetry, setDistanceRetry] = useState(0)
   const active = project?.cuts.find((c) => c.id === activeId)
   const distanceKey = project && active ? `${project.id}:${active.id}` : ''
   const distanceData = distances?.key === distanceKey ? distances.data : null
-  const selectedDistance = distanceData?.measurements.findIndex((m) => m.distLy === active?.distLy && m.uncertaintyLy === active?.uncertaintyLy && m.distanceSource === active?.distanceSource) ?? -1
+  const selectedDistance = distanceData?.measurements.findIndex((m) => m.distLy === active?.distLy && m.uncertaintyLy === active?.uncertaintyLy && m.distanceSource === active?.distanceSource && m.distanceMethod === active?.distanceMethod) ?? -1
+  const choose = (m: PhotoDistance) => ({ distLy: m.distLy, uncertaintyLy: m.uncertaintyLy, distanceScope: m.distanceScope, distanceMethod: m.distanceMethod, distanceSource: m.distanceSource, distanceRef: m.distanceRef, distanceOrigin: 'user' as const })
   useEffect(() => {
     if (!distanceKey || !activeId) return
     const abort = new AbortController()
@@ -111,48 +112,52 @@ export function PhotoCutEditor({ session }: { session: PhotoSession }) {
 
   return <div className="photo-editor">
     <div className="photo-editor-heading"><strong>Wycinki zdjęcia</strong><CloseButton label="Zamknij edycję wycinków" onClick={() => session.setEditing(false)} /></div>
-    <p className="dim">Propozycje z katalogu. Zaznacz widoczne obiekty; przesuń okrąg i jego uchwyt.</p>
+    <p className="dim">Propozycje z katalogu. Zaznacz widoczne obiekty; przesuń okrąg i jego uchwyt. Obiekty bez ustalonej odległości nie trafiają do 3D.</p>
     <div className="photo-object-list">{project.cuts.map((c) => <div key={c.id} className={activeId === c.id ? 'active' : ''}>
-      <input type="checkbox" aria-label={`Pokaż ${c.id}`} checked={c.enabled} onChange={(e) => updateCut(c.id, { enabled: e.target.checked })} />
+      <input type="checkbox" aria-label={`Pokaż ${c.id}`} checked={c.enabled && hasDistance(c)} disabled={!hasDistance(c)} title={hasDistance(c) ? undefined : regressing.includes(c.id) ? 'Regresor szacuje odległość (w tle, kilka minut)' : 'Bez ustalonej odległości: obiekt nie trafia do 3D'} onChange={(e) => updateCut(c.id, { enabled: e.target.checked })} />
       <button onClick={() => setActiveId(c.id)}><span style={{ color: DEFAULT_ANNOTATION_COLORS[c.type] }}>{c.id}</span><small>{TYPE_INFO[c.type].short}</small></button>
     </div>)}</div>
     {project.cuts.length === 0 && <p>Brak obiektów katalogowych w tym kadrze.</p>}
     {active && <div className="photo-fields">
       <strong>{active.id}</strong>
-      <label>Źródło odległości<select value={selectedDistance < 0 ? active.distLy ? 'saved' : 'unknown' : selectedDistance} title={active.distanceSource} onChange={(e) => {
-        if (e.target.value === 'unknown') { updateCut(active.id, { distLy: null, uncertaintyLy: null, distanceSource: '' }); return }
+      <label>Źródło odległości<select value={selectedDistance < 0 ? active.distLy ? 'saved' : 'unknown' : selectedDistance} title={distanceSummary(active)} onChange={(e) => {
+        if (e.target.value === 'unknown') { updateCut(active.id, { ...NO_DISTANCE, distanceOrigin: 'user' }); return }
         const measurement = distanceData?.measurements[Number(e.target.value)]
-        if (measurement) updateCut(active.id, { distLy: measurement.distLy, uncertaintyLy: measurement.uncertaintyLy, distanceSource: measurement.distanceSource })
+        if (measurement) updateCut(active.id, choose(measurement))
       }}>
-        <option value="unknown">Brak pomiaru — tylko kierunek</option>
-        {selectedDistance < 0 && active.distLy && <option value="saved">{fmtDistance(active.distLy)} · {active.distanceSource || 'Zapisany pomiar'}</option>}
+        <option value="unknown">Brak odległości — bez 3D</option>
+        {selectedDistance < 0 && active.distLy && <option value="saved">{distanceSummary(active)}</option>}
         {!distanceData && <option disabled>Pobieranie pomiarów…</option>}
-        {(['Wikidata', 'SIMBAD', 'NED'] as const).map((source) => distanceData?.measurements.some((m) => m.source === source) && <optgroup key={source} label={source}>
-          {distanceData.measurements.map((m, i) => m.source === source && <option key={i} value={i} title={m.distanceSource}>{fmtDistance(m.distLy)}{m.uncertaintyLy !== null ? ` ± ${fmtDistance(m.uncertaintyLy)}` : ''} · {m.distanceSource.split(' — ').slice(0, 3).join(' · ')}</option>)}
+        {(['Katalog', 'SIMBAD', 'NED'] as const).map((source) => distanceData?.measurements.some((m) => m.source === source) && <optgroup key={source} label={source}>
+          {distanceData.measurements.map((m, i) => m.source === source && <option key={i} value={i} title={distanceSummary(m)}>{distanceSummary(m)}</option>)}
         </optgroup>)}
       </select></label>
-      {distanceData && selectedDistance >= 0 && distanceData.measurements[selectedDistance].url && <a href={distanceData.measurements[selectedDistance].url} target="_blank" rel="noreferrer">Publikacja źródłowa ↗</a>}
+      {!hasDistance(active) && <p className="photo-notice">{active.distLy ? `Niepewność powyżej ${MAX_RELATIVE_UNCERTAINTY * 100} %: obiekt nie trafia do 3D.` : 'Bez ustalonej odległości obiekt nie trafia do 3D.'}</p>}
+      {active.distanceRef && <a href={`https://ui.adsabs.harvard.edu/abs/${encodeURIComponent(active.distanceRef)}/abstract`} target="_blank" rel="noreferrer">Publikacja źródłowa ↗</a>}
       {distanceData?.warnings.map((warning) => <p key={warning} className="photo-notice" role="status">{warning}</p>)}
       {!!distanceData?.warnings.length && <button className="button small" onClick={() => { setDistances(null); setDistanceRetry((n) => n + 1) }}>Ponów pobieranie</button>}
       {distanceData && !distanceData.measurements.length && !distanceData.warnings.length && <p className="photo-notice">Brak opublikowanych pomiarów w obsługiwanych źródłach.</p>}
-      <label>Zakres pomiaru<select value={active.distanceScope} onChange={(e) => updateCut(active.id, { distanceScope: e.target.value as PhotoCut['distanceScope'] })}><option value="object">Obiekt</option><option value="complex">Cały kompleks</option></select></label>
+      <label>Zakres pomiaru<select value={active.distanceScope} disabled={!active.distLy} onChange={(e) => updateCut(active.id, { distanceScope: e.target.value as DistanceScope, distanceOrigin: 'user' })}>
+        {(Object.keys(SCOPE_LABELS) as DistanceScope[]).map((scope) => <option key={scope} value={scope}>{SCOPE_LABELS[scope]}</option>)}
+      </select></label>
     </div>}
     <details><summary>Dokładność astrometrii</summary><p>{project.astrometry.matches} dopasowań, RMS {project.astrometry.rmsPx.toFixed(2)} px.</p><p>Brzegi: {project.astrometry.edgeMatches} dopasowań{project.astrometry.edgeRmsPx !== null && `, RMS ${project.astrometry.edgeRmsPx.toFixed(2)} px`}.</p><p>To reszty dopasowania solvera; wymagają oceny na zdjęciu. Wycinek zawiera także tło i gwiazdy.</p></details>
   </div>
 }
 
 /** Pasek zdjęcia w Drodze Mlecznej: miejsce i wymiary jak pasek starej nakładki, bez suwaka. */
-export function GalaxyPhotoBar({ session, stars, onUnfold, onPick, onRetryStars }: { session: PhotoSession; stars: StarsStatus; onUnfold(): void; onPick(): void; onRetryStars(): void }) {
+export function GalaxyPhotoBar({ session, stars, regressing = 0, onUnfold, onPick, onRetryStars }: { session: PhotoSession; stars: StarsStatus; regressing?: number; onUnfold(): void; onPick(): void; onRetryStars(): void }) {
   const { project, editing, setEditing } = session
   if (!project) return null
-  const enabled = project.cuts.filter((c) => c.enabled).length
+  const enabled = cutsInThreeD(project.cuts).length
   return <div className="photo-controls">
     <div className="photo-heading">
       <span title={project.name}>{project.name}</span>
       <span className="dim">
         {stars.status === 'loading' && <span className="accent">Pobieranie gwiazd Gaia DR3… · </span>}
+        {regressing > 0 && <span className="accent" title="Oszacowanie modelu dla obiektów bez odległości; wynik oznaczony jako niezweryfikowany">Regresor: {regressing} w toku · </span>}
         {stars.status === 'error' && <span className="photo-notice" title={stars.message}>Gwiazdy Gaia: błąd · <button type="button" className="link-button" onClick={onRetryStars}>ponów</button> · </span>}
-        {enabled}/{project.cuts.length} obiektów
+        {enabled}/{project.cuts.length} obiektów w 3D
       </span>
     </div>
     <div className="photo-timeline photo-actions">

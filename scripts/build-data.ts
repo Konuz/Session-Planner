@@ -1,6 +1,10 @@
 // Buduje dane aplikacji w public/data z pobranych źródeł (pamięć w scripts/.cache):
-// - catalog.json: katalog obiektów (OpenNGC + VizieR, zbudowany wcześniej do old-catalog.json) z odległościami
-//   i tytułami artykułów Wikipedii z Wikidata,
+// - catalog.json: katalog obiektów (OpenNGC + VizieR, zbudowany wcześniej do old-catalog.json, plus mgławice planetarne
+//   spoza niego z V/84, scripts/planetaryNebulae.ts) z odległościami
+//   (Hunt & Reffert 2023, Cosmicflows-4, z z SIMBAD, Zucker i in. 2020, Ranasinghe & Leahy 2022 dla SNR, Chornay & Walton 2021 dla PN,
+//   na końcu Wikidata; scripts/catalogDistances.ts),
+//   gwiazdami oświetlającymi vdB (VII/21) i tytułami artykułów Wikipedii z Wikidata,
+// - docs/odleglosci/tozsamosc.json: rozbieżności tożsamości z SIMBAD (pozycje, aliasy, typy) do przeglądu,
 // - sky.json: gwiazdy do ok. 6,5 mag (d3-celestial, BSD) z numerami HIP, linie i nazwy gwiazdozbiorów
 //   (Stellarium modern, CC BY-SA 4.0; polskie nazwy z tłumaczenia Stellarium),
 // - constellations3d.json: linie Stellarium z odległościami gwiazd z paralaks Hipparcosa (CDS I/239),
@@ -9,10 +13,15 @@
 // - milkyway.png: jasność Drogi Mlecznej w siatce RA/Dec co 0,5° (kontury d3-celestial, BSD), rozmyta.
 //
 // Uruchom: node scripts/build-data.ts   (Node ≥ 23 uruchamia TypeScript bez kompilacji)
+import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import * as Astronomy from 'astronomy-engine'
 import sharp from 'sharp'
+import { simbadId } from '../src/lib/distance.ts'
+import { checkIdentity, cf4Choice, clusterKey, cw21Choice, findCw21, findHr23, findRl22, parseCw21, parseRl22, rl22Choice, hr23Choice, ILLUMINATOR_MATCH_DEG, KNOWN_DISCREPANCIES, withWikidataFallback, matchCf4, parseCf4, parseHr23, parseSimbadIdents, parseVizierTsv, parseZucker, redshiftChoice, separationDeg, simbadKey, WIKIDATA, zuckerChoice, type Choice, type Entry, type Hr23Cluster, type SimbadObject, type SourceKey } from './catalogDistances.ts'
 import { cachedBytes, cachedText } from './download.ts'
+import { newPlanetaryNebulae, parseV84 } from './planetaryNebulae.ts'
 
 const ROOT = join(import.meta.dirname, '..')
 const CACHE = join(ROOT, 'scripts', '.cache')
@@ -21,8 +30,8 @@ const UA = 'konuzastro-tracker-build/0.1 (https://konuzastro.pl)'
 
 mkdirSync(join(OUT, 'art'), { recursive: true })
 
-const cached = (name: string, url: string, init?: RequestInit) =>
-  cachedText(CACHE, name, url, { ...init, headers: { 'User-Agent': UA, ...init?.headers } })
+const cached = (name: string, url: string, init?: RequestInit, check?: (text: string) => void) =>
+  cachedText(CACHE, name, url, { ...init, headers: { 'User-Agent': UA, ...init?.headers } }, check)
 const cachedBinary = (name: string, url: string) => cachedBytes(CACHE, name, url, { headers: { 'User-Agent': UA } })
 
 async function sparql(name: string, query: string): Promise<string[][]> {
@@ -55,6 +64,37 @@ function parseCsv(text: string): string[][] {
 
 const r = (v: number, d: number) => Math.round(v * 10 ** d) / 10 ** d
 
+// Lustra VizieR (CDS w Strasburgu bywa nieosiągalny, lustro bywa bez bazy); te same tabele i format asu-tsv.
+const VIZIER_MIRRORS = ['https://vizier.cfa.harvard.edu/viz-bin/asu-tsv', 'http://vizier.nao.ac.jp/viz-bin/asu-tsv']
+/** Odpowiedź VizieR z błędem zapytania albo bez wierszy danych nie trafia do pamięci. */
+function checkVizier(text: string) {
+  if (/QUERY_STATUS=ERROR|^#INFO\tError=/m.test(text)) throw new Error('VizieR: błąd zapytania')
+  if (text.split(/\r?\n/).filter((line) => line && !line.startsWith('#')).length < 4) throw new Error('VizieR: brak wierszy')
+}
+async function vizier(name: string, query: string): Promise<string> {
+  let error: unknown
+  for (const base of VIZIER_MIRRORS) {
+    try { return await cached(`vizier/${name}.tsv`, `${base}?${query}&-out.max=unlimited`, undefined, checkVizier) } catch (e) { error = e }
+  }
+  throw error
+}
+// Oficjalna kopia SIMBAD (IDIA); format i zawartość jak w CDS.
+const SIMBAD_TAP = 'https://simbad.idia.ac.za/simbad/sim-tap/sync'
+
+/** Obiekty SIMBAD dla oznaczeń katalogu: zapytania po 400 identyfikatorów, każde w pamięci pod skrótem listy. */
+async function simbadObjects(designations: string[]): Promise<Map<string, SimbadObject>> {
+  const ids = [...new Set(designations.map(simbadId).filter((id): id is string => id !== null))].sort()
+  const result = new Map<string, SimbadObject>()
+  for (let i = 0; i < ids.length; i += 400) {
+    const chunk = ids.slice(i, i + 400)
+    const hash = createHash('sha1').update(chunk.join('\n')).digest('hex').slice(0, 12)
+    const query = `SELECT i.id, b.main_id, b.otype, b.ra, b.dec, b.rvz_redshift, b.rvz_qual, b.nbref FROM ident AS i JOIN basic AS b ON b.oid = i.oidref WHERE i.id IN (${chunk.map((id) => `'${id.replace(/'/g, "''")}'`).join(',')}) AND b.ra IS NOT NULL`
+    const json = await cached(`simbad/ident-${hash}.json`, SIMBAD_TAP, { method: 'POST', body: new URLSearchParams({ request: 'doQuery', lang: 'adql', format: 'json', query }) })
+    for (const [key, value] of parseSimbadIdents(json)) result.set(key, value)
+  }
+  return result
+}
+
 // ---------- Katalog ----------
 
 interface OldRecord {
@@ -69,6 +109,7 @@ interface OldRecord {
   positionAngleDeg: number | null
   magV: number | null
   surfaceBrightness: number | null
+  vdbStarMagV?: number | null
   constellation: string | null
 }
 
@@ -110,6 +151,19 @@ async function buildCatalog() {
   const oldPath = join(CACHE, 'old-catalog.json')
   if (!existsSync(oldPath)) throw new Error(`Brak ${oldPath}. Utwórz go: git show 6c2fb33:public/catalog/catalog.v1.json > scripts/.cache/old-catalog.json`)
   const old: OldRecord[] = JSON.parse(readFileSync(oldPath, 'utf8'))
+  // Mgławice planetarne spoza OpenNGC (V/84, np. HFG 1) na końcu: indeksy dotychczasowych obiektów się nie zmieniają.
+  const pns = newPlanetaryNebulae(
+    parseV84(await vizier('v84-main', '-source=V/84/main&-out.all'), await vizier('v84-diam', '-source=V/84/diam&-out.all')),
+    old.map((o) => ({ designations: o.designations.map((d) => designation(d.catalog, d.id)), raDeg: o.raDeg, decDeg: o.decDeg, nebula: !['galaxy', 'galaxy_group', 'open_cluster', 'globular_cluster'].includes(o.type) })),
+  )
+  for (const pn of pns) {
+    old.push({
+      primary: { catalog: 'Other', id: pn.name }, designations: [{ catalog: 'Other', id: pn.name }, { catalog: 'Other', id: pn.png }], commonNames: [],
+      type: 'planetary_nebula', raDeg: pn.raDeg, decDeg: pn.decDeg, sizeMajorArcmin: pn.diamArcmin ? r(pn.diamArcmin, 2) : null, sizeMinorArcmin: null,
+      positionAngleDeg: null, magV: null, surfaceBrightness: null, constellation: Astronomy.Constellation(pn.raDeg / 15, pn.decDeg).symbol,
+    })
+  }
+  console.log(`mgławice planetarne V/84: ${pns.length} nowych`)
 
   const distRows = await sparql('wd-dist.csv', `SELECT ?code ?dist ?unit WHERE {
     VALUES ?cat { ${CATALOG_QIDS} }
@@ -144,16 +198,30 @@ async function buildCatalog() {
 
   const looksLikeCode = (title: string) => /^(M|NGC|IC|Sh ?2|Barnard|B|LDN|LBN|Messier)\s*-?\s*\d/i.test(title)
 
+  const entries: Entry[] = old.map((o) => {
+    const primary = designation(o.primary.catalog, o.primary.id)
+    const ids = o.designations.map((d) => designation(d.catalog, d.id))
+    return {
+      designations: [primary, ...ids.filter((d) => d !== primary)], type: TYPE_CODE[o.type] ?? 'X', raDeg: o.raDeg, decDeg: o.decDeg,
+      majArcmin: o.sizeMajorArcmin ?? 0, vdbStarMagV: o.vdbStarMagV ?? null,
+    }
+  })
+  const distancePlan = await planDistances(entries, (designations) => {
+    const list = designations.map(joinKey).filter((k): k is string => k !== null).map((k) => distances.get(k)).find((d) => d !== undefined)
+    return list ? Math.round(median(list)) : null
+  })
+
   // Kolumny: id, oznaczenia, nazwa PL, nazwy EN, typ, RA, Dec, wymiar a, b, PA, mag, jasność pow., gwiazdozbiór,
-  // odległość [ly], artykuł pl, artykuł en.
-  const rows = old.map((o) => {
+  // odległość [ly], artykuł pl, artykuł en; tylko przy odległości lub gwieździe oświetlającej: względna niepewność [‰],
+  // indeks tabeli źródeł, gwiazda oświetlająca (src/lib/catalog.ts).
+  const rows = old.map((o, i) => {
     const ids = o.designations.map((d) => designation(d.catalog, d.id))
     const primary = designation(o.primary.catalog, o.primary.id)
     const keys = o.designations.map((d) => joinKey(designation(d.catalog, d.id))).filter((k): k is string => k !== null)
-    const dist = keys.map((k) => distances.get(k)).find((d) => d !== undefined)
     const w = keys.map((k) => wiki.get(k)).find((d) => d !== undefined)
     const plName = w?.pl && !looksLikeCode(w.pl) ? w.pl.replace(/\s*\(.*\)$/, '') : ''
-    return [
+    const { choice, illuminator } = distancePlan.objects[i]
+    const row: unknown[] = [
       primary,
       ids.filter((d) => d !== primary).join('|'),
       plName,
@@ -167,14 +235,109 @@ async function buildCatalog() {
       o.magV === null ? 99 : r(o.magV, 1),
       o.surfaceBrightness === null ? 99 : r(o.surfaceBrightness, 1),
       o.constellation ?? '',
-      dist === undefined ? 0 : Math.round(median(dist)),
+      choice ? Math.round(choice.ly) : 0,
       w?.pl ?? '',
       w?.en ?? '',
     ]
+    if (choice || illuminator) row.push(choice?.sigmaLy ? Math.max(1, Math.round(choice.sigmaLy / choice.ly * 1000)) : 0, choice ? distancePlan.sourceIndex(choice.source) : -1)
+    if (illuminator) row.push(illuminator)
+    return row
   })
   const withDist = rows.filter((row) => row[13] !== 0).length
-  writeFileSync(join(OUT, 'catalog.json'), JSON.stringify({ v: 1, rows }))
-  console.log(`catalog: ${rows.length} obiektów, ${withDist} z odległością`)
+  writeFileSync(join(OUT, 'catalog.json'), JSON.stringify({ v: 2, sources: distancePlan.sources, unresolved: distancePlan.unresolved, rows }))
+  mkdirSync(join(ROOT, 'docs', 'odleglosci'), { recursive: true })
+  writeFileSync(join(ROOT, 'docs', 'odleglosci', 'tozsamosc.json'), JSON.stringify(distancePlan.review, null, 1) + '\n')
+  console.log(`catalog: ${rows.length} obiektów, ${withDist} z odległością (${Object.entries(distancePlan.counts).map(([k, v]) => `${k} ${v}`).join(', ')})`)
+}
+
+/**
+ * Odległości katalogu: kontrola tożsamości z SIMBAD, łańcuch źródeł (scripts/catalogDistances.ts) i gwiazdy
+ * oświetlające vdB. Obiekt z nierozstrzygniętą tożsamością (pozycja SIMBAD > 0,25° od katalogu) zostaje bez odległości.
+ */
+async function planDistances(entries: Entry[], wikidata: (designations: string[]) => number | null) {
+  const simbad = await simbadObjects(entries.flatMap((e) => e.designations))
+  const hr23 = parseHr23(await vizier('hr23-clusters', '-source=J/A%2BA/673/A114/clusters&-out=Name,AllNames,Type,CST,RA_ICRS,DE_ICRS,rt,dist16,dist50,dist84'))
+  const cf4 = parseCf4(await vizier('cf4-table2', '-source=J/ApJ/944/94/table2&-out=PGC,DM,e_DM,DMsnIa,DMtf,DMfp,DMsbf,DMsnII,DMtrgb,DMceph,DMmas,RAJ2000,DEJ2000'))
+  const zucker = parseZucker(await vizier('zucker2020-handbook', '-source=J/A%2BA/633/A51/handbook&-out.all'))
+  const rl22 = new Map(parseRl22(await vizier('rl22-snr', '-source=J/ApJ/940/63/table1&-out.all')).map((snr) => [snr.key, snr]))
+  const cw21 = parseCw21(await vizier('cw21-pn', '-source=J/A%2BA/656/A110/tablea1&-out=PNG,Name,Rel,RUWE,pnRAdeg,pnDEdeg,pnRad,rcomb,b_rcomb,B_rcomb'))
+  const cw21ByPng = new Map(cw21.map((pn) => [pn.png, pn]))
+  const vdbStars = new Map(parseVizierTsv(await vizier('vdb-vii21', '-source=VII/21&-out=VdB,DM,HD')).map((row) => [Number(row.VdB), row.HD ? `HD ${row.HD}` : row.DM.replace(/\s+/g, ' ')]))
+  const hr23ByKey = new Map<string, Hr23Cluster>()
+  for (const c of hr23) for (const name of c.names) if (!hr23ByKey.has(clusterKey(name))) hr23ByKey.set(clusterKey(name), c)
+  const cf4ByEntry = matchCf4(entries, cf4)
+
+  const sources: [number, string, string, string, number][] = []
+  const sourceKeys = new Map<string, number>()
+  const SCOPES = ['object', 'population', 'illuminator', 'cloud', 'redshift']
+  const sourceIndex = (key: SourceKey) => {
+    const id = JSON.stringify(key)
+    if (!sourceKeys.has(id)) { sourceKeys.set(id, sources.length); sources.push([SCOPES.indexOf(key.scope), key.method, key.source, key.ref, key.verified ? 1 : 0]) }
+    return sourceKeys.get(id)!
+  }
+  const counts: Record<string, number> = { 'Hunt & Reffert': 0, CF4: 0, z: 0, Zucker: 0, 'Ranasinghe & Leahy': 0, 'Chornay & Walton': 0, Wikidata: 0, 'Wikidata zamiast σ > 20 %': 0, 'bez tożsamości': 0 }
+  const review: { position: object[]; aliases: object[]; types: object[]; known: object[] } = { position: [], aliases: [], types: [], known: KNOWN_DISCREPANCIES }
+  const clusters = new Map<number, Hr23Cluster>()
+  const identities = entries.map((e) => checkIdentity(e, simbad))
+  const choices = entries.map((e, i): Choice | null => {
+    const identity = identities[i]
+    const id = e.designations[0]
+    if (identity.typeNote) review.types.push({ id, simbad: identity.mainId, note: identity.typeNote })
+    for (const a of identity.foreignAliases) review.aliases.push({ id, alias: a.alias, simbad: a.mainId, sepDeg: r(a.sepDeg, 3) })
+    if (identity.verdict === 'position') {
+      review.position.push({ id, simbad: identity.mainId, otype: identity.otype, sepDeg: r(identity.sepDeg!, 3) })
+      counts['bez tożsamości']++
+      return null
+    }
+    const usable = e.designations.filter((d) => !identity.foreignAliases.some((a) => a.alias === d))
+    const measured = (() => {
+      const cluster = findHr23(e, usable, hr23ByKey)
+      if (cluster) { clusters.set(i, cluster); return { key: 'Hunt & Reffert', choice: hr23Choice(cluster) } }
+      const galaxy = cf4ByEntry.get(i)
+      if (galaxy) return { key: 'CF4', choice: cf4Choice(galaxy) }
+      if (e.type === 'G' || e.type === 'GG') {
+        const sid = simbadId(e.designations[0])
+        const z = redshiftChoice(sid ? simbad.get(simbadKey(sid)) : undefined)
+        if (z) return { key: 'z', choice: z }
+      }
+      const pn = findCw21(e, usable, cw21, cw21ByPng)
+      if (pn) return { key: 'Chornay & Walton', choice: cw21Choice(pn) }
+      const snr = findRl22(e, usable, rl22)
+      if (snr) return { key: 'Ranasinghe & Leahy', choice: rl22Choice(snr) }
+      const cloud = e.type === 'DN' ? zuckerChoice(e, zucker) : null
+      return cloud ? { key: 'Zucker', choice: cloud } : null
+    })()
+    const choice = withWikidataFallback(measured?.choice ?? null, wikidata(usable))
+    if (choice?.source === WIKIDATA) counts[measured ? 'Wikidata zamiast σ > 20 %' : 'Wikidata']++
+    else if (measured) counts[measured.key]++
+    return choice
+  })
+  // Gromady HR23 w katalogu: zakres pływowy do sprawdzenia, czy gwiazda oświetlająca może należeć do gromady.
+  const clusterOf = (raDeg: number, decDeg: number) => {
+    let best: { i: number; sep: number } | null = null
+    for (const [i, c] of clusters) {
+      const sep = separationDeg(raDeg, decDeg, c.raDeg, c.decDeg)
+      if (sep <= c.rtDeg && (!best || sep < best.sep)) best = { i, sep }
+    }
+    return best?.i ?? -1
+  }
+  const illuminators = new Map<number, [string, number, number, number, number]>()
+  entries.forEach((e, i) => {
+    const vdb = /^vdB (\d+)$/.exec(e.designations[0])
+    if (!vdb || identities[i].verdict === 'position') return
+    illuminators.set(i, [vdbStars.get(Number(vdb[1])) ?? `gwiazda vdB ${vdb[1]}`, r(e.raDeg, 5), r(e.decDeg, 5), e.vdbStarMagV ?? 99, clusterOf(e.raDeg, e.decDeg)])
+  })
+  const stars = [...illuminators.entries()]
+  entries.forEach((e, i) => {
+    if (illuminators.has(i) || !/^(NGC|IC) /.test(e.designations[0]) || !['RN', 'EN', 'CN'].includes(e.type) || identities[i].verdict === 'position') return
+    const near = stars.map(([, s]) => ({ s, sep: separationDeg(e.raDeg, e.decDeg, s[1], s[2]) })).filter((x) => x.sep <= ILLUMINATOR_MATCH_DEG).sort((a, b) => a.sep - b.sep)[0]
+    if (near) illuminators.set(i, near.s)
+  })
+  return {
+    sources, sourceIndex, review, counts: { ...counts, 'gwiazdy oświetlające': illuminators.size },
+    unresolved: identities.flatMap((identity, i) => identity.verdict === 'position' ? [i] : []),
+    objects: entries.map((_, i) => ({ choice: choices[i], illuminator: illuminators.get(i) ?? null })),
+  }
 }
 
 // ---------- Niebo: gwiazdy, linie, nazwy, ilustracje ----------

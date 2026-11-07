@@ -1,0 +1,32 @@
+# pixi environments
+.pixi/*
+!.pixi/config.toml
+
+# python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+
+# jupyter
+.ipynb_checkpoints/
+
+# data & artifacts
+data/
+models/
+reports/
+*.csv
+*.fits
+*.parquet
+
+# caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# os & editors
+.DS_Store
+.vscode/
+.idea/
+SPEC.md

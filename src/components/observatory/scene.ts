@@ -305,7 +305,7 @@ export class ObservatoryScene {
         this.anchors.set(item.id, anchor)
         this.data.add(anchor)
       }
-      this.itemLabels.set(item.id, this.label('obs-label obs-card', `${item.id}\n${item.distLy ? `≈ ${fmtDistance(item.distLy)}` : 'odległość nieznana'}`))
+      this.itemLabels.set(item.id, this.label('obs-label obs-card', `${item.id}\n≈ ${fmtDistance(item.distLy)}`))
       this.dataDisposables.push(texture, material)
     }
     for (const item of items) this.visible.add(item.id)
@@ -655,16 +655,16 @@ export class ObservatoryScene {
       if (!el) continue
       const card = this.cards.get(item.id)!
       el.classList.toggle('selected', isSelected)
-      // Obiekty bez odległości zostają na zdjęciu bez podpisu (podpis tylko po zaznaczeniu).
+      // W scenie są tylko obiekty z ustaloną odległością (observatoryItems).
       const anchor = this.anchors.get(item.id)
       const labelPosition = anchor?.visible ? anchor.position : card.position
-      place(el, labelPosition.clone().add(new THREE.Vector3(0, card.scale.y / 2, 0)), this.visible.has(item.id) && (item.distLy !== null || isSelected))
+      place(el, labelPosition.clone().add(new THREE.Vector3(0, card.scale.y / 2, 0)), this.visible.has(item.id))
     }
     let starLabel = this.labels.querySelector<HTMLDivElement>('.obs-star')
     const selected = this.items.find((item) => item.id === this.selected && item.kind === 'star')
     if (selected) {
       starLabel ??= this.label('obs-label obs-card obs-star selected', '')
-      starLabel.textContent = `${selected.id.replace('Gaia DR3 ', 'Gaia ')}\n${selected.distLy ? `≈ ${fmtDistance(selected.distLy)}` : 'brak odległości'}`
+      starLabel.textContent = `${selected.id.replace('Gaia DR3 ', 'Gaia ')}\n≈ ${fmtDistance(selected.distLy)}`
       place(starLabel, this.position(selected), this.visible.has(selected.id))
     } else if (starLabel) starLabel.style.display = 'none'
   }

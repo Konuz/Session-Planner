@@ -1,4 +1,5 @@
 // Katalog obiektów: wczytanie zwartego pliku public/data/catalog.json, typy, filtry i wyszukiwanie.
+import type { DistanceInfo, DistanceScope } from './distance.ts'
 
 export type ObjectType = 'G' | 'GG' | 'EN' | 'RN' | 'DN' | 'PN' | 'SNR' | 'OC' | 'GC' | 'CN' | 'X'
 
@@ -23,7 +24,16 @@ export interface DSO {
   mag: number | null
   sb: number | null
   con: string
+  /** Najlepsza odległość z katalogu (także niesprawdzona z Wikidata, zob. distInfo.verified). */
   distLy: number | null
+  /** Niepewność odległości (1σ) w lś; null: nieznana. */
+  distUncLy: number | null
+  /** Pochodzenie odległości (wspólny wpis tabeli źródeł); null bez odległości. */
+  distInfo: DistanceInfo | null
+  /** Gwiazda oświetlająca mgławicy (van den Bergh 1966); odległość dopiero z gwiazd Gaia pola zdjęcia. */
+  illuminator: Illuminator | null
+  /** Tożsamość nierozstrzygnięta (pozycja SIMBAD > 0,25° od katalogu): bez odległości z żadnego źródła. */
+  unresolved: boolean
   wikiPl: string
   wikiEn: string
   /** Katalogi, w których obiekt występuje (M, NGC, IC, Sh2, LDN, LBN, B, vdB, SNR, C). */
@@ -59,7 +69,8 @@ export const CATALOGS: { id: string; label: string; title: string }[] = [
 ]
 
 export function catalogOf(designation: string): string | null {
-  if (/^M \d/.test(designation)) return 'M'
+  // Tylko „M 51”: „M 2-19” to mgławica planetarna Minkowskiego, nie obiekt Messiera.
+  if (/^M \d+$/.test(designation)) return 'M'
   if (/^NGC /.test(designation)) return 'NGC'
   if (/^IC /.test(designation)) return 'IC'
   if (/^C \d/.test(designation)) return 'C'
@@ -72,10 +83,30 @@ export function catalogOf(designation: string): string | null {
   return null
 }
 
-type Row = [string, string, string, string, ObjectType, number, number, number, number, number, number, number, string, number, string, string]
+export interface Illuminator {
+  /** Oznaczenie gwiazdy (HD lub BD). */
+  star: string
+  raDeg: number
+  decDeg: number
+  vMag: number | null
+  /** Indeks gromady katalogu, w której obszarze leży gwiazda (sprawdzenie członkostwa po odległości Gaia). */
+  cluster: number | null
+}
 
-export function parseCatalog(rows: Row[]): DSO[] {
+const SCOPES: DistanceScope[] = ['object', 'population', 'illuminator', 'cloud', 'redshift']
+/** Katalog sprzed tabeli źródeł (np. z pamięci service workera): odległości pochodziły tylko z Wikidata. */
+const LEGACY_SOURCE: DistanceInfo = { scope: 'object', method: 'Wikidata, niezweryfikowane', source: 'Wikidata (P2583)', ref: '', verified: false }
+/** Wpis tabeli źródeł w catalog.json: [zakres, metoda, źródło, bibcode, sprawdzona (1/0)]. */
+export type SourceRow = [number, string, string, string, number]
+/** Kolumny 16–18 tylko w wierszach z odległością lub gwiazdą oświetlającą: względna niepewność w promilach (0: brak),
+ *  indeks tabeli źródeł (−1: brak), gwiazda oświetlająca [oznaczenie, RA, Dec, V (99: brak), indeks gromady (−1: brak)]. */
+type Row = [string, string, string, string, ObjectType, number, number, number, number, number, number, number, string, number, string, string, number?, number?, [string, number, number, number, number]?]
+
+export function parseCatalog(rows: Row[], sourceRows: SourceRow[] = [], unresolvedRows: number[] = []): DSO[] {
+  const unresolved = new Set(unresolvedRows)
+  const sources = sourceRows.map(([scope, method, source, ref, verified]): DistanceInfo => ({ scope: SCOPES[scope], method, source, ref, verified: verified === 1 }))
   return rows.map((r, i) => {
+    const ill = r[18]
     const aliases = r[1] ? r[1].split('|') : []
     const namesEn = r[3] ? r[3].split('|') : []
     const all = [r[0], ...aliases]
@@ -96,6 +127,10 @@ export function parseCatalog(rows: Row[]): DSO[] {
       sb: r[11] >= 99 ? null : r[11],
       con: r[12],
       distLy: r[13] || null,
+      distUncLy: r[13] && r[16] ? r[13] * r[16] / 1000 : null,
+      distInfo: r[13] ? r[17] === undefined ? LEGACY_SOURCE : sources[r[17]] ?? null : null,
+      unresolved: unresolved.has(i),
+      illuminator: ill ? { star: ill[0], raDeg: ill[1], decDeg: ill[2], vMag: ill[3] >= 99 ? null : ill[3], cluster: ill[4] < 0 ? null : ill[4] } : null,
       wikiPl: r[14],
       wikiEn: r[15],
       catalogs,
@@ -197,6 +232,6 @@ export function quickSearch(catalog: readonly DSO[], query: string): DSO[] {
 export async function loadCatalog(): Promise<DSO[]> {
   const res = await fetch('/data/catalog.json')
   if (!res.ok) throw new Error(`Nie udało się wczytać katalogu (HTTP ${res.status})`)
-  const data = (await res.json()) as { rows: Row[] }
-  return parseCatalog(data.rows)
+  const data = (await res.json()) as { rows: Row[]; sources?: SourceRow[]; unresolved?: number[] }
+  return parseCatalog(data.rows, data.sources, data.unresolved)
 }

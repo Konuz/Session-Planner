@@ -49,3 +49,9 @@ it('przyjmuje do pamięci tylko PNG z poprawną sygnaturą', async () => {
   expect(existsSync(join(cache, 'art-x.png'))).toBe(false)
   expect((await cachedBytes(cache, 'art-y.png', `${base}/png`)).length).toBe(8)
 })
+
+it('odrzuca odpowiedź, której nie przyjęło własne sprawdzenie (np. błąd zapytania VizieR)', async () => {
+  const reject = (text: string) => { if (text.includes('objects')) throw new Error('VizieR: błąd zapytania') }
+  await expect(cachedText(cache, 'vizier-error.tsv', `${base}/json`, undefined, reject)).rejects.toThrow('VizieR')
+  expect(existsSync(join(cache, 'vizier-error.tsv'))).toBe(false)
+})

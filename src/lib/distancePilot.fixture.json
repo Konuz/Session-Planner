@@ -1,0 +1,580 @@
+{
+ "source": "output/odleglosci-pilotaz-2026-11-06 (pilotaż 6.11.2026)",
+ "objects": [
+  {
+   "id": "B 33",
+   "photo": "IC434",
+   "pilot": {
+    "ly": 1264,
+    "sigmaPct": 1,
+    "scope": "illuminator",
+    "status": "indirect",
+    "usable3D": true
+   },
+   "expect": "unverified",
+   "note": "pilotaż: gwiazda σ Ori z literatury (Schaefer 2016); aplikacja: tylko Wikidata 1500 lś"
+  },
+  {
+   "id": "IC 434",
+   "photo": "IC434",
+   "pilot": {
+    "ly": 1264,
+    "sigmaPct": 1,
+    "scope": "illuminator",
+    "status": "indirect",
+    "usable3D": true
+   },
+   "expect": "none",
+   "note": "pilotaż: σ Ori z literatury; bez automatycznego źródła"
+  },
+  {
+   "id": "IC 435",
+   "photo": "IC434",
+   "pilot": {
+    "ly": 1219,
+    "sigmaPct": 1.3,
+    "scope": "illuminator",
+    "status": "indirect",
+    "usable3D": true
+   },
+   "expect": "stars"
+  },
+  {
+   "id": "LBN 950",
+   "photo": "IC434",
+   "pilot": {
+    "ly": 1264,
+    "sigmaPct": 4.1,
+    "scope": "object",
+    "status": "candidate",
+    "usable3D": false
+   },
+   "expect": "none"
+  },
+  {
+   "id": "LDN 1630",
+   "photo": "IC434",
+   "pilot": {
+    "ly": 1417,
+    "sigmaPct": 6,
+    "scope": "cloud",
+    "status": "measured",
+    "usable3D": true
+   },
+   "expect": "catalog"
+  },
+  {
+   "id": "NGC 2023",
+   "photo": "IC434",
+   "pilot": {
+    "ly": 1285,
+    "sigmaPct": 1,
+    "scope": "illuminator",
+    "status": "indirect",
+    "usable3D": true
+   },
+   "expect": "stars"
+  },
+  {
+   "id": "NGC 2024",
+   "photo": "IC434",
+   "pilot": {
+    "ly": 1314,
+    "sigmaPct": 1.2,
+    "scope": "population",
+    "status": "measured",
+    "usable3D": true
+   },
+   "expect": "none",
+   "note": "pilotaż: VLBA z literatury (Dzib 2026); brak w Hunt & Reffert 2023"
+  },
+  {
+   "id": "Sh2-277",
+   "photo": "IC434",
+   "pilot": {
+    "ly": 1295,
+    "sigmaPct": 2.5,
+    "scope": "object",
+    "status": "candidate",
+    "usable3D": false
+   },
+   "expect": "none"
+  },
+  {
+   "id": "vdB 52",
+   "photo": "IC434",
+   "pilot": {
+    "ly": 1285,
+    "sigmaPct": 1,
+    "scope": "illuminator",
+    "status": "indirect",
+    "usable3D": true
+   },
+   "expect": "stars"
+  },
+  {
+   "id": "vdB 57",
+   "photo": "IC434",
+   "pilot": {
+    "ly": 1219,
+    "sigmaPct": 1.3,
+    "scope": "illuminator",
+    "status": "indirect",
+    "usable3D": true
+   },
+   "expect": "stars"
+  },
+  {
+   "id": "IC 1990",
+   "photo": "M45",
+   "pilot": {
+    "ly": 3714,
+    "sigmaPct": 10,
+    "scope": "object",
+    "status": "candidate",
+    "usable3D": false
+   },
+   "expect": "none"
+  },
+  {
+   "id": "IC 349",
+   "photo": "M45",
+   "pilot": {
+    "ly": 440,
+    "sigmaPct": 1,
+    "scope": "illuminator",
+    "status": "indirect",
+    "usable3D": true
+   },
+   "expect": "stars"
+  },
+  {
+   "id": "IC 353",
+   "photo": "M45",
+   "pilot": {
+    "ly": null,
+    "sigmaPct": null,
+    "scope": null,
+    "status": "none",
+    "usable3D": false
+   },
+   "expect": "none"
+  },
+  {
+   "id": "IC 354",
+   "photo": "M45",
+   "pilot": {
+    "ly": null,
+    "sigmaPct": null,
+    "scope": null,
+    "status": "none",
+    "usable3D": false
+   },
+   "expect": "none"
+  },
+  {
+   "id": "LBN 770",
+   "photo": "M45",
+   "pilot": {
+    "ly": 440,
+    "sigmaPct": 1,
+    "scope": "object",
+    "status": "candidate",
+    "usable3D": false
+   },
+   "expect": "none"
+  },
+  {
+   "id": "LBN 772",
+   "photo": "M45",
+   "pilot": {
+    "ly": 440,
+    "sigmaPct": 1,
+    "scope": "object",
+    "status": "candidate",
+    "usable3D": false
+   },
+   "expect": "none"
+  },
+  {
+   "id": "LBN 773",
+   "photo": "M45",
+   "pilot": {
+    "ly": null,
+    "sigmaPct": null,
+    "scope": null,
+    "status": "none",
+    "usable3D": false
+   },
+   "expect": "none"
+  },
+  {
+   "id": "LBN 774",
+   "photo": "M45",
+   "pilot": {
+    "ly": 2758,
+    "sigmaPct": 10,
+    "scope": "object",
+    "status": "candidate",
+    "usable3D": false
+   },
+   "expect": "none"
+  },
+  {
+   "id": "LBN 776",
+   "photo": "M45",
+   "pilot": {
+    "ly": null,
+    "sigmaPct": null,
+    "scope": null,
+    "status": "none",
+    "usable3D": false
+   },
+   "expect": "none"
+  },
+  {
+   "id": "M 45",
+   "photo": "M45",
+   "pilot": {
+    "ly": 440,
+    "sigmaPct": 1,
+    "scope": "object",
+    "status": "measured",
+    "usable3D": true
+   },
+   "expect": "catalog"
+  },
+  {
+   "id": "NGC 1432",
+   "photo": "M45",
+   "pilot": {
+    "ly": 440,
+    "sigmaPct": 1,
+    "scope": "illuminator",
+    "status": "indirect",
+    "usable3D": true
+   },
+   "expect": "stars"
+  },
+  {
+   "id": "NGC 1435",
+   "photo": "M45",
+   "pilot": {
+    "ly": 440,
+    "sigmaPct": 1,
+    "scope": "illuminator",
+    "status": "indirect",
+    "usable3D": true
+   },
+   "expect": "none",
+   "note": "pilotaż: Merope 11′ od mgławicy (literatura); poza promieniem 1′ gwiazdy vdB"
+  },
+  {
+   "id": "vdB 20",
+   "photo": "M45",
+   "pilot": {
+    "ly": 440,
+    "sigmaPct": 1,
+    "scope": "illuminator",
+    "status": "indirect",
+    "usable3D": true
+   },
+   "expect": "stars"
+  },
+  {
+   "id": "vdB 21",
+   "photo": "M45",
+   "pilot": {
+    "ly": 440,
+    "sigmaPct": 1,
+    "scope": "illuminator",
+    "status": "indirect",
+    "usable3D": true
+   },
+   "expect": "stars"
+  },
+  {
+   "id": "vdB 22",
+   "photo": "M45",
+   "pilot": {
+    "ly": 440,
+    "sigmaPct": 1,
+    "scope": "illuminator",
+    "status": "indirect",
+    "usable3D": true
+   },
+   "expect": "stars"
+  },
+  {
+   "id": "vdB 23",
+   "photo": "M45",
+   "pilot": {
+    "ly": 440,
+    "sigmaPct": 1,
+    "scope": "illuminator",
+    "status": "indirect",
+    "usable3D": true
+   },
+   "expect": "none",
+   "note": "Alcyone bez paralaksy w Gaia DR3: członkostwo w gromadzie niepotwierdzone"
+  },
+  {
+   "id": "IC 2388",
+   "photo": "M44",
+   "pilot": {
+    "ly": 465713215,
+    "sigmaPct": 3,
+    "scope": "redshift",
+    "status": "indirect",
+    "usable3D": true
+   },
+   "expect": "catalog"
+  },
+  {
+   "id": "M 44",
+   "photo": "M44",
+   "pilot": {
+    "ly": 598,
+    "sigmaPct": 1,
+    "scope": "object",
+    "status": "measured",
+    "usable3D": true
+   },
+   "expect": "catalog"
+  },
+  {
+   "id": "NGC 2637",
+   "photo": "M44",
+   "pilot": {
+    "ly": 460823670,
+    "sigmaPct": 3,
+    "scope": "redshift",
+    "status": "indirect",
+    "usable3D": true
+   },
+   "expect": "catalog"
+  },
+  {
+   "id": "NGC 2643",
+   "photo": "M44",
+   "pilot": {
+    "ly": 222651082,
+    "sigmaPct": 6.3,
+    "scope": "redshift",
+    "status": "indirect",
+    "usable3D": true
+   },
+   "expect": "catalog"
+  },
+  {
+   "id": "IC 4263",
+   "photo": "M51",
+   "pilot": {
+    "ly": 124286905,
+    "sigmaPct": 18.5,
+    "scope": "object",
+    "status": "measured",
+    "usable3D": true
+   },
+   "expect": "catalog"
+  },
+  {
+   "id": "IC 4277",
+   "photo": "M51",
+   "pilot": {
+    "ly": null,
+    "sigmaPct": null,
+    "scope": null,
+    "status": "none",
+    "usable3D": false
+   },
+   "expect": "none"
+  },
+  {
+   "id": "IC 4278",
+   "photo": "M51",
+   "pilot": {
+    "ly": 245371534,
+    "sigmaPct": 5.7,
+    "scope": "redshift",
+    "status": "indirect",
+    "usable3D": true
+   },
+   "expect": "none",
+   "note": "pilotaż: z tylko w NED (w edycji wycinka); SIMBAD bez z"
+  },
+  {
+   "id": "IC 4282",
+   "photo": "M51",
+   "pilot": {
+    "ly": 642561022,
+    "sigmaPct": 2.2,
+    "scope": "redshift",
+    "status": "indirect",
+    "usable3D": true
+   },
+   "expect": "unverified",
+   "note": "pilotaż: z z NED; SIMBAD nie zna nazwy, zostaje Wikidata"
+  },
+  {
+   "id": "IC 4284",
+   "photo": "M51",
+   "pilot": {
+    "ly": 849909149,
+    "sigmaPct": 1.6,
+    "scope": "redshift",
+    "status": "indirect",
+    "usable3D": true
+   },
+   "expect": "catalog"
+  },
+  {
+   "id": "IC 4285",
+   "photo": "M51",
+   "pilot": {
+    "ly": 1027124860,
+    "sigmaPct": 1.3,
+    "scope": "redshift",
+    "status": "indirect",
+    "usable3D": true
+   },
+   "expect": "catalog"
+  },
+  {
+   "id": "M 51",
+   "photo": "M51",
+   "pilot": {
+    "ly": 27203537,
+    "sigmaPct": 3.6,
+    "scope": "object",
+    "status": "measured",
+    "usable3D": true
+   },
+   "expect": "catalog"
+  },
+  {
+   "id": "NGC 5169",
+   "photo": "M51",
+   "pilot": {
+    "ly": 179649235,
+    "sigmaPct": 26.6,
+    "scope": "object",
+    "status": "measured",
+    "usable3D": false
+   },
+   "expect": "unverified",
+   "note": "Cosmicflows-4 (Tully–Fisher) ma σ 26 % > 20 %: zamiast niego Wikidata (niezweryfikowane), decyzja 7.11.2026"
+  },
+  {
+   "id": "NGC 5195",
+   "photo": "M51",
+   "pilot": {
+    "ly": 24222857,
+    "sigmaPct": 12.5,
+    "scope": "object",
+    "status": "measured",
+    "usable3D": true
+   },
+   "expect": "catalog"
+  },
+  {
+   "id": "NGC 5198",
+   "photo": "M51",
+   "pilot": {
+    "ly": 154891484,
+    "sigmaPct": 18.5,
+    "scope": "object",
+    "status": "conflict",
+    "usable3D": false
+   },
+   "expect": "unverified",
+   "note": "pilotaż: konflikt pomiarów 32–75 Mpc; cz_CMB < 3000 km/s, zostaje Wikidata"
+  }
+ ],
+ "stars": [
+  {
+   "id": "Gaia DR3 3216478266124377984",
+   "x": 0,
+   "y": 0,
+   "raDeg": 85.40995,
+   "decDeg": -2.25902,
+   "gMag": 7.764,
+   "bpRp": null,
+   "parallaxMas": null,
+   "parallaxOverError": null,
+   "distLy": 1285.294,
+   "distLoLy": 1270.916,
+   "distHiLy": 1296.599
+  },
+  {
+   "id": "Gaia DR3 3216556606326986112",
+   "x": 0,
+   "y": 0,
+   "raDeg": 85.75239,
+   "decDeg": -2.31262,
+   "gMag": 8.219,
+   "bpRp": null,
+   "parallaxMas": null,
+   "parallaxOverError": null,
+   "distLy": 1218.694,
+   "distLoLy": 1201.523,
+   "distHiLy": 1233.263
+  },
+  {
+   "id": "Gaia DR3 65271996684817280",
+   "x": 0,
+   "y": 0,
+   "raDeg": 56.219,
+   "decDeg": 24.11313,
+   "gMag": 3.698,
+   "bpRp": null,
+   "parallaxMas": null,
+   "parallaxOverError": null,
+   "distLy": 396.64483471999995,
+   "distLoLy": 377.39184603999996,
+   "distHiLy": 420.35963748
+  },
+  {
+   "id": "Gaia DR3 65283232316451328",
+   "x": 0,
+   "y": 0,
+   "raDeg": 56.4568,
+   "decDeg": 24.36754,
+   "gMag": 3.863,
+   "bpRp": null,
+   "parallaxMas": null,
+   "parallaxOverError": null,
+   "distLy": 426.10324464,
+   "distLoLy": 411.53711767999994,
+   "distHiLy": 444.83112215999995
+  },
+  {
+   "id": "Gaia DR3 65205373152172032",
+   "x": 0,
+   "y": 0,
+   "raDeg": 56.58167,
+   "decDeg": 23.94814,
+   "gMag": 4.173,
+   "bpRp": null,
+   "parallaxMas": null,
+   "parallaxOverError": null,
+   "distLy": 465.29741115999997,
+   "distLoLy": 447.41101611999994,
+   "distHiLy": 484.86024803999993
+  },
+  {
+   "id": "Gaia DR3 66714384142368256",
+   "x": 0,
+   "y": 0,
+   "raDeg": 56.87125,
+   "decDeg": 24.10493,
+   "gMag": 2.896,
+   "bpRp": null,
+   "parallaxMas": null,
+   "parallaxOverError": null,
+   "distLy": null,
+   "distLoLy": null,
+   "distHiLy": null
+  }
+ ]
+}

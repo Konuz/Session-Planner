@@ -88,6 +88,32 @@ it('w rzadkim polu robi jedno głębsze zapytanie, a udany wynik buforuje', asyn
   expect(fetchImpl).toHaveBeenCalledTimes(2)
 })
 
+it('po przekroczeniu limitu GAVO pobiera gwiazdy z lustra i dopasowuje odległości po pełnych identyfikatorach', async () => {
+  const thetaId = '3017364063330718080'
+  const otherId = '3017364063330718081'
+  const fetchImpl = vi.fn<typeof fetch>()
+    .mockResolvedValueOnce(new Response('Field query: Query timed out', { status: 500 }))
+    .mockResolvedValueOnce(new Response([
+      header.split(',').slice(0, 10).join(','),
+      `${thetaId},83.81861966,-5.38969608,1.0,2.0,4.96,4.79,4.62,2.5014,0.1352`,
+      `${otherId},83.80,-5.40,,,14.0,14.5,13.4,,`,
+    ].join('\r\n')))
+    .mockResolvedValueOnce(new Response(`source_id,r_med_geo,r_lo_geo,r_hi_geo\r\n${thetaId},393.43,373.59,411.63`))
+  const { status, data } = await post(request(), fetchImpl)
+  expect(status).toBe(200)
+  expect(fetchImpl).toHaveBeenCalledTimes(3)
+  const mirror = new URL(String(fetchImpl.mock.calls[1][0]))
+  expect(mirror.hostname).toBe('data.xao.ac.cn')
+  expect(mirror.searchParams.get('QUERY')).toContain("CIRCLE('ICRS', 83.800000, -5.400000, 0.500000)")
+  const [url, options] = fetchImpl.mock.calls[2]
+  expect(new URL(String(url)).hostname).toBe('dc.zah.uni-heidelberg.de')
+  expect(options?.method).toBe('POST')
+  expect((options?.body as URLSearchParams).get('QUERY')).toContain(thetaId)
+  expect(data.stars.map((star: { id: string }) => star.id)).toEqual([`Gaia DR3 ${thetaId}`, `Gaia DR3 ${otherId}`])
+  expect(data.stars[0].distLy).toBeCloseTo(393.43 * 3.26156)
+  expect(data.stars[1].distLy).toBeNull()
+})
+
 it('odróżnia awarię GAVO, zbyt rozległe pole i niepoprawne zapytania', async () => {
   const failing = vi.fn<typeof fetch>(async () => new Response('', { status: 503 }))
   expect((await post(request(), failing)).status).toBe(502)
@@ -98,7 +124,7 @@ it('odróżnia awarię GAVO, zbyt rozległe pole i niepoprawne zapytania', async
   expect((await post(request(), failing, 'text/plain')).status).toBe(415)
   expect((await post('{', failing)).status).toBe(400)
   expect((await post({ wcs: {}, width: 0, height: 10 }, failing)).status).toBe(400)
-  expect(failing).toHaveBeenCalledTimes(1)
+  expect(failing).toHaveBeenCalledTimes(2)
 })
 
 it('granica jasności maleje z polem i ma rozsądne krańce', () => {

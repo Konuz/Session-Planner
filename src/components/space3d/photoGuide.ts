@@ -1,5 +1,6 @@
 // Zdjęcie w skali Drogi Mlecznej: linia widzenia od Ziemi, stożek pola (cztery promienie do narożników kadru)
-// i znaczniki wycinków według photoAnchorKind(…, 'galaxy'). Podpisy w DOM nad sceną Space3D.
+// i znaczniki wycinków z ustaloną odległością według photoAnchorKind(…, 'galaxy'); obiektów bez odległości nie ma.
+// Podpisy w DOM nad sceną Space3D.
 import { useEffect, useRef, type RefObject } from 'react'
 import * as THREE from 'three'
 import type { Vec3 } from '../../lib/astro'
@@ -7,14 +8,12 @@ import { DEFAULT_ANNOTATION_COLORS, type ObjectType } from '../../lib/catalog'
 import { frameBasis, halfFieldTan } from '../../lib/frameBasis'
 import { fmtDistance } from '../../lib/format'
 import { AXIS_DASH, AXIS_LENGTH, EARTH_Z } from '../../lib/observatory'
-import { photoAnchorKind, type PhotoProject } from '../../lib/photo'
+import { cutsInThreeD, photoAnchorKind, type PhotoProject } from '../../lib/photo'
 import { GALACTIC_LIMIT_LY, scenePosition } from '../../lib/space3d'
 import { diveScale } from '../../lib/spaceDive'
 import { useStore } from '../../state/store'
 import type { Space3DHandle } from '../Space3D'
 
-/** Odległość znaczników bez pomiaru od Ziemi (tys. lś): dawna kotwica 0,35 kadru × 80 tys. lś. */
-export const DIRECTION_KLY = 28
 const DISK_RADIUS_KLY = 50
 
 export interface PhotoGuide {
@@ -70,11 +69,11 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, c
   if (!basis) return null
   const { sunPos } = handle
   const dir = new THREE.Vector3(...basis.center)
-  const cuts = project.cuts.filter((c) => c.enabled).map((cut) => ({ cut, kind: photoAnchorKind(cut.distLy, 'galaxy') }))
+  const cuts = cutsInThreeD(project.cuts).map((cut) => ({ cut, kind: photoAnchorKind(cut.distLy, 'galaxy') }))
   const positions = cuts.filter((c) => c.kind === 'position').map(({ cut }) => new THREE.Vector3(...scenePosition(cut, cut.distLy!, 'galaxy')))
   const farthest = Math.max(0, ...positions.map((p) => p.distanceTo(sunPos)))
   const outside = cuts.some((c) => c.kind === 'outside')
-  const length = Math.max(toSphere(sunPos, dir, outside ? GALACTIC_LIMIT_LY / 1000 : DISK_RADIUS_KLY), farthest * 1.15, cuts.some((c) => c.kind === 'direction') ? DIRECTION_KLY * 1.15 : 0)
+  const length = Math.max(toSphere(sunPos, dir, outside ? GALACTIC_LIMIT_LY / 1000 : DISK_RADIUS_KLY), farthest * 1.15)
   // Kadr jak dla wybranego obiektu: Ziemia i zmierzone wycinki, rozmiar co najmniej 8 tys. lś (k: skala kresek).
   const box = new THREE.Box3().setFromPoints([sunPos, ...(positions.length ? positions : [sunPos.clone().addScaledVector(dir, 4)])])
   const focus = box.getCenter(new THREE.Vector3())
@@ -132,7 +131,7 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, c
   labels.className = 'obs-labels space-photo-labels'
   handle.mount.appendChild(labels)
   const marks: { id: string | null; position: Vec3; sprite: THREE.Sprite; label: HTMLDivElement; width: number; height: number }[] = []
-  // Wycinki bez odległości i poza skalą leżą w jednym punkcie linii: jeden znacznik i jeden podpis na grupę.
+  // Wycinki poza skalą leżą w jednym punkcie linii: jeden znacznik i jeden podpis na grupę.
   const groups = new Map<string, typeof cuts>()
   for (const entry of cuts) {
     const key = entry.kind === 'position' ? entry.cut.id : entry.kind
@@ -140,9 +139,7 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, c
   }
   for (const members of groups.values()) {
     const { cut, kind } = members[0]
-    const world = kind === 'position' ? new THREE.Vector3(...scenePosition(cut, cut.distLy!, 'galaxy'))
-      : kind === 'outside' ? sunPos.clone().addScaledVector(dir, length)
-        : sunPos.clone().addScaledVector(dir, DIRECTION_KLY)
+    const world = kind === 'position' ? new THREE.Vector3(...scenePosition(cut, cut.distLy!, 'galaxy')) : sunPos.clone().addScaledVector(dir, length)
     const texture = ringTexture(members.length > 1 ? accent : colors[cut.type] ?? DEFAULT_ANNOTATION_COLORS[cut.type], kind !== 'position')
     const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, depthTest: false, sizeAttenuation: false })
     const sprite = new THREE.Sprite(material)
@@ -156,7 +153,7 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, c
     const lines = Array.from({ length: Math.ceil(ids.length / 3) }, (_, i) => ids.slice(i * 3, i * 3 + 3).join(', '))
     const label = document.createElement('div')
     label.className = `obs-label space-photo-label${kind === 'position' ? '' : ' dashed'}`
-    const text = [...lines, kind === 'outside' ? 'poza skalą' : kind === 'direction' ? 'odległość nieznana' : `≈ ${fmtDistance(cut.distLy!)}`]
+    const text = [...lines, kind === 'outside' ? 'poza skalą' : `≈ ${fmtDistance(cut.distLy!)}`]
     label.textContent = text.join('\n')
     labels.appendChild(label)
     // Wymiary podpisu w pikselach (krój 10 px ≈ 6,1 px na znak, wiersze po 13,5 px, obramowanie) do rozmieszczania.

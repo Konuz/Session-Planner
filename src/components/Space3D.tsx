@@ -11,7 +11,7 @@ import { galacticVector } from '../lib/astro'
 import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO, type DSO, type ObjectType } from '../lib/catalog'
 import { useCatalog, useSelected } from '../state/data'
 import { useStore } from '../state/store'
-import { photoAnchorKind, type PhotoProject, type PhotoSceneFrame } from '../lib/photo'
+import { cutsInThreeD, photoAnchorKind, type PhotoProject, type PhotoSceneFrame } from '../lib/photo'
 import { GALACTIC_LIMIT_LY, sunPosition } from '../lib/space3d'
 import {
   LOCAL_GROUP_SHAPES, MILKY_WAY_DIAMETER_LY, UNIVERSE_GALAXY_SCALE, addStarNameLabels, domeMaterial, dotTexture, fixedSizeTextSprite,
@@ -367,8 +367,8 @@ export default function Space3D({ settings, photo, frameRef: photoFrameRef, fitR
     // Dopasowanie kadru do starej nakładki zdjęcia: tylko Wszechświat lokalny (Droga Mleczna ma linię widzenia).
     photoFitRef.current = scale === 'galaxy' ? null : () => {
       const points = [sunPos.clone()]
-      for (const cut of photoRef.current?.cuts ?? []) {
-        if (cut.enabled && photoAnchorKind(cut.distLy, scale) === 'position') points.push(position(cut, cut.distLy!, scale))
+      for (const cut of cutsInThreeD(photoRef.current?.cuts ?? [])) {
+        if (photoAnchorKind(cut.distLy, scale) === 'position') points.push(position(cut, cut.distLy!, scale))
       }
       const bounds = new THREE.Box3().setFromPoints(points)
       const center = bounds.getCenter(new THREE.Vector3())
@@ -589,7 +589,8 @@ export default function Space3D({ settings, photo, frameRef: photoFrameRef, fitR
           || (photo !== null && (!sameMatrix(photoCameraMatrix, camera.matrixWorld) || !sameMatrix(photoProjectionMatrix, camera.projectionMatrix)))
         if (changed && now - lastPhotoFrame >= 32) {
           const origin = photo ? sunPos.clone().project(camera) : { x: 0, y: 0 }
-          const anchors = (photo?.cuts ?? []).filter((c) => c.enabled).map((cut) => {
+          // Tylko wycinki z ustaloną odległością; obiekty poza skalą wskazują kierunek z Ziemi.
+          const anchors = cutsInThreeD(photo?.cuts ?? []).map((cut) => {
             const kind = photoAnchorKind(cut.distLy, scale)
             const world = kind === 'position' ? position(cut, cut.distLy!, scale)
               : kind === 'local' ? sunPos.clone()

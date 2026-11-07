@@ -15,7 +15,7 @@ import Space3D, { type Space3DHandle } from '../Space3D'
 import { SpaceDive, restoreSpace } from './dive'
 import { GalaxyPhotoBar, PhotoCutEditor, PhotoFlatView, PhotoImport, PhotoMessages } from './PhotoEditing'
 import { usePhotoGuide } from './photoGuide'
-import { useGaiaStars, usePhotoSession } from './photoSession'
+import { useCutDistances, useGaiaStars, usePhotoSession, useRegressor } from './photoSession'
 import { PhotoUnfold } from './PhotoUnfold'
 import { useSpaceSettings } from './spaceSettings'
 import { SpaceToolbar } from './SpaceToolbar'
@@ -38,6 +38,8 @@ export default function Space3DModal() {
   const project = session.project
   const settings = useSpaceSettings(o, project)
   const { stars, retry } = useGaiaStars(session, settings.scale === 'galaxy')
+  useCutDistances(session)
+  const regressing = useRegressor(session)
   const frameRef = useRef<((frame: PhotoSceneFrame) => void) | null>(null)
   const fitRef = useRef<(() => void) | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -105,7 +107,7 @@ export default function Space3DModal() {
     const domain = distanceDomain(items.map((item) => item.distLy))
     const seamProgress = direction === 'out' ? obsScene.current?.getProgress() ?? 1 : 1
     const markerTargets = new Map(items.filter((item) => item.kind === 'object' && item.distLy !== null)
-      .map((item) => [item.id, observatoryPosition(item, project, item.distLy, domain, seamProgress)]))
+      .map((item) => [item.id, observatoryPosition(item, project, item.distLy, domain, 0)]))
     const dive = new SpaceDive({
       direction, space: handle, guide,
       observatory: () => obsScene.current,
@@ -200,11 +202,11 @@ export default function Space3DModal() {
         <PhotoImport session={session} inputRef={inputRef} showButton={!project || (!galaxy && !editing)} />
         <PhotoMessages session={session} />
         {project && !galaxy && <PhotoUnfold key={project.id} session={session} frameRef={frameRef} fitRef={fitRef} onObservatory={unfold} />}
-        {project && galaxy && <GalaxyPhotoBar session={session} stars={stars} onUnfold={unfold} onPick={() => inputRef.current?.click()} onRetryStars={retry} />}
+        {project && galaxy && <GalaxyPhotoBar session={session} stars={stars} regressing={regressing.length} onUnfold={unfold} onPick={() => inputRef.current?.click()} onRetryStars={retry} />}
         {editing && <PhotoFlatView session={session} />}
       </>}
     </div>
-    {editing && <PhotoCutEditor session={session} />}
+    {editing && <PhotoCutEditor session={session} regressing={regressing} />}
     {(obsAlive || mode !== 'scale') && obsProject && stage && summary && <Observatory project={obsProject} slots={{ stage, toolbar: showPhoto ? toolbarSlot : null, summary: showPhoto ? summary : null }}
       stars={stars} onRetryStars={retry} diving={diving} hidden={mode === 'scale'} onScene={(scene) => { obsScene.current = scene }} />}
   </SpaceWindow>

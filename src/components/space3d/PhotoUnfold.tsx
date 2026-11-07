@@ -4,7 +4,7 @@ import { Pause, Play, RotateCcw, Settings2, X } from 'lucide-react'
 import { useEffect, useId, useState, type RefObject } from 'react'
 import { DEFAULT_ANNOTATION_COLORS } from '../../lib/catalog'
 import { fmtDistance } from '../../lib/format'
-import { coveredPhotoCircles, photoColumnCapacity, photoColumns, photoFrame, photoPose, type PhotoSceneFrame } from '../../lib/photo'
+import { coveredPhotoCircles, cutsInThreeD, distanceSummary, photoColumnCapacity, photoColumns, photoFrame, photoPose, type PhotoSceneFrame } from '../../lib/photo'
 import { Range } from '../Range'
 import type { PhotoSession } from './photoSession'
 
@@ -48,7 +48,8 @@ export function PhotoUnfold({ session, frameRef, fitRef, onObservatory }: Props)
 
   const { width, height } = scene
   const frame = project ? photoFrame(width, height, project) : { x: 0, y: 0, scale: 1 }
-  const enabled = project?.cuts.filter((c) => c.enabled) ?? []
+  // Tylko obiekty z ustaloną odległością; pozostałych nie rozkładamy.
+  const enabled = cutsInThreeD(project?.cuts ?? [])
   const move = Math.max(0, Math.min(1, (progress - 0.18) / 0.82))
   const circleOpacity = Math.min(1, progress / 0.12)
   const columns = photoColumns(enabled, project?.width ?? 0, photoColumnCapacity(project?.cuts ?? []))
@@ -90,7 +91,7 @@ export function PhotoUnfold({ session, frameRef, fitRef, onObservatory }: Props)
           const length = Math.hypot(dx, dy)
           return <g key={cut.id}>
             {anchor?.visible && move > 0 && <g opacity={move} stroke="var(--accent)" fill="none" strokeWidth="0.75">
-              {anchor.kind === 'direction' || anchor.kind === 'outside'
+              {anchor.kind === 'outside'
                 ? <line x1={anchor.originX} y1={anchor.originY} x2={anchor.x} y2={anchor.y} strokeDasharray="4 5" markerEnd={`url(#${prefix}-arrow)`} />
                 : anchor.kind === 'position' && <circle cx={anchor.x} cy={anchor.y} r={3} fill="var(--accent)" />}
               <line x1={pose.x + dx / Math.max(1, length) * pose.radius} y1={pose.y + dy / Math.max(1, length) * pose.radius} x2={anchor.x} y2={anchor.y} strokeDasharray={anchor.kind === 'position' ? undefined : '3 5'} />
@@ -102,16 +103,16 @@ export function PhotoUnfold({ session, frameRef, fitRef, onObservatory }: Props)
         })}
         {positions.map(({ cut, pose, anchor }, i) => {
           const color = DEFAULT_ANNOTATION_COLORS[cut.type]
-          const caption = anchor?.kind === 'outside' ? 'poza skalą • kierunek' : anchor?.kind === 'local' ? 'w Drodze Mlecznej' : cut.distLy ? `≈ ${fmtDistance(cut.distLy)}${cut.uncertaintyLy ? ` ± ${fmtDistance(cut.uncertaintyLy)}` : ''}` : 'odległość nieznana'
+          const caption = anchor?.kind === 'outside' ? 'poza skalą • kierunek' : anchor?.kind === 'local' ? 'w Drodze Mlecznej' : `≈ ${fmtDistance(cut.distLy)}${cut.uncertaintyLy ? ` ± ${fmtDistance(cut.uncertaintyLy)}` : ''}`
           return <g key={cut.id}>
-            <circle cx={pose.x} cy={pose.y} r={pose.radius} fill="transparent" stroke={activeId === cut.id ? 'var(--accent)' : color} strokeWidth={activeId === cut.id ? 2 : 1.4} strokeDasharray={covered[i] ? '5 4' : undefined} opacity={circleOpacity} className="photo-circle" onClick={() => setActiveId(cut.id)}><title>{`${cut.id}: ${caption}${cut.distanceSource ? ` — ${cut.distanceSource}` : ''}${cut.distanceScope === 'complex' ? ' (pomiar całego kompleksu)' : ''}`}</title></circle>
+            <circle cx={pose.x} cy={pose.y} r={pose.radius} fill="transparent" stroke={activeId === cut.id ? 'var(--accent)' : color} strokeWidth={activeId === cut.id ? 2 : 1.4} strokeDasharray={covered[i] ? '5 4' : undefined} opacity={circleOpacity} className="photo-circle" onClick={() => setActiveId(cut.id)}><title>{`${cut.id}: ${distanceSummary(cut)}`}</title></circle>
             <text x={pose.x} y={pose.y + pose.radius + 14} className="photo-label" opacity={circleOpacity}>{cut.id}</text>
             <text x={pose.x} y={pose.y + pose.radius + 27} className="photo-distance" opacity={move}>{caption}</text>
           </g>
         })}
       </svg>}
       <div className="photo-controls">
-        <div className="photo-heading"><span title={project.name}>{project.name}</span><span className="dim">{enabled.length}/{project.cuts.length} obiektów</span></div>
+        <div className="photo-heading"><span title={project.name}>{project.name}</span><span className="dim">{enabled.length}/{project.cuts.length} obiektów w 3D</span></div>
         <div className="photo-timeline">
           <button className="icon-button" aria-label={playing ? 'Zatrzymaj rozkładanie' : 'Odtwórz rozkładanie'} disabled={!enabled.length} onClick={play}>{playing ? <Pause size={15} /> : <Play size={15} />}</button>
           <button className="icon-button" aria-label="Wróć do fotografii" onClick={() => { setPlaying(false); setProgress(0) }}><RotateCcw size={14} /></button>

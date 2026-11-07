@@ -203,10 +203,10 @@ export class SpaceDive {
     guide.setOpacity(fades.guide, fades.cone, fades.coneFaces, fades.spaceAxis)
   }
 
-  private applyObservatory(obs: ObservatoryScene, { phase, k }: DiveFrame, seam: Pose, now: number, spaceView: (Pose & { fov: number }) | null) {
+  private applyObservatory(obs: ObservatoryScene, { phase, k, photoProgress }: DiveFrame, seam: Pose, now: number, spaceView: (Pose & { fov: number }) | null) {
     obs.setExternal(true)
     obs.setInteractive(false)
-    obs.setProgress(this.o.seamProgress)
+    obs.setProgress(this.o.seamProgress * photoProgress)
     if (phase === 'enter') {
       const end = this.obsEnd ?? seam
       const t = ease(k)

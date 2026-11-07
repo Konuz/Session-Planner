@@ -4,8 +4,9 @@
 import { Pause, Play, SkipBack, SkipForward } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { SCOPE_LABELS, adsUrl, hasDistance } from '../../lib/distance'
 import { fmtDistance, fmtNum } from '../../lib/format'
-import { CATEGORY_LABELS, byDistance, categoryCounts, distanceDomain, distanceHistogram, fieldOfView, matchesFilter, observatoryItems, type CategoryFilter, type ObservatoryItem } from '../../lib/observatory'
+import { CATEGORY_LABELS, PHOTO_UNFOLD_MS, byDistance, categoryCounts, distanceDomain, distanceHistogram, fieldOfView, matchesFilter, observatoryItems, type CategoryFilter, type ObservatoryItem } from '../../lib/observatory'
 import type { PhotoProject } from '../../lib/photo'
 import { Range } from '../Range'
 import type { StarsStatus } from '../space3d/photoSession'
@@ -72,7 +73,7 @@ export default function Observatory({ project, slots, stars, onRetryStars, divin
     const list = visibleItems.filter((item) => !q || item.id.toLowerCase().includes(q)).sort(byDistance)
     return descending ? list.reverse() : list
   }, [visibleItems, query, descending])
-  const withDistance = visibleItems.filter((item) => item.distLy !== null)
+  const withDistance = visibleItems
   const active = items.find((item) => item.id === selected) ?? null
   const fov = fieldOfView(project.astrometry.wcs, project.width, project.height)
   const thumb = useMemo(() => image && active ? thumbnail(image, active) : null, [image, active])
@@ -127,7 +128,7 @@ export default function Observatory({ project, slots, stars, onRetryStars, divin
     const tick = (now: number) => {
       const dt = Math.min(now - last, 100)
       last = now
-      setProgress((p) => Math.min(1, p + dt / 5000))
+      setProgress((p) => Math.min(1, p + dt / PHOTO_UNFOLD_MS))
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
@@ -150,11 +151,12 @@ export default function Observatory({ project, slots, stars, onRetryStars, divin
     setPlaying((p) => !p)
   }
   const span = withDistance.length ? [Math.min(...withDistance.map((i) => i.distLy!)), Math.max(...withDistance.map((i) => i.distLy!))] : null
-  const unknown = visibleItems.length - withDistance.length
+  // Pominięte: włączone wycinki i gwiazdy bez ustalonej odległości (nie ma ich w scenie ani na liście).
+  const skipped = project.cuts.filter((cut) => cut.enabled && !hasDistance(cut)).length + (project.stars?.stars.filter((star) => star.distLy === null).length ?? 0)
 
   return <>
     {slots.summary && createPortal(<>
-      {span ? <><strong>Obiekty w 3D: {withDistance.length}</strong><span>{fmtDistance(span[0])} — {fmtDistance(span[1])}</span></> : <strong>Brak odległości w tej grupie</strong>}
+      {span ? <><strong>Obiekty w 3D: {withDistance.length}</strong><span>{fmtDistance(span[0])} — {fmtDistance(span[1])}</span></> : <strong>Brak obiektów z odległością w tej grupie</strong>}
       {stars.status === 'loading' && <span className="accent">Pobieranie gwiazd Gaia DR3…</span>}
     </>, slots.summary)}
     {slots.toolbar && createPortal(<>
@@ -172,7 +174,7 @@ export default function Observatory({ project, slots, stars, onRetryStars, divin
         <span className="faint">{progress < 0.02 ? 'Widok przejściowy · dokładne położenia przy 100%' : 'Perspektywa · oś odległości logarytmiczna, dekady na osi'}</span>
       </div>
       {view === 'earth' && fov && <div className="obs-fov figures">Pole {fmtNum(fov.widthDeg, 2)}° × {fmtNum(fov.heightDeg, 2)}° ≈ {fmtNum(fov.moons, 1)} tarczy Księżyca</div>}
-      {!withDistance.length && <div className="obs-empty" role="status">Brak odległości w tym przedziale lub grupie.<br />Poszerz zakres albo wybierz inną grupę obiektów.</div>}
+      {!withDistance.length && <div className="obs-empty" role="status">Brak obiektów z odległością w tym przedziale lub grupie.<br />Poszerz zakres albo wybierz inną grupę obiektów.</div>}
       {stars.status === 'error' && <div className="obs-error photo-error" role="alert">{stars.message}<button type="button" className="button small" onClick={onRetryStars}>Ponów</button></div>}
       <div className="obs-reference">
         <span className="label">Zdjęcie źródłowe</span>
@@ -187,25 +189,25 @@ export default function Observatory({ project, slots, stars, onRetryStars, divin
           {thumb ? <img src={thumb} alt="" /> : <span className="obs-thumb-empty" />}
           <div>
             <strong>{active ? active.id : 'Wybierz obiekt'}</strong>
-            <span className="dim">{active ? `${itemKind(active)} · ${active.kind === 'star' ? 'Gaia DR3' : active.distLy ? 'pomiar z katalogu' : 'bez pomiaru'}` : 'Kliknij w scenie lub na liście'}</span>
+            <span className="dim">{active ? `${itemKind(active)} · ${active.kind === 'star' ? 'Gaia DR3' : `zakres: ${SCOPE_LABELS[active.scope]}`}` : 'Kliknij w scenie lub na liście'}</span>
           </div>
         </div>
         <span className="label">Odległość od Ziemi</span>
-        <div className="obs-distance figures">{active ? active.distLy ? fmtDistance(active.distLy) : 'brak wiarygodnej odległości' : '—'}</div>
+        <div className="obs-distance figures">{active ? fmtDistance(active.distLy) : '—'}</div>
         {active && <>
           <div className="dim figures">RA {fmtNum(active.raDeg, 5)}° · Dec {fmtNum(active.decDeg, 5)}°<br />{active.kind === 'star' ? 'równikowe ICRS · epoka 2025,0' : 'równikowe J2000'}</div>
           {active.distLy !== null && active.distLoLy !== null && active.distHiLy !== null && <div className="dim figures">Niepewność głębi −{fmtDistance(active.distLy - active.distLoLy)} / +{fmtDistance(active.distHiLy - active.distLy)}</div>}
           <button type="button" className="button small" onClick={() => sceneRef.current?.flyTo(active.id)}>Leć do zaznaczenia</button>
           <details>
             <summary>Źródło i niepewność</summary>
-            <p>{active.source || 'Brak źródła odległości.'}</p>
+            <p>{[active.method, active.source].filter(Boolean).join(' · ')}{active.ref && <> · <a href={adsUrl(active.ref)} target="_blank" rel="noreferrer">ADS ↗</a></>}</p>
             {active.kind === 'star' && <p className="figures">G = {fmtNum(active.gMag ?? 0, 2)}{active.bpRp !== null && ` · BP−RP = ${fmtNum(active.bpRp, 2)}`}{active.parallaxOverError !== null && ` · ϖ/σ = ${fmtNum(active.parallaxOverError, 1)}`}<br />Odległość podajemy przy ϖ/σ ≥ 5; przedział to 16. i 84. percentyl.</p>}
           </details>
         </>}
       </section>
       <input className="control" type="search" placeholder="Znajdź obiekt…" aria-label="Znajdź obiekt" value={query} onChange={(e) => setQuery(e.target.value)} />
       <ObjectList items={listed} selected={selected} onSelect={setSelected} descending={descending} onSort={() => setDescending((d) => !d)} />
-      <div className="faint figures">Z odległością: {withDistance.length} · bez odległości: {unknown}</div>
+      <div className="faint figures">W 3D: {withDistance.length}{skipped > 0 && ` · pominięte bez odległości: ${skipped}`}</div>
     </aside>
     <DistanceHistogram histogram={histogram} domain={domain} range={range} onRange={setRange} marker={active?.distLy ?? null} />
     <div className="obs-bottom">
@@ -221,7 +223,7 @@ export default function Observatory({ project, slots, stars, onRetryStars, divin
         <span><span className="obs-marker galaxies" />Galaktyki</span>
         <span><span className="obs-marker nebulae" />Mgławice i gromady</span>
         <span className="obs-spacer" />
-        <span className="faint">Gwiazdy: ESA/Gaia/DPAC (DR3, CC BY-NC 3.0 IGO), odległości Bailer-Jones i in. 2021 (CC BY 4.0) przy ϖ/σ ≥ 5 · obiekty bez odległości zostają na zdjęciu</span>
+        <span className="faint">Gwiazdy: ESA/Gaia/DPAC (DR3, CC BY-NC 3.0 IGO), odległości Bailer-Jones i in. 2021 (CC BY 4.0) przy ϖ/σ ≥ 5 · pokazujemy tylko obiekty z ustaloną odległością</span>
       </div>
     </div>
   </>

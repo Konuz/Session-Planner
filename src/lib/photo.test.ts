@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest'
-import { photoAnchorKind, circleIntersectsImage, photoColumnCapacity, photoColumns, photoPose, coveredPhotoCircles, migratePhotoProject, type PhotoCut } from './photo'
+import { photoAnchorKind, circleIntersectsImage, photoColumnCapacity, photoColumns, photoPose, coveredPhotoCircles, migratePhotoProject, cutsInThreeD, type PhotoCut } from './photo'
+import { hasDistance } from './distance'
 
 it('uwzględnia wycinek przecinający brzeg mimo środka poza zdjęciem', () => {
   expect(circleIntersectsImage(-5, 50, 10, 100, 100)).toBe(true)
@@ -89,10 +90,35 @@ it('oznacza tylko niżej narysowane okręgi, których obszary nachodzą na póź
 
 it('migruje zapis w wersji 1 bez gwiazd i odrzuca nieznane wersje', () => {
   const v1 = { version: 1, id: 'a', name: 'IC 434', image: '', width: 10, height: 10, createdAt: 0, cuts: [], astrometry: { raDeg: 0, decDeg: 0, rmsPx: 0, matches: 0, edgeMatches: 0, edgeRmsPx: null, totalMs: 0, wcs: {} } }
-  expect(migratePhotoProject(v1)).toEqual({ ...v1, version: 2, stars: null })
+  expect(migratePhotoProject(v1)).toEqual({ ...v1, version: 3, stars: null })
   const stars = { stars: [], magLimit: 15, fetchedAt: 1 }
   expect(migratePhotoProject({ ...v1, version: 2, stars })?.stars).toEqual(stars)
   expect(migratePhotoProject({ ...v1, version: 2, stars: { broken: true } })?.stars).toBeNull()
-  expect(migratePhotoProject({ ...v1, version: 3 })).toBeNull()
+  expect(migratePhotoProject({ ...v1, version: 3, stars })?.stars).toEqual(stars)
+  expect(migratePhotoProject({ ...v1, version: 4 })).toBeNull()
   expect(migratePhotoProject(undefined)).toBeNull()
+})
+
+it('migruje wycinki wersji 2: wartość katalogu do odświeżenia, wybór z SIMBAD zostaje, kompleks to populacja', () => {
+  const base = { type: 'EN', raDeg: 0, decDeg: 0, x: 1, y: 1, radius: 5, enabled: true, uncertaintyLy: null }
+  const v2 = {
+    version: 2, id: 'a', name: 'IC 434', image: '', width: 10, height: 10, createdAt: 0, stars: null, astrometry: {},
+    cuts: [
+      { ...base, id: 'B 33', distLy: 1500, distanceSource: 'Wikidata — katalog aplikacji', distanceScope: 'object' },
+      { ...base, id: 'NGC 2024', distLy: 1300, uncertaintyLy: 50, distanceSource: 'SIMBAD — 2018A&A...619A.106K — paral', distanceScope: 'complex' },
+      { ...base, id: 'IC 435', distLy: null, distanceSource: '', distanceScope: 'object' },
+    ],
+  }
+  const cuts = migratePhotoProject(v2)!.cuts
+  expect(cuts[0]).toMatchObject({ distLy: 1500, distanceScope: 'object', distanceMethod: 'Wikidata, niezweryfikowane', distanceSource: 'Wikidata (P2583)', distanceRef: '', distanceOrigin: 'catalog' })
+  expect(cuts[1]).toMatchObject({ distLy: 1300, uncertaintyLy: 50, distanceScope: 'population', distanceSource: 'SIMBAD — 2018A&A...619A.106K — paral', distanceOrigin: 'user' })
+  expect(cuts[2]).toMatchObject({ distLy: null, distanceSource: '', distanceMethod: '', distanceOrigin: 'catalog' })
+})
+
+it('w 3D pokazuje tylko włączone wycinki z ustaloną odległością (σ ≤ 20 %)', () => {
+  const cut = (id: string, distLy: number | null, uncertaintyLy: number | null, enabled = true) => ({ id, distLy, uncertaintyLy, enabled }) as PhotoCut
+  const cuts = [cut('a', 1000, null), cut('b', null, null), cut('c', 1000, 200), cut('d', 1000, 201), cut('e', 1000, 10, false), cut('f', 0, null)]
+  expect(cutsInThreeD(cuts).map((c) => c.id)).toEqual(['a', 'c'])
+  expect(hasDistance({ distLy: 5, uncertaintyLy: null })).toBe(true)
+  expect(hasDistance({ distLy: Number.NaN, uncertaintyLy: null })).toBe(false)
 })

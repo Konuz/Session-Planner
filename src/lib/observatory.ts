@@ -1,10 +1,12 @@
 // Obserwatorium 3D: obiekty zdjęcia (gwiazdy Gaia i wycinki katalogowe) na wspólnej osi linii widzenia.
 // Czysta logika bez three.js: pozycje, skala logarytmiczna odległości, histogram i filtry.
 import type { ObjectType } from './catalog'
-import type { PhotoProject } from './photo'
+import type { DistanceScope } from './distance'
+import { cutsInThreeD, type PhotoProject } from './photo'
 
 export type ObservatoryCategory = 'stars' | 'nebulae' | 'galaxies'
 export type CategoryFilter = ObservatoryCategory | 'all'
+export const PHOTO_UNFOLD_MS = 5000
 export const CATEGORY_LABELS: Record<CategoryFilter, string> = { all: 'Wszystko', stars: 'Gwiazdy', nebulae: 'Mgławice i gromady', galaxies: 'Galaktyki' }
 
 export interface ObservatoryItem {
@@ -26,7 +28,11 @@ export interface ObservatoryItem {
   parallaxOverError: number | null
   raDeg: number
   decDeg: number
+  /** Źródło odległości (publikacja lub katalog), metoda, bibcode i zakres; gwiazdy: Gaia DR3 i Bailer-Jones. */
   source: string
+  method: string
+  ref: string
+  scope: DistanceScope
 }
 
 /** Szerokość płaszczyzny zdjęcia i długość osi w jednostkach sceny. */
@@ -39,18 +45,21 @@ export function categoryOf(type: ObjectType): ObservatoryCategory {
   return type === 'G' || type === 'GG' ? 'galaxies' : 'nebulae'
 }
 
-/** Włączone wycinki i gwiazdy Gaia zdjęcia jako jedna lista. */
+/** Włączone wycinki z ustaloną odległością i gwiazdy Gaia z odległością jako jedna lista. Obiektów bez odległości
+ *  nie ma w Obserwatorium: ani w scenie, ani na liście. */
 export function observatoryItems(project: PhotoProject): ObservatoryItem[] {
-  const cuts = project.cuts.filter((cut) => cut.enabled).map((cut): ObservatoryItem => ({
+  const cuts = cutsInThreeD(project.cuts).map((cut): ObservatoryItem => ({
     id: cut.id, kind: 'object', category: categoryOf(cut.type), type: cut.type, x: cut.x, y: cut.y, radius: cut.radius,
     distLy: cut.distLy, distLoLy: cut.distLy !== null && cut.uncertaintyLy !== null ? cut.distLy - cut.uncertaintyLy : null,
     distHiLy: cut.distLy !== null && cut.uncertaintyLy !== null ? cut.distLy + cut.uncertaintyLy : null,
-    gMag: null, bpRp: null, parallaxOverError: null, raDeg: cut.raDeg, decDeg: cut.decDeg, source: cut.distanceSource,
+    gMag: null, bpRp: null, parallaxOverError: null, raDeg: cut.raDeg, decDeg: cut.decDeg,
+    source: cut.distanceSource, method: cut.distanceMethod, ref: cut.distanceRef, scope: cut.distanceScope,
   }))
-  const stars = (project.stars?.stars ?? []).map((star): ObservatoryItem => ({
+  const stars = (project.stars?.stars ?? []).filter((star) => star.distLy !== null && star.distLy > 0).map((star): ObservatoryItem => ({
     id: star.id, kind: 'star', category: 'stars', type: null, x: star.x, y: star.y, radius: 0,
     distLy: star.distLy, distLoLy: star.distLoLy, distHiLy: star.distHiLy, gMag: star.gMag, bpRp: star.bpRp,
-    parallaxOverError: star.parallaxOverError, raDeg: star.raDeg, decDeg: star.decDeg, source: GAIA_SOURCE,
+    parallaxOverError: star.parallaxOverError, raDeg: star.raDeg, decDeg: star.decDeg,
+    source: GAIA_SOURCE, method: 'paralaksa Gaia DR3 (ϖ/σ ≥ 5)', ref: '2021AJ....161..147B', scope: 'object',
   }))
   return [...cuts, ...stars]
 }
@@ -84,7 +93,7 @@ const smooth = (progress: number) => {
 
 /**
  * Pozycja w scenie: x w prawo, y w górę, linia widzenia wzdłuż −z (obserwator po stronie +z).
- * progress 0: płaszczyzna zdjęcia (piksel → punkt płaszczyzny); 1: głębia z odległości. Bez odległości obiekt zostaje na zdjęciu.
+ * progress 0: płaszczyzna zdjęcia (piksel → punkt płaszczyzny); 1: głębia z odległości.
  */
 export function observatoryPosition(pixel: { x: number; y: number }, image: { width: number; height: number }, distLy: number | null, domain: LogDomain, progress: number): [number, number, number] {
   const scale = PLANE_WIDTH / image.width
@@ -124,7 +133,7 @@ export function distanceHistogram(distances: (number | null)[], domain: LogDomai
 
 export interface ObservatoryFilter {
   category: CategoryFilter
-  /** Zakres odległości [od, do] w lś; null: bez ograniczenia (także obiekty bez odległości). */
+  /** Zakres odległości [od, do] w lś; null: bez ograniczenia. */
   range: [number, number] | null
 }
 

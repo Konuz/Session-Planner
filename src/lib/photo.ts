@@ -1,4 +1,6 @@
 import type { ObjectType } from './catalog'
+import { hasDistance, SCOPE_LABELS, type DistanceScope } from './distance'
+import { fmtDistance } from './format'
 
 export type PhotoScale = 'galaxy' | 'universe'
 export interface PhotoCut {
@@ -11,9 +13,19 @@ export interface PhotoCut {
   radius: number
   enabled: boolean
   distLy: number | null
-  distanceSource: string
+  /** 1σ w lś; null: nieznana. */
   uncertaintyLy: number | null
-  distanceScope: 'object' | 'complex'
+  /** Czego dotyczy wartość (obiekt, populacja, gwiazda oświetlająca, obłok, przesunięcie ku czerwieni). */
+  distanceScope: DistanceScope
+  /** Metoda, krótko; '' bez odległości. */
+  distanceMethod: string
+  /** Publikacja lub katalog źródłowy; '' bez odległości. */
+  distanceSource: string
+  /** Bibcode ADS publikacji źródłowej; '' gdy brak. */
+  distanceRef: string
+  /** catalog, stars: ustalone przez aplikację (katalog, gwiazdy Gaia pola) i odświeżane z nowym katalogiem;
+   *  regressor: oszacowanie modelu (niezweryfikowane), gdy łańcuch nic nie daje; user: wybór w edycji wycinka. */
+  distanceOrigin: 'catalog' | 'stars' | 'regressor' | 'user'
 }
 /** Gwiazda Gaia DR3 w kadrze. Pozycja na epokę 2025,0 (jak katalog solvera), piksel z WCS zdjęcia. */
 export interface PhotoStar {
@@ -34,7 +46,7 @@ export interface PhotoStar {
 }
 export interface PhotoStars { stars: PhotoStar[]; magLimit: number; fetchedAt: number }
 export interface PhotoProject {
-  version: 2
+  version: 3
   id: string
   name: string
   image: string
@@ -48,19 +60,45 @@ export interface PhotoProject {
 }
 export interface PhotoProjection { id: string; x: number; y: number; visible: boolean; kind: ReturnType<typeof photoAnchorKind>; originX: number; originY: number }
 export interface PhotoSceneFrame { width: number; height: number; anchors: PhotoProjection[] }
-export interface PhotoDistance extends Pick<PhotoCut, 'distLy' | 'uncertaintyLy' | 'distanceSource'> {
-  source: 'Wikidata' | 'SIMBAD' | 'NED'
+export interface PhotoDistance extends Pick<PhotoCut, 'distLy' | 'uncertaintyLy' | 'distanceScope' | 'distanceMethod' | 'distanceSource' | 'distanceRef'> {
+  source: 'Katalog' | 'SIMBAD' | 'NED'
   url: string
 }
 export interface PhotoDistances { measurements: PhotoDistance[]; warnings: string[] }
 
+type StoredCut = Omit<PhotoCut, 'distanceScope' | 'distanceMethod' | 'distanceRef' | 'distanceOrigin'> & { distanceScope: string }
+/** Wycinek wersji 1–2: źródło było jednym tekstem, zakres „obiekt” albo „cały kompleks”. Wartość z katalogu aplikacji
+ *  (Wikidata) i brak odległości odświeża potem nowy katalog; wybór z SIMBAD/NED zostaje. */
+function migrateCut(cut: StoredCut): PhotoCut {
+  const fromCatalog = !cut.distLy || cut.distanceSource === 'Wikidata — katalog aplikacji' || !cut.distanceSource
+  return {
+    ...cut, distanceScope: cut.distanceScope === 'complex' ? 'population' : 'object',
+    distanceMethod: fromCatalog && cut.distLy ? 'Wikidata, niezweryfikowane' : '',
+    distanceSource: fromCatalog && cut.distLy ? 'Wikidata (P2583)' : cut.distLy ? cut.distanceSource : '',
+    distanceRef: '', distanceOrigin: fromCatalog ? 'catalog' : 'user',
+  }
+}
+
 /** Zapis z IndexedDB → bieżąca wersja projektu; nieznane wersje odrzuca. */
 export function migratePhotoProject(stored: unknown): PhotoProject | null {
   if (!stored || typeof stored !== 'object') return null
-  const project = stored as Omit<PhotoProject, 'version' | 'stars'> & { version: unknown; stars?: unknown }
-  if (project.version === 1) return { ...project, version: 2, stars: null }
-  if (project.version === 2) return { ...project, version: 2, stars: project.stars && Array.isArray((project.stars as PhotoStars).stars) ? project.stars as PhotoStars : null }
+  const project = stored as Omit<PhotoProject, 'version' | 'stars' | 'cuts'> & { version: unknown; stars?: unknown; cuts: StoredCut[] }
+  const stars = project.version !== 1 && project.stars && Array.isArray((project.stars as PhotoStars).stars) ? project.stars as PhotoStars : null
+  if (project.version === 1 || project.version === 2) return { ...project, version: 3, stars, cuts: project.cuts.map(migrateCut) }
+  if (project.version === 3) return { ...project, version: 3, stars, cuts: project.cuts as PhotoCut[] }
   return null
+}
+
+/** Odległość jednym wierszem (podpowiedź): wartość ± σ, zakres (poza „obiekt”), metoda i źródło. */
+export function distanceSummary(d: Pick<PhotoCut, 'distLy' | 'uncertaintyLy' | 'distanceScope' | 'distanceMethod' | 'distanceSource'>): string {
+  if (!d.distLy) return 'bez ustalonej odległości'
+  const value = `≈ ${fmtDistance(d.distLy)}${d.uncertaintyLy ? ` ± ${fmtDistance(d.uncertaintyLy)}` : ''}`
+  return [value, d.distanceScope === 'object' ? '' : SCOPE_LABELS[d.distanceScope], d.distanceMethod, d.distanceSource].filter(Boolean).join(' · ')
+}
+
+/** Wycinki pokazywane w 3D: włączone i z ustaloną odległością (σ ≤ 20 %). Pozostałych nie ma w scenie ani na liście. */
+export function cutsInThreeD(cuts: PhotoCut[]): PhotoCut[] {
+  return cuts.filter((cut) => cut.enabled && hasDistance(cut))
 }
 
 export function circleIntersectsImage(x: number, y: number, radius: number, width: number, height: number): boolean {
