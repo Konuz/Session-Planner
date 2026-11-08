@@ -102,6 +102,7 @@ export class ObservatoryScene {
   private labels = document.createElement('div')
   private raf = 0
   private dirty = true
+  private layoutDirty = true
   private disposables: { dispose(): void }[] = []
   /** Obiekty i zasoby danych zdjęcia: podmieniane przy setData bez nowego kontekstu WebGL (utrata kontekstu
    *  w trakcie pracy okna daje na D3D11 białą klatkę wszystkich płócien WebGL strony). */
@@ -345,17 +346,17 @@ export class ObservatoryScene {
     const next = Math.max(0, Math.min(1, progress))
     if (next === this.progress) return
     this.progress = next
-    this.layout()
+    this.layoutDirty = this.dirty = true
   }
 
   setVisible(ids: Set<string>) {
     this.visible = ids
-    this.layout()
+    this.layoutDirty = this.dirty = true
   }
 
   setSelected(id: string | null) {
     this.selected = id
-    this.layout()
+    this.layoutDirty = this.dirty = true
   }
 
   private position(item: ObservatoryItem): THREE.Vector3 {
@@ -364,6 +365,7 @@ export class ObservatoryScene {
 
   /** Położenia wszystkich elementów zależne od postępu, filtra i zaznaczenia. */
   private layout() {
+    this.layoutDirty = false
     const e = smooth(this.progress)
     const arrival = smooth(this.arrival)
     const f = this.fade
@@ -423,6 +425,7 @@ export class ObservatoryScene {
 
   /** Najbliższy widoczny obiekt w promieniu 12 px od kursora. */
   pick(clientX: number, clientY: number): string | null {
+    if (this.layoutDirty) this.layout()
     const rect = this.renderer.domElement.getBoundingClientRect()
     const v = new THREE.Vector3()
     let best: string | null = null
@@ -529,7 +532,7 @@ export class ObservatoryScene {
     this.grid.scale.set(GRID_WIDTH * Math.sqrt(gridScale), 1, depth)
     this.grid.position.z = GRID_FRONT - depth / 2
     this.fade = { ...this.fade, ...fade }
-    this.layout()
+    this.layoutDirty = this.dirty = true
   }
 
   setInteractive(on: boolean) {
@@ -542,7 +545,7 @@ export class ObservatoryScene {
     if (on === this.external) return
     this.external = on
     cancelAnimationFrame(this.raf)
-    this.layout()
+    this.layoutDirty = this.dirty = true
     if (!on) {
       this.camera.up.set(0, 1, 0)
       this.setFov(FOV)
@@ -627,6 +630,7 @@ export class ObservatoryScene {
   }
 
   private render() {
+    if (this.layoutDirty) this.layout()
     this.dirty = false
     this.renderer.render(this.scene, this.camera)
     this.placeLabels()

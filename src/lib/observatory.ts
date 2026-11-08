@@ -6,7 +6,7 @@ import { cutsInThreeD, type PhotoProject } from './photo'
 
 export type ObservatoryCategory = 'stars' | 'nebulae' | 'galaxies'
 export type CategoryFilter = ObservatoryCategory | 'all'
-export const PHOTO_UNFOLD_MS = 5000
+export const PHOTO_UNFOLD_MS = 2000
 export const CATEGORY_LABELS: Record<CategoryFilter, string> = { all: 'Wszystko', stars: 'Gwiazdy', nebulae: 'Mgławice i gromady', galaxies: 'Galaktyki' }
 
 export interface ObservatoryItem {

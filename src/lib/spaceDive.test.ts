@@ -40,17 +40,21 @@ it('oś czasu: początek i koniec w obu kierunkach, fazy w kolejności nurkowani
   expect(diveFrame(DIVE_PHASE_MS.out.enter + 1, 'out').phase).toBe('dive')
 })
 
-it('rozkładanie i składanie mają tempo Play: liniowy postęp przez 5 sekund', () => {
+it('rozkładanie i składanie mają tempo Play: pełny przebieg trwa 2 sekundy', () => {
+  const duration = 2000
   for (const direction of ['in', 'out'] as const) {
-    expect(DIVE_PHASE_MS[direction].enter).toBe(5000)
-    for (const ms of [0, 1250, 2500, 3750, 5000]) {
+    expect(DIVE_PHASE_MS[direction].enter).toBe(duration)
+    for (const fraction of [0, 0.25, 0.5, 0.75, 1]) {
+      const ms = duration * fraction
       const elapsed = direction === 'in' ? DIVE_PHASE_MS.in.dive + ms : ms
-      expect(diveFrame(elapsed, direction).photoProgress).toBeCloseTo(direction === 'in' ? ms / 5000 : 1 - ms / 5000, 9)
+      expect(diveFrame(elapsed, direction).photoProgress).toBeCloseTo(direction === 'in' ? fraction : 1 - fraction, 9)
     }
   }
 })
 
 it('samo nurkowanie do Obserwatorium trwa 1,25 raza dłużej niż powrót', () => {
+  expect(DIVE_PHASE_MS.in.dive).toBe(4250)
+  expect(DIVE_PHASE_MS.out.dive).toBe(3400)
   expect(DIVE_PHASE_MS.in.dive).toBeCloseTo(1.25 * DIVE_PHASE_MS.out.dive, 9)
 })
 
@@ -84,7 +88,8 @@ it('kamera w połowie obrotu leży na krótszym łuku wokół Ziemi', () => {
 })
 
 it('ruch wstecz jest lustrem ruchu naprzód w tej samej fazie (każdy kierunek w swoim czasie)', () => {
-  for (let f = 0; f <= 1.0001; f += 0.02) {
+  // Sam szew sprawdza test osi czasu; tutaj porównujemy wnętrze fazy bez błędów zaokrąglenia na granicy.
+  for (let f = 0.02; f <= 1.0001; f += 0.02) {
     const back = diveFrame(DIVE_PHASE_MS.out.enter + f * DIVE_PHASE_MS.out.dive, 'out')
     const forward = diveFrame((1 - f) * DIVE_PHASE_MS.in.dive, 'in')
     expect(back.phase).toBe(forward.phase)
