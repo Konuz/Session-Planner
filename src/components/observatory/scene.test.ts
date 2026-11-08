@@ -25,9 +25,11 @@ function fixture() {
   camera.position.set(100, 100, 300)
   camera.lookAt(0, 0, 0)
   const rendered: number[] = []
+  const host = { clientWidth: 600, clientHeight: 600 }
+  const sizes: number[][] = []
   const scene: ObservatoryScene = Object.create(ObservatoryScene.prototype)
   Object.assign(scene, {
-    scene: new THREE.Scene(), camera, external: true, dirty: false, progress: 0, arrival: 1,
+    scene: new THREE.Scene(), camera, host, external: true, dirty: false, progress: 0, arrival: 1,
     items: [item, star], image: { width: 1000, height: 500 }, domain: { minLy: 100, maxLy: 10000 },
     visible: new Set([item.id, star.id]), selected: null, stars: new THREE.Points(geometry), starIndex: [1],
     cards: new Map([[item.id, card]]), anchors: new Map([[item.id, anchor]]), ring, photo, frame,
@@ -35,11 +37,12 @@ function fixture() {
     fade: { earth: 1, pyramid: 1, axis: 1, photo: 1, grid: 1 },
     labels: { style: { setProperty() {} }, querySelector: () => null }, itemLabels: new Map(), earthLabel: { style: {} },
     renderer: {
+      setSize: (width: number, height: number) => sizes.push([width, height]),
       render: () => rendered.push(card.position.z),
-      domElement: { clientWidth: 600, clientHeight: 600, getBoundingClientRect: () => ({ left: 0, top: 0, width: 600, height: 600 }) },
+      domElement: { clientWidth: 600, clientHeight: 600, style: {}, getBoundingClientRect: () => ({ left: 0, top: 0, width: 600, height: 600 }) },
     },
   })
-  return { scene, camera, positions, alphas, card, anchor, ring, photo, rendered }
+  return { scene, camera, positions, alphas, card, anchor, ring, photo, rendered, host, sizes }
 }
 
 it('łączy zmiany postępu, krycia i zaznaczenia w jedną aktualizację buforów przed rysowaniem', () => {
@@ -75,4 +78,22 @@ it('wybór kursorem uwzględnia aktualną widoczność i pozycję przed następn
   expect(scene.pick((screen.x + 1) * 300, (1 - screen.y) * 300)).toBe('obiekt')
   scene.setVisible(new Set())
   expect(scene.pick((screen.x + 1) * 300, (1 - screen.y) * 300)).toBeNull()
+})
+
+it('dopasowuje bufor i kamerę przed klatką, bez ponownego czyszczenia tego samego rozmiaru', () => {
+  const { scene, host, sizes, camera, rendered } = fixture()
+  scene.setProgress(0.5)
+  scene.step(100)
+  expect(sizes).toEqual([[600, 600]])
+  host.clientWidth = 420
+  scene.step(116)
+  expect(sizes).toEqual([[600, 600], [420, 600]])
+  expect(camera.aspect).toBe(0.7)
+  expect(rendered).toHaveLength(2)
+  // ResizeObserver przychodzi po rAF; bufor ma już właściwy rozmiar i nie wymaga nowego rysowania.
+  const resize = Reflect.get(scene, 'resize') as () => boolean
+  expect(resize.call(scene)).toBe(false)
+  scene.step(132)
+  expect(sizes).toHaveLength(2)
+  expect(rendered).toHaveLength(2)
 })

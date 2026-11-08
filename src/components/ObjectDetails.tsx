@@ -1,5 +1,6 @@
 import { ExternalLink } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { angularDistanceDeg, galactic, isCircumpolar, moonInfo, moonJ2000 } from '../lib/astro'
 import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO } from '../lib/catalog'
 import { CONSTELLATION_PL } from '../lib/constellations'
@@ -85,7 +86,7 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
     onClose()
   }
 
-  return (
+  return createPortal(
     <>
       <div className="drawer-backdrop" onClick={onClose} />
       <aside className="drawer" role="dialog" aria-label={`Szczegóły ${o.id}`}>
@@ -158,6 +159,6 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
           </p>
         </div>
       </aside>
-    </>
+    </>, document.body
   )
 }

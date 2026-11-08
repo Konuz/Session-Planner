@@ -37,6 +37,8 @@ export interface DiveOptions {
   /** Powrót: poza Drogi Mlecznej sprzed wejścia. */
   spacePose?: Pose
   onPhase(phase: DivePhase): void
+  /** Pierwsza gotowa klatka Obserwatorium ma już pozę i krycia przejścia; można odsłonić płótno. */
+  onObservatoryFrame(): void
   onDone(): void
 }
 
@@ -60,6 +62,7 @@ export class SpaceDive {
   private frozen: number | null = null
   private skipping = false
   private finished = false
+  private observatoryStarted = false
   private readonly bridge
   private readonly roll: number
   private readonly real: [number, number]
@@ -143,7 +146,13 @@ export class SpaceDive {
       this.o.onPhase(f.phase)
     }
     const spaceView = f.phase === 'dive' ? this.applySpace(f, seam, now) : null
-    if (obs?.ready) this.applyObservatory(obs, f, seam, now, spaceView)
+    if (obs?.ready) {
+      this.applyObservatory(obs, f, seam, now, spaceView)
+      if (!this.observatoryStarted) {
+        this.observatoryStarted = true
+        this.o.onObservatoryFrame()
+      }
+    }
     if (f.done && !this.finished && (obs?.ready || this.o.direction === 'out')) this.finish(obs)
   }
 

@@ -1,6 +1,7 @@
 // Powłoka okna modalnego „Pozycja 3D” (wymiary i klasy dawnego okna Obserwatorium): nagłówek z kickerem i tytułem,
 // podsumowanie, krzyżyk, Esc, fokus i powrót fokusu do przycisku, który okno otworzył.
 import { useEffect, useRef, type CSSProperties, type ReactNode, type Ref } from 'react'
+import { createPortal } from 'react-dom'
 import { CloseButton } from '../CloseButton'
 
 interface Props {
@@ -36,7 +37,7 @@ export function SpaceWindow({ label, kicker, title, subtitle, summaryRef, summar
     }
   }, [])
 
-  return <div ref={dialogRef} className="observatory" role="dialog" aria-modal="true" aria-label={label}>
+  return createPortal(<div ref={dialogRef} className="observatory" role="dialog" aria-modal="true" aria-label={label}>
     <div className={`obs-window card ${className}`} style={style}>
       <header className="obs-header">
         <div>
@@ -51,5 +52,5 @@ export function SpaceWindow({ label, kicker, title, subtitle, summaryRef, summar
       </header>
       {children}
     </div>
-  </div>
+  </div>, document.body)
 }

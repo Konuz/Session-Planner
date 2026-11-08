@@ -58,7 +58,7 @@ export interface PhotoProject {
   /** null: gwiazd jeszcze nie pobrano (także po migracji z wersji 1). */
   stars: PhotoStars | null
 }
-export interface PhotoProjection { id: string; x: number; y: number; visible: boolean; kind: ReturnType<typeof photoAnchorKind>; originX: number; originY: number }
+export interface PhotoProjection { id: string; x: number; y: number; visible: boolean; kind: ReturnType<typeof photoAnchorKind>; originX: number; originY: number; footX: number; footY: number }
 export interface PhotoSceneFrame { width: number; height: number; anchors: PhotoProjection[] }
 export interface PhotoDistance extends Pick<PhotoCut, 'distLy' | 'uncertaintyLy' | 'distanceScope' | 'distanceMethod' | 'distanceSource' | 'distanceRef'> {
   source: 'Katalog' | 'SIMBAD' | 'NED'
@@ -112,23 +112,50 @@ export function photoAnchorKind(distLy: number | null, scale: PhotoScale): 'posi
   return 'position'
 }
 
-export function photoColumns(cuts: PhotoCut[], imageWidth: number, capacity = Infinity): [PhotoCut[], PhotoCut[]] {
-  const byX = [...cuts].sort((a, b) => a.x - b.x)
-  // Strona wynika z połowy zdjęcia; nadmiar ponad pojemność kolumny przechodzi na drugą stronę (obiekty najbliżej środka).
-  const left = Math.max(cuts.length - capacity, Math.min(capacity, byX.filter((c) => c.x < imageWidth / 2).length))
-  const columns: [PhotoCut[], PhotoCut[]] = [byX.slice(0, left), byX.slice(left)]
-  for (const column of columns) column.sort((a, b) => a.y - b.y)
-  return columns
-}
-
-/** Liczba kart w kolumnie. Zależy tylko od liczby wycinków (także wyłączonych), więc przesuwanie okręgów ani zaznaczanie nie przestawia kolumn. */
-export function photoColumnCapacity(cuts: PhotoCut[]): number {
-  return Math.max(1, Math.ceil(cuts.length / 2))
-}
-
 export function coveredPhotoCircles(circles: { x: number; y: number; radius: number }[]): boolean[] {
   return circles.map((circle, i) => circles.some((other, j) => j > i
     && (circle.x - other.x) ** 2 + (circle.y - other.y) ** 2 < (circle.radius + other.radius) ** 2))
+}
+
+/** Ciasne grupy dostają dwa krótkie szeregi podpisów, w kolejności celów na ekranie. */
+export function photoCutLayout(targets: { x: number; y: number }[], width: number, height: number, origin?: { x: number; y: number }) {
+  const placed = targets.map(p => ({ ...p, radius: 28 }))
+  const pending = new Set(targets.map((_, i) => i))
+  while (pending.size) {
+    const first = pending.values().next().value!
+    const group = [first]
+    pending.delete(first)
+    for (let head = 0; head < group.length; head++) {
+      const p = targets[group[head]]
+      for (const i of pending) {
+        // Rosnąca grupa potrzebuje miejsca także po rozsunięciu obu kolumn.
+        if (Math.abs(p.x - targets[i].x) < 120 && Math.abs(p.y - targets[i].y) < Math.ceil(group.length / 2) * 92) {
+          group.push(i)
+          pending.delete(i)
+        }
+      }
+    }
+    if (group.length === 1) continue
+    group.sort((a, b) => targets[a].y - targets[b].y || targets[a].x - targets[b].x)
+    const gap = Math.min(92, (height - 140) / Math.ceil(group.length / 2))
+    const radius = Math.max(4, Math.min(28, (gap - 36) / 2))
+    const left = Math.max(84, Math.min(...group.map(i => targets[i].x)) - 96)
+    const right = Math.min(width - 84, Math.max(...group.map(i => targets[i].x)) + 96)
+    for (const side of [0, 1]) {
+      const column = group.filter((_, i) => i % 2 === side)
+      if (!column.length) continue
+      const ys: number[] = []
+      column.forEach((i, row) => ys.push(Math.max(targets[i].y, row ? ys[row - 1] + gap : 0)))
+      const shift = column.reduce((sum, i, row) => sum + targets[i].y - ys[row], 0) / column.length
+      const boundedShift = Math.max(12 + radius - ys[0], Math.min(height - 128 - radius - ys.at(-1)!, shift))
+      let x = side ? right : left
+      if (origin && ys.some(y => Math.hypot(x - origin.x, y + boundedShift - origin.y) < radius + 40)) {
+        x = side ? Math.min(width - 84, Math.max(x, origin.x + radius + 40)) : Math.max(84, Math.min(x, origin.x - radius - 40))
+      }
+      column.forEach((i, row) => { placed[i] = { x, y: ys[row] + boundedShift, radius } })
+    }
+  }
+  return placed
 }
 
 export function photoPose(cut: Pick<PhotoCut, 'x' | 'y' | 'radius'>, frame: { x: number; y: number; scale: number }, destination: { x: number; y: number; radius: number }, progress: number) {

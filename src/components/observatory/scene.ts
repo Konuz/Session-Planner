@@ -103,6 +103,8 @@ export class ObservatoryScene {
   private raf = 0
   private dirty = true
   private layoutDirty = true
+  private sizedWidth = 0
+  private sizedHeight = 0
   private disposables: { dispose(): void }[] = []
   /** Obiekty i zasoby danych zdjęcia: podmieniane przy setData bez nowego kontekstu WebGL (utrata kontekstu
    *  w trakcie pracy okna daje na D3D11 białą klatkę wszystkich płócien WebGL strony). */
@@ -189,9 +191,8 @@ export class ObservatoryScene {
     this.renderer.domElement.addEventListener('keydown', this.onKeyDown)
     this.renderer.domElement.addEventListener('keyup', this.onKeyUp)
     this.renderer.domElement.addEventListener('blur', () => this.keys.clear())
-    // Zmiana rozmiaru płótna czyści jego bufor po narysowanej klatce: przy panelach wsuwanych co klatkę płótno
-    // byłoby puste, więc rysujemy od razu (ResizeObserver działa przed odmalowaniem strony).
-    this.resizeObserver = new ResizeObserver(() => { this.resize(); this.render() })
+    // Po rAF obserwator nie czyści ponownie już dopasowanego bufora. Zmiana po rAF nadal dostaje klatkę przed odmalowaniem.
+    this.resizeObserver = new ResizeObserver(() => { if (this.resize()) this.render() })
     this.resizeObserver.observe(host)
     this.resize()
     this.external = options.external ?? false
@@ -208,12 +209,16 @@ export class ObservatoryScene {
 
   private resize() {
     const width = Math.max(1, this.host.clientWidth), height = Math.max(1, this.host.clientHeight)
+    if (width === this.sizedWidth && height === this.sizedHeight) return false
+    this.sizedWidth = width
+    this.sizedHeight = height
     this.renderer.setSize(width, height, false)
     this.renderer.domElement.style.width = '100%'
     this.renderer.domElement.style.height = '100%'
     this.camera.aspect = width / height
     this.camera.updateProjectionMatrix()
     this.dirty = true
+    return true
   }
 
   /** Zdjęcie jako płaszczyzna oraz karty wycinków i punkty gwiazd. */
@@ -595,6 +600,7 @@ export class ObservatoryScene {
   }
 
   step(now: number) {
+    this.resize()
     if (this.external) {
       if (this.dirty) this.render()
       return

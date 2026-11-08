@@ -13,6 +13,7 @@ export type StarsStatus = { status: 'idle' | 'loading' | 'error'; message?: stri
 
 export interface PhotoSession {
   project: PhotoProject | null
+  restoring: boolean
   change(next: PhotoProject | null): void
   updateCut(id: string, patch: Partial<PhotoCut>): void
   upload(file: File): void
@@ -32,6 +33,7 @@ export interface PhotoSession {
 
 export function usePhotoSession(): PhotoSession {
   const [project, setProject] = useState<PhotoProject | null>(null)
+  const [restoring, setRestoring] = useState(true)
   const projectRef = useRef(project)
   projectRef.current = project
   const abortRef = useRef<AbortController | null>(null)
@@ -53,8 +55,9 @@ export function usePhotoSession(): PhotoSession {
       if (live && restorePending.current) {
         if (saved || hasUnsavedPhoto()) setProject(saved)
         if (hasUnsavedPhoto()) setSaveError(saveFailure)
+        setRestoring(false)
       }
-    }).catch(() => { if (live) setSaveError('Nie udało się odczytać zapisanego zdjęcia.') })
+    }).catch(() => { if (live) { setSaveError('Nie udało się odczytać zapisanego zdjęcia.'); setRestoring(false) } })
     void fetch('/api/photo/status', { signal: statusAbort.signal }).then((r) => r.ok ? r.json() : null).then((status) => { if (live) setReady(status?.ready === true) }).catch(() => { if (live) setReady(false) })
     return () => {
       live = false
@@ -78,6 +81,7 @@ export function usePhotoSession(): PhotoSession {
   }
   function change(next: PhotoProject | null) {
     restorePending.current = false
+    setRestoring(false)
     projectRef.current = next
     setProject(next)
     if (saveTimer.current) clearTimeout(saveTimer.current)
@@ -109,7 +113,7 @@ export function usePhotoSession(): PhotoSession {
   }
 
   return {
-    project, change, updateCut, upload: (file) => void upload(file), cancelUpload: () => { abortRef.current?.abort(); setBusy(false) },
+    project, restoring, change, updateCut, upload: (file) => void upload(file), cancelUpload: () => { abortRef.current?.abort(); setBusy(false) },
     busy, error, clearError: () => setError(''), saveError, retrySave: () => save(projectRef.current), ready,
     editing, setEditing, activeId, setActiveId,
   }

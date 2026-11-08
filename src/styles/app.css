@@ -498,6 +498,11 @@ input[type='checkbox']:checked::after {
 .photo-resize { pointer-events: all; cursor: ew-resize; touch-action: none; }
 .photo-label, .photo-distance { text-anchor: middle; fill: var(--text); stroke: var(--bg); stroke-width: 3px; paint-order: stroke; font: 11px var(--mono); pointer-events: none; }
 .photo-distance { fill: var(--text-2); font-size: 9px; }
+.photo-unfold .photo-label { font: 600 14px var(--sans); }
+.photo-unfold .photo-distance { font-size: 11px; fill: var(--text-dim); }
+.photo-unfold .photo-label, .photo-unfold .photo-distance { text-anchor: inherit; }
+.photo-fragment-label { text-anchor: middle; }
+.photo-fragment-hit { pointer-events: all; cursor: pointer; }
 .photo-controls { position: absolute; bottom: 12px; left: 12px; right: 12px; z-index: 5; padding: 8px 10px; border: 1px solid var(--border-strong); background: var(--card); }
 .photo-heading { display: flex; justify-content: space-between; gap: 8px; font: 10px var(--mono); margin-bottom: 5px; }
 .photo-heading > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -514,7 +519,8 @@ input[type='checkbox']:checked::after {
 .photo-object-list > div.active { background: var(--accent-faint); }
 .photo-object-list button { background: none; border: 0; text-align: left; cursor: pointer; flex: 1; min-width: 0; padding: 5px 0; display: flex; justify-content: space-between; gap: 5px; }
 .photo-object-list small { color: var(--text-dim); font-size: 9px; }
-.photo-fields { display: grid; gap: 6px; border-top: 1px solid var(--border-strong); padding-top: 8px; }
+.photo-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; border-top: 1px solid var(--border-strong); padding-top: 8px; }
+.photo-distance-status { min-height: 45px; }
 .photo-fields label { display: grid; gap: 3px; color: var(--text-dim); font-size: 10px; }
 .photo-fields input, .photo-fields select { width: 100%; min-width: 0; padding: 4px 6px; background: var(--bg); color: var(--text); border: 1px solid var(--border-strong); font: 11px var(--mono); }
 .photo-editor details { margin-top: 12px; color: var(--text-dim); font-size: 10px; }

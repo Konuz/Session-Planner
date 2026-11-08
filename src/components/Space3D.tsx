@@ -22,7 +22,7 @@ import { GALAXY_LEVELS, type ConstellationStar, type SpaceSettings } from './spa
 interface Props {
   settings: SpaceSettings
   photo: PhotoProject | null
-  /** Stara nakładka zdjęcia (Wszechświat lokalny): rzut kotwic wycinków i dopasowanie kadru. */
+  /** Zdjęcie we Wszechświecie lokalnym: rzut kotwic wycinków i dopasowanie kadru. */
   frameRef: RefObject<((frame: PhotoSceneFrame) => void) | null>
   fitRef: RefObject<(() => void) | null>
   /** Dostęp do sceny dla znaczników zdjęcia i nurkowania (null przy przebudowie i odmontowaniu). */
@@ -96,6 +96,11 @@ export default function Space3D({ settings, photo, frameRef: photoFrameRef, fitR
   const showConstellationsRef = useRef(showConstellations)
   showConstellationsRef.current = showConstellations
   const constellationGroupRef = useRef<THREE.Group | null>(null)
+  const addConstellationsRef = useRef<(() => void) | null>(null)
+  const constellationsRef = useRef(constellations)
+  constellationsRef.current = constellations
+  const showStarNamesRef = useRef(showStarNames)
+  showStarNamesRef.current = showStarNames
   const screenTextSpritesRef = useRef<THREE.Sprite[]>([])
   const starNameLayoutsRef = useRef<StarNameLayout[]>([])
   const textLayoutDirty = useRef(true)
@@ -142,6 +147,7 @@ export default function Space3D({ settings, photo, frameRef: photoFrameRef, fitR
     controls.autoRotateSpeed = 0.35
     const disposables: { dispose(): void }[] = [renderer, controls]
     constellationGroupRef.current = null
+    addConstellationsRef.current = null
     screenTextSpritesRef.current = []
     starNameLayoutsRef.current = []
     const stars = galaxyTexture()
@@ -202,7 +208,10 @@ export default function Space3D({ settings, photo, frameRef: photoFrameRef, fitR
     const localGalaxyModels: THREE.Points[] = []
     const constellationPoints: { group: THREE.Group; position: THREE.Vector3 }[] = []
     if (scale === 'galaxy') {
-      if (constellations) {
+      // Dane mogą nadejść już w trakcie przelotu startowego: dołącz je bez nowego renderera i resetu kamery.
+      addConstellationsRef.current = () => {
+        const constellations = constellationsRef.current
+        if (!constellations || constellationGroupRef.current) return
         const group = new THREE.Group()
         const material = new LineMaterial({ color: 0x00e0ff, linewidth: 1.6, transparent: true, opacity: 0.9, depthWrite: false })
         const dot = dotTexture()
@@ -233,10 +242,10 @@ export default function Space3D({ settings, photo, frameRef: photoFrameRef, fitR
           figure.add(new THREE.Points(starGeometry, starMaterial))
           const nameGroup = new THREE.Group()
           nameGroup.name = 'star-names'
-          nameGroup.visible = showStarNames
+          nameGroup.visible = showStarNamesRef.current
           nameGroup.userData.stars = c.stars ?? []
           nameGroup.userData.labelsAdded = false
-          if (showStarNames) {
+          if (showStarNamesRef.current) {
             starNameLayoutsRef.current.push(addStarNameLabels(nameGroup, c.stars ?? [], screenTextSpritesRef.current))
             nameGroup.userData.labelsAdded = true
           }
@@ -247,7 +256,10 @@ export default function Space3D({ settings, photo, frameRef: photoFrameRef, fitR
         group.visible = showConstellationsRef.current
         scene.add(group)
         constellationGroupRef.current = group
+        textLayoutDirty.current = true
+        sceneDirty.current = true
       }
+      addConstellationsRef.current()
       const mw = milkyWay(52000, stars)
       milkyWayMaterial = mw.material as THREE.PointsMaterial
       scene.add(mw)
@@ -364,7 +376,7 @@ export default function Space3D({ settings, photo, frameRef: photoFrameRef, fitR
     const moveKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight'])
     const stopFly = () => (flying = false)
     let photoSpan = span
-    // Dopasowanie kadru do starej nakładki zdjęcia: tylko Wszechświat lokalny (Droga Mleczna ma linię widzenia).
+    // Dopasowanie kadru do wycinków zdjęcia: tylko Wszechświat lokalny (Droga Mleczna ma linię widzenia).
     photoFitRef.current = scale === 'galaxy' ? null : () => {
       const points = [sunPos.clone()]
       for (const cut of cutsInThreeD(photoRef.current?.cuts ?? [])) {
@@ -372,10 +384,29 @@ export default function Space3D({ settings, photo, frameRef: photoFrameRef, fitR
       }
       const bounds = new THREE.Box3().setFromPoints(points)
       const center = bounds.getCenter(new THREE.Vector3())
-      photoSpan = Math.max(35, bounds.getSize(new THREE.Vector3()).length() * 2.4)
+      // Patrzymy z boku kierunku zdjęcia, żeby poziome odcinki i piony nie zlewały się w jedną kreskę.
+      const farthest = points.reduce((a, b) => a.distanceToSquared(sunPos) >= b.distanceToSquared(sunPos) ? a : b)
+      const direction = farthest.clone().sub(sunPos)
+      const side = new THREE.Vector3(-direction.z, 0, direction.x)
+      if (side.lengthSq() === 0) side.set(1, 0, 1)
+      side.normalize()
+      const view = side.multiplyScalar(0.45).add(new THREE.Vector3(0, 0.85, 0)).normalize()
+      const right = new THREE.Vector3(0, 1, 0).cross(view).normalize()
+      const up = view.clone().cross(right).normalize()
+      const tanY = Math.tan(THREE.MathUtils.degToRad(camera.getEffectiveFOV()) / 2)
+      const roomX = Math.max(0.35, 1 - 360 / mount.clientWidth)
+      const roomY = Math.max(0.35, 1 - 220 / mount.clientHeight)
+      // Kadr z rzutu rzeczywistych celów, z miejscem na zdjęcia i podpisy, zamiast wielkości sfery sceny.
+      photoSpan = 20
+      for (const point of points) {
+        const delta = point.clone().sub(center)
+        const depth = delta.dot(view)
+        photoSpan = Math.max(photoSpan, depth + Math.abs(delta.dot(up)) / (tanY * roomY),
+          depth + Math.abs(delta.dot(right)) / (tanY * camera.aspect * roomX))
+      }
       flying = false
       controls.autoRotate = false
-      camera.position.copy(center).add(new THREE.Vector3(photoSpan * 0.55, photoSpan * 0.55, photoSpan * 0.75))
+      camera.position.copy(center).addScaledVector(view, photoSpan)
       controls.target.copy(center)
       camera.lookAt(center)
       controls.update()
@@ -595,8 +626,10 @@ export default function Space3D({ settings, photo, frameRef: photoFrameRef, fitR
             const world = kind === 'position' ? position(cut, cut.distLy!, scale)
               : kind === 'local' ? sunPos.clone()
                 : sunPos.clone().add(toThree(galacticVector(cut)).multiplyScalar(photoSpan * 0.35))
+            // Załamanie trasy leży na płaszczyźnie XZ w 3D, więc obraca się razem z mapą.
+            const foot = new THREE.Vector3(world.x, sunPos.y, world.z).project(camera)
             const p = world.project(camera)
-            return { id: cut.id, x: (p.x + 1) * width / 2, y: (1 - p.y) * height / 2, visible: p.z >= -1 && p.z <= 1 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1, kind, originX: (origin.x + 1) * width / 2, originY: (1 - origin.y) * height / 2 }
+            return { id: cut.id, x: (p.x + 1) * width / 2, y: (1 - p.y) * height / 2, visible: p.z >= -1 && p.z <= 1 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1, kind, originX: (origin.x + 1) * width / 2, originY: (1 - origin.y) * height / 2, footX: (foot.x + 1) * width / 2, footY: (1 - foot.y) * height / 2 }
           })
           photoFrameRef.current({ width, height, anchors })
           projectedPhoto = photo
@@ -836,6 +869,7 @@ export default function Space3D({ settings, photo, frameRef: photoFrameRef, fitR
       },
     })
     return () => {
+      addConstellationsRef.current = null
       onHandleRef.current?.(null)
       photoFitRef.current = null
       cancelAnimationFrame(raf)
@@ -873,7 +907,9 @@ export default function Space3D({ settings, photo, frameRef: photoFrameRef, fitR
       renderer.domElement.remove()
       labels.remove()
     }
-  }, [o, dist, scale, outOfScale, withDistance, select, constellations, typeRGB])
+  }, [o, dist, scale, outOfScale, withDistance, select, typeRGB])
+
+  useEffect(() => { addConstellationsRef.current?.() }, [constellations])
 
   useEffect(() => {
     if (constellationGroupRef.current) constellationGroupRef.current.visible = showConstellations

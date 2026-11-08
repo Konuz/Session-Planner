@@ -15,7 +15,7 @@ import Space3D, { type Space3DHandle } from '../Space3D'
 import { SpaceDive, restoreSpace } from './dive'
 import { GalaxyPhotoBar, PhotoCutEditor, PhotoFlatView, PhotoImport, PhotoMessages } from './PhotoEditing'
 import { usePhotoGuide } from './photoGuide'
-import { useCutDistances, useGaiaStars, usePhotoSession, useRegressor } from './photoSession'
+import { useCutDistances, useGaiaStars, usePhotoSession, useRegressor, type PhotoSession } from './photoSession'
 import { PhotoUnfold } from './PhotoUnfold'
 import { useSpaceSettings } from './spaceSettings'
 import { SpaceToolbar } from './SpaceToolbar'
@@ -31,10 +31,14 @@ const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').match
 type Mode = 'scale' | DiveDirection | 'photo'
 
 export default function Space3DModal() {
+  const session = usePhotoSession()
+  return session.restoring ? null : <Space3DWindow session={session} />
+}
+
+function Space3DWindow({ session }: { session: PhotoSession }) {
   const setOpen = useStore((s) => s.setSpace3DOpen)
   const close = useCallback(() => setOpen(false), [setOpen])
   const o = useSelected()
-  const session = usePhotoSession()
   const project = session.project
   const settings = useSpaceSettings(o, project)
   const { stars, retry } = useGaiaStars(session, settings.scale === 'galaxy')
@@ -59,7 +63,8 @@ export default function Space3DModal() {
   // Obserwatorium powstaje przy pierwszym nurkowaniu i zostaje (ukryte, wstrzymane) do zmiany zdjęcia lub skali:
   // ponowne tworzenie i niszczenie kontekstu WebGL dawało białą klatkę na końcu powrotu.
   const [obsAlive, setObsAlive] = useState(false)
-  useEffect(() => { setObsAlive(false) }, [project?.id, galaxy])
+  const [obsVisible, setObsVisible] = useState(false)
+  useEffect(() => { setObsAlive(false); setObsVisible(false) }, [project?.id, galaxy])
   // Dane Obserwatorium: w stanie zdjęcia na bieżąco, poza nim dopiero przy nurkowaniu (edycja wycinków nie przebudowuje
   // ukrytej sceny); gwiazdy Gaia, które przyjdą w trakcie przejścia, trafiają do niego po nim.
   const [obsProject, setObsProject] = useState(project)
@@ -93,6 +98,7 @@ export default function Space3DModal() {
   }, [])
 
   function startDive(direction: DiveDirection) {
+    if (direction === 'in') setObsVisible(false)
     const guide = guideRef.current
     if (!project || !handle || handle.scale !== 'galaxy' || !guide || reducedMotion()) {
       // Bez nurkowania: od razu stan zdjęcia (rozłożony, jak dawne Obserwatorium) albo skala.
@@ -117,6 +123,7 @@ export default function Space3DModal() {
       imageAspect: project.height / project.width,
       spacePose: direction === 'out' ? entryPose.current ?? undefined : undefined,
       onPhase: (phase) => { if (phase === 'enter') setPanels(direction === 'in') },
+      onObservatoryFrame: () => setObsVisible(true),
       onDone: () => { diveRef.current = null; setMode(direction === 'in' ? 'photo' : 'scale') },
     })
     if (direction === 'in') entryPose.current = dive.spacePose
@@ -182,10 +189,10 @@ export default function Space3DModal() {
   return <SpaceWindow
     label={showPhoto ? 'Obserwatorium 3D zdjęcia' : 'Pozycja 3D'}
     kicker={showPhoto ? 'KONUZASTRO / Obserwatorium 3D' : 'KONUZASTRO / Pozycja 3D'}
-    title={showPhoto ? project.name : o ? `${o.id}${o.namePl ? ` · ${o.namePl}` : ''}` : 'Wybierz obiekt'}
+    title={showPhoto ? project.name : project && !galaxy ? project.name : o ? `${o.id}${o.namePl ? ` · ${o.namePl}` : ''}` : 'Wybierz obiekt'}
     subtitle={showPhoto ? 'Obiekty zdjęcia wzdłuż linii widzenia' : SUBTITLE[settings.scale]}
     summaryRef={setSummary}
-    summary={!showPhoto && o ? <strong>{dist !== null ? `Odległość ≈ ${fmtDistance(dist)}` : 'Odległość nieznana'}</strong> : null}
+    summary={!showPhoto && !(project && !galaxy) && o ? <strong>{dist !== null ? `Odległość ≈ ${fmtDistance(dist)}` : 'Odległość nieznana'}</strong> : null}
     className={`space-window ${panels ? 'is-photo' : 'is-scale'}${diving ? ' is-diving' : ''}${editing ? ' is-editing' : ''}`}
     // Panele wsuwają się i zwijają przez całą fazę wejścia danego kierunku (naprzód dłużej niż wstecz).
     style={diving ? { '--dive-enter': `${DIVE_PHASE_MS[mode].enter}ms` } as CSSProperties : undefined}
@@ -201,13 +208,13 @@ export default function Space3DModal() {
       {mode === 'scale' && <>
         <PhotoImport session={session} inputRef={inputRef} showButton={!project || (!galaxy && !editing)} />
         <PhotoMessages session={session} />
-        {project && !galaxy && <PhotoUnfold key={project.id} session={session} frameRef={frameRef} fitRef={fitRef} onObservatory={unfold} />}
+        {project && !galaxy && <PhotoUnfold key={project.id} session={session} frameRef={frameRef} fitRef={fitRef} handle={handle} onObservatory={unfold} />}
         {project && galaxy && <GalaxyPhotoBar session={session} stars={stars} regressing={regressing.length} onUnfold={unfold} onPick={() => inputRef.current?.click()} onRetryStars={retry} />}
         {editing && <PhotoFlatView session={session} />}
       </>}
     </div>
     {editing && <PhotoCutEditor session={session} regressing={regressing} />}
     {(obsAlive || mode !== 'scale') && obsProject && stage && summary && <Observatory project={obsProject} slots={{ stage, toolbar: showPhoto ? toolbarSlot : null, summary: showPhoto ? summary : null }}
-      stars={stars} onRetryStars={retry} diving={diving} hidden={mode === 'scale'} onScene={(scene) => { obsScene.current = scene }} />}
+      stars={stars} onRetryStars={retry} diving={diving} hidden={mode === 'scale' || (mode === 'in' && !obsVisible)} onScene={(scene) => { obsScene.current = scene }} />}
   </SpaceWindow>
 }

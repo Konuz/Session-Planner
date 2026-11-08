@@ -1,6 +1,55 @@
 import { expect, it } from 'vitest'
-import { photoAnchorKind, circleIntersectsImage, photoColumnCapacity, photoColumns, photoPose, coveredPhotoCircles, migratePhotoProject, cutsInThreeD, type PhotoCut } from './photo'
+import { photoAnchorKind, circleIntersectsImage, photoPose, photoCutLayout, coveredPhotoCircles, migratePhotoProject, cutsInThreeD, type PhotoCut } from './photo'
 import { hasDistance } from './distance'
+
+it('rozsuwa małe wycinki przy zbieżnych celach bez zmiany kotwic', () => {
+  const targets = Array.from({ length: 12 }, (_, i) => ({ x: 300 + i, y: 240 }))
+  const saved = structuredClone(targets)
+  const layout = photoCutLayout(targets, 600, 700)
+  expect(targets).toEqual(saved)
+  expect(layout.every(c => c.radius <= 28)).toBe(true)
+  for (let i = 0; i < layout.length; i++) {
+    for (let j = 0; j < i; j++) {
+      expect(Math.hypot(layout[i].x - layout[j].x, layout[i].y - layout[j].y)).toBeGreaterThanOrEqual(layout[i].radius + layout[j].radius + 8)
+    }
+  }
+  expect(photoCutLayout([{ x: 200, y: 200 }], 600, 700)[0]).toEqual({ x: 200, y: 200, radius: 28 })
+})
+
+it('zachowuje kolejność celów po obu stronach ciasnej grupy zamiast rozsypywać zdjęcia po scenie', () => {
+  const targets = [304, 218, 275, 221, 302, 273, 220].map(y => ({ x: 1320, y }))
+  const layout = photoCutLayout(targets, 2600, 750)
+  for (const side of [-1, 1]) {
+    const indices = targets.map((_, i) => i).filter(i => Math.sign(layout[i].x - targets[i].x) === side).sort((a, b) => targets[a].y - targets[b].y)
+    expect(indices.length).toBeGreaterThan(0)
+    for (let i = 1; i < indices.length; i++) expect(layout[indices[i]].y).toBeGreaterThan(layout[indices[i - 1]].y)
+  }
+  expect(layout.every((p, i) => Math.hypot(p.x - targets[i].x, p.y - targets[i].y) < 180)).toBe(true)
+})
+
+it.each([390, 600])('mieści siedem wycinków z odstępami w oknie szerokości %i', width => {
+  const layout = photoCutLayout(Array.from({ length: 7 }, (_, i) => ({ x: width / 2 + i, y: 180 + i * 5 })), width, 700)
+  layout.forEach((p, i) => {
+    expect(p.x - p.radius).toBeGreaterThanOrEqual(0)
+    expect(p.x + p.radius).toBeLessThanOrEqual(width)
+    expect(p.y - p.radius).toBeGreaterThanOrEqual(0)
+    expect(p.y + p.radius + 27).toBeLessThan(700 - 100)
+    layout.slice(0, i).forEach(q => expect(Math.hypot(p.x - q.x, p.y - q.y)).toBeGreaterThanOrEqual(p.radius + q.radius + 8))
+  })
+})
+
+it('uwzględnia miejsce zajęte przez podpisy dwóch sąsiednich grup po ich rozsunięciu', () => {
+  const layout = photoCutLayout([120, 122, 124, 220, 222].map(y => ({ x: 400, y })), 1200, 700)
+  for (let i = 0; i < layout.length; i++) for (let j = 0; j < i; j++) {
+    if (layout[i].x === layout[j].x) expect(Math.abs(layout[i].y - layout[j].y)).toBeGreaterThanOrEqual(92)
+  }
+})
+
+it('pozostawia widoczny punkt Ziemi, kiedy szereg zdjęć dochodzi do początku tras', () => {
+  const origin = { x: 240, y: 390 }
+  const layout = photoCutLayout([120, 122, 124, 220, 222, 270, 272].map(y => ({ x: 336, y })), 600, 700, origin)
+  layout.forEach(p => expect(Math.hypot(p.x - origin.x, p.y - origin.y)).toBeGreaterThanOrEqual(p.radius + 40))
+})
 
 it('uwzględnia wycinek przecinający brzeg mimo środka poza zdjęciem', () => {
   expect(circleIntersectsImage(-5, 50, 10, 100, 100)).toBe(true)
@@ -26,48 +75,6 @@ it('wycinek na początku dokładnie zgadza się z fotografią, a przewijanie jes
   photoPose(cut, frame, destination, 1)
   expect(photoPose(cut, frame, destination, 0.5)).toEqual(half)
   expect(cut).toEqual({ x: 200, y: 100, radius: 50 })
-})
-
-it('rozkłada wycinki zgodnie ze stroną zdjęcia i kolejnością od góry do dołu', () => {
-  const cuts = [
-    { id: 'prawy dolny', x: 850, y: 800 },
-    { id: 'lewy dolny', x: 200, y: 700 },
-    { id: 'prawy górny', x: 700, y: 100 },
-    { id: 'lewy górny', x: 100, y: 200 },
-  ] as PhotoCut[]
-  const [left, right] = photoColumns(cuts, 1000)
-  expect(left.map((c) => c.id)).toEqual(['lewy górny', 'lewy dolny'])
-  expect(right.map((c) => c.id)).toEqual(['prawy górny', 'prawy dolny'])
-  expect(cuts.map((c) => c.id)).toEqual(['prawy dolny', 'lewy dolny', 'prawy górny', 'lewy górny'])
-})
-
-it('zachowuje stronę również przy nierównej liczbie obiektów i na brzegu kadru', () => {
-  const cuts = [
-    { x: 900, y: 100 }, { x: -10, y: 200 }, { x: 500, y: 300 }, { x: 1100, y: 400 },
-  ] as PhotoCut[]
-  const [left, right] = photoColumns(cuts, 1000)
-  expect(left.map((c) => c.x)).toEqual([-10])
-  expect(right.map((c) => c.x)).toEqual([900, 500, 1100])
-  expect(photoColumns([], 1000)).toEqual([[], []])
-})
-
-it('nadmiar w kolumnie przenosi na drugą stronę', () => {
-  const cuts = Array.from({ length: 13 }, (_, i) => ({ x: 100 + i, y: i * 30, enabled: true })) as PhotoCut[]
-  expect(photoColumnCapacity(cuts)).toBe(7)
-  const [left, right] = photoColumns(cuts, 1000, photoColumnCapacity(cuts))
-  expect(left.map((c) => c.x)).toEqual([100, 101, 102, 103, 104, 105, 106])
-  expect(right.map((c) => c.x)).toEqual([107, 108, 109, 110, 111, 112])
-  expect(photoColumnCapacity([])).toBe(1)
-})
-
-it('nie zmienia pojemności kolumn przy przesuwaniu okręgów przez środek zdjęcia ani przy zaznaczaniu', () => {
-  const cuts = Array.from({ length: 13 }, (_, i) => ({ x: 900, y: i * 30, enabled: true })) as PhotoCut[]
-  for (let moved = 0; moved <= cuts.length; moved++) {
-    const shifted = cuts.map((c, i) => ({ ...c, x: i < moved ? 100 : 900, enabled: i % 3 !== 0 }))
-    expect(photoColumnCapacity(shifted)).toBe(photoColumnCapacity(cuts))
-    const capacity = photoColumnCapacity(shifted)
-    for (const column of photoColumns(shifted.filter((c) => c.enabled), 1000, capacity)) expect(column.length).toBeLessThanOrEqual(capacity)
-  }
 })
 
 it('oznacza tylko niżej narysowane okręgi, których obszary nachodzą na późniejsze', () => {

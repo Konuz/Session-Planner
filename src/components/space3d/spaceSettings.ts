@@ -41,8 +41,17 @@ export interface SpaceSettingsState extends SpaceSettings {
 /** Stan paska narzędzi okna: skala wynika z odległości obiektu, a po wczytaniu zdjęcia z odległości jego wycinków. */
 export function useSpaceSettings(o: DSO | null, photo: PhotoProject | null): SpaceSettingsState {
   const dist = o?.distLy ?? null
-  const auto: SpaceScale = dist !== null && dist > GALACTIC_LIMIT_LY ? 'universe' : 'galaxy'
+  const distances = photo?.cuts.map((c) => c.distLy).filter((d): d is number => d !== null) ?? []
+  const auto: SpaceScale = photo
+    ? distances.length && distances.every((d) => d >= GALACTIC_LIMIT_LY) ? 'universe' : 'galaxy'
+    : dist !== null && dist > GALACTIC_LIMIT_LY ? 'universe' : 'galaxy'
   const [scaleChoice, setScale] = useState<SpaceScale | null>(null)
+  const [source, setSource] = useState({ object: o?.i, photo: photo?.id })
+  // Reset przed zatwierdzeniem widoku, żeby zmiana źródła nie tworzyła sceny w poprzedniej skali.
+  if (source.object !== o?.i || source.photo !== photo?.id) {
+    setSource({ object: o?.i, photo: photo?.id })
+    setScale(null)
+  }
   const [showConstellations, setShowConstellations] = useState(false)
   const [constellationChoice, setConstellationChoice] = useState(o?.con ?? 'Ori')
   const [showStarNames, setShowStarNames] = useState(false)
@@ -50,12 +59,6 @@ export function useSpaceSettings(o: DSO | null, photo: PhotoProject | null): Spa
   const [galaxyLevel, setGalaxyLevel] = useState(0)
   const [constellations, setConstellations] = useState<Constellations3D | null>(null)
   const [constellationError, setConstellationError] = useState(false)
-
-  useEffect(() => {
-    if (!photo) return
-    const distances = photo.cuts.map((c) => c.distLy).filter((d): d is number => d !== null)
-    setScale(distances.length && distances.every((d) => d >= GALACTIC_LIMIT_LY) ? 'universe' : 'galaxy')
-  }, [photo?.id])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -68,10 +71,6 @@ export function useSpaceSettings(o: DSO | null, photo: PhotoProject | null): Spa
       .catch((e: Error) => { if (e.name !== 'AbortError') setConstellationError(true) })
     return () => controller.abort()
   }, [])
-
-  useEffect(() => {
-    setScale(null)
-  }, [o?.i])
 
   return {
     scale: scaleChoice ?? auto, showConstellations, constellationChoice, showStarNames, hiddenTypes, galaxyLevel, constellations, constellationError,

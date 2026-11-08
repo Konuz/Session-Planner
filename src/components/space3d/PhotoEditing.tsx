@@ -1,8 +1,8 @@
 // Wspólna część zdjęcia w oknie „Pozycja 3D” (obie skale): wczytanie, komunikaty, płaski widok edycji okręgów
 // i panel wycinków ze źródłami odległości. Rozkładanie zdjęcia robi Obserwatorium (Droga Mleczna) albo stara
-// nakładka z kolumnami (Wszechświat lokalny).
+// nakładka z wycinkami przy celach (Wszechświat lokalny).
 import { Box, ImagePlus, Settings2, X } from 'lucide-react'
-import { useEffect, useId, useRef, useState, type RefObject } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO } from '../../lib/catalog'
 import { hasDistance, MAX_RELATIVE_UNCERTAINTY, NO_DISTANCE, SCOPE_LABELS, type DistanceScope } from '../../lib/distance'
 import { coveredPhotoCircles, cutsInThreeD, distanceSummary, photoFrame, type PhotoCut, type PhotoDistance, type PhotoDistances } from '../../lib/photo'
@@ -42,13 +42,16 @@ export function PhotoFlatView({ session }: { session: PhotoSession }) {
   const [size, setSize] = useState({ width: 800, height: 520, bar: 63 })
   const prefix = useId().replace(/:/g, '')
   const dragRef = useRef<{ id: string; x: number; y: number; original: PhotoCut; resize: boolean } | null>(null)
-  useEffect(() => {
+  useLayoutEffect(() => {
     const svg = svgRef.current
     if (!svg) return
     // Zdjęcie kończy się nad paskiem zdjęcia (na telefonie pasek ma dwa wiersze przycisków).
-    const bar = () => svg.parentElement?.querySelector<HTMLElement>('.photo-controls')?.offsetHeight ?? 0
-    const ro = new ResizeObserver(() => setSize({ width: Math.max(1, svg.clientWidth), height: Math.max(1, svg.clientHeight), bar: bar() }))
+    const bar = svg.parentElement?.querySelector<HTMLElement>('.photo-controls')
+    const measure = () => setSize({ width: Math.max(1, svg.clientWidth), height: Math.max(1, svg.clientHeight), bar: bar?.offsetHeight ?? 0 })
+    measure()
+    const ro = new ResizeObserver(measure)
     ro.observe(svg)
+    if (bar) ro.observe(bar)
     return () => ro.disconnect()
   }, [])
   if (!project) return null
@@ -134,9 +137,12 @@ export function PhotoCutEditor({ session, regressing = [] }: { session: PhotoSes
       </select></label>
       {!hasDistance(active) && <p className="photo-notice">{active.distLy ? `Niepewność powyżej ${MAX_RELATIVE_UNCERTAINTY * 100} %: obiekt nie trafia do 3D.` : 'Bez ustalonej odległości obiekt nie trafia do 3D.'}</p>}
       {active.distanceRef && <a href={`https://ui.adsabs.harvard.edu/abs/${encodeURIComponent(active.distanceRef)}/abstract`} target="_blank" rel="noreferrer">Publikacja źródłowa ↗</a>}
-      {distanceData?.warnings.map((warning) => <p key={warning} className="photo-notice" role="status">{warning}</p>)}
-      {!!distanceData?.warnings.length && <button className="button small" onClick={() => { setDistances(null); setDistanceRetry((n) => n + 1) }}>Ponów pobieranie</button>}
-      {distanceData && !distanceData.measurements.length && !distanceData.warnings.length && <p className="photo-notice">Brak opublikowanych pomiarów w obsługiwanych źródłach.</p>}
+      <div className="photo-distance-status" aria-live="polite">
+        {!distanceData && <p className="dim">Pobieranie pomiarów…</p>}
+        {distanceData?.warnings.map((warning) => <p key={warning} className="photo-notice">{warning}</p>)}
+        {!!distanceData?.warnings.length && <button className="button small" onClick={() => { setDistances(null); setDistanceRetry((n) => n + 1) }}>Ponów pobieranie</button>}
+        {distanceData && !distanceData.measurements.length && !distanceData.warnings.length && <p className="photo-notice">Brak opublikowanych pomiarów w obsługiwanych źródłach.</p>}
+      </div>
       <label>Zakres pomiaru<select value={active.distanceScope} disabled={!active.distLy} onChange={(e) => updateCut(active.id, { distanceScope: e.target.value as DistanceScope, distanceOrigin: 'user' })}>
         {(Object.keys(SCOPE_LABELS) as DistanceScope[]).map((scope) => <option key={scope} value={scope}>{SCOPE_LABELS[scope]}</option>)}
       </select></label>
