@@ -68,6 +68,14 @@ export function fmtDistance(ly: number | null): string {
   return `${Math.round(ly).toLocaleString('pl-PL')} lś`
 }
 
+/** Zakres odległości; wspólna jednostka tylko raz („265–496 mln lś”). */
+export function fmtDistanceRange(lo: number, hi: number): string {
+  const a = fmtDistance(lo), b = fmtDistance(hi)
+  if (a === b) return a
+  const unit = (s: string) => s.replace(/^[\d\s,.]+/, '')
+  return unit(a) === unit(b) ? `${a.slice(0, a.length - unit(a).length).trimEnd()}–${b}` : `${a} – ${b}`
+}
+
 export function fmtDeg(v: number, digits = 0): string {
   return `${v < 0 ? '−' : ''}${fmtNum(Math.abs(v), digits)}°`
 }

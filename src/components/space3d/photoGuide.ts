@@ -1,28 +1,33 @@
-// Zdjęcie w skali Drogi Mlecznej: linia widzenia od Ziemi, stożek pola (cztery promienie do narożników kadru)
-// i znaczniki wycinków z ustaloną odległością według photoAnchorKind(…, 'galaxy'); obiektów bez odległości nie ma.
-// Stożek kończy się tuż za najdalszym obiektem zdjęcia w Drodze Mlecznej (milkyWayCone); obiekty spoza skali
-// mają jeden grot za jego końcem. Znaczniki to symbole atlasowe z pionem do płaszczyzny Galaktyki, podpisy w DOM.
+// Zdjęcie w scenie „Pozycja 3D” (obie skale): linia widzenia od Ziemi, stożek pola (cztery promienie do narożników
+// kadru) i znaczniki wycinków z ustaloną odległością na promieniu od Ziemi w swoim kierunku; obiektów bez odległości
+// nie ma. W Drodze Mlecznej stożek kończy się tuż za najdalszym obiektem Galaktyki (milkyWayCone), a obiekty spoza
+// skali mają jeden grot za jego końcem; we Wszechświecie lokalnym (odległości log.) sięga najdalszego obiektu
+// (universeCone). Znaczniki to symbole atlasowe, podpisy w DOM (bliskie na ekranie łączą się w plakietki grup).
 import { useEffect, useRef, type RefObject } from 'react'
 import * as THREE from 'three'
-import type { Vec3 } from '../../lib/astro'
+import { galacticVector, type Vec3 } from '../../lib/astro'
 import { DEFAULT_ANNOTATION_COLORS, type ObjectType } from '../../lib/catalog'
 import { frameBasis, halfFieldTan } from '../../lib/frameBasis'
 import { fmtDistance } from '../../lib/format'
 import { AXIS_DASH, AXIS_LENGTH, EARTH_Z } from '../../lib/observatory'
-import { cutsInThreeD, photoAnchorKind, type PhotoCut, type PhotoProject } from '../../lib/photo'
-import { scenePosition } from '../../lib/space3d'
+import { cutsInThreeD, photoAnchorKind, type PhotoProject } from '../../lib/photo'
+import { scenePoint, toScene, type SpaceScale } from '../../lib/space3d'
 import { framePose, sideView } from '../../lib/spaceCamera'
 import { diveScale } from '../../lib/spaceDive'
-import { milkyWayCone } from '../../lib/spacePhoto'
+import { milkyWayCone, universeCone } from '../../lib/spacePhoto'
 import { useStore } from '../../state/store'
 import type { Space3DHandle } from '../Space3D'
 import { beyondTexture, glyphSprite, glyphTexture } from './markerGlyphs'
-import { createLabelLayer } from './sceneLabels'
+import { createLabelLayer, type SceneLabel } from './sceneLabels'
 
 /** Grot obiektów spoza skali: tyle długości stożka od Ziemi. */
 const BEYOND = 1.22
-/** Wycinki bliżej siebie niż ten ułamek długości stożka dzielą jeden podpis. */
-const SHARED_LABEL = 0.04
+/** Wielkość znacznika (ułamek wysokości kadru): zwykła, w grupie i zaznaczonego albo wskazanego. */
+const MARK = 0.04
+const MARK_GROUPED = 0.024
+const MARK_ACTIVE = 0.056
+/** Promień trafienia znacznika kursorem (px). */
+const HIT_PX = 11
 
 export interface PhotoGuide {
   group: THREE.Group
@@ -44,15 +49,13 @@ export interface PhotoGuide {
   placeMarkers(project?: (id: string, position: Vec3) => Vec3): void
   /** Ukrycie na czas edycji okręgów (płaskie zdjęcie nad sceną). */
   setVisible(visible: boolean): void
+  /** Zaznaczony obiekt (powiększony znacznik i własny podpis poza grupami). */
+  setSelected(id: string | null): void
+  /** Obiekt wskazany na liście albo w wachlarzu (powiększony znacznik). */
+  setHover(id: string | null): void
+  /** Przelot kamery do znacznika obiektu. */
+  focus(id: string): void
   dispose(): void
-}
-
-/** Podpis grupy: oznaczenia po trzy w wierszu i odległość albo jej zakres. */
-function groupLines(cuts: PhotoCut[]): string[] {
-  const ids = cuts.map((c) => c.id)
-  const lines = Array.from({ length: Math.ceil(ids.length / 3) }, (_, i) => ids.slice(i * 3, i * 3 + 3).join(', '))
-  const near = fmtDistance(Math.min(...cuts.map((c) => c.distLy!))), far = fmtDistance(Math.max(...cuts.map((c) => c.distLy!)))
-  return [...lines, near === far ? `≈ ${near}` : `≈ ${near} – ${far}`]
 }
 
 export interface SightCone {
@@ -152,16 +155,22 @@ export function createSightCone(handle: Space3DHandle, basis: NonNullable<Return
   }
 }
 
-export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, colors: Partial<Record<ObjectType, string>>, accent: string): PhotoGuide | null {
+export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, scale: SpaceScale, colors: Partial<Record<ObjectType, string>>, accent: string, onPick: (id: string) => void): PhotoGuide | null {
   const basis = frameBasis(project.astrometry, project.width, project.height)
   if (!basis) return null
-  const { sunPos } = handle
+  const { sunPos, camera, controls, mount } = handle
   const dir = new THREE.Vector3(...basis.center)
-  const cuts = cutsInThreeD(project.cuts).map((cut) => ({ cut, kind: photoAnchorKind(cut.distLy, 'galaxy') }))
-  const placed = cuts.filter((c) => c.kind === 'position').sort((a, b) => a.cut.distLy! - b.cut.distLy!)
+  // Znacznik leży na promieniu od Ziemi w kierunku obiektu, w odległości punktu sceny od Ziemi. We Wszechświecie lokalnym
+  // skala log. liczy się od centrum Galaktyki, więc scenePosition mijałoby wąski stożek pola o kilka jednostek.
+  const cuts = cutsInThreeD(project.cuts).map((cut) => {
+    const toward = new THREE.Vector3(...toScene(galacticVector(cut)))
+    const reach = new THREE.Vector3(...scenePoint(toward.toArray() as Vec3, cut.distLy!, scale)).distanceTo(sunPos)
+    return { cut, kind: photoAnchorKind(cut.distLy, scale), world: sunPos.clone().addScaledVector(toward, reach), reach }
+  })
+  const placed = cuts.filter((c) => c.kind === 'position' || c.kind === 'local').sort((a, b) => a.cut.distLy! - b.cut.distLy!)
   const outside = cuts.filter((c) => c.kind === 'outside')
-  const { length } = milkyWayCone(cuts.map((c) => c.cut.distLy!))
-  // Skala kresek i progów w jednostkach długości stożka.
+  const length = scale === 'galaxy' ? milkyWayCone(cuts.map((c) => c.cut.distLy!)).length : universeCone(placed.map((c) => c.reach))
+  // Skala kresek w jednostkach długości stożka.
   const k = Math.max(length, 2) / 16
   const sight = createSightCone(handle, basis, project, length, accent, k)
   const { group, cone, line, fieldTan, materials, disposables } = sight
@@ -178,47 +187,48 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, c
   }
 
   // Znaczniki: symbol atlasowy typu w kolorze adnotacji, każdy wycinek osobno (w nurkowaniu leci do swojej karty).
-  const layer = createLabelLayer(handle, 'space-photo-labels')
-  const marks: { id: string; position: Vec3; sprite: THREE.Sprite }[] = []
+  let selected: string | null = null, hovered: string | null = null
+  const layer = createLabelLayer(handle, 'space-photo-labels', { onPick, onHover: (id) => setHover(id) })
+  const marks: { id: string; position: Vec3; sprite: THREE.Sprite; label: SceneLabel; grouped: boolean }[] = []
   const textures = new Map<string, THREE.CanvasTexture>()
   const colorOf = (type: ObjectType) => colors[type] ?? DEFAULT_ANNOTATION_COLORS[type]
-  const drops: number[] = []
-  const end = sunPos.clone().addScaledVector(dir, length)
-  // Cień linii widzenia na płaszczyźnie Galaktyki: razem z pionami znaczników pokazuje głębię i wysokość nad dyskiem.
-  drops.push(sunPos.x, sunPos.y, sunPos.z, end.x, sunPos.y, end.z, end.x, sunPos.y, end.z, end.x, end.y, end.z)
-  for (const { cut } of placed) {
-    const world = new THREE.Vector3(...scenePosition(cut, cut.distLy!, 'galaxy'))
+  const refresh = (mark: (typeof marks)[number]) => {
+    const active = mark.id === selected || mark.id === hovered
+    mark.label.pinned = mark.id === selected
+    mark.label.el.classList.toggle('selected', mark.id === selected)
+    mark.sprite.scale.setScalar(active ? MARK_ACTIVE : mark.grouped ? MARK_GROUPED : MARK)
+    mark.sprite.renderOrder = active ? 6 : 5
+  }
+  for (const { cut, world } of placed) {
     let map = textures.get(cut.type)
     if (!map) {
       map = glyphTexture(cut.type, colorOf(cut.type))
       textures.set(cut.type, map)
       disposables.push(map)
     }
-    const sprite = glyphSprite(map, 0.04)
+    const sprite = glyphSprite(map, MARK)
     sprite.position.copy(world)
     group.add(sprite)
     disposables.push(sprite.material)
     materials.push(sprite.material)
-    marks.push({ id: cut.id, position: world.toArray(), sprite })
     handle.anchors.add(sprite.position)
-    drops.push(world.x, world.y, world.z, world.x, sunPos.y, world.z)
+    // Każdy wycinek ma swój podpis; bliskie na ekranie łączy warstwa podpisów (plakietka grupy i wachlarz).
+    const mark = { id: cut.id, position: world.toArray() as Vec3, sprite, label: null as unknown as SceneLabel, grouped: false }
+    mark.label = layer.add(sprite.position, [cut.id, `≈ ${fmtDistance(cut.distLy)}`], {
+      color: colorOf(cut.type), id: cut.id, distLy: cut.distLy!,
+      onGroup: (grouped) => { mark.grouped = grouped; refresh(mark); handle.invalidate() },
+    })
+    marks.push(mark)
   }
-  const dropGeometry = new THREE.BufferGeometry()
-  dropGeometry.setAttribute('position', new THREE.Float32BufferAttribute(drops, 3))
-  const dropMaterial = new THREE.LineBasicMaterial({ color: accent, transparent: true, opacity: 0.28, depthWrite: false })
-  // Piony gasną razem ze ściankami stożka, zanim znaczniki ruszą do kart Obserwatorium.
-  dropMaterial.userData.faces = true
-  group.add(new THREE.LineSegments(dropGeometry, dropMaterial))
-  disposables.push(dropGeometry, dropMaterial)
-  materials.push(dropMaterial)
-  // Podpisy: wycinki stojące prawie w tym samym miejscu dzielą jeden (kolejność po odległości).
-  for (let i = 0; i < placed.length;) {
-    let j = i + 1
-    while (j < placed.length && marks[j].sprite.position.distanceTo(marks[i].sprite.position) < length * SHARED_LABEL) j++
-    const members = placed.slice(i, j).map((m) => m.cut)
-    layer.add(marks[i].sprite.position, groupLines(members), { color: colorOf(members[0].type) })
-    i = j
+  const byId = new Map(marks.map((mark) => [mark.id, mark]))
+  const setActive = (update: () => void) => {
+    const before = [selected, hovered]
+    update()
+    for (const id of new Set([...before, selected, hovered])) { const mark = id ? byId.get(id) : undefined; if (mark) refresh(mark) }
+    layer.invalidate()
+    handle.invalidate()
   }
+  function setHover(id: string | null) { if (id !== hovered) setActive(() => { hovered = id }) }
   // Obiekty spoza skali: jeden grot za końcem stożka, na przedłużeniu linii widzenia.
   let beyondSprite: THREE.Sprite | null = null
   if (outside.length) {
@@ -234,18 +244,52 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, c
   }
   handle.scene.add(group)
   handle.layout.add(layer.update)
+
+  // Wskazanie i kliknięcie znacznika: najbliższy na ekranie w promieniu HIT_PX.
+  let visible = true
+  const projected = new THREE.Vector3()
+  const hit = (x: number, y: number): string | null => {
+    if (!visible || !group.visible) return null
+    let best: string | null = null, bestD = HIT_PX
+    for (const mark of marks) {
+      projected.copy(mark.sprite.position).project(camera)
+      if (projected.z >= 1) continue
+      const d = Math.hypot((projected.x + 1) / 2 * mount.clientWidth - x, (1 - projected.y) / 2 * mount.clientHeight - y)
+      if (d < bestD) { best = mark.id; bestD = d }
+    }
+    return best
+  }
+  const claim = (x: number, y: number, click: boolean) => {
+    const id = hit(x, y)
+    if (id && click) onPick(id)
+    return !!id
+  }
+  handle.claims.add(claim)
+  const onMove = (event: PointerEvent) => {
+    if (event.buttons) return
+    const rect = mount.getBoundingClientRect()
+    const id = hit(event.clientX - rect.left, event.clientY - rect.top)
+    mount.style.cursor = id ? 'pointer' : ''
+    if (id || marks.some((mark) => mark.id === hovered)) setHover(id)
+  }
+  mount.addEventListener('pointermove', onMove)
   handle.invalidate()
 
   // Kadr: Ziemia, koniec stożka (z grotem) i znaczniki; kamera z boku linii widzenia, po zewnętrznej stronie Galaktyki.
+  // We Wszechświecie lokalnym (skala log.) obiekty zajmują końcowy odcinek linii, więc kadr zaczyna się tuż przed
+  // najbliższym z nich (obiekty Drogi Mlecznej przy Ziemi go nie wydłużają), żeby nie zbijały się w jedną plakietkę.
   const reach = sunPos.clone().addScaledVector(dir, length * (outside.length ? BEYOND : 1))
-  const framed: Vec3[] = [sunPos.toArray() as Vec3, reach.toArray() as Vec3, ...marks.map((m) => m.position)]
-  const middle = sunPos.clone().lerp(reach, 0.5)
+  const nearest = Math.min(...placed.filter((c) => c.kind === 'position').map((c) => c.reach))
+  const from = scale === 'universe' && Number.isFinite(nearest) ? sunPos.clone().addScaledVector(dir, nearest * 0.85) : sunPos.clone()
+  const start = from.distanceTo(sunPos)
+  const framed: Vec3[] = [from.toArray() as Vec3, reach.toArray() as Vec3, ...marks.filter((m) => new THREE.Vector3(...m.position).distanceTo(sunPos) >= start).map((m) => m.position)]
+  const middle = from.clone().lerp(reach, 0.5)
+  const span = scale === 'galaxy' ? length : from.distanceTo(reach)
 
   return {
     group, cone, fieldTan, basis, length, labels: layer.root,
     frameCamera() {
-      const { camera } = handle
-      handle.flyTo(framePose(framed, sideView(dir.toArray() as Vec3, [middle.x, 0, middle.z]), { fovDeg: 50, aspect: camera.aspect, room: [0.5, 0.42], minDistance: Math.max(1, length * 0.6) }))
+      handle.flyTo(framePose(framed, sideView(dir.toArray() as Vec3, [middle.x, 0, middle.z]), { fovDeg: 50, aspect: camera.aspect, room: [0.5, 0.42], minDistance: Math.max(1, span * 0.6) }))
     },
     setOpacity(opacity, cone, faces, axis) {
       sight.setOpacity(opacity, cone, faces, axis)
@@ -260,13 +304,27 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, c
       for (const mark of marks) mark.sprite.position.set(...(project?.(mark.id, mark.position) ?? mark.position))
       layer.invalidate()
     },
-    setVisible(visible) {
-      group.visible = visible
-      layer.setVisible(visible)
+    setVisible(next) {
+      visible = next
+      group.visible = next
+      layer.setVisible(next)
+      if (!next) setHover(null)
       handle.invalidate()
+    },
+    setSelected(id) { if (id !== selected) setActive(() => { selected = id }) },
+    setHover,
+    focus(id) {
+      const mark = byId.get(id)
+      if (!mark) return
+      const v = camera.position.clone().sub(controls.target).normalize()
+      const target = new THREE.Vector3(...mark.position)
+      handle.flyTo({ target: mark.position, position: target.addScaledVector(v, Math.max(0.15, length * 0.03)).toArray() as Vec3 })
     },
     dispose() {
       handle.layout.delete(layer.update)
+      handle.claims.delete(claim)
+      mount.removeEventListener('pointermove', onMove)
+      mount.style.cursor = ''
       for (const mark of marks) handle.anchors.delete(mark.sprite.position)
       handle.scene.remove(group)
       for (const d of disposables) d.dispose()
@@ -276,8 +334,8 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, c
   }
 }
 
-/** Znaczniki zdjęcia w scenie Drogi Mlecznej: odbudowa przy zmianie wycinków lub sceny, kadr przy nowym zdjęciu i scenie. */
-export function usePhotoGuide(handle: Space3DHandle | null, project: PhotoProject | null, visible: boolean): RefObject<PhotoGuide | null> {
+/** Znaczniki zdjęcia w scenie bieżącej skali: odbudowa przy zmianie wycinków lub sceny, kadr przy nowym zdjęciu i scenie. */
+export function usePhotoGuide(handle: Space3DHandle | null, project: PhotoProject | null, visible: boolean, selected: string | null, onPick: (id: string) => void): RefObject<PhotoGuide | null> {
   const colors = useStore((s) => s.annotationColors)
   const guideRef = useRef<PhotoGuide | null>(null)
   const framed = useRef<{ handle: Space3DHandle | null; id: string }>({ handle: null, id: '' })
@@ -285,14 +343,19 @@ export function usePhotoGuide(handle: Space3DHandle | null, project: PhotoProjec
   visibleRef.current = visible
   const projectRef = useRef(project)
   projectRef.current = project
+  const pickRef = useRef(onPick)
+  pickRef.current = onPick
+  const selectedRef = useRef(selected)
+  selectedRef.current = selected
   useEffect(() => {
     const project = projectRef.current
-    if (!handle || handle.scale !== 'galaxy' || !project) return
+    if (!handle || !project) return
     const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#00e0ff'
-    const guide = createPhotoGuide(handle, project, colors, accent)
+    const guide = createPhotoGuide(handle, project, handle.scale, colors, accent, (id) => pickRef.current(id))
     if (!guide) return
     guideRef.current = guide
     guide.setVisible(visibleRef.current)
+    guide.setSelected(selectedRef.current)
     if (framed.current.handle !== handle || framed.current.id !== project.id) {
       framed.current = { handle, id: project.id }
       guide.frameCamera()
@@ -301,5 +364,6 @@ export function usePhotoGuide(handle: Space3DHandle | null, project: PhotoProjec
     // Gwiazdy Gaia zmieniają projekt, ale nie znaczniki: przebudowa tylko przy zmianie zdjęcia lub wycinków.
   }, [handle, project?.id, project?.cuts, colors])
   useEffect(() => { guideRef.current?.setVisible(visible) }, [visible])
+  useEffect(() => { guideRef.current?.setSelected(selected) }, [selected])
   return guideRef
 }

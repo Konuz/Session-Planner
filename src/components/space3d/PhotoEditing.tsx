@@ -7,6 +7,7 @@ import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO } from '../../lib/catalog'
 import { hasDistance, MAX_RELATIVE_UNCERTAINTY, NO_DISTANCE, SCOPE_LABELS, type DistanceScope } from '../../lib/distance'
 import { coveredPhotoCircles, cutsInThreeD, distanceSummary, photoFrame, type PhotoCut, type PhotoDistance, type PhotoDistances } from '../../lib/photo'
 import { hasUnsavedPhoto } from '../../lib/photoStorage'
+import { useStore } from '../../state/store'
 import { CloseButton } from '../CloseButton'
 import type { PhotoSession, StarsStatus } from './photoSession'
 
@@ -38,6 +39,7 @@ export function PhotoMessages({ session }: { session: PhotoSession }) {
  *  i jego uchwytu (promień). */
 export function PhotoFlatView({ session }: { session: PhotoSession }) {
   const { project, updateCut, activeId, setActiveId } = session
+  const colors = useStore((s) => s.annotationColors)
   const svgRef = useRef<SVGSVGElement>(null)
   const [size, setSize] = useState({ width: 800, height: 520, bar: 63 })
   const prefix = useId().replace(/:/g, '')
@@ -84,7 +86,7 @@ export function PhotoFlatView({ session }: { session: PhotoSession }) {
     <image id={`${prefix}-image`} href={project.image} width={project.width} height={project.height} transform={`translate(${frame.x} ${frame.y}) scale(${frame.scale})`} />
     {circles.map(({ cut, x, y, radius }, i) => {
       return <g key={cut.id}>
-        <circle cx={x} cy={y} r={radius} fill="transparent" stroke={activeId === cut.id ? 'var(--accent)' : DEFAULT_ANNOTATION_COLORS[cut.type]} strokeWidth={activeId === cut.id ? 2 : 1.4} strokeDasharray={covered[i] ? '5 4' : undefined} className="photo-draggable" onPointerDown={(e) => startDrag(e, cut, false)} onClick={() => setActiveId(cut.id)}><title>{`${cut.id}: ${distanceSummary(cut)}`}</title></circle>
+        <circle cx={x} cy={y} r={radius} fill="transparent" stroke={activeId === cut.id ? 'var(--accent)' : colors[cut.type] ?? DEFAULT_ANNOTATION_COLORS[cut.type]} strokeWidth={activeId === cut.id ? 2 : 1.4} strokeDasharray={covered[i] ? '5 4' : undefined} className="photo-draggable" onPointerDown={(e) => startDrag(e, cut, false)} onClick={() => setActiveId(cut.id)}><title>{`${cut.id}: ${distanceSummary(cut)}`}</title></circle>
         {activeId === cut.id && <circle cx={x + radius} cy={y} r={5} fill="var(--accent)" className="photo-resize" onPointerDown={(e) => startDrag(e, cut, true)} />}
         <text x={x} y={y + radius + 14} className="photo-label">{cut.id}</text>
       </g>
@@ -95,6 +97,7 @@ export function PhotoFlatView({ session }: { session: PhotoSession }) {
 /** Panel wycinków: widoczność, wybór źródła odległości i zakres pomiaru, dokładność astrometrii. */
 export function PhotoCutEditor({ session, regressing = [] }: { session: PhotoSession; regressing?: string[] }) {
   const { project, updateCut, activeId, setActiveId } = session
+  const colors = useStore((s) => s.annotationColors)
   const [distances, setDistances] = useState<{ key: string; data: PhotoDistances } | null>(null)
   const [distanceRetry, setDistanceRetry] = useState(0)
   const active = project?.cuts.find((c) => c.id === activeId)
@@ -118,7 +121,7 @@ export function PhotoCutEditor({ session, regressing = [] }: { session: PhotoSes
     <p className="dim">Propozycje z katalogu. Zaznacz widoczne obiekty; przesuń okrąg i jego uchwyt. Obiekty bez ustalonej odległości nie trafiają do 3D.</p>
     <div className="photo-object-list">{project.cuts.map((c) => <div key={c.id} className={activeId === c.id ? 'active' : ''}>
       <input type="checkbox" aria-label={`Pokaż ${c.id}`} checked={c.enabled && hasDistance(c)} disabled={!hasDistance(c)} title={hasDistance(c) ? undefined : regressing.includes(c.id) ? 'Regresor szacuje odległość (w tle, kilka minut)' : 'Bez ustalonej odległości: obiekt nie trafia do 3D'} onChange={(e) => updateCut(c.id, { enabled: e.target.checked })} />
-      <button onClick={() => setActiveId(c.id)}><span style={{ color: DEFAULT_ANNOTATION_COLORS[c.type] }}>{c.id}</span><small>{TYPE_INFO[c.type].short}</small></button>
+      <button onClick={() => setActiveId(c.id)}><span style={{ color: colors[c.type] ?? DEFAULT_ANNOTATION_COLORS[c.type] }}>{c.id}</span><small>{TYPE_INFO[c.type].short}</small></button>
     </div>)}</div>
     {project.cuts.length === 0 && <p>Brak obiektów katalogowych w tym kadrze.</p>}
     {active && <div className="photo-fields">

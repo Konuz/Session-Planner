@@ -949,12 +949,12 @@ export function SkyDome({ playing = false }: Props) {
       for (const o of messier) {
         const p = proj.eq(unitVector(o.raDeg, o.decDeg))
         if (!p || p[0] < 0 || p[1] < 0 || p[0] > size.w || p[1] > size.h) continue
-        ctx.strokeStyle = 'rgba(167, 139, 250, 0.55)'
+        ctx.strokeStyle = withAlpha(typeColors[o.type], 0.85)
         ctx.beginPath()
         ctx.arc(p[0], p[1], 3.5, 0, Math.PI * 2)
         ctx.stroke()
         if (showAnnotations && view.fovDeg < 90) {
-          ctx.fillStyle = 'rgba(200, 190, 255, 0.6)'
+          ctx.fillStyle = withAlpha(typeColors[o.type], 0.85)
           ctx.fillText(o.id.replace(' ', ''), p[0] + 6, p[1] + 3)
         }
       }

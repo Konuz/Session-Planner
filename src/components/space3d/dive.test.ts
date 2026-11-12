@@ -31,8 +31,7 @@ it('odsłania obserwatorium dopiero po pierwszej gotowej klatce sterowanej przej
   expect(events).toEqual(['render', 'reveal', 'render'])
 })
 
-it('we Wszechświecie lokalnym składa wycinki w zdjęcie w fazie przejścia, a po niej rozkłada zdjęcie w Obserwatorium', () => {
-  const universeStates: { progress: number; fade: number }[] = []
+it('zdjęcie Obserwatorium rozkłada się dopiero w fazie wejścia', () => {
   const obsProgress: number[] = []
   const phases: string[] = []
   const observatory = {
@@ -57,10 +56,6 @@ it('we Wszechświecie lokalnym składa wycinki w zdjęcie w fazie przejścia, a 
       direction: 'in',
       space,
       guide: null,
-      universe: {
-        setDive(progress: number, fade: number) { universeStates.push({ progress, fade }) },
-        setVisible() {},
-      },
       seam: { position: [0, 0, 200], target: [0, 0, 0] },
       seamProgress: 1,
       observatory: () => observatory,
@@ -71,26 +66,18 @@ it('we Wszechświecie lokalnym składa wycinki w zdjęcie w fazie przejścia, a 
   })
   const frame = Reflect.get(dive, 'frame') as (now: number) => void
   const { dive: diveMs, enter: enterMs } = DIVE_PHASE_MS.in
-  // Start przejścia: wycinki są w pełni rozłożone (progress = 1).
   Object.assign(dive, { frozen: 0 })
   frame.call(dive, 0)
-  expect(universeStates.at(-1)).toEqual({ progress: 1, fade: 1 })
   expect(obsProgress.at(-1)).toBe(0)
-  // W połowie składania (k = ALIGN_K / 2): wycinki są w połowie drogi do płaskiego zdjęcia.
   Object.assign(dive, { frozen: (diveMs * ALIGN_K / 2) / (diveMs + enterMs) })
   frame.call(dive, 16)
-  expect(universeStates.at(-1)!.progress).toBeCloseTo(0.5, 5)
-  expect(universeStates.at(-1)!.fade).toBe(1)
   expect(obsProgress.at(-1)).toBe(0)
-  // W chwili ALIGN_K: wycinki całkowicie złożone w zdjęcie (progress = 0).
   Object.assign(dive, { frozen: (diveMs * ALIGN_K) / (diveMs + enterMs) })
   frame.call(dive, 32)
-  expect(universeStates.at(-1)!.progress).toBeCloseTo(0, 9)
   expect(obsProgress.at(-1)).toBe(0)
-  // Faza wejścia do Obserwatorium: wycinki wygaszone, a w Obserwatorium następuje rozkładanie zdjęcia (0 -> 1).
+  // Faza wejścia do Obserwatorium: rozkładanie zdjęcia (0 -> 1).
   Object.assign(dive, { frozen: (diveMs + enterMs / 2) / (diveMs + enterMs) })
   frame.call(dive, 48)
   expect(phases).toEqual(['dive', 'enter'])
-  expect(universeStates.at(-1)).toEqual({ progress: 0, fade: 0 })
   expect(obsProgress.at(-1)).toBeCloseTo(0.5, 5)
 })

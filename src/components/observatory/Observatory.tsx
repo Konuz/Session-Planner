@@ -8,6 +8,7 @@ import { SCOPE_LABELS, adsUrl, hasDistance } from '../../lib/distance'
 import { fmtDistance, fmtNum } from '../../lib/format'
 import { CATEGORY_LABELS, PHOTO_UNFOLD_MS, byDistance, categoryCounts, distanceDomain, distanceHistogram, fieldOfView, matchesFilter, observatoryItems, type CategoryFilter, type ObservatoryItem } from '../../lib/observatory'
 import type { PhotoProject } from '../../lib/photo'
+import { useStore } from '../../state/store'
 import { Range } from '../Range'
 import type { StarsStatus } from '../space3d/photoSession'
 import { DistanceHistogram } from './DistanceHistogram'
@@ -47,6 +48,7 @@ function thumbnail(image: HTMLImageElement, item: ObservatoryItem): string {
 }
 
 export default function Observatory({ project, slots, stars, onRetryStars, diving, hidden, onScene }: Props) {
+  const colors = useStore((s) => s.annotationColors)
   const hostRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<ObservatoryScene | null>(null)
   const [image, setImage] = useState<HTMLImageElement | null>(null)
@@ -109,12 +111,12 @@ export default function Observatory({ project, slots, stars, onRetryStars, divin
   useEffect(() => {
     if (!image || !hostRef.current) return
     sceneRef.current ??= new ObservatoryScene(hostRef.current, { reducedMotion: reducedMotion(), onSelect: setSelected, external: idleRef.current })
-    sceneRef.current.setData(image, { width: project.width, height: project.height }, items, domain, plane)
+    sceneRef.current.setData(image, { width: project.width, height: project.height }, items, domain, plane, colors)
     onSceneRef.current?.(sceneRef.current)
-  }, [image, plane, items, domain, project.width, project.height])
+  }, [image, plane, items, domain, project.width, project.height, colors])
 
   useEffect(() => { sceneRef.current?.setProgress(progress) }, [progress, image, items])
-  useEffect(() => { sceneRef.current?.setVisible(new Set(visibleItems.map((item) => item.id))) }, [visibleItems, image])
+  useEffect(() => { sceneRef.current?.setVisible(new Set(visibleItems.map((item) => item.id))) }, [visibleItems, image, colors])
   useEffect(() => { sceneRef.current?.setSelected(selected) }, [selected, image, items])
   // Widok ustawiamy po zbudowaniu sceny bez animacji, przy zmianie zakładki z przelotem.
   const viewRef = useRef(view)

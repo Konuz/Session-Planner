@@ -31,9 +31,6 @@
   --t-cluster: #ffd03b;
   --t-snr: #f88f05;
   --pin: #22c55e; /* green-500: pinezka celu jak na mapie nieba konuzastro.pl */
-  /* Plany odległości okna zdjęcia: pierwszy plan i tło (główny plan to --accent). */
-  --plan-near: #f5a524;
-  --plan-far: #8b9dff;
   --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
   --sans: 'Inter', sans-serif;
   --display: 'Exo 2', sans-serif;
@@ -500,38 +497,19 @@ input[type='checkbox']:checked::after {
 .photo-draggable { pointer-events: all; cursor: move; touch-action: none; }
 .photo-resize { pointer-events: all; cursor: ew-resize; touch-action: none; }
 .photo-label { text-anchor: middle; fill: var(--text); stroke: var(--bg); stroke-width: 3px; paint-order: stroke; font: 11px var(--mono); pointer-events: none; }
-/* Okno zdjęcia (Wszechświat lokalny): panel planów odległości; kolor planu w --plan (tokeny --plan-near, --accent, --plan-far). */
+/* Lista obiektów zdjęcia (Wszechświat lokalny). */
 .photo-window-panel { position: absolute; top: 12px; right: 12px; z-index: 4; display: flex; flex-direction: column; gap: 9px; width: 264px; max-height: calc(100% - 100px); padding: 12px; overflow-y: auto; border: 1px solid var(--border-strong); background: var(--card); font-size: 11px; }
 .pw-heading { display: grid; gap: 3px; }
 .pw-eyebrow { color: var(--accent); font: 9px var(--mono); letter-spacing: 0.2em; }
 .pw-heading strong { font: 600 13px var(--display); }
 .pw-meta { color: var(--text-dim); font: 10px var(--mono); }
-.pw-views { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
-.pw-views .button.small, .pw-actions .button.small { height: 28px; min-height: 28px; padding: 0 6px; justify-content: center; }
-.pw-near { --plan: var(--plan-near); }
-.pw-main { --plan: var(--accent); }
-.pw-far { --plan: var(--plan-far); }
-.pw-layers { display: grid; gap: 3px; }
-.pw-layer { display: flex; align-items: center; gap: 7px; height: 24px; padding: 0 7px; border: 1px solid var(--border); background: transparent; color: var(--text-2); font: 10px var(--mono); text-align: left; cursor: pointer; }
-.pw-layer:hover:not(:disabled) { background: var(--card-hover); }
-.pw-layer.active { border-color: var(--plan); color: var(--text); }
-.pw-layer:disabled { opacity: 0.4; cursor: default; }
-.pw-layer span, .pw-group span { flex: 1; }
-.pw-layer b, .pw-group b { font-weight: 400; color: var(--text-dim); }
-.pw-layer i, .pw-group i { width: 8px; height: 8px; flex: none; border: 1.5px solid var(--plan); border-radius: 50%; }
-.pw-strip svg { display: block; width: 100%; height: 30px; cursor: pointer; }
-.pw-band { fill: var(--accent-faint); }
-.pw-axis { stroke: var(--border-strong); }
-.pw-tick { fill: none; stroke: var(--plan); stroke-width: 1; opacity: 0.8; }
-.pw-tick.pw-active { stroke: var(--text); stroke-width: 1.5; opacity: 1; }
-.pw-strip-scale { display: flex; justify-content: space-between; color: var(--text-faint); font: 9px var(--mono); }
+.pw-actions .button.small { height: 28px; min-height: 28px; padding: 0 6px; justify-content: center; }
 .pw-search { width: 100%; min-height: 28px; flex: none; padding: 0 8px; border: 1px solid var(--border-strong); background: var(--bg); color: var(--text); font: 11px var(--mono); }
 .pw-list { flex: 0 1 auto; min-height: 64px; max-height: 300px; overflow: auto; border: 1px solid var(--border); }
 .pw-row { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 8px; padding: 0 8px; cursor: pointer; }
 .pw-row:hover { background: var(--card-hover); }
 .pw-row.on { background: var(--accent-bg); color: var(--accent); }
-.pw-group, .pw-group:hover { background: var(--bg-deep); color: var(--text-dim); font: 9px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; cursor: default; }
-.pw-thumb { display: block; width: 30px; height: 30px; flex: none; border: 1px solid var(--plan, var(--border-strong)); border-radius: 50%; background: var(--bg-deep); }
+.pw-thumb { display: block; width: 30px; height: 30px; flex: none; border: 1px solid var(--border-strong); border-radius: 50%; background: var(--bg-deep); }
 .pw-row-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pw-row-dist { font-size: 10px; color: var(--text-dim); }
 .pw-selection { display: grid; gap: 7px; flex: none; padding-top: 9px; border-top: 1px solid var(--border-strong); }
@@ -539,13 +517,12 @@ input[type='checkbox']:checked::after {
 .pw-selected .pw-thumb { width: 56px; height: 56px; border-color: var(--text); }
 .pw-selected > div { display: grid; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
 .pw-selected strong { font-size: 13px; }
-.pw-tag { color: var(--plan); font: 9px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; }
 .pw-selection p, .pw-note { margin: 0; color: var(--text-dim); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
 .pw-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
 .pw-excluded { text-align: left; font-size: 10px; }
 @media (max-width: 700px) {
   .photo-window-panel { top: 8px; right: 8px; width: 200px; padding: 8px; max-height: calc(100% - 150px); }
-  .pw-note, .pw-strip { display: none; }
+  .pw-note { display: none; }
 }
 .photo-controls { position: absolute; bottom: 12px; left: 12px; right: 12px; z-index: 5; padding: 8px 10px; border: 1px solid var(--border-strong); background: var(--card); }
 .photo-heading { display: flex; justify-content: space-between; gap: 8px; font: 10px var(--mono); margin-bottom: 5px; }
@@ -1019,6 +996,19 @@ input[type='checkbox']:checked::after {
 .obs-card.selected { border-color: var(--accent); color: var(--text); }
 /* W nurkowaniu podpisy wycinków pojawiają się razem z płaskim zdjęciem. */
 .obs-labels .obs-card { opacity: var(--obs-photo-fade, 1); }
+/* Plakietka grupy nakładających się podpisów i wachlarz jej nazw (ramiona wg odległości). */
+.obs-group { padding: 4px 7px; text-align: center; background: rgba(11, 13, 23, 0.9); border: 1px solid var(--accent-dim); color: var(--accent); cursor: pointer; pointer-events: auto; opacity: var(--obs-photo-fade, 1); }
+.obs-group:hover, .obs-group:focus-visible { border-color: var(--accent); color: var(--text); outline: none; }
+.obs-labels.inert .obs-group { pointer-events: none; }
+.obs-labels.fan-open > .obs-card, .obs-labels.fan-open > .obs-group { opacity: 0.2; }
+.obs-labels.fan-open > .obs-card.selected { opacity: 1; }
+/* Sceny „Pozycja 3D”: przy otwartym wachlarzu przygasają podpisy, plakietki i odnośniki (poza zaznaczeniem). */
+.obs-labels.fan-open > .space-photo-label:not(.selected), .obs-labels.fan-open > .obs-leader { opacity: 0.2; }
+.obs-fan { position: absolute; left: 0; top: 0; }
+.obs-spoke { position: absolute; left: 0; top: 0; transform-origin: 0 0; height: 16px; padding: 0 7px; white-space: nowrap; font: 10px/14px var(--mono); background: rgba(11, 13, 23, 0.92); border: 1px solid var(--border-strong); color: var(--text-2); cursor: pointer; pointer-events: auto; }
+.obs-spoke:hover, .obs-spoke:focus-visible { border-color: var(--accent); color: var(--text); outline: none; z-index: 1; }
+.obs-spoke.selected { border-color: var(--accent); color: var(--accent); }
+.obs-spoke.more { border-style: dashed; cursor: default; pointer-events: none; }
 .obs-tick { margin: 6px 0 0 6px; color: var(--accent-dim); }
 .obs-earth { margin: 4px 0 0 -18px; color: var(--text); }
 /* Płótno dostaje fokus dla WASD; ramka fokusu zasłaniałaby scenę. */

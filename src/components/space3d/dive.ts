@@ -5,7 +5,7 @@ import * as THREE from 'three'
 import type { Vec3 } from '../../lib/astro'
 import { EARTH_Z, PLANE_WIDTH } from '../../lib/observatory'
 import {
-  ALIGN_K, coneLength, coneTan, diveFades, diveFrame, diveGridScale, diveMarkerPosition, diveScale, divePose, diveTotalMs, ease, guideAlignment, guideRollWeight, lerpPose, makeBridge, nearFar, ramp, startScale, turnWeight, unbridgePoint, unbridgeVector, uprightRoll,
+  ALIGN_K, coneLength, coneTan, diveFades, diveFrame, diveGridScale, diveMarkerPosition, diveScale, divePose, diveTotalMs, ease, guideAlignment, guideRollWeight, lerpPose, makeBridge, nearFar, startScale, turnWeight, unbridgePoint, unbridgeVector, uprightRoll,
   type Bridge, type DiveDirection, type DiveFrame, type DivePhase, type Pose,
 } from '../../lib/spaceDive'
 import type { ObservatoryScene } from '../observatory/scene'
@@ -22,16 +22,10 @@ const UP: Vec3 = [0, 1, 0]
 /** Promień Ziemi Obserwatorium (jednostki sceny). */
 const EARTH_RADIUS = 1.5
 
-export interface UniverseDive {
-  setDive(progress: number, fade: number): void
-  setVisible(visible: boolean): void
-}
-
 export interface DiveOptions {
   direction: DiveDirection
   space: Space3DHandle
   guide: PhotoGuide | null
-  universe?: UniverseDive | null
   /** Scena Obserwatorium; null, dopóki nie powstanie (nurkowanie czeka wtedy na starcie). */
   observatory(): ObservatoryScene | null
   /** Poza szwu: widok Obserwatorium „Struktura”, w który wchodzi most z Drogi Mlecznej. */
@@ -79,7 +73,7 @@ export class SpaceDive {
   private earthMaterial: THREE.Material | null
 
   constructor(private o: DiveOptions) {
-    const { space, guide, universe } = o
+    const { space, guide } = o
     this.real = guide?.fieldTan ?? [1, 1]
     this.pyramid = [PLANE_WIDTH / 2 / EARTH_Z, PLANE_WIDTH * o.imageAspect / 2 / EARTH_Z]
     this.spacePose = o.spacePose ?? { position: space.camera.position.toArray() as Vec3, target: space.controls.target.toArray() as Vec3, up: space.camera.up.toArray() as Vec3 }
@@ -87,7 +81,6 @@ export class SpaceDive {
     this.bridge = guide ? makeBridge(space.sunPos.toArray() as Vec3, guide.basis, [0, 0, EARTH_Z], this.roll) : null
     this.earthMaterial = space.earth ? space.earth.material as THREE.Material : null
     guide?.setVisible(true)
-    universe?.setVisible(true)
     space.stopIntro()
     space.setExternal(true)
     space.override.camera = true
@@ -216,16 +209,15 @@ export class SpaceDive {
   }
 
   /** Krycia warstw sceny 3D (k: liniowy czas nurkowania) bez rysowania klatki (na wejściu: wszystko wygaszone,
-   *  także podpisy w DOM). We Wszechświecie lokalnym wycinki składają się w fotografię do chwili ALIGN_K. */
+   *  także podpisy w DOM). */
   private fadeSpace(k: number) {
-    const { space, guide, universe } = this.o
+    const { space, guide } = this.o
     const fades = diveFades(k)
     space.override.layerFade = fades.layers
     fadeLayers(space, guide, fades.layers, fades.labels)
     if (this.earthMaterial) this.earthMaterial.opacity = fades.spaceEarth
     if (space.earth) space.earth.visible = fades.spaceEarth > 0
     guide?.setOpacity(fades.guide, fades.cone, fades.coneFaces, fades.spaceAxis)
-    universe?.setDive(1 - ramp(k, 0, ALIGN_K), fades.guide)
   }
 
   private applyObservatory(obs: ObservatoryScene, { phase, k, photoProgress }: DiveFrame, seam: Pose, now: number, spaceView: (Pose & { fov: number }) | null) {
@@ -252,7 +244,7 @@ export class SpaceDive {
   private finish(obs: ObservatoryScene | null) {
     this.finished = true
     this.cancel()
-    const { space, guide, universe } = this.o
+    const { space, guide } = this.o
     if (this.o.direction === 'in') {
       // Scena 3D zostaje wstrzymana pod spodem (stan zdjęcia: bez klatek).
       if (obs) {
@@ -261,7 +253,7 @@ export class SpaceDive {
         obs.setExternal(false)
       }
     } else {
-      restoreSpace(space, guide, this.spacePose, universe)
+      restoreSpace(space, guide, this.spacePose)
     }
     this.o.onDone()
   }
@@ -269,9 +261,8 @@ export class SpaceDive {
 
 /** Krycie warstw tła sceny 3D (bez znaczników/wycinków zdjęcia i Ziemi) i osobno napisów; bazowe krycie zapamiętane w materiale. */
 function fadeLayers(space: Space3DHandle, guide: PhotoGuide | null, fade: number, labels = fade) {
-  const universePhoto = space.scene.getObjectByName('universe-photo-fragments')
   space.scene.traverse((object) => {
-    if (object === space.earth || (guide && (object === guide.group || isInside(object, guide.group))) || (universePhoto && (object === universePhoto || isInside(object, universePhoto)))) return
+    if (object === space.earth || (guide && (object === guide.group || isInside(object, guide.group)))) return
     const material = (object as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined
     const f = object instanceof THREE.Sprite ? Math.min(fade, labels) : fade
     for (const m of Array.isArray(material) ? material : material ? [material] : []) {
@@ -293,7 +284,7 @@ function isInside(object: THREE.Object3D, group: THREE.Object3D): boolean {
 }
 
 /** Stan sceny 3D sprzed nurkowania: poza, pole widzenia, płaszczyzny, krycia i własna pętla. */
-export function restoreSpace(space: Space3DHandle, guide: PhotoGuide | null, pose: Pose | null, universe?: UniverseDive | null) {
+export function restoreSpace(space: Space3DHandle, guide: PhotoGuide | null, pose: Pose | null) {
   const { camera, controls } = space
   space.override.camera = false
   space.override.earthRadius = null
@@ -307,7 +298,6 @@ export function restoreSpace(space: Space3DHandle, guide: PhotoGuide | null, pos
     guide.setConeRoll(0)
     guide.placeMarkers()
   }
-  universe?.setDive(1, 1)
   if (space.earth) {
     const material = space.earth.material as THREE.Material
     material.opacity = 1

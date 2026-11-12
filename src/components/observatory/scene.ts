@@ -2,9 +2,11 @@
 // oś odległości (log.) z Ziemią i ostrosłupem pola. Renderowanie na żądanie; podpisy w nakładce DOM.
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { AXIS_DASH, AXIS_LENGTH, EARTH_Z, OBSERVATORY_FOV as FOV, PLANE_WIDTH, depthFraction, earthViewPose, fitDistance, observatoryPosition, orbitOffset, starColor, starSize, structureViewPose, type LogDomain, type ObservatoryItem } from '../../lib/observatory'
-import { DEFAULT_ANNOTATION_COLORS } from '../../lib/catalog'
-import { fmtDistance } from '../../lib/format'
+import { AXIS_DASH, AXIS_LENGTH, EARTH_Z, OBSERVATORY_FOV as FOV, PLANE_WIDTH, byDistance, depthFraction, earthViewPose, fitDistance, observatoryPosition, orbitOffset, starColor, starSize, structureViewPose, type LogDomain, type ObservatoryItem } from '../../lib/observatory'
+import { DEFAULT_ANNOTATION_COLORS, type ObjectType } from '../../lib/catalog'
+import { fmtDistance, fmtDistanceRange } from '../../lib/format'
+import { objectCount, overlapGroups, type LabelBox } from '../../lib/labelGroups'
+import { openLabelFan, type LabelFan } from '../labelFan'
 
 export type ObservatoryView = 'structure' | 'earth' | 'top' | 'side'
 /** Krycia części sceny w nurkowaniu z Drogi Mlecznej (1: bez zmian). */
@@ -14,6 +16,11 @@ const FLY_MS = 900
 const GRID_WIDTH = PLANE_WIDTH * 2.4
 const GRID_DEPTH = AXIS_LENGTH + EARTH_Z + 40
 const GRID_FRONT = EARTH_Z + 20
+/** Podpis wycinka (.obs-card): dwa wiersze 13,5 px z ramką, lewy górny róg względem punktu, szerokość znaku kroju 10 px. */
+const LABEL_HEIGHT = 37
+const LABEL_DX = 8
+const LABEL_DY = -46
+const CHAR_PX = 6.1
 
 interface Options {
   reducedMotion: boolean
@@ -139,6 +146,12 @@ export class ObservatoryScene {
   private axis = new THREE.Group()
   private ticks: { ly: number; mesh: THREE.Mesh; label: HTMLDivElement }[] = []
   private itemLabels = new Map<string, HTMLDivElement>()
+  private labelWidths = new Map<string, number>()
+  /** Plakietki grup nakładających się podpisów (pula) i skład grupy każdej z nich w bieżącej klatce. */
+  private badges: { el: HTMLButtonElement; text: string; ids: string[]; x: number; y: number }[] = []
+  /** Otwarty wachlarz nazw grupy; ramię pod kursorem podświetla kartę w scenie. */
+  private fan: LabelFan | null = null
+  private hovered: string | null = null
   private earthLabel: HTMLDivElement
   private flight: { offset: [THREE.Vector3Tuple, THREE.Vector3Tuple]; target: [THREE.Vector3, THREE.Vector3]; t0: number; resolve?: () => void } | null = null
   private keys = new Set<string>()
@@ -159,7 +172,7 @@ export class ObservatoryScene {
     this.controls.enableDamping = !options.reducedMotion
     this.controls.dampingFactor = 0.12
     this.controls.screenSpacePanning = true
-    this.controls.addEventListener('start', () => { this.flight = null })
+    this.controls.addEventListener('start', () => { this.flight = null; this.closeFan() })
     this.controls.addEventListener('change', () => { this.dirty = true })
 
     const grid = this.grid = new THREE.GridHelper(1, 24, cssColor('--border-strong', '#232942'), cssColor('--border', '#15192b'))
@@ -176,7 +189,7 @@ export class ObservatoryScene {
     this.ring.renderOrder = 10
     this.ring.visible = false
     this.scene.add(this.ring)
-    const anchorMap = ringTexture(DEFAULT_ANNOTATION_COLORS.DN)
+    const anchorMap = ringTexture('#ffffff')
     this.anchorMaterial = new THREE.SpriteMaterial({ map: anchorMap, depthTest: false, depthWrite: false, transparent: true, sizeAttenuation: false })
     this.disposables.push(ringMap, ringMaterial, anchorMap, this.anchorMaterial)
 
@@ -184,9 +197,11 @@ export class ObservatoryScene {
     this.earthLabel = this.label('obs-label obs-earth', 'Ziemia')
 
     const pointer = { x: 0, y: 0 }
-    this.renderer.domElement.addEventListener('pointerdown', (e) => { pointer.x = e.clientX; pointer.y = e.clientY })
+    // Kliknięcie obok otwartego wachlarza tylko go zamyka (bez zmiany zaznaczenia).
+    let dismissed = false
+    this.renderer.domElement.addEventListener('pointerdown', (e) => { pointer.x = e.clientX; pointer.y = e.clientY; dismissed = !!this.fan; this.closeFan() })
     this.renderer.domElement.addEventListener('pointerup', (e) => {
-      if (Math.hypot(e.clientX - pointer.x, e.clientY - pointer.y) < 4) this.options.onSelect(this.pick(e.clientX, e.clientY))
+      if (!dismissed && Math.hypot(e.clientX - pointer.x, e.clientY - pointer.y) < 4) this.options.onSelect(this.pick(e.clientX, e.clientY))
     })
     this.renderer.domElement.addEventListener('keydown', this.onKeyDown)
     this.renderer.domElement.addEventListener('keyup', this.onKeyUp)
@@ -217,6 +232,7 @@ export class ObservatoryScene {
     this.renderer.domElement.style.height = '100%'
     this.camera.aspect = width / height
     this.camera.updateProjectionMatrix()
+    this.closeFan()
     this.dirty = true
     return true
   }
@@ -225,7 +241,7 @@ export class ObservatoryScene {
   /** Scena gotowa do pokazania: dane wczytane, tekstury na GPU, shadery skompilowane (bez blokowania klatki). */
   ready = false
 
-  setData(image: HTMLImageElement, size: { width: number; height: number }, items: ObservatoryItem[], domain: LogDomain, plane: ImageBitmap | null = null) {
+  setData(image: HTMLImageElement, size: { width: number; height: number }, items: ObservatoryItem[], domain: LogDomain, plane: ImageBitmap | null = null, colors: Partial<Record<ObjectType, string>> = {}) {
     this.clearData()
     this.image = size
     this.items = items
@@ -298,20 +314,25 @@ export class ObservatoryScene {
 
     for (const item of items) {
       if (item.kind !== 'object' || !item.type) continue
-      // Kolor typu galaktyki (#38194c) ginie na ciemnym tle: obrys galaktyk jak znacznik w legendzie.
-      const texture = cutTexture(image, item, item.category === 'galaxies' ? cssColor('--accent-dim', '#00e0ff') : DEFAULT_ANNOTATION_COLORS[item.type])
+      const color = colors[item.type] ?? DEFAULT_ANNOTATION_COLORS[item.type]
+      const texture = cutTexture(image, item, color)
       const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false })
       const sprite = new THREE.Sprite(material)
       this.cards.set(item.id, sprite)
       this.data.add(sprite)
       if (item.distLy !== null && Number.isFinite(item.distLy) && item.distLy > 0) {
-        const anchor = new THREE.Sprite(this.anchorMaterial)
+        const material = this.anchorMaterial.clone()
+        material.color.set(color)
+        this.dataDisposables.push(material)
+        const anchor = new THREE.Sprite(material)
         anchor.scale.setScalar(0.019)
         anchor.renderOrder = 5
         this.anchors.set(item.id, anchor)
         this.data.add(anchor)
       }
-      this.itemLabels.set(item.id, this.label('obs-label obs-card', `${item.id}\n≈ ${fmtDistance(item.distLy)}`))
+      const distance = `≈ ${fmtDistance(item.distLy)}`
+      this.itemLabels.set(item.id, this.label('obs-label obs-card', `${item.id}\n${distance}`))
+      this.labelWidths.set(item.id, Math.max(item.id.length, distance.length) * CHAR_PX + 16)
       this.dataDisposables.push(texture, material)
     }
     for (const item of items) this.visible.add(item.id)
@@ -329,6 +350,10 @@ export class ObservatoryScene {
 
   /** Usunięcie danych poprzedniego zdjęcia (obiekty, zasoby, podpisy); renderer i kontekst zostają. */
   private clearData() {
+    this.closeFan()
+    for (const badge of this.badges) badge.el.remove()
+    this.badges = []
+    this.labelWidths.clear()
     this.data.clear()
     this.axis.clear()
     for (const d of this.dataDisposables) d.dispose()
@@ -351,11 +376,13 @@ export class ObservatoryScene {
     const next = Math.max(0, Math.min(1, progress))
     if (next === this.progress) return
     this.progress = next
+    this.closeFan()
     this.layoutDirty = this.dirty = true
   }
 
   setVisible(ids: Set<string>) {
     this.visible = ids
+    this.closeFan()
     this.layoutDirty = this.dirty = true
   }
 
@@ -397,7 +424,7 @@ export class ObservatoryScene {
       position.needsUpdate = alpha.needsUpdate = true
     }
     const pixelScale = PLANE_WIDTH / this.image.width
-    this.anchorMaterial.opacity = (1 - arrival) * f.photo
+    const anchorOpacity = (1 - arrival) * f.photo
     for (const item of this.items) {
       const card = this.cards.get(item.id)
       if (!card) continue
@@ -408,7 +435,8 @@ export class ObservatoryScene {
       const anchor = this.anchors.get(item.id)
       if (anchor) {
         anchor.position.copy(destination)
-        anchor.visible = this.visible.has(item.id) && this.arrival < 1 && this.anchorMaterial.opacity > 0
+        anchor.material.opacity = anchorOpacity
+        anchor.visible = this.visible.has(item.id) && this.arrival < 1 && anchorOpacity > 0
       }
       card.position.copy(destination)
       // Lecąca tekstura jest obrazem wycinka. Pozycję obiektu wskazuje nieruchomy znacznik.
@@ -421,7 +449,9 @@ export class ObservatoryScene {
     // Oś zostaje po przejęciu linii widzenia, także przy płaskim zdjęciu. Podziałka pojawia się po rozłożeniu.
     this.axis.visible = f.axis > 0
     for (const tick of this.ticks) tick.mesh.visible = e > 0.02
-    const selected = this.items.find((item) => item.id === this.selected)
+    // Pierścień wskazuje zaznaczenie, a przy otwartym wachlarzu obiekt ramienia pod kursorem.
+    const marked = this.hovered ?? this.selected
+    const selected = this.items.find((item) => item.id === marked)
     this.ring.material.opacity = f.photo
     this.ring.visible = f.photo > 0 && !!selected && this.visible.has(selected.id)
     if (selected) this.ring.position.copy(this.position(selected))
@@ -541,6 +571,8 @@ export class ObservatoryScene {
   }
 
   setInteractive(on: boolean) {
+    if (!on) this.closeFan()
+    this.labels.classList.toggle('inert', !on)
     this.controls.enabled = on
     this.renderer.domElement.style.pointerEvents = on ? '' : 'none'
   }
@@ -549,6 +581,7 @@ export class ObservatoryScene {
   setExternal(on: boolean) {
     if (on === this.external) return
     this.external = on
+    this.closeFan()
     cancelAnimationFrame(this.raf)
     this.layoutDirty = this.dirty = true
     if (!on) {
@@ -579,6 +612,7 @@ export class ObservatoryScene {
       this.dirty = true
       return Promise.resolve()
     }
+    this.closeFan()
     return new Promise((resolve) => {
       this.flight?.resolve?.()
       const offset = (p: THREE.Vector3, t: THREE.Vector3) => p.clone().sub(t).toArray([0, 0, 0])
@@ -590,6 +624,7 @@ export class ObservatoryScene {
     if (!['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight'].includes(e.code) || e.altKey || e.ctrlKey || e.metaKey) return
     e.preventDefault()
     this.flight = null
+    this.closeFan()
     this.keys.add(e.code)
   }
   private onKeyUp = (e: KeyboardEvent) => { this.keys.delete(e.code) }
@@ -645,11 +680,14 @@ export class ObservatoryScene {
   private placeLabels() {
     const width = this.renderer.domElement.clientWidth, height = this.renderer.domElement.clientHeight
     const v = new THREE.Vector3()
-    const place = (el: HTMLElement, world: THREE.Vector3, show: boolean) => {
+    const place = (el: HTMLElement, world: THREE.Vector3, show: boolean): [number, number] | null => {
       v.copy(world).project(this.camera)
       const on = show && v.z < 1 && Math.abs(v.x) < 1.2 && Math.abs(v.y) < 1.2
       el.style.display = on ? '' : 'none'
-      if (on) el.style.transform = `translate(${((v.x + 1) / 2 * width).toFixed(1)}px, ${((1 - v.y) / 2 * height).toFixed(1)}px)`
+      if (!on) return null
+      const x = (v.x + 1) / 2 * width, y = (1 - v.y) / 2 * height
+      el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`
+      return [x, y]
     }
     const e = smooth(this.progress)
     this.earthLabel.style.opacity = String(this.fade.earth)
@@ -659,6 +697,8 @@ export class ObservatoryScene {
       tick.label.style.opacity = String(this.fade.axis)
       place(tick.label, tick.mesh.position, e > 0.3 && this.fade.axis > 0)
     }
+    const shown: { item: ObservatoryItem; el: HTMLDivElement; x: number; y: number }[] = []
+    const boxes: LabelBox[] = []
     for (const item of this.items) {
       const el = this.itemLabels.get(item.id)
       const isSelected = item.id === this.selected
@@ -668,8 +708,30 @@ export class ObservatoryScene {
       // W scenie są tylko obiekty z ustaloną odległością (observatoryItems).
       const anchor = this.anchors.get(item.id)
       const labelPosition = anchor?.visible ? anchor.position : card.position
-      place(el, labelPosition.clone().add(new THREE.Vector3(0, card.scale.y / 2, 0)), this.visible.has(item.id))
+      const at = place(el, labelPosition.clone().add(new THREE.Vector3(0, card.scale.y / 2, 0)), this.visible.has(item.id))
+      if (!at) continue
+      const left = at[0] + LABEL_DX, top = at[1] + LABEL_DY
+      shown.push({ item, el, x: at[0], y: at[1] })
+      boxes.push({ left, top, right: left + (this.labelWidths.get(item.id) ?? 0), bottom: top + LABEL_HEIGHT })
     }
+    // Stos nakładających się podpisów zastępuje jedna plakietka grupy; podpis zaznaczonego obiektu zostaje.
+    const groups = overlapGroups(boxes).filter((group) => group.length > 1)
+    groups.forEach((group, i) => {
+      const members = group.map((index) => shown[index])
+      for (const { item, el } of members) if (item.id !== this.selected) el.style.display = 'none'
+      const badge = this.badges[i] ??= this.badge(i)
+      const distances = members.map(({ item }) => item.distLy).filter((d): d is number => d !== null)
+      const text = `${objectCount(members.length)}\n${distances.length ? fmtDistanceRange(Math.min(...distances), Math.max(...distances)) : ''}`
+      if (text !== badge.text) badge.el.textContent = badge.text = text
+      badge.ids = members.map(({ item }) => item.id)
+      badge.x = members.reduce((sum, m) => sum + m.x, 0) / members.length
+      badge.y = members.reduce((sum, m) => sum + m.y, 0) / members.length
+      // Tuż nad środkiem grupy (nad najwyższym podpisem bywałaby daleko od kart, gdy grupa jest rozciągnięta w pionie).
+      badge.el.style.display = ''
+      badge.el.style.transform = `translate(${badge.x.toFixed(1)}px, ${(badge.y + LABEL_DY + LABEL_HEIGHT).toFixed(1)}px) translate(-50%, -100%)`
+    })
+    for (let i = groups.length; i < this.badges.length; i++) this.badges[i].el.style.display = 'none'
+    this.fan?.setSelected(this.selected)
     let starLabel = this.labels.querySelector<HTMLDivElement>('.obs-star')
     const selected = this.items.find((item) => item.id === this.selected && item.kind === 'star')
     if (selected) {
@@ -678,6 +740,32 @@ export class ObservatoryScene {
       place(starLabel, this.position(selected), this.visible.has(selected.id))
     } else if (starLabel) starLabel.style.display = 'none'
   }
+
+  private badge(index: number) {
+    const el = document.createElement('button')
+    el.type = 'button'
+    el.className = 'obs-label obs-group'
+    el.title = 'Pokaż obiekty grupy'
+    el.addEventListener('click', () => { const badge = this.badges[index]; this.openFan(badge.ids, badge.x, badge.y) })
+    this.labels.appendChild(el)
+    return { el, text: '', ids: [] as string[], x: 0, y: 0 }
+  }
+
+  /** Wachlarz nazw grupy wokół punktu ekranu: ramiona wg odległości, zgodnie z ruchem wskazówek zegara. */
+  private openFan(ids: string[], x: number, y: number) {
+    this.closeFan()
+    const entries = this.items.filter((item) => ids.includes(item.id)).sort(byDistance)
+      .map((item) => ({ id: item.id, text: `${item.id} · ${fmtDistance(item.distLy)}` }))
+    this.fan = openLabelFan(this.labels, entries, x, y, this.sizedWidth, this.sizedHeight, {
+      hover: (id) => { this.hovered = id; this.layoutDirty = this.dirty = true },
+      pick: (id) => this.options.onSelect(id),
+      closed: () => { this.fan = null; this.layoutDirty = this.dirty = true },
+    })
+    this.fan.setSelected(this.selected)
+    this.dirty = true
+  }
+
+  private closeFan() { this.fan?.close() }
 
   dispose() {
     cancelAnimationFrame(this.raf)

@@ -32,8 +32,7 @@ const GLYPHS: Record<ObjectType, { solid?: Path[]; dashed?: Path[]; dash?: numbe
   X: { solid: [diamond] },
 }
 
-function texture(draw: (g: CanvasRenderingContext2D, stroke: (paths: Path[], dash?: number[]) => void) => void, color: string): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas')
+function drawCanvas(draw: (stroke: (paths: Path[], dash?: number[]) => void) => void, color: string, canvas = document.createElement('canvas')): HTMLCanvasElement {
   canvas.width = canvas.height = SIZE
   const g = canvas.getContext('2d')!
   g.lineCap = 'round'
@@ -42,31 +41,37 @@ function texture(draw: (g: CanvasRenderingContext2D, stroke: (paths: Path[], das
   for (const [style, width] of [['rgba(2, 5, 13, 0.7)', 10], [color, 4.5]] as const) {
     g.strokeStyle = style
     g.lineWidth = width
-    draw(g, (paths, dash = []) => {
+    draw((paths, dash = []) => {
       g.setLineDash(dash)
       g.beginPath()
       for (const path of paths) path(g)
       g.stroke()
     })
   }
-  const map = new THREE.CanvasTexture(canvas)
-  map.colorSpace = THREE.SRGBColorSpace
-  return map
+  return canvas
 }
 
 /** Symbol atlasowy typu obiektu w podanym kolorze. */
 export function glyphTexture(type: ObjectType, color: string): THREE.CanvasTexture {
+  const map = new THREE.CanvasTexture(glyphCanvas(type, color))
+  map.colorSpace = THREE.SRGBColorSpace
+  return map
+}
+
+export function glyphCanvas(type: ObjectType, color: string, canvas?: HTMLCanvasElement): HTMLCanvasElement {
   const { solid, dashed, dash } = GLYPHS[type]
-  return texture((_g, stroke) => {
+  return drawCanvas((stroke) => {
     if (solid) stroke(solid)
     if (dashed) stroke(dashed, dash)
-  }, color)
+  }, color, canvas)
 }
 
 /** Podwójny grot: obiekty leżą dalej na linii widzenia, poza skalą sceny. */
 export function beyondTexture(color: string): THREE.CanvasTexture {
   const chevron = (x: number): Path => (g) => { g.moveTo(x - 14, C - 26); g.lineTo(x + 12, C); g.lineTo(x - 14, C + 26) }
-  return texture((_g, stroke) => stroke([chevron(C - 12), chevron(C + 16)]), color)
+  const map = new THREE.CanvasTexture(drawCanvas((stroke) => stroke([chevron(C - 12), chevron(C + 16)]), color))
+  map.colorSpace = THREE.SRGBColorSpace
+  return map
 }
 
 /** Sprite znacznika o stałej wielkości na ekranie (ok. 3% wysokości kadru). */

@@ -35,7 +35,7 @@ function fixture() {
     cards: new Map([[item.id, card]]), anchors: new Map([[item.id, anchor]]), ring, photo, frame,
     anchorMaterial: new THREE.SpriteMaterial(), grid: new THREE.GridHelper(), axis: new THREE.Group(), ticks: [],
     fade: { earth: 1, pyramid: 1, axis: 1, photo: 1, grid: 1 },
-    labels: { style: { setProperty() {} }, querySelector: () => null }, itemLabels: new Map(), earthLabel: { style: {} },
+    labels: { style: { setProperty() {} }, querySelector: () => null }, itemLabels: new Map(), labelWidths: new Map(), badges: [], fan: null, hovered: null, earthLabel: { style: {} },
     renderer: {
       setSize: (width: number, height: number) => sizes.push([width, height]),
       render: () => rendered.push(card.position.z),

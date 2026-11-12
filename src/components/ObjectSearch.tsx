@@ -1,6 +1,6 @@
 import { Search } from 'lucide-react'
 import { useDeferredValue, useMemo, useRef, useState } from 'react'
-import { displayName, quickSearch, TYPE_INFO, type DSO } from '../lib/catalog'
+import { DEFAULT_ANNOTATION_COLORS, displayName, quickSearch, TYPE_INFO, type DSO } from '../lib/catalog'
 import { useCatalog } from '../state/data'
 import { useStore } from '../state/store'
 
@@ -8,6 +8,7 @@ import { useStore } from '../state/store'
 export function ObjectSearch({ onPick, placeholder = 'Szukaj obiektu: M 51, NGC 7000, Wir…' }: { onPick?: (o: DSO) => void; placeholder?: string }) {
   const { catalog } = useCatalog()
   const select = useStore((s) => s.select)
+  const colors = useStore((s) => s.annotationColors)
   const [q, setQ] = useState('')
   const deferredQ = useDeferredValue(q)
   const [open, setOpen] = useState(false)
@@ -51,7 +52,7 @@ export function ObjectSearch({ onPick, placeholder = 'Szukaj obiektu: M 51, NGC 
         <div className="search-results" role="listbox">
           {results.map((o, i) => (
             <button key={o.i} className={i === hl ? 'hl' : ''} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(o)} role="option" aria-selected={i === hl}>
-              <span style={{ width: 8, height: 8, background: TYPE_INFO[o.type].color, flex: 'none' }} />
+              <span style={{ width: 8, height: 8, background: colors[o.type] ?? DEFAULT_ANNOTATION_COLORS[o.type], flex: 'none' }} />
               <b className="mono" style={{ minWidth: 86 }}>{o.id}</b>
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{displayName(o) || <span className="dim">{TYPE_INFO[o.type].label}</span>}</span>
               <span className="dim mono" style={{ fontSize: 11 }}>{o.con}</span>

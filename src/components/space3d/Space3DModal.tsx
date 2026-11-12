@@ -11,9 +11,9 @@ import { useStore } from '../../state/store'
 import Observatory from '../observatory/Observatory'
 import type { ObservatoryScene } from '../observatory/scene'
 import Space3D, { type Space3DHandle } from '../Space3D'
-import { SpaceDive, restoreSpace, type UniverseDive } from './dive'
+import { SpaceDive, restoreSpace } from './dive'
 import { GalaxyPhotoBar, PhotoCutEditor, PhotoFlatView, PhotoImport, PhotoMessages } from './PhotoEditing'
-import { usePhotoGuide, type PhotoGuide } from './photoGuide'
+import { usePhotoGuide } from './photoGuide'
 import { useCutDistances, useGaiaStars, usePhotoSession, useRegressor, type PhotoSession } from './photoSession'
 import { PhotoUnfold } from './PhotoUnfold'
 import { useSpaceSettings } from './spaceSettings'
@@ -50,9 +50,6 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
   const diveRef = useRef<SpaceDive | null>(null)
   const entryPose = useRef<Pose | null>(null)
   const obsScene = useRef<ObservatoryScene | null>(null)
-  const universeRef = useRef<UniverseDive | null>(null)
-  /** Linia widzenia i stożek okna zdjęcia we Wszechświecie lokalnym (odpowiednik znaczników Drogi Mlecznej). */
-  const universeGuideRef = useRef<PhotoGuide | null>(null)
   const [stage, setStage] = useState<HTMLDivElement | null>(null)
   const [toolbarSlot, setToolbarSlot] = useState<HTMLDivElement | null>(null)
   const [summary, setSummary] = useState<HTMLDivElement | null>(null)
@@ -78,9 +75,10 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
   }, [project, obsAlive, mode, session.editing])
   // Edycja wycinków to osobny widok okna: płaskie zdjęcie na scenie, panel edytora z prawej, scena 3D wstrzymana.
   const editing = mode === 'scale' && !!project && session.editing
-  const guideRef = usePhotoGuide(handle, project, galaxy && mode !== 'photo' && !editing)
+  // Stożek pola i znaczniki zdjęcia w obu skalach (we Wszechświecie lokalnym jak w Drodze Mlecznej).
+  const guideRef = usePhotoGuide(handle, project, mode !== 'photo' && !editing, session.activeId, session.setActiveId)
   /** Przewodnik nurkowania sceny bieżącej skali. */
-  const sceneGuide = useCallback(() => handle?.scale === 'galaxy' ? guideRef.current : handle?.scale === 'universe' ? universeGuideRef.current : null, [handle, guideRef])
+  const sceneGuide = useCallback(() => guideRef.current, [guideRef])
 
   /** Stan końcowy bez animacji: ograniczony ruch, kliknięcie w trakcie przebudowy sceny, zmiana skali. */
   const settle = useCallback((target: 'scale' | 'photo') => {
@@ -94,7 +92,7 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
       obs.setExternal(false)
       obs.setView('structure', false)
     }
-    if (target === 'scale' && handle) restoreSpace(handle, sceneGuide(), entryPose.current, universeRef.current)
+    if (target === 'scale' && handle) restoreSpace(handle, sceneGuide(), entryPose.current)
     setMode(target)
     setPanels(target === 'photo')
   }, [handle, sceneGuide])
@@ -102,7 +100,6 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
   function startDive(direction: DiveDirection) {
     if (direction === 'in') setObsVisible(false)
     const guide = sceneGuide()
-    const universe = handle?.scale === 'universe' ? universeRef.current : null
     if (!project || !handle || !guide || reducedMotion()) {
       // Bez nurkowania: od razu stan zdjęcia (rozłożony, jak dawne Obserwatorium) albo skala.
       if (handle && direction === 'in') {
@@ -112,7 +109,7 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
         setObsProject(project)
         setObsAlive(true)
       }
-      if (handle && direction === 'out') restoreSpace(handle, guide, entryPose.current, universe)
+      if (handle && direction === 'out') restoreSpace(handle, guide, entryPose.current)
       settle(direction === 'in' ? 'photo' : 'scale')
       return
     }
@@ -124,7 +121,7 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
     const markerTargets = new Map(items.filter((item) => item.kind === 'object' && item.distLy !== null)
       .map((item) => [item.id, observatoryPosition(item, project, item.distLy, domain, 0)]))
     const dive = new SpaceDive({
-      direction, space: handle, guide, universe,
+      direction, space: handle, guide,
       observatory: () => obsScene.current,
       seam: structureViewPose(items, project, domain),
       markerTargets,
@@ -205,7 +202,7 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
       <div className={`space-scene${mode === 'photo' || editing ? ' is-hidden' : ''}`}>
         <Space3D settings={settings} photo={project} onHandle={setHandle} />
       </div>
-      {project && !galaxy && <PhotoUnfold key={project.id} session={session} handle={handle} visible={mode !== 'photo' && !editing} panel={mode === 'scale'} diveRef={universeRef} guideRef={universeGuideRef} />}
+      {project && !galaxy && <PhotoUnfold key={project.id} session={session} visible={mode === 'scale'} guideRef={guideRef} />}
       {mode === 'scale' && <>
         <PhotoImport session={session} inputRef={inputRef} showButton={!project} />
         <PhotoMessages session={session} />

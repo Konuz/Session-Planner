@@ -274,7 +274,7 @@ export function domeMaterial(): THREE.ShaderMaterial {
       varying vec3 vView;
       void main() {
         float f = pow(1.0 - abs(dot(normalize(vNormal), normalize(vView))), 3.0);
-        gl_FragColor = vec4(color, (0.003 + f * 0.04) * opacity);
+        gl_FragColor = vec4(color, (0.0015 + f * 0.018) * opacity);
       }`,
     transparent: true,
     depthWrite: false,

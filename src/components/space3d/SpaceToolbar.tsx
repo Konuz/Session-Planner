@@ -11,6 +11,7 @@ import { LayersMenu } from '../LayersMenu'
 import { Range } from '../Range'
 import { LayersIcon } from '../SkyDome'
 import { useOutside } from '../TopBar'
+import { glyphCanvas } from './markerGlyphs'
 import { GALAXY_LEVELS, type SpaceSettingsState } from './spaceSettings'
 
 const SCALES: { id: SpaceScale; label: string }[] = [{ id: 'galaxy', label: 'Droga Mleczna' }, { id: 'universe', label: 'Wszechświat lokalny' }]
@@ -85,6 +86,7 @@ export function SpaceToolbar({ o, settings, onScale, crumb, children }: Props) {
                   <span className="dot" style={{ background: color(type) }} />
                   {TYPE_INFO[type].plural}
                   <span className="faint">{count}</span>
+                  <canvas aria-hidden="true" style={{ width: 20, height: 20, flex: 'none' }} ref={(canvas) => { if (canvas) glyphCanvas(type, color(type), canvas) }} />
                 </label>
               ))}
             </div>

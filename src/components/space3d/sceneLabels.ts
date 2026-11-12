@@ -2,8 +2,13 @@
 // każdy stoi przy swoim punkcie, w miejscu, które nie zasłania innego podpisu ani znacznika; w ciasnej grupie podpisy
 // odsuwają się w kolumny i dostają odnośnik. Podczas ruchu kamery podpis trzyma swoje miejsce względem punktu
 // (jedzie sztywno ze znacznikiem); układ porządkuje się dopiero po zatrzymaniu kamery, płynnym przejściem.
+// Podpisy obiektów (z `id`), które na ekranie nachodzą na siebie, łączą się w plakietkę grupy („N obiektów” i zakres
+// odległości); plakietka otwiera wachlarz nazw (labelFan.ts). Grupy przeliczają się razem z układem, po zatrzymaniu kamery.
 // Wywoływane z haka `layout` sceny, czyli po ustawieniu kamery w tej samej klatce.
 import * as THREE from 'three'
+import { fmtDistance, fmtDistanceRange } from '../../lib/format'
+import { objectCount, overlapGroups, type LabelBox } from '../../lib/labelGroups'
+import { openLabelFan, type LabelFan } from '../labelFan'
 import type { Space3DHandle } from '../Space3D'
 
 export interface SceneLabel {
@@ -24,6 +29,17 @@ export interface SceneLabel {
   moved: number
   /** Podpis był widoczny w poprzednim przeliczeniu (nowo pokazany dostaje miejsce od razu). */
   shown: boolean
+  /** Obiekt podpisu: tylko takie podpisy łączą się w grupy. */
+  id?: string
+  distLy?: number
+  /** Podpis poza grupami (np. zaznaczony obiekt): zawsze osobno. Po zmianie wywołaj invalidate(). */
+  pinned?: boolean
+  /** Podpis schowany w plakietce grupy. */
+  grouped?: boolean
+  /** Wejście do grupy i wyjście z niej (np. zmniejszenie znacznika). */
+  onGroup?(grouped: boolean): void
+  /** Plakietka grupy: podpisy, które zastępuje. */
+  members?: SceneLabel[]
 }
 
 /** Wymiary podpisu w pikselach z kroju 10 px (ok. 6,1 px na znak, wiersze po 13,5 px, obramowanie) zamiast pomiaru układu. */
@@ -57,7 +73,7 @@ function same(a: THREE.Matrix4, b: THREE.Matrix4): boolean {
 
 export interface LabelLayer {
   root: HTMLDivElement
-  add(position: THREE.Vector3, lines: string[], options?: { className?: string; color?: string; gap?: number }): SceneLabel
+  add(position: THREE.Vector3, lines: string[], options?: { className?: string; color?: string; gap?: number; id?: string; distLy?: number; onGroup?(grouped: boolean): void }): SceneLabel
   clear(): void
   setVisible(visible: boolean): void
   /** Co klatkę (hak `layout` sceny, z czasem klatki): tani test zmiany, przeliczenie tylko gdy trzeba. */
@@ -69,38 +85,125 @@ export interface LabelLayer {
 
 interface Box { left: number; top: number; right: number; bottom: number; owner: SceneLabel }
 
-export function createLabelLayer(handle: Space3DHandle, className: string): LabelLayer {
+interface LayerOptions {
+  /** Wybór obiektu z wachlarza grupy. */
+  onPick?(id: string): void
+  /** Ramię wachlarza pod kursorem (null po zejściu). */
+  onHover?(id: string | null): void
+}
+
+export function createLabelLayer(handle: Space3DHandle, className: string, { onPick, onHover }: LayerOptions = {}): LabelLayer {
   const root = document.createElement('div')
   root.className = `obs-labels ${className}`
   handle.mount.appendChild(root)
   let labels: SceneLabel[] = []
+  /** Pula plakietek grup (ukryte, gdy nieużywane). */
+  const badges: SceneLabel[] = []
+  let fan: LabelFan | null = null
   let visible = true, dirty = true, stale = true, lastW = 0, lastH = 0, lastMove = -Infinity
   const lastCamera = new THREE.Matrix4(), lastProjection = new THREE.Matrix4()
   const v = new THREE.Vector3()
+  /** Grupy przeliczone choć raz od dodania podpisów. */
+  let groupsReady = false
+  const closeFan = () => fan?.close()
+  handle.renderer.domElement.addEventListener('pointerdown', closeFan)
+
+  const create = (position: THREE.Vector3, lines: string[], el: HTMLElement, color: string | undefined, gap: number): SceneLabel => {
+    const leader = document.createElement('div')
+    leader.className = 'obs-leader'
+    if (color) el.style.borderLeftColor = leader.style.background = color
+    root.appendChild(leader)
+    root.appendChild(el)
+    const label: SceneLabel = { position, el: el as HTMLDivElement, leader, gap, width: 0, height: 0, spot: 0, from: 0, moved: -Infinity, shown: false }
+    setLabelText(label, lines)
+    labels.push(label)
+    dirty = true
+    return label
+  }
+
+  const openFan = (badge: SceneLabel) => {
+    closeFan()
+    const { camera, mount } = handle
+    v.copy(badge.position).project(camera)
+    const entries = [...badge.members ?? []].sort((a, b) => (a.distLy ?? 0) - (b.distLy ?? 0) || a.id!.localeCompare(b.id!))
+      .map((m) => ({ id: m.id!, text: `${m.id} · ${fmtDistance(m.distLy ?? null)}` }))
+    fan = openLabelFan(root, entries, (v.x + 1) / 2 * mount.clientWidth, (1 - v.y) / 2 * mount.clientHeight, mount.clientWidth, mount.clientHeight, {
+      hover: (id) => onHover?.(id),
+      pick: (id) => { onPick?.(id); fan?.setSelected(id) },
+      closed: () => { fan = null },
+    })
+  }
+
+  const badge = (index: number): SceneLabel => {
+    if (badges[index]) return badges[index]
+    const el = document.createElement('button')
+    el.type = 'button'
+    el.className = 'obs-label space-photo-label obs-group'
+    el.title = 'Pokaż obiekty grupy'
+    const label = create(new THREE.Vector3(), [''], el, undefined, 13)
+    el.addEventListener('click', () => openFan(label))
+    label.hidden = true
+    badges[index] = label
+    return label
+  }
+
+  /** Grupy podpisów obiektów, które przy punkcie (miejsce 0) nachodzą na siebie na ekranie; jedna plakietka na grupę. */
+  const regroup = (w: number, h: number) => {
+    const candidates: SceneLabel[] = []
+    const boxes: LabelBox[] = []
+    for (const label of labels) {
+      if (!label.id || label.pinned || label.hidden || !visible) continue
+      v.copy(label.position).project(handle.camera)
+      if (!(v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1)) continue
+      const x = (v.x + 1) / 2 * w, y = (1 - v.y) / 2 * h
+      const [dx, dy] = spotOffset(label, 0)
+      // Ramka obejmuje też sam znacznik: bliskie znaczniki łączą się, nawet gdy podpisy mieszczą się obok siebie.
+      candidates.push(label)
+      boxes.push({ left: x - label.gap, top: Math.min(y - label.gap, y + dy), right: x + dx + label.width, bottom: Math.max(y + label.gap, y + dy + label.height) })
+    }
+    const groups = overlapGroups(boxes).filter((group) => group.length > 1).map((group) => group.map((i) => candidates[i]))
+    const inGroup = new Set(groups.flat())
+    for (const label of labels) {
+      const grouped = inGroup.has(label)
+      if (!!label.grouped === grouped) continue
+      label.grouped = grouped
+      label.onGroup?.(grouped)
+    }
+    groups.forEach((members, i) => {
+      const b = badge(i)
+      b.hidden = false
+      b.members = members
+      b.position.set(0, 0, 0)
+      for (const m of members) b.position.add(m.position)
+      b.position.divideScalar(members.length)
+      const distances = members.map((m) => m.distLy).filter((d): d is number => d !== undefined)
+      const lines = [objectCount(members.length), distances.length ? fmtDistanceRange(Math.min(...distances), Math.max(...distances)) : '']
+      if (b.el.textContent !== lines.join('\n')) setLabelText(b, lines)
+    })
+    for (let i = groups.length; i < badges.length; i++) { badges[i].hidden = true; badges[i].members = [] }
+  }
+
   return {
     root,
-    add(position, lines, { className: extra = '', color, gap = 13 } = {}) {
+    add(position, lines, { className: extra = '', color, gap = 13, id, distLy, onGroup } = {}) {
       const el = document.createElement('div')
       el.className = `obs-label space-photo-label ${extra}`
-      const leader = document.createElement('div')
-      leader.className = 'obs-leader'
-      if (color) el.style.borderLeftColor = leader.style.background = color
-      root.appendChild(leader)
-      root.appendChild(el)
-      const label: SceneLabel = { position, el, leader, gap, width: 0, height: 0, spot: 0, from: 0, moved: -Infinity, shown: false }
-      setLabelText(label, lines)
-      labels.push(label)
-      dirty = true
+      const label = create(position, lines, el, color, gap)
+      Object.assign(label, { id, distLy, onGroup })
       return label
     },
     clear() {
+      closeFan()
       for (const label of labels) { label.el.remove(); label.leader.remove() }
       labels = []
+      badges.length = 0
+      groupsReady = false
       dirty = true
     },
     setVisible(next) {
       visible = next
       root.style.display = next ? '' : 'none'
+      if (!next) closeFan()
       dirty = true
     },
     invalidate() { dirty = true },
@@ -109,6 +212,7 @@ export function createLabelLayer(handle: Space3DHandle, className: string): Labe
       const w = mount.clientWidth, h = mount.clientHeight
       const moved = w !== lastW || h !== lastH || !same(lastCamera, camera.matrixWorld) || !same(lastProjection, camera.projectionMatrix)
       if (moved) {
+        closeFan()
         lastMove = now
         stale = true
         lastW = w; lastH = h
@@ -117,9 +221,12 @@ export function createLabelLayer(handle: Space3DHandle, className: string): Labe
       }
       const rested = stale && now - lastMove >= REST_MS
       if (!moved && !dirty && !rested && !labels.some((label) => now - label.moved < MOVE_MS)) return
+      // Grupy jak układ: po zatrzymaniu kamery i po zmianie treści bez ruchu; w ruchu (przelot, nurkowanie) trzymają
+      // skład, a pierwsze powstają od razu, żeby przelot startowy nie pokazywał stosu podpisów.
+      if (rested || (dirty && !moved) || !groupsReady) { regroup(w, h); groupsReady = true }
       const points = labels.flatMap((label) => {
         v.copy(label.position).project(camera)
-        const on = visible && !label.hidden && v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1
+        const on = visible && !label.hidden && !label.grouped && v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1
         label.el.style.display = on ? '' : 'none'
         label.leader.style.display = 'none'
         const fresh = on && !label.shown
@@ -171,6 +278,10 @@ export function createLabelLayer(handle: Space3DHandle, className: string): Labe
         label.leader.style.transform = `translate(${(x + Math.cos(angle) * start).toFixed(1)}px, ${(y + Math.sin(angle) * start).toFixed(1)}px) rotate(${angle.toFixed(4)}rad)`
       }
     },
-    dispose() { root.remove() },
+    dispose() {
+      closeFan()
+      handle.renderer.domElement.removeEventListener('pointerdown', closeFan)
+      root.remove()
+    },
   }
 }

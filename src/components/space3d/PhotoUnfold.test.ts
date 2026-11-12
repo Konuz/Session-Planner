@@ -22,34 +22,28 @@ function render(overrides: Partial<PhotoSession> = {}, visible = true) {
     change: vi.fn(), updateCut: vi.fn(), upload: vi.fn(), cancelUpload: vi.fn(), clearError: vi.fn(), retrySave: vi.fn(), setEditing: vi.fn(), setActiveId: vi.fn(),
     ...overrides,
   }
-  return renderToStaticMarkup(createElement(PhotoUnfold, { session, handle: null, visible }))
+  return renderToStaticMarkup(createElement(PhotoUnfold, { session, visible }))
 }
 
-it('pokazuje plany odległości z licznikami, widoki kamery i licznik obiektów poza 3D', () => {
+it('pokazuje licznik obiektów, zakres odległości i licznik obiektów poza 3D, bez planów i okna zdjęcia', () => {
   const html = render()
-  expect(html).toContain('OKNO ZDJĘCIA')
+  expect(html).toContain('OBIEKTY ZDJĘCIA')
   expect(html).toContain('3 obiektów w przestrzeni')
-  expect(html).toMatch(/Pierwszy plan<\/span><b>0<\/b>/)
-  expect(html).toMatch(/Główny plan<\/span><b>2<\/b>/)
-  expect(html).toMatch(/Tło<\/span><b>1<\/b>/)
-  for (const view of ['Położenie', 'Kadr', 'Z Ziemi']) expect(html).toContain(`>${view}</button>`)
+  expect(html).toContain('≈ 11–410 mln lś')
   expect(html).toContain('1 poza 3D')
-  expect(html).toContain('Rozkład odległości obiektów zdjęcia')
-  // Żadnych nakładek z latającymi wycinkami ani stron listy.
-  expect(html).not.toContain('photo-fragment')
-  expect(html).not.toContain('Następna strona')
+  expect(html).not.toContain('Główny plan')
+  expect(html).not.toContain('Z Ziemi')
 })
 
-it('wybrany obiekt ma plan, odległość i przejście do źródła odległości', () => {
+it('wybrany obiekt ma odległość, przybliżenie i przejście do źródła odległości', () => {
   const html = render({ activeId: 'PGC 28757' })
   expect(html).toContain('aria-label="Wybrany obiekt"')
-  expect(html).toContain('pw-tag pw-far')
   expect(html).toContain('≈ 410 mln lś')
   expect(html).toContain('Przybliż')
   expect(html).toContain('Źródło odległości')
 })
 
-it('znika w edycji wycinków, w stanie zdjęcia i bez projektu', () => {
+it('znika w edycji wycinków, poza skalą i bez projektu', () => {
   expect(render({ editing: true })).toBe('')
   expect(render({}, false)).toBe('')
   expect(render({ project: null })).toBe('')
@@ -59,5 +53,4 @@ it('bez obiektów z odległością prowadzi do edytora wycinków', () => {
   const html = render({ project: { ...project, cuts: project.cuts.slice(3) } })
   expect(html).toContain('0 obiektów w przestrzeni')
   expect(html).toContain('Włącz wycinki z ustaloną odległością')
-  expect(html).not.toContain('Plany odległości')
 })
