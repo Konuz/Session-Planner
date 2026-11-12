@@ -13,8 +13,8 @@ import { useCatalog, useSelected } from '../state/data'
 import { useStore } from '../state/store'
 import type { PhotoProject } from '../lib/photo'
 import { GALACTIC_LIMIT_LY, sunPosition } from '../lib/space3d'
-import { framePose, sideView, type CameraPose } from '../lib/spaceCamera'
-import { lerpPose, type Pose } from '../lib/spaceDive'
+import { constellationView, framePose, sideView, SPACE_FOV, type CameraPose } from '../lib/spaceCamera'
+import { ease, lerpPose, type Pose } from '../lib/spaceDive'
 import {
   LOCAL_GROUP_SHAPES, MILKY_WAY_DIAMETER_LY, UNIVERSE_GALAXY_SCALE, addStarNameLabels, domeMaterial, dotTexture, fixedSizeTextSprite,
   galaxyTexture, localGroupGalaxy, milkyWay, position, textSprite, toThree, type StarNameLayout,
@@ -54,6 +54,7 @@ export interface Space3DHandle {
   stopIntro(): void
   /** Płynny przelot kamery z bieżącej pozy (cięcie przy ograniczonym ruchu). */
   flyTo(pose: CameraPose, ms?: number): void
+  viewConstellation(abbr: string): void
   /** Klatki z zewnątrz: własna pętla stoi, a klatkę liczy step(now) (nurkowanie; w stanie zdjęcia brak klatek). */
   setExternal(on: boolean): void
   step(now: number): void
@@ -91,6 +92,7 @@ const UP: Vec3 = [0, 1, 0]
 /** Przelot kamery: startowy znad Galaktyki i krótszy przy zmianie obiektu lub kadru. */
 const INTRO_MS = 2200
 const FLY_MS = 900
+const easeOut = (t: number) => 1 - (1 - t) ** 3
 
 export default function Space3D({ settings, photo, onHandle }: Props) {
   const { scale, galaxyLevel, hiddenTypes, showConstellations, showStarNames, constellationChoice, constellations } = settings
@@ -116,6 +118,7 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
   showStarNamesRef.current = showStarNames
   const screenTextSpritesRef = useRef<THREE.Sprite[]>([])
   const starNameLayoutsRef = useRef<StarNameLayout[]>([])
+  const starNamesOverlayRef = useRef<HTMLDivElement>(null)
   const textLayoutDirty = useRef(true)
   /** Zmiana sceny poza pętlą (warstwy, filtry): następna klatka musi zostać wyrenderowana. */
   const sceneDirty = useRef(true)
@@ -140,7 +143,8 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
 
   useEffect(() => {
     const mount = mountRef.current
-    if (!mount || !objectRef.current) return
+    const starNamesOverlay = starNamesOverlayRef.current
+    if (!mount || !starNamesOverlay || !objectRef.current) return
     const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' })
     renderer.setPixelRatio(Math.min(1.5, devicePixelRatio))
@@ -149,7 +153,7 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
     renderer.domElement.setAttribute('aria-label', 'Widok 3D. Lewy przycisk myszy: obrót wokół celu, prawy: rozglądanie, środkowy: przesuwanie, kółko: zbliżenie do kursora, WASD lub strzałki: lot, Q i E: w dół i w górę, Shift: szybciej.')
     mount.appendChild(renderer.domElement)
     const scene = new THREE.Scene()
-    const camera = new THREE.PerspectiveCamera(50, mount.clientWidth / mount.clientHeight, 0.1, 5000)
+    const camera = new THREE.PerspectiveCamera(SPACE_FOV, mount.clientWidth / mount.clientHeight, 0.1, 5000)
     const controls = new OrbitControls(camera, renderer.domElement)
     // PPM jest przechwytywany jako swobodne rozglądanie, bez obiegania celu przez OrbitControls.
     controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE }
@@ -217,6 +221,16 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
     let milkyWayMaterial: THREE.PointsMaterial | undefined
     const localGalaxyModels: THREE.Points[] = []
     const constellationPoints: { group: THREE.Group; position: THREE.Vector3 }[] = []
+    const constellationFigures = new Map<string, { group: THREE.Group; lines: LineSegments2; dots: THREE.Points; segments: number[]; stars: THREE.Vector3[] }>()
+    let skyView: { group: THREE.Group; forward: THREE.Vector3; amount: number; update(amount: number): void; project(star: Vec3): Vec3; restore(): void } | null = null
+    let constellationReturn: { abbr: string; pose: CameraPose; fov: number; near: number } | null = null
+    const clearSkyView = () => {
+      if (!skyView) return
+      skyView.restore()
+      skyView = null
+      controls.zoomToCursor = true
+      textLayoutDirty.current = sceneDirty.current = true
+    }
     if (scale === 'galaxy') {
       // Dane mogą nadejść już w trakcie przelotu startowego: dołącz je bez nowego renderera i resetu kamery.
       addConstellationsRef.current = () => {
@@ -247,16 +261,19 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
           figure.visible = constellationChoiceRef.current === 'all' || constellationChoiceRef.current === c.abbr
           for (const point of points.values()) constellationPoints.push({ group: figure, position: point })
           const geometry = new LineSegmentsGeometry().setPositions(segments)
-          figure.add(new LineSegments2(geometry, material))
-          const starGeometry = new THREE.BufferGeometry().setFromPoints([...points.values()])
-          figure.add(new THREE.Points(starGeometry, starMaterial))
+          const lines = new LineSegments2(geometry, material)
+          const stars = [...points.values()]
+          const starGeometry = new THREE.BufferGeometry().setFromPoints(stars)
+          const dots = new THREE.Points(starGeometry, starMaterial)
+          figure.add(lines, dots)
+          constellationFigures.set(c.abbr, { group: figure, lines, dots, segments, stars })
           const nameGroup = new THREE.Group()
           nameGroup.name = 'star-names'
           nameGroup.visible = showStarNamesRef.current
           nameGroup.userData.stars = c.stars ?? []
           nameGroup.userData.labelsAdded = false
           if (showStarNamesRef.current) {
-            starNameLayoutsRef.current.push(addStarNameLabels(nameGroup, c.stars ?? [], screenTextSpritesRef.current))
+            starNameLayoutsRef.current.push(addStarNameLabels(nameGroup, c.stars ?? [], starNamesOverlay))
             nameGroup.userData.labelsAdded = true
           }
           figure.add(nameGroup)
@@ -335,21 +352,35 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
 
     // Przelot kamery: jedna interpolacja pozy (cel liniowo, kamera po sferze wokół celu), startowa znad Galaktyki.
     camera.position.set(0, scale === 'galaxy' ? 120 : 200, 0.01)
-    let flight: { from: Pose; to: Pose; start: number | null; ms: number } | null = null
-    const fly = (pose: CameraPose, ms: number) => {
-      // Ruch bezwładny OrbitControls sprzed przelotu przesunąłby kamerę obok celu.
+    let flight: { from: Pose; to: Pose; start: number | null; ms: number; easing(t: number): number; fromFov: number; toFov: number; fromNear: number; toNear: number; fromSky: number; toSky: number } | null = null
+    const setProjection = (fov: number, near: number) => {
+      if (fov === camera.fov && near === camera.near) return
+      camera.fov = fov
+      camera.near = near
+      camera.updateProjectionMatrix()
+    }
+    const fly = (pose: CameraPose, ms: number, fov = SPACE_FOV, near = 0.1, toSky = 0, easing = easeOut) => {
+      // Wyzeruj bezwładność, zachowując pozę ostatniej widocznej klatki.
+      const position = camera.position.toArray() as Vec3
+      const target = controls.target.toArray() as Vec3
       const damping = controls.enableDamping
       controls.enableDamping = false
       controls.update()
       controls.enableDamping = damping
+      camera.position.set(...position)
+      controls.target.set(...target)
+      camera.lookAt(controls.target)
       sceneDirty.current = true
       if (reduced) {
         flight = null
         camera.position.set(...pose.position)
         controls.target.set(...pose.target)
+        setProjection(fov, near)
+        if (toSky === 0) clearSkyView()
+        else skyView?.update(toSky)
         return
       }
-      flight = { from: { position: camera.position.toArray() as Vec3, target: controls.target.toArray() as Vec3, up: UP }, to: { ...pose, up: UP }, start: null, ms }
+      flight = { from: { position, target, up: UP }, to: { ...pose, up: UP }, start: null, ms, easing, fromFov: camera.fov, toFov: fov, fromNear: camera.near, toNear: near, fromSky: skyView?.amount ?? 0, toSky }
     }
 
     // Wybrany obiekt: linia od Ziemi, pion do płaszczyzny Galaktyki i podpis. Zmiana obiektu przebudowuje tylko
@@ -362,6 +393,8 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
     // Największy promień znacznika Ziemi: nie zasłania bliskiego obiektu.
     let earthCap = 0.35
     const showObject = (object: DSO, ms: number) => {
+      constellationReturn = null
+      clearSkyView()
       for (const child of [...objectGuide.children]) {
         objectGuide.remove(child)
         if (child instanceof THREE.Sprite) {
@@ -417,7 +450,7 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       const middle = sunPos.clone().lerp(reach, 0.5)
       const sight = reach.clone().sub(sunPos)
       fly(framePose([sunPos.toArray() as Vec3, reach.toArray() as Vec3], sideView(sight.toArray() as Vec3, scale === 'galaxy' ? [middle.x, 0, middle.z] : undefined),
-        { fovDeg: camera.fov, aspect: camera.aspect, room: [0.42, 0.42], minDistance: minSpan * 1.08 }), ms)
+        { fovDeg: SPACE_FOV, aspect: camera.aspect, room: [0.42, 0.42], minDistance: minSpan * 1.08 }), ms)
     }
     showObjectRef.current = (object) => { if (object !== current) showObject(object, FLY_MS) }
     const t0 = performance.now()
@@ -458,6 +491,8 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
     const nameScreenPosition = new THREE.Vector3()
     const earthScreenPosition = new THREE.Vector3()
     const starScreenPosition = new THREE.Vector3()
+    const projectedAnchor = new THREE.Vector3()
+    const constellationDirection = new THREE.Vector3()
     const cameraUp = new THREE.Vector3()
     const leaderEnd = new THREE.Vector3()
     controls.addEventListener('start', () => {
@@ -505,10 +540,16 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       if (flight && !override.camera) {
         flight.start ??= now
         const t = Math.min(1, (now - flight.start) / flight.ms)
-        const pose = lerpPose(flight.from, flight.to, 1 - (1 - t) ** 3)
+        const eased = flight.easing(t)
+        const pose = lerpPose(flight.from, flight.to, eased)
+        skyView?.update(THREE.MathUtils.lerp(flight.fromSky, flight.toSky, eased))
+        setProjection(THREE.MathUtils.lerp(flight.fromFov, flight.toFov, eased), THREE.MathUtils.lerp(flight.fromNear, flight.toNear, eased))
         camera.position.set(...pose.position)
         controls.target.set(...pose.target)
-        if (t >= 1) flight = null
+        if (t >= 1) {
+          if (flight.toSky === 0) clearSkyView()
+          flight = null
+        }
       }
       if (!flight && !override.camera && pressedKeys.size) {
         const forward = camera.getWorldDirection(moveForward)
@@ -532,6 +573,8 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       if (!rightLook && !override.camera) controls.update()
       if (photoRef.current) controls.autoRotate = false
       camera.updateMatrixWorld()
+      if (skyView && (!showConstellationsRef.current || constellationChoiceRef.current !== skyView.group.name ||
+        (!flight && !override.camera && camera.getWorldDirection(constellationDirection).dot(skyView.forward) < 0.999999))) clearSkyView()
       for (const hook of layout) hook(now)
       if (earth) {
         textCameraPosition.copy(sunPos).applyMatrix4(camera.matrixWorldInverse)
@@ -542,15 +585,19 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
         earthScreenPosition.copy(sunPos).project(camera)
         // Ziemia jest znacznikiem: promień do 16 px, z odstępem od widocznych gwiazd.
         let radiusPixels = 16
-        if (showConstellationsRef.current) {
+        const skyAmount = skyView?.amount ?? 0
+        if (showConstellationsRef.current && skyAmount < 1) {
           for (const star of constellationPoints) {
             if (!star.group.visible) continue
-            starScreenPosition.copy(star.position).project(camera)
+            if (skyView?.group === star.group) starScreenPosition.set(...skyView.project(star.position.toArray() as Vec3))
+            else starScreenPosition.copy(star.position)
+            starScreenPosition.project(camera)
             if (starScreenPosition.z < -1 || starScreenPosition.z > 1) continue
             const gap = Math.hypot((starScreenPosition.x - earthScreenPosition.x) * width / 2, (starScreenPosition.y - earthScreenPosition.y) * height / 2)
             radiusPixels = Math.min(radiusPixels, Math.max(0, gap - 7))
           }
         }
+        radiusPixels = THREE.MathUtils.lerp(radiusPixels, 11, skyAmount)
         const marker = depth > 0 ? Math.min(earthCap, radiusPixels * unitsPerPixel) : earthCap
         earth.scale.setScalar(override.earthRadius === null ? marker : marker + (override.earthRadius - marker) * override.earthBlend)
       }
@@ -571,6 +618,7 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       objectGuide.visible = !photoRef.current
       const textViewportHeight = renderer.domElement.clientHeight
       const textViewportWidth = renderer.domElement.clientWidth
+      starNamesOverlay.style.opacity = String(override.layerFade)
       if (textViewportHeight > 0 && screenTextSpritesRef.current.length && (
         textLayoutDirty.current || textViewportWidth !== lastTextWidth || textViewportHeight !== lastTextHeight
         || objectGuide.visible !== lastTextGuideVisible || !sameMatrix(textCameraMatrix, camera.matrixWorld)
@@ -599,16 +647,18 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
         }
         const nameBoxes: { left: number; right: number; top: number; bottom: number }[] = []
         for (const layout of starNameLayoutsRef.current) {
-          if (!layout.group.visible || !layout.group.parent?.visible || !layout.group.parent.parent?.visible) continue
+          layout.root.hidden = !layout.group.visible || !layout.group.parent?.visible || !layout.group.parent.parent?.visible
+          if (layout.root.hidden) continue
           for (let i = 0; i < layout.anchors.length; i++) {
             const anchor = layout.anchors[i]
-            textCameraPosition.copy(anchor.position).applyMatrix4(camera.matrixWorldInverse)
+            const position = skyView?.group === layout.group.parent
+              ? projectedAnchor.set(...skyView.project(anchor.position.toArray() as Vec3))
+              : anchor.position
+            textCameraPosition.copy(position).applyMatrix4(camera.matrixWorldInverse)
             const depth = -textCameraPosition.z
-            if (depth <= 0) continue
-            nameScreenPosition.copy(anchor.position).project(camera)
-            const height = 2 * depth * fovScale * (anchor.sprite.userData.fixedPixelHeight as number) / textViewportHeight
-            const pixelHeight = anchor.sprite.userData.fixedPixelHeight as number
-            const halfWidth = pixelHeight * (anchor.sprite.userData.aspectRatio as number) / 2
+            nameScreenPosition.copy(position).project(camera)
+            const pixelHeight = anchor.height
+            const halfWidth = anchor.width / 2
             const x = (nameScreenPosition.x + 1) * textViewportWidth / 2
             const y = (1 - nameScreenPosition.y) * textViewportHeight / 2
             const box = { left: x - halfWidth - 2, right: x + halfWidth + 2, top: y - pixelHeight - 6, bottom: y - 4 }
@@ -617,13 +667,15 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
               box.top -= pixelHeight + 2
               box.bottom -= pixelHeight + 2
             }
-            anchor.sprite.visible = box.top >= 0 && box.bottom <= textViewportHeight && box.right >= 0 && box.left <= textViewportWidth && !overlaps()
-            if (anchor.sprite.visible) nameBoxes.push(box)
-            anchor.sprite.scale.set(height * (anchor.sprite.userData.aspectRatio as number), height, 1)
-            const gap = 2 * depth * fovScale * (y - box.bottom) / textViewportHeight
-            leaderEnd.copy(anchor.position).addScaledVector(cameraUp, anchor.sprite.visible ? gap : 0)
-            anchor.sprite.position.copy(leaderEnd).addScaledVector(cameraUp, height / 2)
-            layout.connectors.setXYZ(i * 2, anchor.position.x, anchor.position.y, anchor.position.z)
+            anchor.el.hidden = depth <= 0 || Math.abs(nameScreenPosition.z) > 1 ||
+              box.top < 0 || box.bottom > textViewportHeight || box.right < 0 || box.left > textViewportWidth || overlaps()
+            if (!anchor.el.hidden) {
+              nameBoxes.push(box)
+              anchor.el.style.transform = `translate(${Math.round(x - halfWidth)}px, ${Math.round(box.bottom - pixelHeight)}px)`
+            }
+            const gap = anchor.el.hidden ? 0 : 2 * depth * fovScale * (y - box.bottom) / textViewportHeight
+            leaderEnd.copy(position).addScaledVector(cameraUp, gap)
+            layout.connectors.setXYZ(i * 2, position.x, position.y, position.z)
             layout.connectors.setXYZ(i * 2 + 1, leaderEnd.x, leaderEnd.y, leaderEnd.z)
           }
           layout.connectors.needsUpdate = true
@@ -876,7 +928,70 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       scale, scene, camera, controls, renderer, mount, overlay: labels, sunPos, earth: earth ?? null, hooks, claims, layout, anchors, override, step,
       invalidate: () => { sceneDirty.current = true },
       stopIntro: () => { flight = null; controls.autoRotate = false },
-      flyTo: (pose, ms = FLY_MS) => { controls.autoRotate = false; fly(pose, ms) },
+      flyTo: (pose, ms = FLY_MS) => { constellationReturn = null; controls.autoRotate = false; fly(pose, ms) },
+      viewConstellation: (abbr) => {
+        if (constellationReturn?.abbr === abbr) {
+          const { pose, fov, near } = constellationReturn
+          constellationReturn = null
+          controls.autoRotate = false
+          fly(pose, FLY_MS, fov, near, 0, ease)
+          return
+        }
+        const figure = constellationFigures.get(abbr)
+        if (!figure) return
+        const { group, lines, dots, segments, stars } = figure
+        const view = constellationView(stars.map((star) => star.toArray() as Vec3), sunPos.toArray() as Vec3, camera.aspect)
+        if (!view) return
+        constellationReturn = constellationReturn ? { ...constellationReturn, abbr } : {
+          abbr,
+          pose: flight?.to ?? { position: camera.position.toArray() as Vec3, target: controls.target.toArray() as Vec3 },
+          fov: flight?.toFov ?? camera.fov,
+          near: flight?.toNear ?? camera.near,
+        }
+        if (skyView?.group !== group) {
+          clearSkyView()
+          const lineGeometry = new LineSegmentsGeometry().setPositions(segments)
+          const dotGeometry = new THREE.BufferGeometry().setFromPoints(stars)
+          const originalLines = lines.geometry, originalDots = dots.geometry
+          const lineBuffer = (lineGeometry.attributes.instanceStart as THREE.InterleavedBufferAttribute).data
+          const dotsBuffer = dotGeometry.getAttribute('position')
+          const dotPositions = stars.flatMap((star) => star.toArray())
+          const projectBuffer = (source: number[]) => {
+            const projected: number[] = []
+            for (let i = 0; i < source.length; i += 3) projected.push(...view.project([source[i], source[i + 1], source[i + 2]]))
+            return projected
+          }
+          const projectedSegments = projectBuffer(segments), projectedDots = projectBuffer(dotPositions)
+          lines.geometry = lineGeometry
+          dots.geometry = dotGeometry
+          skyView = { group, forward: new THREE.Vector3(...view.forward), amount: 0,
+            project(star) {
+              const target = view.project(star)
+              return [THREE.MathUtils.lerp(star[0], target[0], this.amount), THREE.MathUtils.lerp(star[1], target[1], this.amount), THREE.MathUtils.lerp(star[2], target[2], this.amount)]
+            },
+            update(amount) {
+              if (amount === this.amount) return
+              this.amount = amount
+              for (let i = 0; i < segments.length; i++) lineBuffer.array[i] = THREE.MathUtils.lerp(segments[i], projectedSegments[i], amount)
+              for (let i = 0; i < dotPositions.length; i++) dotsBuffer.array[i] = THREE.MathUtils.lerp(dotPositions[i], projectedDots[i], amount)
+              lineBuffer.needsUpdate = dotsBuffer.needsUpdate = true
+              lineGeometry.computeBoundingBox()
+              lineGeometry.computeBoundingSphere()
+              dotGeometry.computeBoundingSphere()
+              textLayoutDirty.current = sceneDirty.current = true
+            },
+            restore() {
+              lines.geometry = originalLines
+              dots.geometry = originalDots
+              lineGeometry.dispose()
+              dotGeometry.dispose()
+            },
+          }
+        }
+        controls.zoomToCursor = false
+        controls.autoRotate = false
+        fly(view, FLY_MS, view.fov, 0.001, 1, ease)
+      },
       setExternal: (on) => {
         if (on === external) return
         external = on
@@ -885,6 +1000,7 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       },
     })
     return () => {
+      clearSkyView()
       addConstellationsRef.current = null
       onHandleRef.current?.(null)
       showObjectRef.current = null
@@ -923,6 +1039,7 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       })
       screenTextSpritesRef.current = []
       starNameLayoutsRef.current = []
+      starNamesOverlay.replaceChildren()
       disposables.forEach((d) => d.dispose())
       // Bez tego kontekst WebGL żyje do odśmiecenia płótna; szybkie przeglądanie obiektów wyczerpuje limit kontekstów.
       renderer.forceContextLoss()
@@ -948,11 +1065,13 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
   }, [constellationChoice])
 
   useEffect(() => {
+    const overlay = starNamesOverlayRef.current
+    if (!overlay) return
     constellationGroupRef.current?.children.forEach((c) => {
       const names = c.getObjectByName('star-names')
       if (!names) return
       if (showStarNames && !names.userData.labelsAdded) {
-        starNameLayoutsRef.current.push(addStarNameLabels(names as THREE.Group, names.userData.stars as ConstellationStar[], screenTextSpritesRef.current))
+        starNameLayoutsRef.current.push(addStarNameLabels(names as THREE.Group, names.userData.stars as ConstellationStar[], overlay))
         names.userData.labelsAdded = true
       }
       names.visible = showStarNames
@@ -975,7 +1094,9 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
   if (!o) return <div className="space-layer space-empty">Wybierz obiekt.</div>
   return (
     <div className="space-layer">
-      <div ref={mountRef} style={{ position: 'absolute', inset: 0 }} />
+      <div ref={mountRef} style={{ position: 'absolute', inset: 0 }}>
+        <div ref={starNamesOverlayRef} className="obs-labels space-star-labels" aria-hidden />
+      </div>
       <div className="obs-hint space-hint faint" aria-hidden>LPM: obrót · PPM: rozglądanie · ŚPM: przesuwanie · kółko: zbliżenie do kursora · WASD + Q/E: lot · Shift: szybciej</div>
       <div ref={pinRef} className="pin" style={{ display: 'none' }} aria-hidden>
         {scale === 'universe' && LOCAL_GROUP_SHAPES[o.id] ? (

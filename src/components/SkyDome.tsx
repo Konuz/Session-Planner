@@ -1,7 +1,7 @@
-// Kopuła nieba: gwiazdy w WebGL (rzut stereograficzny w shaderze), nakładka 2D z liniami i postaciami
+// Kopuła nieba: gwiazdy w WebGL, nakładka 2D z liniami i postaciami
 // gwiazdozbiorów, konturami mgławic, horyzontem, torem obiektu i animacją „znajdź obiekt”. Rysuje tylko przy zmianie stanu.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { RefreshCw, ZoomIn, ZoomOut } from 'lucide-react'
+import { Compass, RefreshCw, ZoomIn, ZoomOut } from 'lucide-react'
 import {
   bodyAltAz,
   computeOptics,
@@ -74,8 +74,8 @@ vec3 bvColor(float bv) {
 }
 void main() {
   vec3 v = u_m * a_dir;
-  float d = 1.0 + v.z;
   float alt = dot(u_zen, a_dir);
+  float d = 1.0 + v.z;
   if (d < 0.02 || a_magbv.x > u_magLimit) { gl_Position = vec4(2.0, 2.0, 0.0, 1.0); gl_PointSize = 0.0; return; }
   vec2 p = u_center + 2.0 * u_scale * v.xy / d;
   vec2 clip = vec2(p.x / u_res.x * 2.0 - 1.0, p.y / u_res.y * 2.0 - 1.0);
@@ -261,6 +261,36 @@ function polyline(ctx: CanvasRenderingContext2D, pts: Pt[], size: { w: number; h
   }
 }
 
+function drawCelestialGrid(ctx: CanvasRenderingContext2D, proj: Projector, latDeg: number, size: { w: number; h: number }) {
+  const sin = Math.sin(latDeg * DEG), cos = Math.cos(latDeg * DEG)
+  // Siatka względem południka obserwatora. Biegun nie zależy od godziny.
+  const toHorizontal: Mat3 = [-sin, 0, cos, 0, 1, 0, cos, 0, sin]
+  const project = (angle: number, dec: number) => {
+    const direction = mulVec(toHorizontal, unitVector(angle, dec))
+    return direction[2] >= 0 ? proj.hor(direction) : null
+  }
+  ctx.lineWidth = 1
+  ctx.strokeStyle = 'rgba(120, 150, 200, 0.23)'
+  ctx.beginPath()
+  for (let dec = -80; dec <= 80; dec += 10) {
+    polyline(ctx, Array.from({ length: 121 }, (_, i) => project(i * 3, dec)), size)
+  }
+  for (let angle = 0; angle < 360; angle += 30) {
+    polyline(ctx, Array.from({ length: 61 }, (_, i) => project(angle, -90 + i * 3)), size)
+  }
+  ctx.stroke()
+  const north = latDeg >= 0
+  const pole = project(0, north ? 90 : -90)
+  if (pole) {
+    const [x, y] = pole
+    ctx.fillStyle = 'rgba(160, 200, 235, 0.9)'
+    ctx.fillRect(x - 3, y, 7, 1)
+    ctx.fillRect(x, y - 3, 1, 7)
+    ctx.font = '11px ui-monospace, Consolas, monospace'
+    ctx.fillText(north ? 'Biegun N' : 'Biegun S', x + 7, y - 5)
+  }
+}
+
 const groundCanvas = typeof document !== 'undefined' ? document.createElement('canvas') : null
 const GROUND_STEP = 3 // piksele CSS na piksel maski
 let groundCacheKey = ''
@@ -304,19 +334,13 @@ function drawGround(ctx: CanvasRenderingContext2D, proj: Projector, horizon: rea
   const table = new Float32Array(721)
   for (let i = 0; i <= 720; i++) table[i] = horizonAltitude(horizon, i / 2)
   const m = proj.horToView
-  const k = 1 / (2 * proj.scale)
+  const direction: Vec3 = [0, 0, 0]
   // Szerokość brzegu w stopniach ≈ jeden piksel maski.
   const edgeDeg = Math.max(0.05, (fovDeg / (2 * radius)) * GROUND_STEP)
   for (let j = 0; j < mh; j++) {
     const y = (j + 0.5) * GROUND_STEP
-    const Y = -(y - proj.cy) * k
     for (let i = 0; i < mw; i++) {
-      const X = ((i + 0.5) * GROUND_STEP - proj.cx) * k
-      const rr = X * X + Y * Y
-      const inv = 1 / (1 + rr)
-      const vx = 2 * X * inv
-      const vy = 2 * Y * inv
-      const vz = (1 - rr) * inv
+      const [vx, vy, vz] = proj.unprojectView((i + 0.5) * GROUND_STEP, y, direction)
       // Widok → horyzontalny (transpozycja macierzy widoku).
       const hx = m[0] * vx + m[3] * vy + m[6] * vz
       const hy = m[1] * vx + m[4] * vy + m[7] * vz
@@ -380,17 +404,11 @@ function drawMilkyWay(ctx: CanvasRenderingContext2D, proj: Projector, mw: MilkyW
   const img = g.createImageData(cw, ch)
   const m = proj.eqToView
   const hm = proj.horToView
-  const k = 1 / (2 * proj.scale)
+  const direction: Vec3 = [0, 0, 0]
   const { w: gw, h: gh, data } = mw
   for (let j = 0; j < ch; j++) {
-    const Y = -((j + 0.5) * MW_STEP - proj.cy) * k
     for (let i = 0; i < cw; i++) {
-      const X = ((i + 0.5) * MW_STEP - proj.cx) * k
-      const rr = X * X + Y * Y
-      const inv = 1 / (1 + rr)
-      const vx = 2 * X * inv
-      const vy = 2 * Y * inv
-      const vz = (1 - rr) * inv
+      const [vx, vy, vz] = proj.unprojectView((i + 0.5) * MW_STEP, (j + 0.5) * MW_STEP, direction)
       // Tylko nad horyzontem (własnym, z wygaszaniem w 1°): ziemia przykrywa smugę niecałkowicie, a poza kręgiem
       // kopuły nie ma jej wcale.
       const hx = hm[0] * vx + hm[3] * vy + hm[6] * vz
@@ -456,6 +474,8 @@ export function SkyDome({ playing = false }: Props) {
   const [outlines, setOutlines] = useState<Outline[] | null>(null)
   const [size, setSize] = useState({ w: 800, h: 600 })
   const [view, setView] = useState<View>(FULL_DOME)
+  const [isPolarDome, setShowPolarDome] = useState(false)
+  const [animationRequest, setAnimationRequest] = useState(0)
   const [hoverOutline, setHoverOutline] = useState<number | null>(null)
   const [hoverDepth, setHoverDepth] = useState<DSO | null>(null)
   // Obiekt pod kursorem (to samo, co wybrałoby kliknięcie): podświetlenie zwłaszcza małych obiektów bez konturu.
@@ -618,7 +638,7 @@ export function SkyDome({ playing = false }: Props) {
         let dAz = ((a.to.azDeg - a.from.azDeg + 540) % 360) - 180
         if (a.from.altDeg > 89) dAz = 0
         const lift = Math.sin(Math.PI * e) * 25
-        setView({
+        setView(k >= 1 ? a.to : {
           azDeg: (a.from.altDeg > 89 ? a.to.azDeg : a.from.azDeg + dAz * e),
           altDeg: a.from.altDeg + (a.to.altDeg - a.from.altDeg) * e,
           fovDeg: Math.min(184, a.from.fovDeg + (a.to.fovDeg - a.from.fovDeg) * e + lift),
@@ -634,7 +654,7 @@ export function SkyDome({ playing = false }: Props) {
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [findPulse, hoverCon?.abbr])
+  }, [findPulse, hoverCon?.abbr, animationRequest])
 
   const dpr = Math.min(2, typeof devicePixelRatio === 'number' ? devicePixelRatio : 1)
   const radius = Math.min(size.w, size.h) / 2 - 18
@@ -687,29 +707,32 @@ export function SkyDome({ playing = false }: Props) {
 
     const toScreenHor = (alt: number, az: number) => proj.hor(horizontalToVec({ altDeg: alt, azDeg: az }))
 
-    // Siatka wysokości (pierścienie co 20°) i kierunki świata.
-    uctx.lineWidth = 1
-    uctx.strokeStyle = 'rgba(120, 150, 200, 0.16)'
-    uctx.font = '11px ui-monospace, Consolas, monospace'
-    uctx.fillStyle = 'rgba(160, 180, 210, 0.55)'
-    for (const alt of [0, 20, 40, 60, 80]) {
-      uctx.beginPath()
-      polyline(uctx, Array.from({ length: 121 }, (_, i) => toScreenHor(alt, i * 3)), size)
-      uctx.stroke()
-      if (alt > 0) {
-        const p = toScreenHor(alt, 315)
-        if (p) uctx.fillText(`${alt}°`, p[0] + 4, p[1] - 4)
-      }
-    }
-    for (let az = 0; az < 360; az += 45) {
-      uctx.beginPath()
-      const a = toScreenHor(0, az)
-      const b = toScreenHor(80, az)
-      if (a && b) {
-        uctx.moveTo(a[0], a[1])
-        uctx.lineTo(b[0], b[1])
-        uctx.strokeStyle = 'rgba(120, 150, 200, 0.07)'
+    if (isPolarDome) drawCelestialGrid(uctx, proj, site.latDeg, size)
+    else {
+      // Siatka wysokości (pierścienie co 20°) i kierunki świata.
+      uctx.lineWidth = 1
+      uctx.strokeStyle = 'rgba(120, 150, 200, 0.16)'
+      uctx.font = '11px ui-monospace, Consolas, monospace'
+      uctx.fillStyle = 'rgba(160, 180, 210, 0.55)'
+      for (const alt of [0, 20, 40, 60, 80]) {
+        uctx.beginPath()
+        polyline(uctx, Array.from({ length: 121 }, (_, i) => toScreenHor(alt, i * 3)), size)
         uctx.stroke()
+        if (alt > 0) {
+          const p = toScreenHor(alt, 315)
+          if (p) uctx.fillText(`${alt}°`, p[0] + 4, p[1] - 4)
+        }
+      }
+      for (let az = 0; az < 360; az += 45) {
+        uctx.beginPath()
+        const a = toScreenHor(0, az)
+        const b = toScreenHor(80, az)
+        if (a && b) {
+          uctx.moveTo(a[0], a[1])
+          uctx.lineTo(b[0], b[1])
+          uctx.strokeStyle = 'rgba(120, 150, 200, 0.07)'
+          uctx.stroke()
+        }
       }
     }
     // Południk (N–zenit–S) przerywaną linią.
@@ -776,10 +799,7 @@ export function SkyDome({ playing = false }: Props) {
         const ngc = !o.dark
         const lv = o.level === 1 ? 0 : o.level === 3 ? 2 : 1
         const faint = o.level === 1 && !sel && !hov && !ngc
-        // Welon jest pozostałością po supernowej, ale jego obrysy używają koloru mgławic emisyjnych.
-        const tint = o.id === 'NGC 6960' || o.id === 'NGC 6992'
-          ? typeColors.EN
-          : outlineObjects?.[k] ? typeColors[outlineObjects[k]!.type] : typeColors[o.dark ? 'DN' : 'EN']
+        const tint = outlineObjects?.[k] ? typeColors[outlineObjects[k]!.type] : typeColors[o.dark ? 'DN' : 'EN']
         ctx.fillStyle = sel ? 'rgba(0, 224, 255, 0.08)' : ngc ? (hov ? brighter(tint, 0.18) : withAlpha(tint, [0.05, 0.09, 0.13][lv])) : withAlpha(tint, hov ? 0.13 : faint ? 0.05 : 0.08)
         ctx.strokeStyle = sel ? 'rgba(0, 224, 255, 0.85)' : ngc ? (hov ? brighter(tint, 1) : withAlpha(tint, [0.4, 0.65, 0.9][lv])) : withAlpha(tint, hov ? 0.9 : faint ? 0.25 : 0.45)
         for (const ring of o.rings) {
@@ -819,8 +839,7 @@ export function SkyDome({ playing = false }: Props) {
         if (view.fovDeg < 90 && skyGroups.M && dso.catalogs.includes('M')) continue
         const hov = key === hoverKey
         const ol = outlines[l.k]
-        // Podpis w kolorze konturu (Welon: barwa mgławic emisyjnych, jak jego obrys).
-        const lt = ol.id === 'NGC 6960' || ol.id === 'NGC 6992' ? typeColors.EN : typeColors[dso.type]
+        const lt = typeColors[dso.type]
         labelList.push({
           dso, c: l.c, top: l.top, r: l.r, prio: 1, minR: fullDome ? 8 : 5, hov, name: ol.name ?? undefined,
           color: !ol.dark ? (hov ? brighter(lt, 1) : withAlpha(lt, 0.95)) : withAlpha(lt, hov ? 0.95 : 0.62),
@@ -1335,18 +1354,19 @@ export function SkyDome({ playing = false }: Props) {
       const dy = y - drag.current.y
       if (Math.abs(dx) + Math.abs(dy) > 3) drag.current.moved = true
       if (drag.current.moved && view.fovDeg < 180) {
+        anim.current = null
         const degPerPx = drag.current.view.fovDeg / (radius * 2)
         setView({
           ...drag.current.view,
           azDeg: (drag.current.view.azDeg - dx * degPerPx / Math.max(0.2, Math.cos(drag.current.view.altDeg * DEG)) + 360) % 360,
-          altDeg: Math.max(-20, Math.min(89.9, drag.current.view.altDeg + dy * degPerPx)),
+          altDeg: Math.max(-20, Math.min(90, drag.current.view.altDeg + dy * degPerPx)),
         })
       }
       return
     }
     const v = proj.unprojectHor(x, y)
     const h = vecToHorizontal(v)
-    if (h.altDeg < -5 || Math.hypot(x - proj.cx, y - proj.cy) > radius * 1.02 && view.fovDeg > 150) {
+    if (h.altDeg < -5 || (view.fovDeg > 150 && Math.hypot(x - proj.cx, y - proj.cy) > radius * 1.02)) {
       if (hoverCon) setHoverCon(null)
       if (hoverOutline !== null) setHoverOutline(null)
       if (hoverDepth) setHoverDepth(null)
@@ -1375,13 +1395,13 @@ export function SkyDome({ playing = false }: Props) {
   }
 
   // Przybliżanie suwakiem albo rolką nad kopułą.
-  const setFov = (target: number) =>
+  const setFov = (target: number) => {
+    anim.current = null
     setView((v) => {
       const fovDeg = Math.max(MIN_FOV, Math.min(184, target))
-      if (fovDeg >= 184) return FULL_DOME
-      // Przybliżenie do środka bieżącego widoku, bez zmiany kierunku i obrotu.
-      return { ...v, fovDeg }
+      return fovDeg >= 184 ? FULL_DOME : { ...v, fovDeg }
     })
+  }
 
   // Rolka myszy przybliża tylko nad kopułą: nasłuch nie-pasywny, żeby zablokować przewijanie strony.
   const setFovRef = useRef(setFov)
@@ -1447,9 +1467,13 @@ export function SkyDome({ playing = false }: Props) {
           }
         }}
         onDoubleClick={() => {
+          if (reducedMotion()) {
+            anim.current = null
+            setView(FULL_DOME)
+            return
+          }
           anim.current = { from: view, to: FULL_DOME, start: performance.now(), dur: 900 }
-          setFrame((f) => f + 1)
-          setHoverCon((h) => (h ? { ...h } : h))
+          setAnimationRequest((n) => n + 1)
         }}
       />
       {moonPoint && (
@@ -1493,18 +1517,24 @@ export function SkyDome({ playing = false }: Props) {
         </div>
       ))}
       <div className="sky-hud tl">
-        {view.fovDeg > 150 ? 'NIEBO · ZENIT' : `POLE ${Math.round(view.fovDeg)}° · AZ ${Math.round(view.azDeg)}° · H ${Math.round(view.altDeg)}°`}
+        {view === FULL_DOME
+          ? isPolarDome ? `NIEBO · BIEGUN ${site.latDeg >= 0 ? 'PÓŁNOCNY' : 'POŁUDNIOWY'}` : 'NIEBO · ZENIT'
+          : `POLE ${Math.round(view.fovDeg)}° · AZ ${Math.round(view.azDeg)}° · H ${Math.round(view.altDeg)}°`}
       </div>
       <div className="sky-hud tr">
         {selected ? `${selected.id} ${displayName(selected) ? '· ' + displayName(selected) : ''}` : 'Wybierz obiekt'}
       </div>
       <div className="sky-hud br hud-stack">
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', position: 'relative' }}>
-        {view.fovDeg < 180 && (
-          <button className="hud-icon hud-reset" onClick={() => setView(FULL_DOME)} title="Cała kopuła" aria-label="Cała kopuła">
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        {view !== FULL_DOME && (
+          <button className="hud-icon" onClick={() => { anim.current = null; setView(FULL_DOME) }} title="Cała kopuła" aria-label="Cała kopuła">
             <RefreshCw size={14} />
           </button>
         )}
+        <button className="hud-icon" onClick={() => setShowPolarDome((enabled) => !enabled)}
+          title="Widok biegunowy" aria-label="Widok biegunowy" aria-pressed={isPolarDome}>
+          <Compass size={14} />
+        </button>
         <div className="zoom-slider">
           <ZoomOut size={14} aria-hidden />
           <Range

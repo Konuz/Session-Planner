@@ -1,5 +1,4 @@
-// Rzut stereograficzny kopuły. Widok ustawiony na kierunek (azymut, wysokość) z polem widzenia `fovDeg`;
-// pełna kopuła to widok w zenit od strony S (N u góry, E po lewej, jak na mapie nieba trzymanej nad głową).
+// Rzut stereograficzny kopuły. Widok ustawiony na kierunek (azymut, wysokość) z polem widzenia `fovDeg`.
 import { DEG, mulMat, mulVec, type Mat3, type Vec3 } from './astro'
 
 export interface View {
@@ -37,6 +36,7 @@ export interface Projector {
   project(v: Vec3): [number, number] | null
   eq(v: Vec3): [number, number] | null
   hor(v: Vec3): [number, number] | null
+  unprojectView(x: number, y: number, out: Vec3): Vec3
   /** Odwrotność: punkt ekranu → wektor horyzontalny. */
   unprojectHor(x: number, y: number): Vec3
 }
@@ -50,6 +50,13 @@ export function makeProjector(horMatrix: Mat3, view: View, cx: number, cy: numbe
     if (d < 1e-3) return null
     return [cx + (2 * scale * v[0]) / d, cy - (2 * scale * v[1]) / d]
   }
+  const unprojectView = (x: number, y: number, out: Vec3): Vec3 => {
+    const X = (x - cx) / scale, Y = (cy - y) / scale
+    const rr = (X * X + Y * Y) / 4
+    const k = 1 / (1 + rr)
+    out[0] = X * k; out[1] = Y * k; out[2] = (1 - rr) * k
+    return out
+  }
   return {
     eqToView,
     horToView,
@@ -59,11 +66,9 @@ export function makeProjector(horMatrix: Mat3, view: View, cx: number, cy: numbe
     project,
     eq: (v) => project(mulVec(eqToView, v)),
     hor: (v) => project(mulVec(horToView, v)),
+    unprojectView,
     unprojectHor(x, y) {
-      const X = (x - cx) / (2 * scale)
-      const Y = -(y - cy) / (2 * scale)
-      const rr = X * X + Y * Y
-      const vView: Vec3 = [(2 * X) / (1 + rr), (2 * Y) / (1 + rr), (1 - rr) / (1 + rr)]
+      const vView = unprojectView(x, y, [0, 0, 0])
       // Macierz widoku jest ortogonalna: odwrotność = transpozycja.
       const m = horToView
       return [

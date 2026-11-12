@@ -12,7 +12,7 @@ import { fmtDistance } from '../../lib/format'
 import { AXIS_DASH, AXIS_LENGTH, EARTH_Z } from '../../lib/observatory'
 import { cutsInThreeD, photoAnchorKind, type PhotoProject } from '../../lib/photo'
 import { scenePoint, toScene, type SpaceScale } from '../../lib/space3d'
-import { framePose, sideView } from '../../lib/spaceCamera'
+import { framePose, sideView, SPACE_FOV } from '../../lib/spaceCamera'
 import { diveScale } from '../../lib/spaceDive'
 import { milkyWayCone, universeCone } from '../../lib/spacePhoto'
 import { useStore } from '../../state/store'
@@ -26,6 +26,8 @@ const BEYOND = 1.22
 const MARK = 0.04
 const MARK_GROUPED = 0.024
 const MARK_ACTIVE = 0.056
+const MARK_BEYOND = 0.034
+const MARK_PROJECTION_Y = 1 / Math.tan(THREE.MathUtils.degToRad(SPACE_FOV / 2))
 /** Promień trafienia znacznika kursorem (px). */
 const HIT_PX = 11
 
@@ -192,11 +194,12 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, s
   const marks: { id: string; position: Vec3; sprite: THREE.Sprite; label: SceneLabel; grouped: boolean }[] = []
   const textures = new Map<string, THREE.CanvasTexture>()
   const colorOf = (type: ObjectType) => colors[type] ?? DEFAULT_ANNOTATION_COLORS[type]
+  let markerScale = 1
   const refresh = (mark: (typeof marks)[number]) => {
     const active = mark.id === selected || mark.id === hovered
     mark.label.pinned = mark.id === selected
     mark.label.el.classList.toggle('selected', mark.id === selected)
-    mark.sprite.scale.setScalar(active ? MARK_ACTIVE : mark.grouped ? MARK_GROUPED : MARK)
+    mark.sprite.scale.setScalar(markerScale * (active ? MARK_ACTIVE : mark.grouped ? MARK_GROUPED : MARK))
     mark.sprite.renderOrder = active ? 6 : 5
   }
   for (const { cut, world } of placed) {
@@ -216,6 +219,7 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, s
     const mark = { id: cut.id, position: world.toArray() as Vec3, sprite, label: null as unknown as SceneLabel, grouped: false }
     mark.label = layer.add(sprite.position, [cut.id, `≈ ${fmtDistance(cut.distLy)}`], {
       color: colorOf(cut.type), id: cut.id, distLy: cut.distLy!,
+      cutout: { image: project.image, width: project.width, height: project.height, x: cut.x, y: cut.y, radius: cut.radius },
       onGroup: (grouped) => { mark.grouped = grouped; refresh(mark); handle.invalidate() },
     })
     marks.push(mark)
@@ -233,7 +237,7 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, s
   let beyondSprite: THREE.Sprite | null = null
   if (outside.length) {
     const map = beyondTexture(accent)
-    beyondSprite = glyphSprite(map, 0.034)
+    beyondSprite = glyphSprite(map, MARK_BEYOND)
     beyondSprite.position.copy(sunPos).addScaledVector(dir, length * BEYOND)
     group.add(beyondSprite)
     disposables.push(map, beyondSprite.material)
@@ -243,7 +247,17 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, s
     layer.add(beyondSprite.position, [shown, 'poza Drogą Mleczną'], { className: 'dashed', color: accent })
   }
   handle.scene.add(group)
-  handle.layout.add(layer.update)
+  const updateLayout = (now: number) => {
+    // Sprite bez tłumienia odległości nadal skaluje się razem z polem widzenia kamery.
+    const nextScale = MARK_PROJECTION_Y / camera.projectionMatrix.elements[5]
+    if (nextScale !== markerScale) {
+      markerScale = nextScale
+      for (const mark of marks) refresh(mark)
+      beyondSprite?.scale.setScalar(markerScale * MARK_BEYOND)
+    }
+    layer.update(now)
+  }
+  handle.layout.add(updateLayout)
 
   // Wskazanie i kliknięcie znacznika: najbliższy na ekranie w promieniu HIT_PX.
   let visible = true
@@ -272,7 +286,8 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, s
     mount.style.cursor = id ? 'pointer' : ''
     if (id || marks.some((mark) => mark.id === hovered)) setHover(id)
   }
-  mount.addEventListener('pointermove', onMove)
+  const canvas = handle.renderer.domElement
+  canvas.addEventListener('pointermove', onMove)
   handle.invalidate()
 
   // Kadr: Ziemia, koniec stożka (z grotem) i znaczniki; kamera z boku linii widzenia, po zewnętrznej stronie Galaktyki.
@@ -321,9 +336,9 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, s
       handle.flyTo({ target: mark.position, position: target.addScaledVector(v, Math.max(0.15, length * 0.03)).toArray() as Vec3 })
     },
     dispose() {
-      handle.layout.delete(layer.update)
+      handle.layout.delete(updateLayout)
       handle.claims.delete(claim)
-      mount.removeEventListener('pointermove', onMove)
+      canvas.removeEventListener('pointermove', onMove)
       mount.style.cursor = ''
       for (const mark of marks) handle.anchors.delete(mark.sprite.position)
       handle.scene.remove(group)

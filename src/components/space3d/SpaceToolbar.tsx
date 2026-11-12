@@ -1,5 +1,5 @@
 // Pasek narzędzi okna „Pozycja 3D”: przełącznik skal, filtry i przełączniki sceny Space3D, opis skali i warstwy.
-import { ChevronDown } from 'lucide-react'
+import { Camera, ChevronDown } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO, type DSO, type ObjectType } from '../../lib/catalog'
 import { CONSTELLATION_PL } from '../../lib/constellations'
@@ -21,12 +21,13 @@ interface Props {
   settings: SpaceSettingsState
   /** Wybór skali z paska (w stanie zdjęcia „Droga Mleczna” wraca nurkowaniem). */
   onScale(scale: SpaceScale): void
+  onConstellationView?(abbr: string): void
   /** Ścieżka „Droga Mleczna › nazwa zdjęcia” w stanie zdjęcia; wtedy pasek nie pokazuje filtrów sceny. */
   crumb?: string
   children?: ReactNode
 }
 
-export function SpaceToolbar({ o, settings, onScale, crumb, children }: Props) {
+export function SpaceToolbar({ o, settings, onScale, onConstellationView, crumb, children }: Props) {
   const { scale, showConstellations, setShowConstellations, constellations, constellationError, hiddenTypes, setHiddenTypes } = settings
   const { catalog } = useCatalog()
   const annotationColors = useStore((s) => s.annotationColors)
@@ -68,6 +69,10 @@ export function SpaceToolbar({ o, settings, onScale, crumb, children }: Props) {
         {showConstellations && <>
           <ConstellationPicker value={settings.constellationChoice} onChange={settings.setConstellationChoice}
             options={(constellations?.constellations ?? []).map((c) => ({ value: c.abbr, label: CONSTELLATION_PL[c.abbr] ?? c.abbr })).sort((a, b) => a.label.localeCompare(b.label, 'pl'))} />
+          <button type="button" className="toggle-chip" aria-label="Pokaż gwiazdozbiór z Ziemi"
+            title={settings.constellationChoice === 'all' ? 'Wybierz jeden gwiazdozbiór' : 'Pokaż gwiazdozbiór z Ziemi. Kliknij ponownie, aby wrócić.'}
+            disabled={!onConstellationView || settings.constellationChoice === 'all'}
+            onClick={() => onConstellationView?.(settings.constellationChoice)}><Camera size={14} /></button>
           <button className={`toggle-chip${settings.showStarNames ? ' on' : ''}`} aria-pressed={settings.showStarNames} onClick={() => settings.setShowStarNames(!settings.showStarNames)} title="Pokaż nazwy gwiazd z widocznych gwiazdozbiorów">Nazwy gwiazd</button>
         </>}
         <div className="space-filter-menu">
@@ -86,7 +91,7 @@ export function SpaceToolbar({ o, settings, onScale, crumb, children }: Props) {
                   <span className="dot" style={{ background: color(type) }} />
                   {TYPE_INFO[type].plural}
                   <span className="faint">{count}</span>
-                  <canvas aria-hidden="true" style={{ width: 20, height: 20, flex: 'none' }} ref={(canvas) => { if (canvas) glyphCanvas(type, color(type), canvas) }} />
+                  <canvas aria-hidden="true" ref={(canvas) => { if (canvas) glyphCanvas(type, color(type), canvas) }} />
                 </label>
               ))}
             </div>

@@ -16,15 +16,24 @@ it('stykające się krawędziami ramki nie tworzą grupy', () => {
 })
 
 it('mały wachlarz ma jedną stronę, z góry na dół', () => {
-  const { radius, spokes } = fanLayout(4, 16)
+  const { radius, spokes } = fanLayout(5, 16)
   expect(radius).toBe(40)
   expect(spokes.every((s) => !s.left)).toBe(true)
   expect(spokes.map((s) => s.angle)).toEqual([...spokes.map((s) => s.angle)].sort((a, b) => a - b))
   expect(spokes[0].angle).toBeGreaterThan(-FAN_HALF)
-  expect(spokes[3].angle).toBeLessThan(FAN_HALF)
+  expect(spokes[4].angle).toBeLessThan(FAN_HALF)
   // Ciasno wokół poziomu: sąsiednie ramiona o jeden wiersz, a nie rozrzucone po całym rozwarciu.
   expect((spokes[1].angle - spokes[0].angle) * radius).toBeCloseTo(16)
-  expect(spokes[0].angle + spokes[3].angle).toBeCloseTo(0)
+  expect(spokes[0].angle + spokes[4].angle).toBeCloseTo(0)
+})
+
+it.each([2, 4, 10, 34, 40])('rozkłada %i ramion symetrycznie po obu stronach', (count) => {
+  const { spokes } = fanLayout(count, 17)
+  const right = spokes.filter((spoke) => !spoke.left)
+  const left = spokes.filter((spoke) => spoke.left).reverse()
+  expect(left).toHaveLength(count / 2)
+  expect(right).toHaveLength(count / 2)
+  right.forEach((spoke, i) => expect(spoke.angle + left[i].angle).toBeCloseTo(Math.PI))
 })
 
 it('duży wachlarz dzieli ramiona na dwie strony i trzyma odstęp wierszy', () => {

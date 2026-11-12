@@ -103,6 +103,16 @@ export function circleIntersectsImage(x: number, y: number, radius: number, widt
   return Math.hypot(x - Math.max(0, Math.min(width, x)), y - Math.max(0, Math.min(height, y))) <= radius
 }
 
+/** Kwadrat wycinka mieszczący się w zdjęciu i położony możliwie blisko środka obiektu. */
+export function photoCropSquare(cut: Pick<PhotoCut, 'x' | 'y' | 'radius'>, width: number, height: number) {
+  const side = Math.min(cut.radius * 2, width, height)
+  return {
+    x: Math.max(0, Math.min(cut.x - side / 2, width - side)),
+    y: Math.max(0, Math.min(cut.y - side / 2, height - side)),
+    side,
+  }
+}
+
 export function photoAnchorKind(distLy: number | null, scale: PhotoScale): 'position' | 'direction' | 'outside' | 'local' {
   if (distLy === null || !Number.isFinite(distLy) || distLy <= 0) return 'direction'
   if (scale === 'galaxy' && distLy >= 150_000) return 'outside'

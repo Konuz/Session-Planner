@@ -1,7 +1,7 @@
 import { Horizon, MakeTime, Observer, RotateVector, Rotation_EQJ_EQD, SphereFromVector, Vector } from 'astronomy-engine'
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { altAz, computeOptics, DEG, galactic, hourAngleDeg, horizontalMatrix, isCircumpolar, moonInfo, nextTransitMs, vecToEquatorial, type Site } from './astro'
+import { altAz, computeOptics, DEG, galactic, hourAngleDeg, horizontalMatrix, horizontalToVec, isCircumpolar, moonInfo, mulVec, nextTransitMs, transpose, vecToEquatorial, type Site } from './astro'
 import { matchesFilter, normalizeQuery, parseCatalog, quickSearch, searchScore, skyGroupOf, EMPTY_FILTER } from './catalog'
 import { frameCorners, gnomonic, gnomonicInverse, pixelToTangent, tangentToPixel } from './framing'
 import { exportHorizon, horizonAltitude, parseHorizon } from './horizon'
@@ -174,6 +174,28 @@ describe('kadr i rzut', () => {
     expect(ex).toBeLessThan(120)
     const v = p.unprojectHor(ex, 500)
     expect(v[1]).toBeCloseTo(1, 6)
+    for (let azDeg = 0; azDeg < 360; azDeg += 15) {
+      const [x, y] = p.hor(horizontalToVec({ azDeg, altDeg: 0 }))!
+      expect(Math.hypot(x - p.cx, y - p.cy)).toBeCloseTo(p.scale * 2)
+    }
+  })
+
+  it('w kopule zenitalnej oś ruchu gwiazd jest przy biegunie, nad środkiem kadru', () => {
+    const matrix = horizontalMatrix(0, SITE)
+    const p = makeProjector(matrix, FULL_DOME, 500, 500, 400)
+    const later = makeProjector(horizontalMatrix(6 * 3_600_000, SITE), FULL_DOME, 500, 500, 400)
+    const poleHor = horizontalToVec({ azDeg: 0, altDeg: SITE.latDeg })
+    const pole = p.hor(poleHor)!
+    expect(pole[0]).toBeCloseTo(p.cx)
+    expect(pole[1]).toBeLessThan(p.cy)
+    const poleEq = mulVec(transpose(matrix), poleHor)
+    expect(later.eq(poleEq)![1]).toBeCloseTo(pole[1], 3)
+    const star = mulVec(transpose(matrix), horizontalToVec({ azDeg: 45, altDeg: 55 }))
+    const initial = p.eq(star)!
+    const moved = later.eq(star)!
+    expect(Math.hypot(initial[0] - moved[0], initial[1] - moved[1])).toBeGreaterThan(30)
+    const angleToPole = (v: number[]) => v.reduce((sum, value, i) => sum + value * poleHor[i], 0)
+    expect(angleToPole(later.unprojectHor(...moved))).toBeCloseTo(angleToPole(p.unprojectHor(...initial)), 6)
   })
 
   it('transformacja afiniczna z trzech punktów', () => {

@@ -4,6 +4,7 @@
 import * as THREE from 'three'
 import type { Vec3 } from '../../lib/astro'
 import { EARTH_Z, PLANE_WIDTH } from '../../lib/observatory'
+import { SPACE_FOV } from '../../lib/spaceCamera'
 import {
   ALIGN_K, coneLength, coneTan, diveFades, diveFrame, diveGridScale, diveMarkerPosition, diveScale, divePose, diveTotalMs, ease, guideAlignment, guideRollWeight, lerpPose, makeBridge, nearFar, startScale, turnWeight, unbridgePoint, unbridgeVector, uprightRoll,
   type Bridge, type DiveDirection, type DiveFrame, type DivePhase, type Pose,
@@ -14,13 +15,13 @@ import type { PhotoGuide } from './photoGuide'
 
 /** Na końcu nurkowania 1 jednostka Obserwatorium ≈ 1 lś: sąsiednie obiekty rozlatują się poza kadr. */
 const END_SCALE = 0.001
-const SPACE_FOV = 50
 /** Najdłuższy krok czasu przejścia w jednej klatce (ok. 30 kl./s). */
 const MAX_STEP_MS = 33
 const OBSERVATORY_FOV = 40
 const UP: Vec3 = [0, 1, 0]
 /** Promień Ziemi Obserwatorium (jednostki sceny). */
 const EARTH_RADIUS = 1.5
+type SpacePose = Pose & { fov?: number; near?: number }
 
 export interface DiveOptions {
   direction: DiveDirection
@@ -35,7 +36,7 @@ export interface DiveOptions {
   /** Proporcje zdjęcia (wysokość / szerokość) dla kąta ostrosłupa. */
   imageAspect: number
   /** Powrót: poza sceny 3D sprzed wejścia. */
-  spacePose?: Pose
+  spacePose?: SpacePose
   onPhase(phase: DivePhase): void
   /** Pierwsza gotowa klatka Obserwatorium ma już pozę i krycia przejścia; można odsłonić płótno. */
   onObservatoryFrame(): void
@@ -68,7 +69,7 @@ export class SpaceDive {
   private readonly real: [number, number]
   private readonly pyramid: [number, number]
   /** Poza sceny 3D na krańcu ustawienia (naprzód: bieżąca; wstecz: zapamiętana przy wejściu). */
-  readonly spacePose: Pose
+  readonly spacePose: SpacePose
   private obsEnd: { position: Vec3; target: Vec3 } | null = null
   private earthMaterial: THREE.Material | null
 
@@ -76,7 +77,7 @@ export class SpaceDive {
     const { space, guide } = o
     this.real = guide?.fieldTan ?? [1, 1]
     this.pyramid = [PLANE_WIDTH / 2 / EARTH_Z, PLANE_WIDTH * o.imageAspect / 2 / EARTH_Z]
-    this.spacePose = o.spacePose ?? { position: space.camera.position.toArray() as Vec3, target: space.controls.target.toArray() as Vec3, up: space.camera.up.toArray() as Vec3 }
+    this.spacePose = o.spacePose ?? { position: space.camera.position.toArray() as Vec3, target: space.controls.target.toArray() as Vec3, up: space.camera.up.toArray() as Vec3, fov: space.camera.fov, near: space.camera.near }
     this.roll = guide ? uprightRoll(guide.basis, this.spacePose.up) : 0
     this.bridge = guide ? makeBridge(space.sunPos.toArray() as Vec3, guide.basis, [0, 0, EARTH_Z], this.roll) : null
     this.earthMaterial = space.earth ? space.earth.material as THREE.Material : null
@@ -172,7 +173,7 @@ export class SpaceDive {
     const pose = divePose(this.spacePose, this.bridge, seam, { e, k }, u0, END_SCALE)
     // Ten sam obrót (z k) dla pozy, pola widzenia, Ziemi i stożka: inaczej sceny rozjadą się po ALIGN_K.
     const w = turnWeight(k)
-    const fov = SPACE_FOV + (OBSERVATORY_FOV - SPACE_FOV) * w
+    const fov = THREE.MathUtils.lerp(this.spacePose.fov ?? SPACE_FOV, OBSERVATORY_FOV, w)
     const u = diveScale(e, u0, END_SCALE)
     // Ziemia przechodzi płynnie od znacznika (do 16 px) do Ziemi Obserwatorium w skali mostu: na szwie oba się pokrywają.
     space.override.earthRadius = EARTH_RADIUS * u
@@ -284,7 +285,7 @@ function isInside(object: THREE.Object3D, group: THREE.Object3D): boolean {
 }
 
 /** Stan sceny 3D sprzed nurkowania: poza, pole widzenia, płaszczyzny, krycia i własna pętla. */
-export function restoreSpace(space: Space3DHandle, guide: PhotoGuide | null, pose: Pose | null) {
+export function restoreSpace(space: Space3DHandle, guide: PhotoGuide | null, pose: SpacePose | null) {
   const { camera, controls } = space
   space.override.camera = false
   space.override.earthRadius = null
@@ -314,8 +315,8 @@ export function restoreSpace(space: Space3DHandle, guide: PhotoGuide | null, pos
     camera.position.set(...pose.position)
     controls.target.set(...pose.target)
   }
-  camera.fov = SPACE_FOV
-  camera.near = 0.1
+  camera.fov = pose?.fov ?? SPACE_FOV
+  camera.near = pose?.near ?? 0.1
   camera.far = 5000
   camera.updateProjectionMatrix()
   camera.lookAt(controls.target)

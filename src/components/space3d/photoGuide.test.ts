@@ -36,8 +36,9 @@ function fixture(scale: SpaceScale, project = comaProject()) {
   const controls = { target: new Vector3() }
   const listeners = { addEventListener: vi.fn(), removeEventListener: vi.fn() }
   const mount = { clientWidth: 1280, clientHeight: 800, style: {}, appendChild: vi.fn(), getBoundingClientRect: () => ({ left: 0, top: 0 }), ...listeners }
+  const canvas = { addEventListener: vi.fn(), removeEventListener: vi.fn() }
   const handle = {
-    scale, camera, scene, mount, controls, sunPos: new Vector3(...sunPosition(scale)), renderer: { domElement: { ...listeners } },
+    scale, camera, scene, mount, controls, sunPos: new Vector3(...sunPosition(scale)), renderer: { domElement: canvas },
     claims: new Set<(x: number, y: number, click: boolean) => boolean>(), layout: new Set<(now: number) => void>(), anchors: new Set<Vector3>(), invalidate: vi.fn(),
     flyTo(pose: CameraPose) {
       camera.position.set(...pose.position)
@@ -49,7 +50,7 @@ function fixture(scale: SpaceScale, project = comaProject()) {
   const picked: string[] = []
   const guide = createPhotoGuide(handle, project, scale, {}, '#00e0ff', (id) => picked.push(id))!
   const sprites = guide.group.children.filter((c): c is Sprite => c instanceof Sprite)
-  return { handle, scene, camera, guide, sprites, picked }
+  return { handle, scene, camera, guide, sprites, picked, mount, canvas }
 }
 
 beforeEach(() => {
@@ -90,6 +91,21 @@ it('w Drodze Mlecznej nie ma pionów do płaszczyzny Galaktyki: jedyne odcinki t
   expect(f.sprites).toHaveLength(2)
 })
 
+it('utrzymuje rozmiar ekranowy symbolu i grotu przy zmianie pola widzenia', () => {
+  const f = fixture('galaxy')
+  f.guide.frameCamera()
+  const [layout] = f.handle.layout
+  const screenSizes = () => f.sprites.map((sprite) => sprite.scale.x * f.camera.projectionMatrix.elements[5])
+  const before = screenSizes()
+  f.camera.fov = 8
+  f.camera.updateProjectionMatrix()
+  layout(100)
+  screenSizes().forEach((size, i) => expect(size).toBeCloseTo(before[i], 8))
+  f.guide.setHover('LDN 1')
+  expect(screenSizes()[0]).toBeGreaterThan(before[0])
+  expect(screenSizes()[1]).toBeCloseTo(before[1], 8)
+})
+
 it('zaznaczenie powiększa znacznik, kliknięcie wybiera obiekt, zamknięcie zwalnia scenę', () => {
   const f = fixture('universe')
   f.guide.frameCamera()
@@ -108,4 +124,19 @@ it('zaznaczenie powiększa znacznik, kliknięcie wybiera obiekt, zamknięcie zwa
   expect(f.handle.claims.size).toBe(0)
   expect(f.handle.layout.size).toBe(0)
   expect(f.handle.anchors.size).toBe(0)
+})
+
+it('ruch nad nakładką nie kasuje podświetlenia znacznika wybranego w wachlarzu', () => {
+  const f = fixture('universe')
+  const sprite = f.sprites[0]
+  const base = sprite.scale.x
+  f.guide.setHover('LDN 1')
+  expect(sprite.scale.x).toBeGreaterThan(base)
+  expect(f.mount.addEventListener).not.toHaveBeenCalledWith('pointermove', expect.any(Function))
+  const move = f.canvas.addEventListener.mock.calls.find(([type]) => type === 'pointermove')?.[1]
+  expect(move).toBeTypeOf('function')
+  move({ buttons: 0, clientX: -100, clientY: -100 })
+  expect(sprite.scale.x).toBe(base)
+  f.guide.dispose()
+  expect(f.canvas.removeEventListener).toHaveBeenCalledWith('pointermove', move)
 })

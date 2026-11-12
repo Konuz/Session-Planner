@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Vec3 } from './astro'
-import { frameDistance, framePose, sideView } from './spaceCamera'
+import { constellationView, frameDistance, framePose, sideView } from './spaceCamera'
 
 const DEG = Math.PI / 180
 const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
@@ -24,6 +24,30 @@ function project(p: Vec3, position: Vec3, target: Vec3, fovDeg: number, aspect: 
   const tanY = Math.tan(fovDeg * DEG / 2)
   return { x: dot(d, right) / (depth * tanY * aspect), y: dot(d, up) / (depth * tanY), depth }
 }
+
+it('pokazuje Ziemię i zachowuje proporcje gwiazdozbioru przy oddalaniu kamery', () => {
+  const observer: Vec3 = [-26.7, 0, 0]
+  const stars: Vec3[] = [[-23.7, 0.1, 0.2], [-25.7, 0.2, -0.6], [-12.7, -5, 7]]
+  for (const aspect of [0.6, 1.7]) {
+    const view = constellationView(stars, observer, aspect)!
+    expect(project(observer, view.position, view.target, view.fov, aspect).depth).toBeGreaterThan(0)
+    const fartherCamera = view.position.map((v, i) => v - view.forward[i] * 2) as Vec3
+    const scale = project(view.target, view.position, view.target, view.fov, aspect).depth
+      / project(view.target, fartherCamera, view.target, view.fov, aspect).depth
+    for (const star of stars) {
+      const screen = project(view.project(star), view.position, view.target, view.fov, aspect)
+      expect(screen.depth).toBeGreaterThan(0)
+      expect(Math.max(Math.abs(screen.x), Math.abs(screen.y))).toBeLessThanOrEqual(0.800001)
+      const farther: Vec3 = [observer[0] + (star[0] - observer[0]) * 3, star[1] * 3, star[2] * 3]
+      const sameDirection = project(view.project(farther), view.position, view.target, view.fov, aspect)
+      expect(sameDirection.x).toBeCloseTo(screen.x)
+      expect(sameDirection.y).toBeCloseTo(screen.y)
+      const zoomedOut = project(view.project(star), fartherCamera, view.target, view.fov, aspect)
+      expect(zoomedOut.x).toBeCloseTo(screen.x * scale)
+      expect(zoomedOut.y).toBeCloseTo(screen.y * scale)
+    }
+  }
+})
 
 describe('sideView', () => {
   it('dla każdego kierunku na niebie patrzy z boku linii widzenia i znad płaszczyzny Galaktyki', () => {

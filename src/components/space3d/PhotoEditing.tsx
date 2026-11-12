@@ -155,7 +155,7 @@ export function PhotoCutEditor({ session, regressing = [] }: { session: PhotoSes
 }
 
 /** Pasek zdjęcia w obu skalach: miejsce i wymiary jak pasek starej nakładki, bez suwaka. */
-export function GalaxyPhotoBar({ session, stars, regressing = 0, onUnfold, onPick, onRetryStars }: { session: PhotoSession; stars: StarsStatus; regressing?: number; onUnfold(): void; onPick(): void; onRetryStars(): void }) {
+export function GalaxyPhotoBar({ session, stars, onUnfold, onPick, onRetryStars }: { session: PhotoSession; stars: StarsStatus; onUnfold(): void; onPick(): void; onRetryStars(): void }) {
   const { project, editing, setEditing } = session
   if (!project) return null
   const enabled = cutsInThreeD(project.cuts).length
@@ -164,7 +164,6 @@ export function GalaxyPhotoBar({ session, stars, regressing = 0, onUnfold, onPic
       <span title={project.name}>{project.name}</span>
       <span className="dim">
         {stars.status === 'loading' && <span className="accent">Pobieranie gwiazd Gaia DR3… · </span>}
-        {regressing > 0 && <span className="accent" title="Oszacowanie modelu dla obiektów bez odległości; wynik oznaczony jako niezweryfikowany">Regresor: {regressing} w toku · </span>}
         {stars.status === 'error' && <span className="photo-notice" title={stars.message}>Gwiazdy Gaia: błąd · <button type="button" className="link-button" onClick={onRetryStars}>ponów</button> · </span>}
         {enabled}/{project.cuts.length} obiektów w 3D
       </span>

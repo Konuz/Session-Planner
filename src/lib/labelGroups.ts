@@ -23,7 +23,7 @@ export function overlapGroups(boxes: LabelBox[]): number[][] {
 
 /** Połowa rozwarcia jednej strony wachlarza: przy większym obrocie tekst przestaje być czytelny. */
 export const FAN_HALF = 70 * Math.PI / 180
-/** Do tylu ramion wachlarz ma jedną stronę (prawą); powyżej dwie. */
+/** Do tylu ramion mały wachlarz o nieparzystej liczbie obiektów zajmuje tylko prawą stronę. */
 const ONE_SIDE_MAX = 10
 
 export interface FanSpoke {
@@ -38,7 +38,7 @@ export interface FanSpoke {
  * `radius` to odległość początku tekstu od środka, przy której sąsiednie wiersze o wysokości `pitch` się nie nakładają.
  */
 export function fanLayout(count: number, pitch: number): { radius: number; spokes: FanSpoke[] } {
-  const right = count > ONE_SIDE_MAX ? Math.ceil(count / 2) : count
+  const right = count > ONE_SIDE_MAX || count % 2 === 0 ? Math.ceil(count / 2) : count
   const left = count - right
   const radius = Math.max(40, right * pitch / (2 * FAN_HALF))
   // Kilka ramion stoi ciasno wokół poziomu (odstęp jednego wiersza), zamiast rozjeżdżać się na całe rozwarcie.

@@ -32,7 +32,7 @@ export const LOCAL_GROUP_SHAPES: Record<string, GalaxyProfile> = {
   'IC 1613': { kind: 'irregular', label: 'dIrr - rozproszona nieregularna', axisRatio: 0.8, core: 0, knots: 5 },
 }
 
-export type StarNameLayout = { group: THREE.Group; anchors: { position: THREE.Vector3; sprite: THREE.Sprite }[]; connectors: THREE.BufferAttribute }
+export type StarNameLayout = { group: THREE.Group; root: HTMLDivElement; anchors: { position: THREE.Vector3; el: HTMLSpanElement; width: number; height: number }[]; connectors: THREE.BufferAttribute }
 
 /** Galaktyczne (x ku centrum, y ku l = 90°, z ku biegunowi N) → three.js (y w górę). */
 export const toThree = (g: Vec3) => new THREE.Vector3(...toScene(g))
@@ -283,22 +283,17 @@ export function domeMaterial(): THREE.ShaderMaterial {
   })
 }
 
-export function textSprite(text: string, color = '#e6edf7', scale = 1, outlined = false): THREE.Sprite {
+export function textSprite(text: string, color = '#e6edf7', scale = 1): THREE.Sprite {
   const c = document.createElement('canvas')
   const ctx = c.getContext('2d')!
-  ctx.font = '600 44px ui-monospace, Consolas, monospace'
+  const font = '600 44px ui-monospace, Consolas, monospace'
+  ctx.font = font
   const w = Math.ceil(ctx.measureText(text).width) + 20
   c.width = w
   c.height = 64
-  ctx.font = '600 44px ui-monospace, Consolas, monospace'
+  ctx.font = font
   ctx.fillStyle = color
   ctx.textBaseline = 'middle'
-  if (outlined) {
-    ctx.strokeStyle = '#02050d'
-    ctx.lineWidth = 8
-    ctx.lineJoin = 'round'
-    ctx.strokeText(text, 10, 34)
-  }
   ctx.fillText(text, 10, 34)
   const tex = new THREE.CanvasTexture(c)
   tex.colorSpace = THREE.SRGBColorSpace
@@ -313,8 +308,7 @@ export function fixedSizeTextSprite(sprite: THREE.Sprite, sprites: THREE.Sprite[
   sprites.push(sprite)
 }
 
-export function addStarNameLabels(group: THREE.Group, stars: ConstellationStar[], sprites: THREE.Sprite[]): StarNameLayout {
-  const anchors: StarNameLayout['anchors'] = []
+export function addStarNameLabels(group: THREE.Group, stars: ConstellationStar[], overlay: HTMLElement): StarNameLayout {
   const points = new Float32Array(stars.length * 6)
   const geometry = new THREE.BufferGeometry()
   const connectors = new THREE.BufferAttribute(points, 3)
@@ -325,15 +319,18 @@ export function addStarNameLabels(group: THREE.Group, stars: ConstellationStar[]
   leaderLines.renderOrder = 1
   leaderLines.userData.starNameConnector = true
   group.add(leaderLines)
-  for (const star of stars) {
-    const sprite = textSprite(star.name, '#e6edf7', 1, true)
-    fixedSizeTextSprite(sprite, sprites)
-    sprite.userData.fixedPixelHeight = 20
-    sprite.renderOrder = 2
-    const starPosition = position(star, star.distLy, 'galaxy')
-    sprite.position.copy(starPosition)
-    group.add(sprite)
-    anchors.push({ position: starPosition, sprite })
-  }
-  return { group, anchors, connectors }
+  const root = document.createElement('div')
+  root.style.visibility = 'hidden'
+  const labels = stars.map((star) => {
+    const el = document.createElement('span')
+    el.className = 'obs-label'
+    el.textContent = star.name
+    root.appendChild(el)
+    return { el, position: position(star, star.distLy, 'galaxy') }
+  })
+  overlay.appendChild(root)
+  const anchors = labels.map((label) => ({ ...label, width: label.el.offsetWidth, height: label.el.offsetHeight }))
+  root.hidden = true
+  root.style.visibility = ''
+  return { group, root, anchors, connectors }
 }

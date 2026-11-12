@@ -6,6 +6,8 @@ import { AXIS_DASH, AXIS_LENGTH, EARTH_Z, OBSERVATORY_FOV as FOV, PLANE_WIDTH, b
 import { DEFAULT_ANNOTATION_COLORS, type ObjectType } from '../../lib/catalog'
 import { fmtDistance, fmtDistanceRange } from '../../lib/format'
 import { objectCount, overlapGroups, type LabelBox } from '../../lib/labelGroups'
+import { photoCropSquare } from '../../lib/photo'
+import { GALACTIC_LIMIT_LY } from '../../lib/space3d'
 import { openLabelFan, type LabelFan } from '../labelFan'
 
 export type ObservatoryView = 'structure' | 'earth' | 'top' | 'side'
@@ -31,6 +33,7 @@ interface Options {
 
 const cssColor = (name: string, fallback: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
 const smooth = (t: number) => t * t * (3 - 2 * t)
+const isGalactic = (item: ObservatoryItem) => item.distLy !== null && item.distLy < GALACTIC_LIMIT_LY
 
 function cutTexture(image: HTMLImageElement, item: ObservatoryItem, color: string): THREE.CanvasTexture {
   const size = 256
@@ -39,34 +42,40 @@ function cutTexture(image: HTMLImageElement, item: ObservatoryItem, color: strin
   const g = canvas.getContext('2d')!
   g.save()
   g.beginPath()
-  g.arc(size / 2, size / 2, size / 2 - 3, 0, Math.PI * 2)
+  g.arc(size / 2, size / 2, size / 2 - 1, 0, Math.PI * 2)
   g.clip()
-  g.drawImage(image, item.x - item.radius, item.y - item.radius, item.radius * 2, item.radius * 2, 0, 0, size, size)
+  g.fillStyle = '#060b14'
+  g.fillRect(0, 0, size, size)
+  if (isGalactic(item)) g.filter = 'brightness(1.45)'
+  // Canvas skraca także prostokąt docelowy, gdy obszar źródłowy wychodzi poza zdjęcie.
+  const { x, y, side } = photoCropSquare(item, image.naturalWidth, image.naturalHeight)
+  g.drawImage(image, x, y, side, side, 0, 0, size, size)
   g.restore()
   g.lineWidth = 4
   g.strokeStyle = color
-  if (item.category === 'galaxies') {
-    // Romb jak znacznik galaktyki w legendzie, na tle okrągłego wycinka.
-    g.beginPath()
-    g.moveTo(size / 2, 3); g.lineTo(size - 3, size / 2); g.lineTo(size / 2, size - 3); g.lineTo(3, size / 2); g.closePath()
-    g.stroke()
-  }
   g.beginPath()
-  g.arc(size / 2, size / 2, size / 2 - 3, 0, Math.PI * 2)
+  g.arc(size / 2, size / 2, size / 2 - 2, 0, Math.PI * 2)
   g.stroke()
   const texture = new THREE.CanvasTexture(canvas)
   texture.colorSpace = THREE.SRGBColorSpace
   return texture
 }
 
-function ringTexture(color: string): THREE.CanvasTexture {
+function ringTexture(color: string, highlight = false): THREE.CanvasTexture {
   const canvas = document.createElement('canvas')
   canvas.width = canvas.height = 128
   const g = canvas.getContext('2d')!
-  g.strokeStyle = color
-  g.lineWidth = 6
+  if (highlight) {
+    g.beginPath()
+    g.arc(64, 64, 53, 0, Math.PI * 2)
+    g.strokeStyle = '#060b14'
+    g.lineWidth = 4
+    g.stroke()
+  }
   g.beginPath()
   g.arc(64, 64, 52, 0, Math.PI * 2)
+  g.strokeStyle = color
+  g.lineWidth = highlight ? 2 : 6
   g.stroke()
   return new THREE.CanvasTexture(canvas)
 }
@@ -143,6 +152,7 @@ export class ObservatoryScene {
   private anchors = new Map<string, THREE.Sprite>()
   private anchorMaterial: THREE.SpriteMaterial
   private ring: THREE.Sprite
+  private cutPreview: THREE.Sprite
   private axis = new THREE.Group()
   private ticks: { ly: number; mesh: THREE.Mesh; label: HTMLDivElement }[] = []
   private itemLabels = new Map<string, HTMLDivElement>()
@@ -182,16 +192,22 @@ export class ObservatoryScene {
     this.scene.add(grid)
     this.disposables.push(grid.geometry, grid.material as THREE.Material)
 
-    const ringMap = ringTexture(this.accent)
-    const ringMaterial = new THREE.SpriteMaterial({ map: ringMap, depthTest: false, transparent: true, sizeAttenuation: false })
+    const ringMap = ringTexture(this.accent, true)
+    const ringMaterial = new THREE.SpriteMaterial({ map: ringMap, depthTest: false, depthWrite: false, transparent: true, sizeAttenuation: false })
     this.ring = new THREE.Sprite(ringMaterial)
     this.ring.scale.setScalar(0.05)
     this.ring.renderOrder = 10
     this.ring.visible = false
-    this.scene.add(this.ring)
+    const previewMaterial = new THREE.SpriteMaterial({ depthTest: false, depthWrite: false, transparent: true, sizeAttenuation: false })
+    this.cutPreview = new THREE.Sprite(previewMaterial)
+    // Obraz zachodzi pod kreskę pierścienia, bez szczeliny przy jego krawędzi.
+    this.cutPreview.scale.setScalar(this.ring.scale.x * 0.82)
+    this.cutPreview.renderOrder = 9
+    this.cutPreview.visible = false
+    this.scene.add(this.ring, this.cutPreview)
     const anchorMap = ringTexture('#ffffff')
     this.anchorMaterial = new THREE.SpriteMaterial({ map: anchorMap, depthTest: false, depthWrite: false, transparent: true, sizeAttenuation: false })
-    this.disposables.push(ringMap, ringMaterial, anchorMap, this.anchorMaterial)
+    this.disposables.push(ringMap, ringMaterial, previewMaterial, anchorMap, this.anchorMaterial)
 
     this.scene.add(this.axis, this.data)
     this.earthLabel = this.label('obs-label obs-earth', 'Ziemia')
@@ -318,6 +334,8 @@ export class ObservatoryScene {
       const texture = cutTexture(image, item, color)
       const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false })
       const sprite = new THREE.Sprite(material)
+      // Jasne punkty Gaia rysujemy przed wycinkami leżącymi w tym samym polu Drogi Mlecznej.
+      if (isGalactic(item)) sprite.renderOrder = 1
       this.cards.set(item.id, sprite)
       this.data.add(sprite)
       if (item.distLy !== null && Number.isFinite(item.distLy) && item.distLy > 0) {
@@ -364,6 +382,8 @@ export class ObservatoryScene {
     this.ticks = []
     this.itemLabels.clear()
     this.cards.clear()
+    this.cutPreview.visible = false
+    this.cutPreview.material.map = null
     this.anchors.clear()
     this.visible.clear()
     this.stars = null
@@ -442,7 +462,7 @@ export class ObservatoryScene {
       // Lecąca tekstura jest obrazem wycinka. Pozycję obiektu wskazuje nieruchomy znacznik.
       card.position.z *= arrival
       card.scale.setScalar(photoSize + (Math.min(photoSize, 14) - photoSize) * e * arrival)
-      card.material.opacity = Math.min(1, e * 2.5) * smooth(Math.min(1, this.arrival * 3)) * f.photo
+      card.material.opacity = Math.min(1, e * (isGalactic(item) ? 4 : 2.5)) * smooth(Math.min(1, this.arrival * 3)) * f.photo
       card.visible = this.visible.has(item.id) && e > 0 && card.material.opacity > 0
     }
     for (const tick of this.ticks) tick.mesh.position.set(0, 0, -depthFraction(tick.ly, this.domain) * AXIS_LENGTH * e)
@@ -455,6 +475,17 @@ export class ObservatoryScene {
     this.ring.material.opacity = f.photo
     this.ring.visible = f.photo > 0 && !!selected && this.visible.has(selected.id)
     if (selected) this.ring.position.copy(this.position(selected))
+    const preview = this.cutPreview
+    const map = this.ring.visible && selected && (this.hovered !== null || isGalactic(selected))
+      ? this.cards.get(selected.id)?.material.map ?? null
+      : null
+    preview.visible = map !== null
+    if (map) {
+      if (!preview.material.map) preview.material.needsUpdate = true
+      preview.material.map = map
+      preview.material.opacity = f.photo
+      preview.position.copy(this.ring.position)
+    }
     this.dirty = true
   }
 
@@ -754,8 +785,14 @@ export class ObservatoryScene {
   /** Wachlarz nazw grupy wokół punktu ekranu: ramiona wg odległości, zgodnie z ruchem wskazówek zegara. */
   private openFan(ids: string[], x: number, y: number) {
     this.closeFan()
+    const image = this.photoImage?.src
+    const { width, height } = this.image
     const entries = this.items.filter((item) => ids.includes(item.id)).sort(byDistance)
-      .map((item) => ({ id: item.id, text: `${item.id} · ${fmtDistance(item.distLy)}` }))
+      .map((item) => ({
+        id: item.id,
+        text: `${item.id} · ${fmtDistance(item.distLy)}`,
+        cutout: image && item.kind === 'object' ? { image, width, height, x: item.x, y: item.y, radius: item.radius } : undefined,
+      }))
     this.fan = openLabelFan(this.labels, entries, x, y, this.sizedWidth, this.sizedHeight, {
       hover: (id) => { this.hovered = id; this.layoutDirty = this.dirty = true },
       pick: (id) => this.options.onSelect(id),

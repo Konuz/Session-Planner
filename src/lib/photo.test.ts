@@ -1,6 +1,12 @@
 import { expect, it } from 'vitest'
-import { photoAnchorKind, circleIntersectsImage, photoPose, photoCutLayout, coveredPhotoCircles, migratePhotoProject, cutsInThreeD, type PhotoCut } from './photo'
+import { photoAnchorKind, circleIntersectsImage, photoCropSquare, photoPose, photoCutLayout, coveredPhotoCircles, migratePhotoProject, cutsInThreeD, type PhotoCut } from './photo'
 import { hasDistance } from './distance'
+
+it('dopasowuje kadr wycinka do zdjęcia, także na brzegu i dla promienia większego od kadru', () => {
+  expect(photoCropSquare({ x: 300, y: 180, radius: 50 }, 640, 400)).toEqual({ x: 250, y: 130, side: 100 })
+  expect(photoCropSquare({ x: 5, y: 395, radius: 50 }, 640, 400)).toEqual({ x: 0, y: 300, side: 100 })
+  expect(photoCropSquare({ x: 350, y: 190, radius: 700 }, 640, 400)).toEqual({ x: 150, y: 0, side: 400 })
+})
 
 it('rozsuwa małe wycinki przy zbieżnych celach bez zmiany kotwic', () => {
   const targets = Array.from({ length: 12 }, (_, i) => ({ x: 300 + i, y: 240 }))

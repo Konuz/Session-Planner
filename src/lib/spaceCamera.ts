@@ -15,6 +15,36 @@ const unit = (a: Vec3): Vec3 => { const n = Math.hypot(...a) || 1; return [a[0] 
 const mix = (a: Vec3, ka: number, b: Vec3, kb: number): Vec3 => [a[0] * ka + b[0] * kb, a[1] * ka + b[1] * kb, a[2] * ka + b[2] * kb]
 
 export interface CameraPose { position: Vec3; target: Vec3 }
+export const SPACE_FOV = 50
+
+/** Rzut kierunków z Ziemi na płaszczyznę i kamera odsunięta prostopadle do tej płaszczyzny. */
+export function constellationView(stars: readonly Vec3[], observer: Vec3, aspect: number) {
+  if (!stars.length) return null
+  const directions = stars.map((star) => unit(mix(star, 1, observer, -1)))
+  const forward = unit(directions.reduce((sum, direction) => mix(sum, 1, direction, 1), [0, 0, 0]))
+  const flat = cross(forward, [0, 1, 0])
+  const right: Vec3 = Math.hypot(...flat) > 1e-6 ? unit(flat) : [1, 0, 0]
+  const up = cross(right, forward)
+  let tanHalfFov = 0
+  for (const direction of directions) {
+    const depth = dot(direction, forward)
+    if (depth <= 0) return null
+    tanHalfFov = Math.max(tanHalfFov, Math.abs(dot(direction, up)) / depth, Math.abs(dot(direction, right)) / (depth * aspect))
+  }
+  const distance = stars.reduce((sum, star) => sum + Math.hypot(...mix(star, 1, observer, -1)), 0) / stars.length
+  const backoff = Math.max(0.02, distance * 0.5)
+  return {
+    position: mix(observer, 1, forward, -backoff),
+    target: mix(observer, 1, forward, distance),
+    forward,
+    fov: Math.max(5, 2 * Math.atan(tanHalfFov * distance / ((distance + backoff) * 0.8)) / DEG),
+    project(star: Vec3): Vec3 {
+      const ray = mix(star, 1, observer, -1)
+      const depth = dot(ray, forward)
+      return depth > 0 ? mix(observer, 1, ray, distance / depth) : star
+    },
+  }
+}
 
 /**
  * Kierunek od celu do kamery: prostopadle do linii widzenia i znad płaszczyzny Galaktyki (y w górę), więc linia

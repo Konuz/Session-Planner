@@ -175,7 +175,7 @@ export function useRegressor(session: PhotoSession): string[] {
   const { catalog } = useCatalog()
   const byId = useMemo(() => catalog && new Map(catalog.map((o) => [o.id, o])), [catalog])
   const [ready, setReady] = useState(false)
-  const [pending, setPending] = useState<string[]>([])
+  const [pending, setPending] = useState<{ projectId: string; ids: string[] } | null>(null)
   const sessionRef = useRef(session)
   sessionRef.current = session
   const { project } = session
@@ -189,7 +189,7 @@ export function useRegressor(session: PhotoSession): string[] {
   }, [])
 
   useEffect(() => {
-    if (!ready || !project || !targets.length) { setPending([]); return }
+    if (!ready || !project || !targets.length) { setPending(null); return }
     const scale = fieldOfView(project.astrometry.wcs, project.width, project.height)
     if (!scale) return
     const degPerPx = scale.widthDeg / project.width
@@ -210,7 +210,7 @@ export function useRegressor(session: PhotoSession): string[] {
       })
       if (changed) sessionRef.current.change({ ...latest, cuts })
       const waiting = jobs.flatMap((job, i) => job.status === 'queued' || job.status === 'running' ? [ids[i]] : [])
-      setPending(waiting)
+      setPending({ projectId: project.id, ids: waiting })
       return waiting
     }
     const poll = (keys: string[]) => {
@@ -231,5 +231,5 @@ export function useRegressor(session: PhotoSession): string[] {
     return () => { abort.abort(); clearTimeout(timer) }
     // Zmiana pozostałych pól projektu (np. zapis gwiazd) nie zgłasza wycinków ponownie.
   }, [ready, project?.id, targetKey])
-  return pending
+  return pending && pending.projectId === project?.id ? pending.ids : []
 }

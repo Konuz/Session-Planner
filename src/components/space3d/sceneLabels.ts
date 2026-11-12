@@ -8,7 +8,7 @@
 import * as THREE from 'three'
 import { fmtDistance, fmtDistanceRange } from '../../lib/format'
 import { objectCount, overlapGroups, type LabelBox } from '../../lib/labelGroups'
-import { openLabelFan, type LabelFan } from '../labelFan'
+import { openLabelFan, type FanCutout, type LabelFan } from '../labelFan'
 import type { Space3DHandle } from '../Space3D'
 
 export interface SceneLabel {
@@ -32,6 +32,7 @@ export interface SceneLabel {
   /** Obiekt podpisu: tylko takie podpisy łączą się w grupy. */
   id?: string
   distLy?: number
+  cutout?: FanCutout
   /** Podpis poza grupami (np. zaznaczony obiekt): zawsze osobno. Po zmianie wywołaj invalidate(). */
   pinned?: boolean
   /** Podpis schowany w plakietce grupy. */
@@ -73,7 +74,7 @@ function same(a: THREE.Matrix4, b: THREE.Matrix4): boolean {
 
 export interface LabelLayer {
   root: HTMLDivElement
-  add(position: THREE.Vector3, lines: string[], options?: { className?: string; color?: string; gap?: number; id?: string; distLy?: number; onGroup?(grouped: boolean): void }): SceneLabel
+  add(position: THREE.Vector3, lines: string[], options?: { className?: string; color?: string; gap?: number; id?: string; distLy?: number; cutout?: FanCutout; onGroup?(grouped: boolean): void }): SceneLabel
   clear(): void
   setVisible(visible: boolean): void
   /** Co klatkę (hak `layout` sceny, z czasem klatki): tani test zmiany, przeliczenie tylko gdy trzeba. */
@@ -107,6 +108,7 @@ export function createLabelLayer(handle: Space3DHandle, className: string, { onP
   let groupsReady = false
   const closeFan = () => fan?.close()
   handle.renderer.domElement.addEventListener('pointerdown', closeFan)
+  handle.renderer.domElement.addEventListener('wheel', closeFan)
 
   const create = (position: THREE.Vector3, lines: string[], el: HTMLElement, color: string | undefined, gap: number): SceneLabel => {
     const leader = document.createElement('div')
@@ -126,7 +128,7 @@ export function createLabelLayer(handle: Space3DHandle, className: string, { onP
     const { camera, mount } = handle
     v.copy(badge.position).project(camera)
     const entries = [...badge.members ?? []].sort((a, b) => (a.distLy ?? 0) - (b.distLy ?? 0) || a.id!.localeCompare(b.id!))
-      .map((m) => ({ id: m.id!, text: `${m.id} · ${fmtDistance(m.distLy ?? null)}` }))
+      .map((m) => ({ id: m.id!, text: `${m.id} · ${fmtDistance(m.distLy ?? null)}`, cutout: m.cutout }))
     fan = openLabelFan(root, entries, (v.x + 1) / 2 * mount.clientWidth, (1 - v.y) / 2 * mount.clientHeight, mount.clientWidth, mount.clientHeight, {
       hover: (id) => onHover?.(id),
       pick: (id) => { onPick?.(id); fan?.setSelected(id) },
@@ -185,11 +187,11 @@ export function createLabelLayer(handle: Space3DHandle, className: string, { onP
 
   return {
     root,
-    add(position, lines, { className: extra = '', color, gap = 13, id, distLy, onGroup } = {}) {
+    add(position, lines, { className: extra = '', color, gap = 13, id, distLy, cutout, onGroup } = {}) {
       const el = document.createElement('div')
       el.className = `obs-label space-photo-label ${extra}`
       const label = create(position, lines, el, color, gap)
-      Object.assign(label, { id, distLy, onGroup })
+      Object.assign(label, { id, distLy, cutout, onGroup })
       return label
     },
     clear() {
@@ -210,9 +212,11 @@ export function createLabelLayer(handle: Space3DHandle, className: string, { onP
     update(now) {
       const { camera, mount } = handle
       const w = mount.clientWidth, h = mount.clientHeight
-      const moved = w !== lastW || h !== lastH || !same(lastCamera, camera.matrixWorld) || !same(lastProjection, camera.projectionMatrix)
+      const resized = w !== lastW || h !== lastH
+      if (resized) closeFan()
+      // Wygaszanie obrotu może trwać już po puszczeniu myszy i otwarciu wachlarza.
+      const moved = resized || !same(lastCamera, camera.matrixWorld) || !same(lastProjection, camera.projectionMatrix)
       if (moved) {
-        closeFan()
         lastMove = now
         stale = true
         lastW = w; lastH = h
@@ -281,6 +285,7 @@ export function createLabelLayer(handle: Space3DHandle, className: string, { onP
     dispose() {
       closeFan()
       handle.renderer.domElement.removeEventListener('pointerdown', closeFan)
+      handle.renderer.domElement.removeEventListener('wheel', closeFan)
       root.remove()
     },
   }

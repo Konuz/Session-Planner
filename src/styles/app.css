@@ -365,7 +365,7 @@ input[type='checkbox']:checked::after {
   box-shadow: 0 0 50px rgba(0, 224, 255, 0.1), 0 20px 60px rgba(0, 0, 0, 0.7);
   animation: pop-in 0.3s var(--ease-std);
 }
-.popover.type-filter { width: 260px; padding: 10px 12px; display: grid; gap: 2px; text-align: left; color: var(--text); letter-spacing: 0; }
+.popover.type-filter { width: 288px; max-width: calc(100vw - 24px); padding: 10px 12px; display: grid; gap: 2px; text-align: left; color: var(--text); letter-spacing: 0; }
 .annotation-color-settings { position: relative; margin: 6px 0; }
 .panel-title .annotation-color-settings { margin: 0; }
 .popover.annotation-color-popover { width: 260px; max-height: none; overflow: visible; padding: 10px 12px; color: var(--text); letter-spacing: 0; }
@@ -374,8 +374,9 @@ input[type='checkbox']:checked::after {
 .annotation-color-row input { width: 32px; height: 20px; padding: 0; border: 1px solid var(--border-strong); background: transparent; cursor: pointer; }
 .type-filter label { display: flex; align-items: center; gap: 8px; padding: 3px 0; cursor: pointer; }
 .type-filter label:first-child { padding-bottom: 6px; margin-bottom: 4px; border-bottom: 1px solid var(--border); }
-.type-filter .dot { width: 7px; height: 7px; border-radius: 50%; }
+.type-filter .dot { width: 7px; height: 7px; flex: none; border-radius: 50%; }
 .type-filter .faint { margin-left: auto; }
+.type-filter canvas { width: 20px; height: 20px; flex: none; }
 @keyframes pop-in { from { opacity: 0; transform: translateY(-8px) scale(0.95); } }
 
 /* ---------- Układ ---------- */
@@ -509,7 +510,7 @@ input[type='checkbox']:checked::after {
 .pw-row { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 8px; padding: 0 8px; cursor: pointer; }
 .pw-row:hover { background: var(--card-hover); }
 .pw-row.on { background: var(--accent-bg); color: var(--accent); }
-.pw-thumb { display: block; width: 30px; height: 30px; flex: none; border: 1px solid var(--border-strong); border-radius: 50%; background: var(--bg-deep); }
+.pw-thumb { display: block; width: 30px; height: 30px; flex: none; border: 1px solid var(--border-strong); border-radius: 50%; overflow: hidden; background: var(--bg-deep); }
 .pw-row-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pw-row-dist { font-size: 10px; color: var(--text-dim); }
 .pw-selection { display: grid; gap: 7px; flex: none; padding-top: 9px; border-top: 1px solid var(--border-strong); }
@@ -818,13 +819,12 @@ input[type='checkbox']:checked::after {
 .sky-grid > div.col:first-child > .card:last-child { flex: 1; min-height: 0; }
 /* Prawy dolny róg kopuły: suwak powiększenia. */
 .hud-stack { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
-.hud-stack .zoom-slider { width: 212px; justify-content: space-between; }
+.hud-stack .zoom-slider { width: 202px; padding-inline-start: 0; justify-content: space-between; }
 .hud-stack .zoom-slider input { width: auto; flex: 1; }
 .hud-label { font: 10px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-2); }
 .hud-value { min-width: 1ch; font: 600 11px var(--mono); color: var(--accent); }
 /* Ikona „cała kopuła”: pojawia się po przybliżeniu na lewo od suwaka, poza układem (nie przesuwa innych). */
 .hud-icon { display: grid; place-items: center; padding: 0; background: none; border: 0; color: var(--accent); cursor: pointer; transition: color 0.15s var(--ease-std); }
-.hud-reset { position: absolute; right: calc(100% - 6px); top: 50%; width: 20px; height: 28px; transform: translateY(-50%); background: transparent; animation: fade-in 0.2s; }
 .hud-icon:hover { color: #fff; }
 
 /* ---------- Planer sesji ---------- */
@@ -957,6 +957,8 @@ input[type='checkbox']:checked::after {
 .space-toolbar .zoom-slider { min-height: 30px; }
 .space-crumb { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--text-2); }
 .space-toolbar-slot, .space-toolbar-slot .obs-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.photo-regressor-progress { display: grid; gap: 3px; color: var(--accent); font: 10px var(--mono); }
+.photo-regressor-progress progress { width: 100%; height: 5px; accent-color: var(--accent); }
 /* Zdjęcie w Drodze Mlecznej: podpisy znaczników wycinków i pasek z przyciskami zamiast suwaka. */
 .space-photo-label { z-index: 1; padding: 2px 6px; background: rgba(11, 13, 23, 0.85); border: 1px solid var(--border-strong); border-left-width: 2px; color: var(--text); }
 .space-photo-label.selected { border-color: var(--text); }
@@ -992,6 +994,7 @@ input[type='checkbox']:checked::after {
 .obs-canvas canvas:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
 .obs-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .obs-label { position: absolute; left: 0; top: 0; white-space: pre; font: 10px/1.35 var(--mono); color: var(--text-2); }
+.space-star-labels { z-index: 1; }
 .obs-card { margin: -46px 0 0 8px; padding: 4px 7px; background: rgba(11, 13, 23, 0.85); border: 1px solid var(--border-strong); }
 .obs-card.selected { border-color: var(--accent); color: var(--text); }
 /* W nurkowaniu podpisy wycinków pojawiają się razem z płaskim zdjęciem. */
@@ -1005,10 +1008,16 @@ input[type='checkbox']:checked::after {
 /* Sceny „Pozycja 3D”: przy otwartym wachlarzu przygasają podpisy, plakietki i odnośniki (poza zaznaczeniem). */
 .obs-labels.fan-open > .space-photo-label:not(.selected), .obs-labels.fan-open > .obs-leader { opacity: 0.2; }
 .obs-fan { position: absolute; left: 0; top: 0; }
-.obs-spoke { position: absolute; left: 0; top: 0; transform-origin: 0 0; height: 16px; padding: 0 7px; white-space: nowrap; font: 10px/14px var(--mono); background: rgba(11, 13, 23, 0.92); border: 1px solid var(--border-strong); color: var(--text-2); cursor: pointer; pointer-events: auto; }
-.obs-spoke:hover, .obs-spoke:focus-visible { border-color: var(--accent); color: var(--text); outline: none; z-index: 1; }
-.obs-spoke.selected { border-color: var(--accent); color: var(--accent); }
-.obs-spoke.more { border-style: dashed; cursor: default; pointer-events: none; }
+.obs-spoke { --edge: var(--border-strong); --shape: polygon(0 29%, 100% 0, 100% 100%, 0 71%); position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 5px; transform-origin: 0 0; height: 28px; padding: 0 7px; white-space: nowrap; font: 10px/14px var(--mono); background: transparent; border: 0; clip-path: var(--shape); isolation: isolate; color: var(--text-2); cursor: pointer; pointer-events: auto; }
+.obs-spoke.left { --shape: polygon(0 0, 100% 29%, 100% 71%, 0 100%); flex-direction: row-reverse; }
+.obs-spoke::before, .obs-spoke::after { content: ''; position: absolute; clip-path: var(--shape); pointer-events: none; }
+.obs-spoke::before { inset: 0; z-index: -2; background: var(--edge); }
+.obs-spoke::after { inset: 1px; z-index: -1; background: var(--card-solid); }
+.obs-spoke:hover, .obs-spoke:focus-visible { --edge: var(--accent); color: var(--text); outline: none; z-index: 1; }
+.obs-spoke.selected { --edge: var(--accent); color: var(--accent); }
+.obs-spoke { width: max-content; justify-content: space-between; }
+.obs-fan-more { position: absolute; transform: translateX(-50%); padding: 4px 10px; border: 1px dashed var(--border-strong); background: var(--card-solid); color: var(--text-2); font: 10px/14px var(--mono); white-space: nowrap; }
+.obs-spoke-cutout { flex: none; width: 22px; height: 22px; border: 1px solid var(--edge); border-radius: 50%; overflow: hidden; background: var(--bg-deep); }
 .obs-tick { margin: 6px 0 0 6px; color: var(--accent-dim); }
 .obs-earth { margin: 4px 0 0 -18px; color: var(--text); }
 /* Płótno dostaje fokus dla WASD; ramka fokusu zasłaniałaby scenę. */

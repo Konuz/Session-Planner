@@ -7,7 +7,7 @@ import { createPortal } from 'react-dom'
 import { SCOPE_LABELS, adsUrl, hasDistance } from '../../lib/distance'
 import { fmtDistance, fmtNum } from '../../lib/format'
 import { CATEGORY_LABELS, PHOTO_UNFOLD_MS, byDistance, categoryCounts, distanceDomain, distanceHistogram, fieldOfView, matchesFilter, observatoryItems, type CategoryFilter, type ObservatoryItem } from '../../lib/observatory'
-import type { PhotoProject } from '../../lib/photo'
+import { photoCropSquare, type PhotoProject } from '../../lib/photo'
 import { useStore } from '../../state/store'
 import { Range } from '../Range'
 import type { StarsStatus } from '../space3d/photoSession'
@@ -42,8 +42,9 @@ const PLANE_TEXTURE_PX = 2048
 function thumbnail(image: HTMLImageElement, item: ObservatoryItem): string {
   const canvas = document.createElement('canvas')
   canvas.width = canvas.height = 96
-  const r = item.kind === 'star' ? Math.max(24, image.naturalWidth * 0.012) : item.radius
-  canvas.getContext('2d')!.drawImage(image, item.x - r, item.y - r, r * 2, r * 2, 0, 0, 96, 96)
+  const radius = item.kind === 'star' ? Math.max(24, image.naturalWidth * 0.012) : item.radius
+  const { x, y, side } = photoCropSquare({ x: item.x, y: item.y, radius }, image.naturalWidth, image.naturalHeight)
+  canvas.getContext('2d')!.drawImage(image, x, y, side, side, 0, 0, 96, 96)
   return canvas.toDataURL('image/jpeg', 0.85)
 }
 

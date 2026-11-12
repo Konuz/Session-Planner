@@ -48,7 +48,7 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
   // Układ stanu zdjęcia (panele Obserwatorium); w nurkowaniu zmienia się na początku fazy wejścia.
   const [panels, setPanels] = useState(false)
   const diveRef = useRef<SpaceDive | null>(null)
-  const entryPose = useRef<Pose | null>(null)
+  const entryPose = useRef<SpaceDive['spacePose'] | null>(null)
   const obsScene = useRef<ObservatoryScene | null>(null)
   const [stage, setStage] = useState<HTMLDivElement | null>(null)
   const [toolbarSlot, setToolbarSlot] = useState<HTMLDivElement | null>(null)
@@ -104,7 +104,7 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
       // Bez nurkowania: od razu stan zdjęcia (rozłożony, jak dawne Obserwatorium) albo skala.
       if (handle && direction === 'in') {
         handle.stopIntro()
-        entryPose.current = { position: handle.camera.position.toArray() as Pose['position'], target: handle.controls.target.toArray() as Pose['target'], up: handle.camera.up.toArray() as Pose['up'] }
+        entryPose.current = { position: handle.camera.position.toArray() as Pose['position'], target: handle.controls.target.toArray() as Pose['target'], up: handle.camera.up.toArray() as Pose['up'], fov: handle.camera.fov, near: handle.camera.near }
         handle.setExternal(true)
         setObsProject(project)
         setObsAlive(true)
@@ -195,8 +195,13 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
     style={diving ? { '--dive-enter': `${DIVE_PHASE_MS[mode].enter}ms` } as CSSProperties : undefined}
     onClose={close}
   >
-    <SpaceToolbar o={o} settings={settings} onScale={chooseScale} crumb={showPhoto ? project.name : undefined}>
+    <SpaceToolbar o={o} settings={settings} onScale={chooseScale} crumb={showPhoto ? project.name : undefined}
+      onConstellationView={handle && mode === 'scale' && !editing ? handle.viewConstellation : undefined}>
       {showPhoto && <div ref={setToolbarSlot} className="space-toolbar-slot" />}
+      {regressing.length > 0 && <div className="photo-regressor-progress">
+        <span>Regresor · w toku: {regressing.length}</span>
+        <progress aria-label="Szacowanie odległości przez regresor" />
+      </div>}
     </SpaceToolbar>
     <div ref={setStage} className="obs-stage space-stage">
       <div className={`space-scene${mode === 'photo' || editing ? ' is-hidden' : ''}`}>
@@ -206,7 +211,7 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
       {mode === 'scale' && <>
         <PhotoImport session={session} inputRef={inputRef} showButton={!project} />
         <PhotoMessages session={session} />
-        {project && <GalaxyPhotoBar session={session} stars={stars} regressing={regressing.length} onUnfold={unfold} onPick={() => inputRef.current?.click()} onRetryStars={retry} />}
+        {project && <GalaxyPhotoBar session={session} stars={stars} onUnfold={unfold} onPick={() => inputRef.current?.click()} onRetryStars={retry} />}
         {editing && <PhotoFlatView session={session} />}
       </>}
     </div>

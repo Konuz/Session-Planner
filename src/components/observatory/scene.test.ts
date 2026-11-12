@@ -16,9 +16,10 @@ function fixture() {
   const alphas = new THREE.BufferAttribute(new Float32Array(1), 1)
   geometry.setAttribute('position', positions)
   geometry.setAttribute('alpha', alphas)
-  const card = new THREE.Sprite(new THREE.SpriteMaterial())
+  const card = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.Texture() }))
   const anchor = new THREE.Sprite(new THREE.SpriteMaterial())
   const ring = new THREE.Sprite(new THREE.SpriteMaterial())
+  const cutPreview = new THREE.Sprite(new THREE.SpriteMaterial())
   const photo = new THREE.Mesh(new THREE.PlaneGeometry(), new THREE.MeshBasicMaterial())
   const frame = new THREE.LineLoop(new THREE.BufferGeometry(), new THREE.LineBasicMaterial())
   const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 5000)
@@ -32,7 +33,7 @@ function fixture() {
     scene: new THREE.Scene(), camera, host, external: true, dirty: false, progress: 0, arrival: 1,
     items: [item, star], image: { width: 1000, height: 500 }, domain: { minLy: 100, maxLy: 10000 },
     visible: new Set([item.id, star.id]), selected: null, stars: new THREE.Points(geometry), starIndex: [1],
-    cards: new Map([[item.id, card]]), anchors: new Map([[item.id, anchor]]), ring, photo, frame,
+    cards: new Map([[item.id, card]]), anchors: new Map([[item.id, anchor]]), ring, cutPreview, photo, frame,
     anchorMaterial: new THREE.SpriteMaterial(), grid: new THREE.GridHelper(), axis: new THREE.Group(), ticks: [],
     fade: { earth: 1, pyramid: 1, axis: 1, photo: 1, grid: 1 },
     labels: { style: { setProperty() {} }, querySelector: () => null }, itemLabels: new Map(), labelWidths: new Map(), badges: [], fan: null, hovered: null, earthLabel: { style: {} },
@@ -42,8 +43,33 @@ function fixture() {
       domElement: { clientWidth: 600, clientHeight: 600, style: {}, getBoundingClientRect: () => ({ left: 0, top: 0, width: 600, height: 600 }) },
     },
   })
-  return { scene, camera, positions, alphas, card, anchor, ring, photo, rendered, host, sizes }
+  return { scene, camera, positions, alphas, card, anchor, ring, cutPreview, photo, rendered, host, sizes, item }
 }
+
+it('pokazuje wycinek w pierścieniu zaznaczenia w Drodze Mlecznej i po wskazaniu obiektu spoza niej', () => {
+  const { scene, item, card, ring, cutPreview } = fixture()
+  scene.setSelected(item.id)
+  scene.step(100)
+  expect(cutPreview.visible).toBe(true)
+  expect(cutPreview.material.map).toBe(card.material.map)
+  expect(cutPreview.position.toArray()).toEqual(ring.position.toArray())
+
+  item.distLy = 10e6
+  scene.setProgress(0.5)
+  scene.step(116)
+  expect(cutPreview.visible).toBe(false)
+
+  Reflect.set(scene, 'hovered', item.id)
+  scene.setProgress(1)
+  scene.step(132)
+  expect(cutPreview.visible).toBe(true)
+  expect(cutPreview.material.map).toBe(card.material.map)
+
+  Reflect.set(scene, 'hovered', null)
+  scene.setVisible(new Set([item.id]))
+  scene.step(148)
+  expect(cutPreview.visible).toBe(false)
+})
 
 it('łączy zmiany postępu, krycia i zaznaczenia w jedną aktualizację buforów przed rysowaniem', () => {
   const { scene, positions, alphas, card, anchor, ring, photo, rendered } = fixture()
@@ -78,6 +104,18 @@ it('wybór kursorem uwzględnia aktualną widoczność i pozycję przed następn
   expect(scene.pick((screen.x + 1) * 300, (1 - screen.y) * 300)).toBe('obiekt')
   scene.setVisible(new Set())
   expect(scene.pick((screen.x + 1) * 300, (1 - screen.y) * 300)).toBeNull()
+})
+
+it('wcześniej zwiększa krycie wycinka Drogi Mlecznej podczas rozkładania zdjęcia', () => {
+  const { scene, item, card } = fixture()
+  scene.setProgress(0.25)
+  scene.step(100)
+  expect(card.material.opacity).toBeCloseTo(0.625)
+
+  item.distLy = 10e6
+  scene.setProgress(0.2)
+  scene.step(116)
+  expect(card.material.opacity).toBeCloseTo(0.26)
 })
 
 it('dopasowuje bufor i kamerę przed klatką, bez ponownego czyszczenia tego samego rozmiaru', () => {

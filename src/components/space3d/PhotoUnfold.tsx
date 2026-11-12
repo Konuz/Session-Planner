@@ -3,7 +3,7 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { fmtDistance, fmtDistanceRange } from '../../lib/format'
-import { cutsInThreeD, distanceSummary, type PhotoCut, type PhotoProject } from '../../lib/photo'
+import { cutsInThreeD, distanceSummary, photoCropSquare, type PhotoCut, type PhotoProject } from '../../lib/photo'
 import type { PhotoGuide } from './photoGuide'
 import type { PhotoSession } from './photoSession'
 
@@ -16,8 +16,9 @@ interface Props {
 }
 
 function CutPreview({ project, cut }: { project: PhotoProject; cut: PhotoCut }) {
-  return <svg className="pw-thumb" viewBox={`${cut.x - cut.radius} ${cut.y - cut.radius} ${cut.radius * 2} ${cut.radius * 2}`} aria-label={`Wycinek ${cut.id}`} role="img">
-    <image href={project.image} width={project.width} height={project.height} />
+  const { x, y, side } = photoCropSquare(cut, project.width, project.height)
+  return <svg className="pw-thumb" viewBox={`${x} ${y} ${side} ${side}`} aria-label={`Wycinek ${cut.id}`} role="img">
+    <image href={project.image} width={project.width} height={project.height} preserveAspectRatio="none" />
   </svg>
 }
 
