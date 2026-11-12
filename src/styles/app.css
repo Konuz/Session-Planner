@@ -31,6 +31,9 @@
   --t-cluster: #ffd03b;
   --t-snr: #f88f05;
   --pin: #22c55e; /* green-500: pinezka celu jak na mapie nieba konuzastro.pl */
+  /* Plany odległości okna zdjęcia: pierwszy plan i tło (główny plan to --accent). */
+  --plan-near: #f5a524;
+  --plan-far: #8b9dff;
   --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
   --sans: 'Inter', sans-serif;
   --display: 'Exo 2', sans-serif;
@@ -496,13 +499,54 @@ input[type='checkbox']:checked::after {
 .photo-circle { pointer-events: stroke; cursor: pointer; }
 .photo-draggable { pointer-events: all; cursor: move; touch-action: none; }
 .photo-resize { pointer-events: all; cursor: ew-resize; touch-action: none; }
-.photo-label, .photo-distance { text-anchor: middle; fill: var(--text); stroke: var(--bg); stroke-width: 3px; paint-order: stroke; font: 11px var(--mono); pointer-events: none; }
-.photo-distance { fill: var(--text-2); font-size: 9px; }
-.photo-unfold .photo-label { font: 600 14px var(--sans); }
-.photo-unfold .photo-distance { font-size: 11px; fill: var(--text-dim); }
-.photo-unfold .photo-label, .photo-unfold .photo-distance { text-anchor: inherit; }
-.photo-fragment-label { text-anchor: middle; }
-.photo-fragment-hit { pointer-events: all; cursor: pointer; }
+.photo-label { text-anchor: middle; fill: var(--text); stroke: var(--bg); stroke-width: 3px; paint-order: stroke; font: 11px var(--mono); pointer-events: none; }
+/* Okno zdjęcia (Wszechświat lokalny): panel planów odległości; kolor planu w --plan (tokeny --plan-near, --accent, --plan-far). */
+.photo-window-panel { position: absolute; top: 12px; right: 12px; z-index: 4; display: flex; flex-direction: column; gap: 9px; width: 264px; max-height: calc(100% - 100px); padding: 12px; overflow-y: auto; border: 1px solid var(--border-strong); background: var(--card); font-size: 11px; }
+.pw-heading { display: grid; gap: 3px; }
+.pw-eyebrow { color: var(--accent); font: 9px var(--mono); letter-spacing: 0.2em; }
+.pw-heading strong { font: 600 13px var(--display); }
+.pw-meta { color: var(--text-dim); font: 10px var(--mono); }
+.pw-views { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+.pw-views .button.small, .pw-actions .button.small { height: 28px; min-height: 28px; padding: 0 6px; justify-content: center; }
+.pw-near { --plan: var(--plan-near); }
+.pw-main { --plan: var(--accent); }
+.pw-far { --plan: var(--plan-far); }
+.pw-layers { display: grid; gap: 3px; }
+.pw-layer { display: flex; align-items: center; gap: 7px; height: 24px; padding: 0 7px; border: 1px solid var(--border); background: transparent; color: var(--text-2); font: 10px var(--mono); text-align: left; cursor: pointer; }
+.pw-layer:hover:not(:disabled) { background: var(--card-hover); }
+.pw-layer.active { border-color: var(--plan); color: var(--text); }
+.pw-layer:disabled { opacity: 0.4; cursor: default; }
+.pw-layer span, .pw-group span { flex: 1; }
+.pw-layer b, .pw-group b { font-weight: 400; color: var(--text-dim); }
+.pw-layer i, .pw-group i { width: 8px; height: 8px; flex: none; border: 1.5px solid var(--plan); border-radius: 50%; }
+.pw-strip svg { display: block; width: 100%; height: 30px; cursor: pointer; }
+.pw-band { fill: var(--accent-faint); }
+.pw-axis { stroke: var(--border-strong); }
+.pw-tick { fill: none; stroke: var(--plan); stroke-width: 1; opacity: 0.8; }
+.pw-tick.pw-active { stroke: var(--text); stroke-width: 1.5; opacity: 1; }
+.pw-strip-scale { display: flex; justify-content: space-between; color: var(--text-faint); font: 9px var(--mono); }
+.pw-search { width: 100%; min-height: 28px; flex: none; padding: 0 8px; border: 1px solid var(--border-strong); background: var(--bg); color: var(--text); font: 11px var(--mono); }
+.pw-list { flex: 0 1 auto; min-height: 64px; max-height: 300px; overflow: auto; border: 1px solid var(--border); }
+.pw-row { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 8px; padding: 0 8px; cursor: pointer; }
+.pw-row:hover { background: var(--card-hover); }
+.pw-row.on { background: var(--accent-bg); color: var(--accent); }
+.pw-group, .pw-group:hover { background: var(--bg-deep); color: var(--text-dim); font: 9px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; cursor: default; }
+.pw-thumb { display: block; width: 30px; height: 30px; flex: none; border: 1px solid var(--plan, var(--border-strong)); border-radius: 50%; background: var(--bg-deep); }
+.pw-row-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pw-row-dist { font-size: 10px; color: var(--text-dim); }
+.pw-selection { display: grid; gap: 7px; flex: none; padding-top: 9px; border-top: 1px solid var(--border-strong); }
+.pw-selected { display: flex; align-items: center; gap: 10px; }
+.pw-selected .pw-thumb { width: 56px; height: 56px; border-color: var(--text); }
+.pw-selected > div { display: grid; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
+.pw-selected strong { font-size: 13px; }
+.pw-tag { color: var(--plan); font: 9px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; }
+.pw-selection p, .pw-note { margin: 0; color: var(--text-dim); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
+.pw-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.pw-excluded { text-align: left; font-size: 10px; }
+@media (max-width: 700px) {
+  .photo-window-panel { top: 8px; right: 8px; width: 200px; padding: 8px; max-height: calc(100% - 150px); }
+  .pw-note, .pw-strip { display: none; }
+}
 .photo-controls { position: absolute; bottom: 12px; left: 12px; right: 12px; z-index: 5; padding: 8px 10px; border: 1px solid var(--border-strong); background: var(--card); }
 .photo-heading { display: flex; justify-content: space-between; gap: 8px; font: 10px var(--mono); margin-bottom: 5px; }
 .photo-heading > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -570,13 +614,21 @@ input[type='checkbox']:checked::after {
 .depth-slider { display: inline-flex; align-items: center; gap: 6px; font: 10px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-2); cursor: pointer; }
 .depth-slider input { width: 64px; accent-color: var(--accent); }
 .depth-slider b { min-width: 1ch; color: var(--accent); font-weight: 600; }
-/* Pinezka obiektu w widoku 3D: kropka z białą obwódką i dwa pulsujące pierścienie (animate-ping z konuzastro.pl). */
+/* Pinezka obiektu w widoku 3D (kolor pinezki celu z mapy nieba konuzastro.pl). */
 .pin { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; z-index: 2; }
 .pin > span { position: absolute; left: 0; top: 0; border-radius: 50%; translate: -50% -50%; }
-.pin-ring { width: 24px; height: 24px; background: color-mix(in srgb, var(--pin) 50%, transparent); animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite; }
-.pin-ring + .pin-ring { background: color-mix(in srgb, var(--pin) 30%, transparent); }
-.pin-dot { width: 16px; height: 16px; background: var(--pin); border: 2px solid var(--text); box-shadow: 0 0 15px color-mix(in srgb, var(--pin) 80%, transparent); }
-@keyframes ping { 75%, 100% { transform: scale(2); opacity: 0; } }
+/* Celownik wybranego obiektu: cztery klamry L (język ramek aplikacji), pusty w środku, żeby nie zasłaniać punktu. */
+.pin > .pin-reticle {
+  width: 28px; height: 28px; border-radius: 0; --c: var(--pin);
+  background:
+    linear-gradient(var(--c), var(--c)) left top / 9px 2px no-repeat, linear-gradient(var(--c), var(--c)) left top / 2px 9px no-repeat,
+    linear-gradient(var(--c), var(--c)) right top / 9px 2px no-repeat, linear-gradient(var(--c), var(--c)) right top / 2px 9px no-repeat,
+    linear-gradient(var(--c), var(--c)) left bottom / 9px 2px no-repeat, linear-gradient(var(--c), var(--c)) left bottom / 2px 9px no-repeat,
+    linear-gradient(var(--c), var(--c)) right bottom / 9px 2px no-repeat, linear-gradient(var(--c), var(--c)) right bottom / 2px 9px no-repeat;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--pin) 70%, transparent));
+  animation: reticle 1.8s var(--ease-std) infinite;
+}
+@keyframes reticle { 50% { scale: 1.22; opacity: 0.7; } }
 .sky-hud { position: absolute; pointer-events: none; font: 11px var(--mono); color: var(--text-dim); letter-spacing: 0.08em; }
 .sky-hud.tl { top: 12px; left: 14px; }
 .sky-hud.tr { top: 12px; right: 14px; text-align: right; }
@@ -929,7 +981,10 @@ input[type='checkbox']:checked::after {
 .space-crumb { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--text-2); }
 .space-toolbar-slot, .space-toolbar-slot .obs-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 /* Zdjęcie w Drodze Mlecznej: podpisy znaczników wycinków i pasek z przyciskami zamiast suwaka. */
-.space-photo-label { padding: 2px 6px; background: rgba(11, 13, 23, 0.85); border: 1px solid var(--border-strong); color: var(--text); }
+.space-photo-label { z-index: 1; padding: 2px 6px; background: rgba(11, 13, 23, 0.85); border: 1px solid var(--border-strong); border-left-width: 2px; color: var(--text); }
+.space-photo-label.selected { border-color: var(--text); }
+.space-hint { top: 10px; bottom: auto; }
+.obs-leader { position: absolute; left: 0; top: 0; height: 1px; transform-origin: 0 0; background: var(--border-strong); opacity: 0.75; }
 .space-photo-label.dashed { border-style: dashed; color: var(--text-2); }
 .photo-actions { flex-wrap: wrap; gap: 6px; }
 .photo-actions .button.small { display: inline-flex; align-items: center; gap: 6px; height: 28px; min-height: 28px; }

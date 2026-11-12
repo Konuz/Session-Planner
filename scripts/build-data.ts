@@ -616,9 +616,9 @@ async function buildOutlines() {
   let points = 0
   const largeLv1: string[] = []
   for (const [base, levels] of [...files].sort(([a], [b]) => a.localeCompare(b))) {
-    // Jeden poziom na obiekt: 2, a gdy go brak, 3 (jądro), potem 1. Duże obrysy poziomu 1 dochodzą osobno.
-    const picked = [[2, 3, 1].find((lv) => levels.has(lv))!]
-    if (levels.has(1) && picked[0] !== 1) picked.push(1)
+    // Poziomy 2 (standardowy) i 3 (jasne jądro), a gdy obu brak — 1. Duże obrysy poziomu 1 dochodzą osobno.
+    const picked = (REGIONS.has(base) ? [2] : [2, 3]).filter((lv) => levels.has(lv))
+    if (levels.has(1)) picked.push(1)
     for (const level of picked) {
       const name = levels.get(level)!
       const raw = parseAladin(await cached(`ongc-${name}`, `https://raw.githubusercontent.com/mattiaverga/OpenNGC/${ONGC_TAG}/outlines/objects/${name}`))
@@ -677,7 +677,7 @@ async function buildOutlines() {
         url: `https://github.com/mattiaverga/OpenNGC/tree/${ONGC_TAG}/outlines`,
         licence: 'CC-BY-SA-4.0',
         credit: 'OpenNGC, Mattia Verga; obrysy na DSS2 w Aladin (CDS, Strasbourg)',
-        changes: `Poziom 2 (bez niego 3, potem 1) oraz poziom 1 regionów i obrysów o promieniu ≥ ${LARGE_LV1_DEG}°; pierścienie regionów przypisane do największej mgławicy katalogu w środku; uproszczone do ${SIMPLIFY_DEG}°, zaokrąglone do 0,001°.`,
+        changes: `Poziomy 2 i 3 (bez nich 1) oraz poziom 1 regionów i obrysów o promieniu ≥ ${LARGE_LV1_DEG}°; pierścienie regionów przypisane do największej mgławicy katalogu w środku; uproszczone do ${SIMPLIFY_DEG}°, zaokrąglone do 0,001°.`,
       },
       darkSource: 'Kontury własne: wcześniejsze obrysy SAM 3 oraz zaakceptowane warstwy wyznaczone z map DSS, Planck, IRIS i atlasu Dobashiego; źródła i metoda poszczególnych obiektów w scripts/data/dark-outlines.json.',
       objects,

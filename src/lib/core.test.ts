@@ -273,14 +273,15 @@ describe('kontury mgławic', () => {
     expect(polygonArea(square)).toBe(100)
   })
 
-  it('outlines.json: poziom 2, duże obrysy poziomu 1 i obiekty z M 33', () => {
+  it('outlines.json: poziomy 2 i 3, duże obrysy poziomu 1 i obiekty z M 33', () => {
     const data = JSON.parse(readFileSync(new URL('../../public/data/outlines.json', import.meta.url), 'utf8')) as {
       objects: { id: string; level: number; rings: number[][] }[]
     }
     const levels = (id: string) => data.objects.filter((o) => o.id === id).map((o) => o.level).sort()
-    expect(levels('NGC 604')).toEqual([2])
-    expect(levels('NGC 595')).toEqual([2])
-    expect(levels('NGC 7000')).toEqual([1, 2])
+    expect(levels('NGC 604')).toEqual([2, 3])
+    expect(levels('NGC 595')).toEqual([2, 3])
+    expect(levels('NGC 1976')).toEqual([1, 2, 3])
+    expect(levels('NGC 7000')).toEqual([1, 2, 3])
     expect(levels('NGC 6888')).toEqual([3])
     // Pierścienie regionów przypisane do największej mgławicy w środku; bez niej zostaje region.
     expect(levels('Sh2-264')).toEqual([1])
@@ -324,7 +325,7 @@ describe('kontury mgławic', () => {
     expect(aliases('LDN 1450')).toEqual(['B 205'])
     expect(data.objects.filter((o) => o.id === 'NGC 1333').map((o) => o.level)).toEqual([2])
     expect(aliases('LDN 1174')).toEqual(['LDN 1172', 'LDN 1170', 'LDN 1173'])
-    expect(data.objects.filter((o) => o.id === 'NGC 7023').map((o) => o.level)).toEqual([2])
+    expect(data.objects.filter((o) => o.id === 'NGC 7023').map((o) => o.level)).toEqual([2, 3])
     expect(aliases('LDN 800')).toEqual(['LDN 803', 'LDN 804', 'LDN 799', 'LDN 806', 'LDN 807', 'LDN 808'])
     expect(aliases('LDN 1317')).toContain('LDN 1313')
     expect(aliases('LDN 1503')).toContain('B 23')

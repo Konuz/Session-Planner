@@ -2,11 +2,11 @@
 import * as THREE from 'three'
 import { galacticVector, type Vec3 } from '../../lib/astro'
 import type { DSO } from '../../lib/catalog'
-import { scenePosition, toScene, type SpaceScale } from '../../lib/space3d'
+import { scenePosition, toScene, UNIVERSE_GALAXY_SCALE, type SpaceScale } from '../../lib/space3d'
 import type { ConstellationStar } from './spaceSettings'
 
 export const MILKY_WAY_DIAMETER_LY = 100_000
-export const UNIVERSE_GALAXY_SCALE = 0.12
+export { UNIVERSE_GALAXY_SCALE }
 export type GalaxyProfile = {
   kind: 'spiral' | 'flocculent' | 'elliptical' | 'irregular'
   label: string
@@ -257,7 +257,7 @@ export function dotTexture(): THREE.CanvasTexture {
 /** Kopuła odległości: prawie przezroczysta, jaśniejsza przy krawędziach (efekt Fresnela), jak szklana bańka. */
 export function domeMaterial(): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
-    uniforms: { color: { value: new THREE.Color(0x00e0ff) } },
+    uniforms: { color: { value: new THREE.Color(0x00e0ff) }, opacity: { value: 1 } },
     vertexShader: `
       varying vec3 vNormal;
       varying vec3 vView;
@@ -269,11 +269,12 @@ export function domeMaterial(): THREE.ShaderMaterial {
       }`,
     fragmentShader: `
       uniform vec3 color;
+      uniform float opacity;
       varying vec3 vNormal;
       varying vec3 vView;
       void main() {
         float f = pow(1.0 - abs(dot(normalize(vNormal), normalize(vView))), 3.0);
-        gl_FragColor = vec4(color, 0.003 + f * 0.04);
+        gl_FragColor = vec4(color, (0.003 + f * 0.04) * opacity);
       }`,
     transparent: true,
     depthWrite: false,

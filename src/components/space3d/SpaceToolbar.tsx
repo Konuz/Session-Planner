@@ -55,7 +55,7 @@ export function SpaceToolbar({ o, settings, onScale, crumb, children }: Props) {
       <div className="obs-tabs" role="tablist" aria-label="Skala widoku 3D">
         {SCALES.map((s) => <button key={s.id} type="button" role="tab" aria-selected={scale === s.id} className={`toggle-chip${scale === s.id ? ' on' : ''}`} onClick={() => onScale(s.id)}>{s.label}</button>)}
       </div>
-      {crumb && <span className="space-crumb figures" title={crumb}>Droga Mleczna › {crumb}</span>}
+      {crumb && <span className="space-crumb figures" title={crumb}>{scale === 'galaxy' ? 'Droga Mleczna' : 'Wszechświat lokalny'} › {crumb}</span>}
       {!crumb && scale === 'galaxy' && <div ref={filterRef} className="space-filters">
         <button
           className={`toggle-chip${showConstellations ? ' on' : ''}`}

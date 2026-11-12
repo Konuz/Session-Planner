@@ -1,10 +1,9 @@
-// Okno „Pozycja 3D” (ładowane leniwie z widoku Niebo): skale Droga Mleczna i Wszechświat lokalny, a dla zdjęcia
-// w Drodze Mlecznej stan Obserwatorium, do którego prowadzi nurkowanie (i z którego wraca). Kopuła Nieba zostaje
+// Okno „Pozycja 3D” (ładowane leniwie z widoku Niebo): skale Droga Mleczna i Wszechświat lokalny oraz stan
+// Obserwatorium, do którego z obu skal prowadzi przejście „Rozłóż zdjęcie 3D” (i z którego wraca). Kopuła Nieba zostaje
 // pod spodem bez zmian.
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { fmtDistance } from '../../lib/format'
 import { distanceDomain, observatoryItems, observatoryPosition, structureViewPose } from '../../lib/observatory'
-import type { PhotoSceneFrame } from '../../lib/photo'
 import type { SpaceScale } from '../../lib/space3d'
 import { DIVE_PHASE_MS, type DiveDirection, type Pose } from '../../lib/spaceDive'
 import { useSelected } from '../../state/data'
@@ -12,9 +11,9 @@ import { useStore } from '../../state/store'
 import Observatory from '../observatory/Observatory'
 import type { ObservatoryScene } from '../observatory/scene'
 import Space3D, { type Space3DHandle } from '../Space3D'
-import { SpaceDive, restoreSpace } from './dive'
+import { SpaceDive, restoreSpace, type UniverseDive } from './dive'
 import { GalaxyPhotoBar, PhotoCutEditor, PhotoFlatView, PhotoImport, PhotoMessages } from './PhotoEditing'
-import { usePhotoGuide } from './photoGuide'
+import { usePhotoGuide, type PhotoGuide } from './photoGuide'
 import { useCutDistances, useGaiaStars, usePhotoSession, useRegressor, type PhotoSession } from './photoSession'
 import { PhotoUnfold } from './PhotoUnfold'
 import { useSpaceSettings } from './spaceSettings'
@@ -41,11 +40,8 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
   const o = useSelected()
   const project = session.project
   const settings = useSpaceSettings(o, project)
-  const { stars, retry } = useGaiaStars(session, settings.scale === 'galaxy')
   useCutDistances(session)
   const regressing = useRegressor(session)
-  const frameRef = useRef<((frame: PhotoSceneFrame) => void) | null>(null)
-  const fitRef = useRef<(() => void) | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const [handle, setHandle] = useState<Space3DHandle | null>(null)
   const [mode, setMode] = useState<Mode>('scale')
@@ -54,7 +50,9 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
   const diveRef = useRef<SpaceDive | null>(null)
   const entryPose = useRef<Pose | null>(null)
   const obsScene = useRef<ObservatoryScene | null>(null)
-  const pendingDive = useRef(false)
+  const universeRef = useRef<UniverseDive | null>(null)
+  /** Linia widzenia i stożek okna zdjęcia we Wszechświecie lokalnym (odpowiednik znaczników Drogi Mlecznej). */
+  const universeGuideRef = useRef<PhotoGuide | null>(null)
   const [stage, setStage] = useState<HTMLDivElement | null>(null)
   const [toolbarSlot, setToolbarSlot] = useState<HTMLDivElement | null>(null)
   const [summary, setSummary] = useState<HTMLDivElement | null>(null)
@@ -64,22 +62,25 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
   // ponowne tworzenie i niszczenie kontekstu WebGL dawało białą klatkę na końcu powrotu.
   const [obsAlive, setObsAlive] = useState(false)
   const [obsVisible, setObsVisible] = useState(false)
+  const { stars, retry } = useGaiaStars(session, galaxy || obsAlive || mode !== 'scale')
   useEffect(() => { setObsAlive(false); setObsVisible(false) }, [project?.id, galaxy])
   // Dane Obserwatorium: w stanie zdjęcia na bieżąco, poza nim dopiero przy nurkowaniu (edycja wycinków nie przebudowuje
   // ukrytej sceny); gwiazdy Gaia, które przyjdą w trakcie przejścia, trafiają do niego po nim.
   const [obsProject, setObsProject] = useState(project)
   // Edycja wycinków nie przebudowuje ukrytej sceny przy każdym przesunięciu okręgu: dane dochodzą po jej zakończeniu.
   useEffect(() => { if (mode === 'photo' || (mode === 'scale' && !session.editing)) setObsProject(project) }, [project, mode, session.editing])
-  // Scena Obserwatorium powstaje z wyprzedzeniem, w bezczynności po pokazaniu zdjęcia w Drodze Mlecznej: dekodowanie,
+  // Scena Obserwatorium powstaje z wyprzedzeniem, w bezczynności po pokazaniu zdjęcia: dekodowanie,
   // wysyłka tekstur i kompilacja shaderów nie przypadają na start nurkowania.
   useEffect(() => {
-    if (!project || !galaxy || obsAlive || mode !== 'scale' || session.editing || reducedMotion()) return
+    if (!project || obsAlive || mode !== 'scale' || session.editing || reducedMotion()) return
     const idle = window.requestIdleCallback?.(() => setObsAlive(true), { timeout: 3000 }) ?? window.setTimeout(() => setObsAlive(true), 1000)
     return () => { if (window.cancelIdleCallback) window.cancelIdleCallback(idle); else window.clearTimeout(idle) }
-  }, [project, galaxy, obsAlive, mode, session.editing])
+  }, [project, obsAlive, mode, session.editing])
   // Edycja wycinków to osobny widok okna: płaskie zdjęcie na scenie, panel edytora z prawej, scena 3D wstrzymana.
   const editing = mode === 'scale' && !!project && session.editing
   const guideRef = usePhotoGuide(handle, project, galaxy && mode !== 'photo' && !editing)
+  /** Przewodnik nurkowania sceny bieżącej skali. */
+  const sceneGuide = useCallback(() => handle?.scale === 'galaxy' ? guideRef.current : handle?.scale === 'universe' ? universeGuideRef.current : null, [handle, guideRef])
 
   /** Stan końcowy bez animacji: ograniczony ruch, kliknięcie w trakcie przebudowy sceny, zmiana skali. */
   const settle = useCallback((target: 'scale' | 'photo') => {
@@ -93,17 +94,25 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
       obs.setExternal(false)
       obs.setView('structure', false)
     }
+    if (target === 'scale' && handle) restoreSpace(handle, sceneGuide(), entryPose.current, universeRef.current)
     setMode(target)
     setPanels(target === 'photo')
-  }, [])
+  }, [handle, sceneGuide])
 
   function startDive(direction: DiveDirection) {
     if (direction === 'in') setObsVisible(false)
-    const guide = guideRef.current
-    if (!project || !handle || handle.scale !== 'galaxy' || !guide || reducedMotion()) {
+    const guide = sceneGuide()
+    const universe = handle?.scale === 'universe' ? universeRef.current : null
+    if (!project || !handle || !guide || reducedMotion()) {
       // Bez nurkowania: od razu stan zdjęcia (rozłożony, jak dawne Obserwatorium) albo skala.
-      if (handle && direction === 'in') { handle.stopIntro(); handle.setExternal(true) }
-      if (handle && direction === 'out') restoreSpace(handle, guide, entryPose.current)
+      if (handle && direction === 'in') {
+        handle.stopIntro()
+        entryPose.current = { position: handle.camera.position.toArray() as Pose['position'], target: handle.controls.target.toArray() as Pose['target'], up: handle.camera.up.toArray() as Pose['up'] }
+        handle.setExternal(true)
+        setObsProject(project)
+        setObsAlive(true)
+      }
+      if (handle && direction === 'out') restoreSpace(handle, guide, entryPose.current, universe)
       settle(direction === 'in' ? 'photo' : 'scale')
       return
     }
@@ -115,7 +124,7 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
     const markerTargets = new Map(items.filter((item) => item.kind === 'object' && item.distLy !== null)
       .map((item) => [item.id, observatoryPosition(item, project, item.distLy, domain, 0)]))
     const dive = new SpaceDive({
-      direction, space: handle, guide,
+      direction, space: handle, guide, universe,
       observatory: () => obsScene.current,
       seam: structureViewPose(items, project, domain),
       markerTargets,
@@ -133,16 +142,11 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
 
   function unfold() {
     session.setEditing(false)
-    if (galaxy) startDive('in')
-    else {
-      // Z Wszechświata lokalnego: najpierw skala Drogi Mlecznej (bez animacji), po przebudowie sceny nurkowanie.
-      pendingDive.current = true
-      settings.setScale('galaxy')
-    }
+    startDive('in')
   }
   function chooseScale(scale: SpaceScale) {
-    // „Droga Mleczna” w stanie zdjęcia wraca nurkowaniem; w trakcie przejścia nic nie zmienia.
-    if (scale === 'galaxy' && mode !== 'scale') {
+    // Bieżąca skala w stanie zdjęcia wraca nurkowaniem; w trakcie przejścia nic nie zmienia.
+    if (scale === settings.scale && mode !== 'scale') {
       if (mode === 'photo') startDive('out')
       return
     }
@@ -155,10 +159,6 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
     // Przebudowa sceny Space3D w trakcie przejścia przeskakuje do stanu końcowego; w stanie zdjęcia scena stoi.
     if (diveRef.current) settle(mode === 'out' ? 'scale' : 'photo')
     if (mode === 'photo' || mode === 'in') { handle.stopIntro(); handle.setExternal(true) }
-    if (pendingDive.current && handle.scale === 'galaxy') {
-      pendingDive.current = false
-      startDive('in')
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handle])
   useEffect(() => () => diveRef.current?.cancel(), [])
@@ -189,10 +189,10 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
   return <SpaceWindow
     label={showPhoto ? 'Obserwatorium 3D zdjęcia' : 'Pozycja 3D'}
     kicker={showPhoto ? 'KONUZASTRO / Obserwatorium 3D' : 'KONUZASTRO / Pozycja 3D'}
-    title={showPhoto ? project.name : project && !galaxy ? project.name : o ? `${o.id}${o.namePl ? ` · ${o.namePl}` : ''}` : 'Wybierz obiekt'}
+    title={project && (showPhoto || !galaxy) ? project.name : o ? `${o.id}${o.namePl ? ` · ${o.namePl}` : ''}` : 'Wybierz obiekt'}
     subtitle={showPhoto ? 'Obiekty zdjęcia wzdłuż linii widzenia' : SUBTITLE[settings.scale]}
     summaryRef={setSummary}
-    summary={!showPhoto && !(project && !galaxy) && o ? <strong>{dist !== null ? `Odległość ≈ ${fmtDistance(dist)}` : 'Odległość nieznana'}</strong> : null}
+    summary={!showPhoto && o && !(project && !galaxy) ? <strong>{dist !== null ? `Odległość ≈ ${fmtDistance(dist)}` : 'Odległość nieznana'}</strong> : null}
     className={`space-window ${panels ? 'is-photo' : 'is-scale'}${diving ? ' is-diving' : ''}${editing ? ' is-editing' : ''}`}
     // Panele wsuwają się i zwijają przez całą fazę wejścia danego kierunku (naprzód dłużej niż wstecz).
     style={diving ? { '--dive-enter': `${DIVE_PHASE_MS[mode].enter}ms` } as CSSProperties : undefined}
@@ -203,13 +203,13 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
     </SpaceToolbar>
     <div ref={setStage} className="obs-stage space-stage">
       <div className={`space-scene${mode === 'photo' || editing ? ' is-hidden' : ''}`}>
-        <Space3D settings={settings} photo={project} frameRef={frameRef} fitRef={fitRef} onHandle={setHandle} />
+        <Space3D settings={settings} photo={project} onHandle={setHandle} />
       </div>
+      {project && !galaxy && <PhotoUnfold key={project.id} session={session} handle={handle} visible={mode !== 'photo' && !editing} panel={mode === 'scale'} diveRef={universeRef} guideRef={universeGuideRef} />}
       {mode === 'scale' && <>
-        <PhotoImport session={session} inputRef={inputRef} showButton={!project || (!galaxy && !editing)} />
+        <PhotoImport session={session} inputRef={inputRef} showButton={!project} />
         <PhotoMessages session={session} />
-        {project && !galaxy && <PhotoUnfold key={project.id} session={session} frameRef={frameRef} fitRef={fitRef} handle={handle} onObservatory={unfold} />}
-        {project && galaxy && <GalaxyPhotoBar session={session} stars={stars} regressing={regressing.length} onUnfold={unfold} onPick={() => inputRef.current?.click()} onRetryStars={retry} />}
+        {project && <GalaxyPhotoBar session={session} stars={stars} regressing={regressing.length} onUnfold={unfold} onPick={() => inputRef.current?.click()} onRetryStars={retry} />}
         {editing && <PhotoFlatView session={session} />}
       </>}
     </div>

@@ -579,7 +579,7 @@ export function SkyDome({ playing = false }: Props) {
     for (const type of Object.keys(TYPE_INFO) as ObjectType[]) out[type] = annotationColors[type] ?? DEFAULT_ANNOTATION_COLORS[type]
     return out
   }, [annotationColors])
-  /** Klucz obiektu konturu: wspólny dla poziomów 1 i 2 tego samego obiektu. */
+  /** Klucz obiektu konturu: wspólny dla poziomów 1–3 tego samego obiektu. */
   const outlineKey = (k: number) => outlineObjects?.[k]?.id ?? outlines?.[k].id ?? ''
   const planObjects = useMemo(() => plan.flatMap((p) => {
     const o = catalogById?.get(p.objectId)

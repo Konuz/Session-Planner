@@ -1,6 +1,6 @@
 // Wspólna część zdjęcia w oknie „Pozycja 3D” (obie skale): wczytanie, komunikaty, płaski widok edycji okręgów
-// i panel wycinków ze źródłami odległości. Rozkładanie zdjęcia robi Obserwatorium (Droga Mleczna) albo stara
-// nakładka z wycinkami przy celach (Wszechświat lokalny).
+// i panel wycinków ze źródłami odległości. Rozkładanie zdjęcia robi Obserwatorium, do którego z obu skal
+// prowadzi nurkowanie.
 import { Box, ImagePlus, Settings2, X } from 'lucide-react'
 import { useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO } from '../../lib/catalog'
@@ -151,7 +151,7 @@ export function PhotoCutEditor({ session, regressing = [] }: { session: PhotoSes
   </div>
 }
 
-/** Pasek zdjęcia w Drodze Mlecznej: miejsce i wymiary jak pasek starej nakładki, bez suwaka. */
+/** Pasek zdjęcia w obu skalach: miejsce i wymiary jak pasek starej nakładki, bez suwaka. */
 export function GalaxyPhotoBar({ session, stars, regressing = 0, onUnfold, onPick, onRetryStars }: { session: PhotoSession; stars: StarsStatus; regressing?: number; onUnfold(): void; onPick(): void; onRetryStars(): void }) {
   const { project, editing, setEditing } = session
   if (!project) return null
@@ -167,7 +167,7 @@ export function GalaxyPhotoBar({ session, stars, regressing = 0, onUnfold, onPic
       </span>
     </div>
     <div className="photo-timeline photo-actions">
-      <button type="button" className="button small" title="Nurkowanie z Drogi Mlecznej do Obserwatorium: gwiazdy Gaia i obiekty w swoich odległościach" onClick={() => { setEditing(false); onUnfold() }}><Box size={14} />Rozłóż zdjęcie 3D</button>
+      <button type="button" className="button small" title="Przejście do Obserwatorium: gwiazdy Gaia i obiekty w swoich odległościach" onClick={() => { setEditing(false); onUnfold() }}><Box size={14} />Rozłóż zdjęcie 3D</button>
       <button type="button" className={`button small${editing ? ' active' : ''}`} aria-expanded={editing} onClick={() => setEditing(!editing)}><Settings2 size={14} />Edytuj wycinki</button>
       <button type="button" className="button small" onClick={onPick} disabled={session.busy}><ImagePlus size={14} />Zmień zdjęcie</button>
       <button type="button" className="button small" onClick={() => { setEditing(false); session.change(null) }}><X size={14} />Usuń</button>

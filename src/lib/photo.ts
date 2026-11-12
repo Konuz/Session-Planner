@@ -58,8 +58,6 @@ export interface PhotoProject {
   /** null: gwiazd jeszcze nie pobrano (także po migracji z wersji 1). */
   stars: PhotoStars | null
 }
-export interface PhotoProjection { id: string; x: number; y: number; visible: boolean; kind: ReturnType<typeof photoAnchorKind>; originX: number; originY: number; footX: number; footY: number }
-export interface PhotoSceneFrame { width: number; height: number; anchors: PhotoProjection[] }
 export interface PhotoDistance extends Pick<PhotoCut, 'distLy' | 'uncertaintyLy' | 'distanceScope' | 'distanceMethod' | 'distanceSource' | 'distanceRef'> {
   source: 'Katalog' | 'SIMBAD' | 'NED'
   url: string
