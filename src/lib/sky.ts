@@ -56,7 +56,8 @@ export function loadMilkyWay(): Promise<MilkyWay> {
       const c = document.createElement('canvas')
       c.width = img.width
       c.height = img.height
-      const ctx = c.getContext('2d')!
+      // Jednorazowy odczyt pikseli: płótno na CPU, bez synchronicznego odczytu z GPU (C23).
+      const ctx = c.getContext('2d', { willReadFrequently: true })!
       ctx.drawImage(img, 0, 0)
       const rgba = ctx.getImageData(0, 0, c.width, c.height).data
       const data = new Uint8Array(c.width * c.height)

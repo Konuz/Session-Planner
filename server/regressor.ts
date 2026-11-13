@@ -17,12 +17,14 @@ const RUN_MS = 10 * 60_000
 const MAX_TARGETS = 40
 const MAX_QUEUE = 200
 const MAX_BODY = 64 * 1024
+/** Zakończone zadania trzymane w pamięci (odpytywanie); starsze są usuwane, wynik zostaje w pliku. */
+const MAX_FINISHED = 1000
 
 export interface RegressorTarget { raDeg: number; decDeg: number; radiusDeg: number; type: string }
 export type RegressorRunner = (target: RegressorTarget) => Promise<RegressorResult>
 export type RegressorEnv = { REGRESSOR_DIR?: string; PIXI?: string }
 type JobStatus = 'queued' | 'running' | 'done' | 'error'
-interface Job { status: JobStatus; target: RegressorTarget; result?: RegressorResult }
+interface Job { status: JobStatus; target: RegressorTarget; result?: RegressorResult; group?: string }
 
 export function regressorKey(t: RegressorTarget): string {
   return createHash('sha1').update(JSON.stringify([REGRESSOR_VERSION, t.raDeg.toFixed(4), t.decDeg.toFixed(4), t.radiusDeg.toFixed(3), t.type])).digest('hex').slice(0, 20)
@@ -66,22 +68,40 @@ export function pixiRunner(env: RegressorEnv = process.env as RegressorEnv): Reg
 }
 
 export interface RegressorService {
-  ready(): boolean
-  submit(targets: RegressorTarget[]): Promise<{ key: string; status: JobStatus; result?: RegressorResult }[] | null>
+  ready(): boolean | Promise<boolean>
+  /** `group`: identyfikator zdjęcia; zadania ostatnio zgłoszonej grupy idą przed starszymi (audyt C08). */
+  submit(targets: RegressorTarget[], group?: string): Promise<{ key: string; status: JobStatus; result?: RegressorResult }[] | null>
   status(keys: string[]): { key: string; status: JobStatus | 'unknown'; result?: RegressorResult }[]
 }
 
-export function createRegressorService({ runner, cacheDir, ready }: { runner: RegressorRunner; cacheDir: string; ready: () => boolean }): RegressorService {
+export function createRegressorService({ runner, cacheDir, ready }: { runner: RegressorRunner; cacheDir: string; ready: () => boolean | Promise<boolean> }): RegressorService {
   const jobs = new Map<string, Job>()
   const queue: string[] = []
   let working = false
+  /** Grupa (zdjęcie) ostatniego zgłoszenia: użytkownik patrzy na nie teraz, więc jego wycinki mają pierwszeństwo. */
+  let currentGroup: string | undefined
   const file = (key: string) => join(cacheDir, `${key}.json`)
+
+  /** Następne zadanie: najpierw bieżącej grupy, potem w kolejności zgłoszeń. */
+  function next(): string | undefined {
+    const i = currentGroup === undefined ? -1 : queue.findIndex((key) => jobs.get(key)?.group === currentGroup)
+    return queue.splice(i >= 0 ? i : 0, 1)[0]
+  }
+
+  /** Mapa zadań nie rośnie bez końca w długo działającym serwerze: najstarsze zakończone wypadają. */
+  function prune() {
+    if (jobs.size <= MAX_FINISHED + queue.length + 1) return
+    for (const [key, job] of jobs) {
+      if (jobs.size <= MAX_FINISHED + queue.length + 1) break
+      if (job.status === 'done' || job.status === 'error') jobs.delete(key)
+    }
+  }
 
   async function work() {
     if (working) return
     working = true
     try {
-      for (let key = queue.shift(); key; key = queue.shift()) {
+      for (let key = next(); key; key = next()) {
         const job = jobs.get(key)!
         job.status = 'running'
         const result = await runner(job.target).catch((error: Error): RegressorResult => ({ status: 'error', message: error.message }))
@@ -89,29 +109,43 @@ export function createRegressorService({ runner, cacheDir, ready }: { runner: Re
         job.status = result.status === 'error' ? 'error' : 'done'
         // Awarie (usługi, środowisko) nie trafiają do pamięci: następne zgłoszenie uruchomi przebieg ponownie.
         if (result.status !== 'error') await mkdir(cacheDir, { recursive: true }).then(() => writeFile(file(key), JSON.stringify(result))).catch(() => console.warn('Nie udało się zapisać wyniku regresora.'))
+        prune()
       }
     } finally { working = false }
   }
 
   return {
     ready,
-    async submit(targets) {
-      const out = []
+    async submit(targets, group) {
+      // Najpierw ustalić, co trzeba dopisać do kolejki, i dopiero potem ją zmienić: przy braku miejsca (429)
+      // żadne zadanie z partii nie zostaje w kolejce bez klucza po stronie klienta (audyt C08, S8).
+      const planned: { key: string; target: RegressorTarget; job: Job | undefined }[] = []
+      let toQueue = 0
       for (const target of targets) {
         const key = regressorKey(target)
         let job = jobs.get(key)
         if (!job || job.status === 'error') {
           const cached = await readFile(file(key), 'utf8').then((text) => JSON.parse(text) as RegressorResult).catch(() => null)
-          if (cached) job = { status: 'done', target, result: cached }
-          else {
-            if (queue.length >= MAX_QUEUE) return null
-            job = { status: 'queued', target }
-            queue.push(key)
-          }
+          job = cached ? { status: 'done', target, result: cached } : undefined
+          if (!job && !planned.some((p) => p.key === key)) toQueue++
+        }
+        planned.push({ key, target, job })
+      }
+      if (queue.length + toQueue > MAX_QUEUE) return null
+      if (group !== undefined) currentGroup = group
+      const out = []
+      for (const { key, target } of planned) {
+        let job = jobs.get(key)
+        const fresh = planned.find((p) => p.key === key)!.job
+        if (!job || job.status === 'error') {
+          job = fresh ?? { status: 'queued', target }
+          if (job.status === 'queued') queue.push(key)
           jobs.set(key, job)
         }
+        if (job.status === 'queued' && group !== undefined) job.group = group
         out.push({ key, status: job.status, result: job.result })
       }
+      prune()
       void work()
       return out
     },
@@ -126,12 +160,19 @@ let defaultService: RegressorService | null = null
 export function regressorService(env: RegressorEnv): RegressorService {
   if (defaultService) return defaultService
   const dir = resolve(env.REGRESSOR_DIR ?? join(ROOT, 'astro-regressor-main'))
-  let available: boolean | null = null
+  let available: Promise<boolean> | null = null
   defaultService = createRegressorService({
     runner: pixiRunner(env),
     cacheDir: join(ROOT, 'scripts', '.cache', 'regressor'),
-    ready: () => available ??= existsSync(join(dir, 'pixi.toml')) && existsSync(join(ROOT, 'scripts', 'regressor', 'cut_distance.py'))
-      && spawnSync(env.PIXI ?? 'pixi', ['--version'], { windowsHide: true, timeout: 10_000 }).status === 0,
+    // `pixi --version` asynchronicznie: zimny start pixi trwał do 10 s i blokował cały serwer (audyt C09).
+    ready: () => available ??= !existsSync(join(dir, 'pixi.toml')) || !existsSync(join(ROOT, 'scripts', 'regressor', 'cut_distance.py'))
+      ? Promise.resolve(false)
+      : new Promise<boolean>((done) => {
+        const child = spawn(env.PIXI ?? 'pixi', ['--version'], { windowsHide: true, stdio: 'ignore' })
+        const timer = setTimeout(() => { child.kill(); done(false) }, 10_000)
+        child.on('error', () => { clearTimeout(timer); done(false) })
+        child.on('close', (code) => { clearTimeout(timer); done(code === 0) })
+      }),
   })
   return defaultService
 }
@@ -151,18 +192,19 @@ export async function regressorApi(req: IncomingMessage, res: ServerResponse, se
   const url = new URL(req.url ?? '/', 'http://localhost')
   if (req.method === 'GET') {
     const keys = (url.searchParams.get('keys') ?? '').split(',').filter((k) => /^[0-9a-f]{20}$/.test(k)).slice(0, MAX_TARGETS)
-    json(200, { ready: service.ready(), jobs: service.status(keys) })
+    json(200, { ready: await service.ready(), jobs: service.status(keys) })
     return
   }
   if (req.method !== 'POST') { res.setHeader('Allow', 'GET, POST'); json(405, { error: 'Wymagane zapytanie GET lub POST.' }); return }
   if (req.headers['content-type']?.split(';')[0] !== 'application/json') { json(415, { error: 'Wymagany JSON z listą wycinków.' }); return }
   const body = await readBody(req)
   if (body === null) { json(413, { error: 'Zbyt duże zapytanie.' }); return }
-  let targets: unknown
-  try { targets = (JSON.parse(body) as { targets?: unknown }).targets } catch { json(400, { error: 'Niepoprawny JSON.' }); return }
+  let targets: unknown, group: unknown
+  try { ({ targets, group } = JSON.parse(body) as { targets?: unknown; group?: unknown }) } catch { json(400, { error: 'Niepoprawny JSON.' }); return }
   if (!Array.isArray(targets) || !targets.length || targets.length > MAX_TARGETS || !targets.every(validTarget)) { json(400, { error: 'Niepoprawna lista wycinków.' }); return }
-  if (!service.ready()) { json(503, { error: 'Regresor jest niedostępny na tym serwerze.' }); return }
-  const jobs = await service.submit(targets.map(({ raDeg, decDeg, radiusDeg, type }) => ({ raDeg, decDeg, radiusDeg, type })))
+  if (group !== undefined && (typeof group !== 'string' || !group || group.length > 128)) { json(400, { error: 'Niepoprawny identyfikator zdjęcia.' }); return }
+  if (!(await service.ready())) { json(503, { error: 'Regresor jest niedostępny na tym serwerze.' }); return }
+  const jobs = await service.submit(targets.map(({ raDeg, decDeg, radiusDeg, type }) => ({ raDeg, decDeg, radiusDeg, type })), group)
   if (!jobs) { json(429, { error: 'Kolejka regresora jest pełna. Spróbuj później.' }); return }
   json(200, { ready: true, jobs })
 }

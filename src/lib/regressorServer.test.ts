@@ -53,6 +53,39 @@ it('kolejkuje wycinki, zapamiętuje wynik i odmowę, a awarii nie', async () => 
   await vi.waitFor(() => expect(runner2).toHaveBeenCalledTimes(1), { timeout: 5000 })
 })
 
+it('daje pierwszeństwo wycinkom ostatnio zgłoszonego zdjęcia (audyt C08)', async () => {
+  const order: number[] = []
+  let release!: () => void
+  const gate = new Promise<void>((r) => { release = r })
+  const runner = vi.fn<RegressorRunner>(async (t) => {
+    order.push(t.raDeg)
+    if (order.length === 1) await gate
+    return { status: 'abstain', reason: 'NO_KINEMATICALLY_COHERENT_CLUSTER' }
+  })
+  const service = createRegressorService({ runner, cacheDir: join(dir, 'd'), ready: () => true })
+  const at = (raDeg: number) => ({ ...lbn950, raDeg })
+  // Stare zdjęcie: pierwszy wycinek już liczony, dwa czekają. Nowe zdjęcie: jego wycinki idą przed nimi.
+  await service.submit([at(1), at(2), at(3)], 'stare')
+  await vi.waitFor(() => expect(order).toEqual([1]))
+  await service.submit([at(10), at(11)], 'nowe')
+  release()
+  await vi.waitFor(() => expect(order).toHaveLength(5))
+  expect(order).toEqual([1, 10, 11, 2, 3])
+})
+
+it('przy pełnej kolejce nie zostawia w niej części partii (audyt C08)', async () => {
+  let release!: () => void
+  const gate = new Promise<void>((r) => { release = r })
+  const runner = vi.fn<RegressorRunner>(async () => { await gate; return { status: 'abstain', reason: 'x' } })
+  const service = createRegressorService({ runner, cacheDir: join(dir, 'e'), ready: () => true })
+  const batch = (from: number) => Array.from({ length: 40 }, (_, i) => ({ ...lbn950, raDeg: from + i * 0.01 }))
+  for (let b = 0; b < 5; b++) expect(await service.submit(batch(b + 1))).not.toBeNull()
+  // 200 zgłoszonych (1 liczony, 199 w kolejce): partia 40 nie mieści się w całości, więc żadna jej część nie wchodzi.
+  expect(await service.submit(batch(100))).toBeNull()
+  expect(service.status([regressorKey({ ...lbn950, raDeg: 100 })])[0].status).toBe('unknown')
+  release()
+})
+
 it('odrzuca złe dane i zgłasza niedostępność bez uruchamiania regresora', async () => {
   const runner = vi.fn<RegressorRunner>()
   const service = createRegressorService({ runner, cacheDir: join(dir, 'b'), ready: () => true })

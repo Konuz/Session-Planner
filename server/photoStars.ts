@@ -50,7 +50,8 @@ async function queryGaia(raDeg: number, decDeg: number, radiusDeg: number, magLi
   const gavoSignal = AbortSignal.any([signal, AbortSignal.timeout(gavoConeMs)])
   try {
     const response = await fetchImpl(new URL(`${tapUrl}?${tapParams(query)}`), { signal: gavoSignal })
-    if (response.status < 500) return csvRows(await readResponseText(response, maxResponseBytes))
+    // Limit zapytań (429) to stan GAVO, nie błąd zapytania: lustro XAO ma osobny limit (C21).
+    if (response.status < 500 && response.status !== 429) return csvRows(await readResponseText(response, maxResponseBytes))
     void response.body?.cancel().catch(() => {})
   } catch (error) {
     signal.throwIfAborted()

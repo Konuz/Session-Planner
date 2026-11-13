@@ -15,6 +15,18 @@ export const GALAXY_LEVELS = [
   { maxLy: Infinity, title: 'Galaktyki 3: wszystkie z odległością' },
 ]
 
+// Linie gwiazdozbiorów 3D wczytane raz na sesję: każde otwarcie okna pobierało i parsowało plik od nowa (C22).
+// Błąd nie zostaje w pamięci, więc następne otwarcie spróbuje ponownie.
+let constellations3D: Promise<Constellations3D> | null = null
+function loadConstellations3D(): Promise<Constellations3D> {
+  constellations3D ??= fetch('/data/constellations3d.json').then((res) => {
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return res.json() as Promise<Constellations3D>
+  })
+  constellations3D.catch(() => { constellations3D = null })
+  return constellations3D
+}
+
 export interface SpaceSettings {
   scale: SpaceScale
   showConstellations: boolean
@@ -61,15 +73,11 @@ export function useSpaceSettings(o: DSO | null, photo: PhotoProject | null): Spa
   const [constellationError, setConstellationError] = useState(false)
 
   useEffect(() => {
-    const controller = new AbortController()
-    fetch('/data/constellations3d.json', { signal: controller.signal })
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        return res.json() as Promise<Constellations3D>
-      })
-      .then(setConstellations)
-      .catch((e: Error) => { if (e.name !== 'AbortError') setConstellationError(true) })
-    return () => controller.abort()
+    let live = true
+    loadConstellations3D()
+      .then((data) => { if (live) setConstellations(data) })
+      .catch(() => { if (live) setConstellationError(true) })
+    return () => { live = false }
   }, [])
 
   return {

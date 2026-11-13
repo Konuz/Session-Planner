@@ -205,12 +205,24 @@ export function searchScore(o: DSO, query: string): number {
   return scoreForQuery(o, normalizeQuery(query))
 }
 
+// Znormalizowane oznaczenie, aliasy i nazwa liczone raz na obiekt: wcześniej każde przeliczenie wyszukiwania
+// normalizowało (NFD) wszystkie pola 16,5 tys. obiektów i nadpisywało jednoelementową pamięć zapytania (C16).
+const normalized = new WeakMap<DSO, { id: string; aliases: string[]; name: string }>()
+function normalizedFields(o: DSO) {
+  let n = normalized.get(o)
+  if (!n) {
+    n = { id: normalizeQuery(o.id), aliases: o.aliases.map(normalizeQuery), name: normalizeQuery(o.namePl) }
+    normalized.set(o, n)
+  }
+  return n
+}
+
 function scoreForQuery(o: DSO, q: string): number {
-  const id = normalizeQuery(o.id)
+  const { id, aliases, name } = normalizedFields(o)
   if (id === q) return 0
-  if (o.aliases.some((a) => normalizeQuery(a) === q)) return 1
+  if (aliases.includes(q)) return 1
   if (id.startsWith(q)) return 2 + id.length / 100
-  if (normalizeQuery(o.namePl).startsWith(q)) return 3
+  if (name.startsWith(q)) return 3
   return 5
 }
 

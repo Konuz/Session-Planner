@@ -167,6 +167,9 @@ export function useCutDistances(session: PhotoSession) {
 
 type RegressorJob = { key: string; status: 'queued' | 'running' | 'done' | 'error' | 'unknown'; result?: RegressorResult }
 const REGRESSOR_POLL_MS = 15_000
+const REGRESSOR_POLL_MAX_MS = 120_000
+/** Limit wycinków w jednym zapytaniu serwera (`MAX_TARGETS` w server/regressor.ts). */
+const REGRESSOR_BATCH = 40
 
 /**
  * Regresor (astro-regressor na serwerze) dla wycinków bez żadnej odległości: zgłoszenie w tle po astrometrii i odpytywanie
@@ -215,21 +218,43 @@ export function useRegressor(session: PhotoSession): string[] {
       setPending({ projectId: project.id, ids: waiting })
       return waiting
     }
+    // Odpytywanie co 15 s; po błędzie odstęp rośnie dwukrotnie do 2 min, a w ukrytej karcie czeka na jej pokazanie (C08).
+    let delay = REGRESSOR_POLL_MS
     const poll = (keys: string[]) => {
       timer = setTimeout(() => {
-        fetch(`/api/photo/regressor?${new URLSearchParams({ keys: keys.join(',') })}`, { signal: abort.signal })
-          .then((r) => r.json() as Promise<{ jobs: RegressorJob[] }>)
-          .then((data) => { if (apply(data.jobs).length) poll(keys) })
-          .catch(() => { if (!abort.signal.aborted) poll(keys) })
-      }, REGRESSOR_POLL_MS)
+        if (document.hidden) {
+          const resume = () => { document.removeEventListener('visibilitychange', resume); if (!abort.signal.aborted) poll(keys) }
+          document.addEventListener('visibilitychange', resume)
+          abort.signal.addEventListener('abort', () => document.removeEventListener('visibilitychange', resume))
+          return
+        }
+        // Klucze po 40 (limit serwera) w kolejności wycinków.
+        const chunks = Array.from({ length: Math.ceil(keys.length / REGRESSOR_BATCH) }, (_, i) => keys.slice(i * REGRESSOR_BATCH, (i + 1) * REGRESSOR_BATCH))
+        Promise.all(chunks.map((chunk) => fetch(`/api/photo/regressor?${new URLSearchParams({ keys: chunk.join(',') })}`, { signal: abort.signal })
+          .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() as Promise<{ jobs: RegressorJob[] }> })))
+          .then((parts) => {
+            delay = REGRESSOR_POLL_MS
+            if (apply(parts.flatMap((p) => p.jobs)).length) poll(keys)
+          })
+          .catch(() => {
+            if (abort.signal.aborted) return
+            delay = Math.min(REGRESSOR_POLL_MAX_MS, delay * 2)
+            poll(keys)
+          })
+      }, delay)
     }
-    fetch('/api/photo/regressor', {
+    const all = targets.map((cut) => ({ raDeg: cut.raDeg, decDeg: cut.decDeg, radiusDeg: Math.min(2, Math.max(0.001, cut.radius * degPerPx)), type: cut.type }))
+    const batches = Array.from({ length: Math.ceil(all.length / REGRESSOR_BATCH) }, (_, i) => all.slice(i * REGRESSOR_BATCH, (i + 1) * REGRESSOR_BATCH))
+    // Identyfikator zdjęcia jako grupa: jego wycinki idą na serwerze przed zadaniami poprzednich zdjęć.
+    Promise.all(batches.map((batch) => fetch('/api/photo/regressor', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: abort.signal,
-      body: JSON.stringify({ targets: targets.map((cut) => ({ raDeg: cut.raDeg, decDeg: cut.decDeg, radiusDeg: Math.min(2, Math.max(0.001, cut.radius * degPerPx)), type: cut.type })) }),
-    })
-      .then((r) => r.ok ? r.json() as Promise<{ jobs: RegressorJob[] }> : null)
-      .then((data) => { if (data && apply(data.jobs).length) poll(data.jobs.map((job) => job.key)) })
-      .catch(() => {})
+      body: JSON.stringify({ targets: batch, group: project.id }),
+    }).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() as Promise<{ jobs: RegressorJob[] }> })))
+      .then((parts) => {
+        const jobs = parts.flatMap((p) => p.jobs)
+        if (apply(jobs).length) poll(jobs.map((job) => job.key))
+      })
+      .catch((e: Error) => { if (!abort.signal.aborted) console.warn('Regresor: zgłoszenie wycinków nie powiodło się.', e.message) })
     return () => { abort.abort(); clearTimeout(timer) }
     // Zmiana pozostałych pól projektu (np. zapis gwiazd) nie zgłasza wycinków ponownie.
   }, [ready, project?.id, targetKey])

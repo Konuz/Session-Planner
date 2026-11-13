@@ -1,5 +1,5 @@
 import { Search } from 'lucide-react'
-import { useDeferredValue, useMemo, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { DEFAULT_ANNOTATION_COLORS, displayName, quickSearch, TYPE_INFO, type DSO } from '../lib/catalog'
 import { useCatalog } from '../state/data'
 import { useStore } from '../state/store'
@@ -14,6 +14,9 @@ export function ObjectSearch({ onPick, placeholder = 'Szukaj obiektu: M 51, NGC 
   const [open, setOpen] = useState(false)
   const [hl, setHl] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  // Zamknięcie listy chwilę po utracie fokusu (klik w wynik musi zdążyć); timer czyszczony przy odmontowaniu (K14).
+  const blurTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useEffect(() => () => clearTimeout(blurTimer.current), [])
 
   const results = useMemo(() => catalog ? quickSearch(catalog, deferredQ) : [], [catalog, deferredQ])
 
@@ -39,7 +42,7 @@ export function ObjectSearch({ onPick, placeholder = 'Szukaj obiektu: M 51, NGC 
           setHl(0)
         }}
         onFocus={() => setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onBlur={() => { clearTimeout(blurTimer.current); blurTimer.current = setTimeout(() => setOpen(false), 150) }}
         onKeyDown={(e) => {
           if (e.key === 'ArrowDown') setHl((h) => Math.min(results.length - 1, h + 1))
           else if (e.key === 'ArrowUp') setHl((h) => Math.max(0, h - 1))

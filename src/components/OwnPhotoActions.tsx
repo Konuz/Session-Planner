@@ -42,7 +42,10 @@ export function OwnPhotoActions({ objectId }: { objectId: string }) {
       const result = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(result.error ?? 'Nie udało się wczytać zdjęcia.')
       const record = await recordFromSolved(result as OwnPhotoSolved)
+      // Nowszy wybór pliku przerwał to wgrywanie: spóźniony wynik nie może nadpisać nowszego zdjęcia (C20).
+      if (abort.signal.aborted) return
       await writeOwnPhoto(record)
+      if (abort.signal.aborted) return
       setOwnPhoto(record.objectId, record.photoId)
     } catch (e) {
       if (!abort.signal.aborted) setError(e instanceof Error ? e.message : 'Nie udało się wczytać zdjęcia.')

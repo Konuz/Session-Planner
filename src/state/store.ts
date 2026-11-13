@@ -205,7 +205,11 @@ const storage: PersistStorage<Partial<State>> = {
     const keys = Object.keys(value.state) as (keyof State)[]
     if (lastSaved && keys.every((k) => Object.is(lastSaved![k], value.state[k]))) return
     lastSaved = value.state
-    try { localStorage.setItem(name, JSON.stringify(value)) } catch { /* Stan pozostaje w pamięci; ponowimy przy następnej zmianie preferencji. */ }
+    try { localStorage.setItem(name, JSON.stringify(value)) } catch {
+      // Stan pozostaje w pamięci. Bez wyzerowania porównanie wyżej pominęłoby ponowienie tego samego stanu (C18).
+      lastSaved = null
+      console.warn('Nie udało się zapisać ustawień w localStorage (brak miejsca?).')
+    }
   },
   removeItem(name) {
     lastSaved = null

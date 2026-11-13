@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
+import { Worker } from 'node:worker_threads'
 import sharp from 'sharp'
 import { parseCatalog, type DSO } from '../src/lib/catalog.ts'
 import { blackBorderMask } from '../src/lib/blackBorderMask.ts'
@@ -27,6 +28,29 @@ const uploadIdleMs = 15_000
 const uploadDeadlineMs = 120_000
 let busy = false
 const catalogPath = fileURLToPath(new URL('../public/data/catalog.json', import.meta.url))
+const blackBorderWorker = new URL('./blackBorderWorker.ts', import.meta.url)
+
+/**
+ * Maska w worker_threads, żeby pętla zdarzeń obsługiwała inne żądania (audyt C09). Gdy wątku nie da się uruchomić
+ * (np. środowisko bez obsługi .ts w workerach), maska liczy się jak dawniej na głównym wątku.
+ */
+export function blackBorderMaskOffThread(data: Uint8Array, width: number, height: number, channels: number, signal?: AbortSignal): Promise<Uint8Array | null> {
+  return new Promise((resolve, reject) => {
+    let worker: Worker
+    try {
+      // Kopia do własnego bufora: Buffer z sharp może być wycinkiem wspólnej puli, a bufor przechodzi do wątku.
+      const pixels = new Uint8Array(data)
+      worker = new Worker(blackBorderWorker, { workerData: { pixels, width, height, channels }, transferList: [pixels.buffer] })
+    } catch {
+      resolve(blackBorderMask(data, width, height, channels))
+      return
+    }
+    const stop = () => { void worker.terminate(); reject(signal?.reason ?? new Error('aborted')) }
+    signal?.addEventListener('abort', stop, { once: true })
+    worker.once('message', (cut: Uint8Array | null) => { signal?.removeEventListener('abort', stop); resolve(cut ? new Uint8Array(cut) : null); void worker.terminate() })
+    worker.once('error', () => { signal?.removeEventListener('abort', stop); resolve(blackBorderMask(data, width, height, channels)) })
+  })
+}
 const skyshotCache = fileURLToPath(new URL('../scripts/.cache/', import.meta.url))
 let cachedCatalogById: Promise<Map<string, DSO>> | null = null
 /** Udane odpowiedzi gwiazd według skrótu WCS i wymiarów (ponowne otwarcie zdjęcia bez zapytania). */
@@ -130,7 +154,11 @@ export async function photoApi(req: IncomingMessage, res: ServerResponse, env: P
     } catch (error) {
       if (abort.signal.aborted) return
       if (error instanceof RangeError) json(422, { error: error.message })
-      else json(502, { error: 'Nie udało się wczytać gwiazd Gaia. Spróbuj ponownie.' })
+      else {
+        // Ślad w logu serwera: bez niego awaria GAVO albo mostu wyglądała jak zły obraz (C21, S6).
+        console.error('photo/stars:', error instanceof Error ? error.message : error)
+        json(502, { error: 'Nie udało się wczytać gwiazd Gaia. Spróbuj ponownie.' })
+      }
     } finally {
       if (temp) await rm(temp, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }).catch(() => console.warn('Nie udało się usunąć tymczasowych plików gwiazd.'))
     }
@@ -182,7 +210,7 @@ export async function photoApi(req: IncomingMessage, res: ServerResponse, env: P
       if (target) {
         // Maska z rastra przed kompresją JPEG: artefakty zaszumiłyby czerń przy krawędzi.
         const { data, info } = await base.clone().raw().toBuffer({ resolveWithObject: true })
-        const cut = blackBorderMask(data, info.width, info.height, info.channels)
+        const cut = await blackBorderMaskOffThread(data, info.width, info.height, info.channels, abort.signal)
         if (cut) mask = await sharp(Buffer.from(cut), { raw: { width: info.width, height: info.height, channels: 1 } }).png().toBuffer()
       }
     } catch {
@@ -207,8 +235,13 @@ export async function photoApi(req: IncomingMessage, res: ServerResponse, env: P
       let sky: [number, number][]
       let pixels: ([number, number] | null)[]
       try {
-        sky = (await bridge<{ sky: [number, number][] }>('grid', { cols: ownPhotoGrid, rows: ownPhotoGrid })).sky
-        pixels = (await bridge<{ pixels: ([number, number] | null)[] }>('project', { stars: [[target.raDeg, target.decDeg]] })).pixels
+        // Niezależne wywołania mostu (osobne pliki wejścia) równolegle: oba mają limit 20 s (S13).
+        const [grid, projected] = await Promise.all([
+          bridge<{ sky: [number, number][] }>('grid', { cols: ownPhotoGrid, rows: ownPhotoGrid }),
+          bridge<{ pixels: ([number, number] | null)[] }>('project', { stars: [[target.raDeg, target.decDeg]] }),
+        ])
+        sky = grid.sky
+        pixels = projected.pixels
       } catch {
         // Zdjęcie już rozwiązane: błąd siatki to most sprzed komendy `grid`, nie złe zdjęcie.
         if (!abort.signal.aborted) json(503, { error: 'Most Skyshota jest nieaktualny. Uruchom npm run setup:skyshot i spróbuj ponownie.' })
@@ -234,6 +267,7 @@ export async function photoApi(req: IncomingMessage, res: ServerResponse, env: P
     const project: PhotoProject = { version: 3, id: createHash('sha256').update(image).digest('hex'), name, image: `data:image/jpeg;base64,${image.toString('base64')}`, width, height, createdAt: Date.now(), cuts, astrometry, stars: null }
     json(200, project)
   } catch (error) {
+    if (!abort.signal.aborted) console.error('photo/solve:', error instanceof Error ? error.message : error)
     if (!abort.signal.aborted) json(422, { error: 'Nie udało się jednoznacznie rozwiązać zdjęcia. Spróbuj obrazu z większą liczbą ostrych gwiazd.', detail: error instanceof Error && 'killed' in error && error.killed ? 'Przekroczono czas obliczeń.' : undefined })
   } finally {
     busy = false

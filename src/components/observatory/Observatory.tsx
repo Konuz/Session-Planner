@@ -97,6 +97,8 @@ export default function Observatory({ project, slots, stars, onRetryStars, divin
     })
     return () => { live = false }
   }, [project.image])
+  // Poprzednia bitmapa płaszczyzny (ok. 16 MB) zwalniana jawnie przy zmianie zdjęcia i odmontowaniu (C19).
+  useEffect(() => () => plane?.close(), [plane])
 
   // Scena powstaje po wczytaniu obrazu i odtwarza się, gdy zmieni się zestaw obiektów (np. po pobraniu gwiazd).
   const idleRef = useRef(diving || hidden)
