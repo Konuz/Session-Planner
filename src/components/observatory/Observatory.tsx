@@ -2,7 +2,7 @@
 // „Pozycja 3D”: scena i podpisy trafiają do wspólnej sceny okna, przełączniki do jego paska, panele do siatki okna.
 // Układ i interakcje wzorowane na SyQon Studio („3D distances”), kolory i krój z tokenów aplikacji.
 import { Pause, Play, SkipBack, SkipForward } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { SCOPE_LABELS, adsUrl, hasDistance } from '../../lib/distance'
 import { fmtDistance, fmtNum } from '../../lib/format'
@@ -104,7 +104,8 @@ export default function Observatory({ project, slots, stars, onRetryStars, divin
   const onSceneRef = useRef(onScene)
   onSceneRef.current = onScene
   // Jedna scena (i jeden kontekst WebGL) na czas życia komponentu: nowe dane podmieniają zawartość.
-  useEffect(() => () => {
+  // Sprzątanie w fazie układu, póki DOM jest podłączony: OrbitControls szuka document przez getRootNode() (audyt C01).
+  useLayoutEffect(() => () => {
     onSceneRef.current?.(null)
     sceneRef.current?.dispose()
     sceneRef.current = null

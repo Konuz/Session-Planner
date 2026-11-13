@@ -1,7 +1,7 @@
 // Pozycja obiektu w przestrzeni 3D (three.js, ładowane leniwie z okna „Pozycja 3D”). Odległości z Wikidata (mediana
 // podanych wartości), kierunek ze współrzędnych galaktycznych. Dwie skale: Droga Mleczna (liniowa, 1 j. = 1000 lś)
 // i Wszechświat lokalny (logarytmiczna). W tle wszystkie obiekty katalogu z odległością. Ustawienia z paska narzędzi okna.
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js'
@@ -101,6 +101,10 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
   const onHandleRef = useRef(onHandle)
   onHandleRef.current = onHandle
   const mountRef = useRef<HTMLDivElement>(null)
+  const controlsRef = useRef<OrbitControls | null>(null)
+  // OrbitControls zdejmuje listener klawisza Ctrl z getRootNode() płótna. React odłącza DOM przed sprzątaniem
+  // useEffect, więc wtedy trafiłby w odłączony fragment i listener na document trzymałby całą scenę (audyt C01).
+  useLayoutEffect(() => () => controlsRef.current?.disconnect(), [])
   const pinRef = useRef<HTMLDivElement>(null)
   // Punkty tła posortowane wg odległości: suwak zmienia tylko zakres rysowania, bez przebudowy sceny.
   const bgRef = useRef<{ geometry: THREE.BufferGeometry; counts: number[]; types: ObjectType[]; pos: Float32Array; col: Float32Array } | null>(null)
@@ -155,6 +159,7 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
     const scene = new THREE.Scene()
     const camera = new THREE.PerspectiveCamera(SPACE_FOV, mount.clientWidth / mount.clientHeight, 0.1, 5000)
     const controls = new OrbitControls(camera, renderer.domElement)
+    controlsRef.current = controls
     // PPM jest przechwytywany jako swobodne rozglądanie, bez obiegania celu przez OrbitControls.
     controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE }
     const onMouseDown = (e: MouseEvent) => {

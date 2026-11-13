@@ -151,12 +151,24 @@ export function AltitudeChart({ object, slot, title = 'Widoczność obiektu', to
   const transitLabelOnLeft = transitIn !== null && x(transitIn) > width - 185
   const toTransit = transitIn !== null ? (transitIn - time) / 3_600_000 : null
 
+  // Kursor czasu najwyżej raz na klatkę: każda zmiana czasu przerysowuje całą kopułę (audyt C02).
+  const pendingPointer = useRef<{ t: number; commit: boolean } | null>(null)
+  const pointerFrame = useRef(0)
+  useEffect(() => () => cancelAnimationFrame(pointerFrame.current), [])
   const onPointer = (e: React.PointerEvent<SVGSVGElement>, commit: boolean) => {
     const rect = e.currentTarget.getBoundingClientRect()
     const px = ((e.clientX - rect.left) / rect.width) * width
     const t = Math.max(night.startMs, Math.min(night.endMs, tAt(px)))
-    setHoverT(t)
-    if (commit) setTime(Math.round(t / 60_000) * 60_000)
+    pendingPointer.current = { t, commit: commit || !!pendingPointer.current?.commit }
+    if (pointerFrame.current) return
+    pointerFrame.current = requestAnimationFrame(() => {
+      pointerFrame.current = 0
+      const p = pendingPointer.current
+      pendingPointer.current = null
+      if (!p) return
+      setHoverT(p.t)
+      if (p.commit) setTime(Math.round(p.t / 60_000) * 60_000)
+    })
   }
 
   const nightLabel = `${fmtDate(night.startMs + 3_600_000, tz, { day: 'numeric' })}/${fmtDate(night.endMs, tz, { day: 'numeric', month: 'short' })}`
@@ -180,7 +192,16 @@ export function AltitudeChart({ object, slot, title = 'Widoczność obiektu', to
             onPointer(e, true)
           }}
           onPointerUp={() => (dragging.current = false)}
-          onPointerLeave={() => !dragging.current && setHoverT(null)}
+          onPointerLeave={() => {
+            if (dragging.current) return
+            // Zaległa klatka kursora nie może przywrócić podglądu po wyjściu wskaźnika.
+            if (!pendingPointer.current?.commit) {
+              cancelAnimationFrame(pointerFrame.current)
+              pointerFrame.current = 0
+              pendingPointer.current = null
+            }
+            setHoverT(null)
+          }}
           style={{ cursor: 'col-resize', touchAction: 'none' }}
           role="img"
           aria-label="Wykres wysokości obiektu w nocy"

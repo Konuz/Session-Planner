@@ -1,6 +1,7 @@
 import { Pause, Play, RotateCcw } from 'lucide-react'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { AltitudeChart } from '../components/AltitudeChart'
+import { ErrorBoundary } from '../components/ErrorBoundary'
 import { FramingPanel } from '../components/FramingPanel'
 import { LayersMenu } from '../components/LayersMenu'
 import { ObjectDetails } from '../components/ObjectDetails'
@@ -103,7 +104,18 @@ export function SkyView() {
         <AltitudeChart />
       </div>
       {details && <ObjectDetails onClose={() => setDetails(false)} />}
-      {space3DOpen && <Suspense fallback={null}><Space3DModal /></Suspense>}
+      {space3DOpen && (
+        <ErrorBoundary fallback={() => (
+          <div className="observatory" role="alertdialog" aria-label="Pozycja 3D niedostępna">
+            <div className="empty">
+              Widok 3D nie działa w tej przeglądarce (wymaga WebGL).{' '}
+              <button className="button small" onClick={() => setSpace3DOpen(false)}>Zamknij</button>
+            </div>
+          </div>
+        )}>
+          <Suspense fallback={null}><Space3DModal /></Suspense>
+        </ErrorBoundary>
+      )}
     </>
   )
 }

@@ -1,6 +1,6 @@
 import { createServer } from 'node:http'
 import { isIP } from 'node:net'
-import { readFile, realpath } from 'node:fs/promises'
+import { readFile, realpath, stat } from 'node:fs/promises'
 import { extname, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { astrobinPhoto, type AstroBinEnv } from './astrobin.ts'
@@ -21,6 +21,20 @@ function allowedHost(host: string | undefined, env: ServerEnv): boolean {
   try { name = new URL(`http://${host}`).hostname } catch { return false }
   if (isIP(name.replace(/^\[|\]$/g, '')) || name === 'localhost' || name.endsWith('.localhost')) return true
   return (env.ALLOWED_HOSTS ?? '').split(',').some((allowed) => allowed.trim().toLowerCase() === name)
+}
+
+/**
+ * Wariant .br/.gz utworzony przy buildzie (`scripts/compress-dist.ts`); kompresja w czasie żądania blokowałaby pętlę
+ * zdarzeń. Wariant starszy od pliku (częściowa przebudowa dist/) jest pomijany.
+ */
+async function compressedVariant(file: string, mtimeMs: number, acceptEncoding: string): Promise<{ path: string; encoding: string } | null> {
+  const accepted = acceptEncoding.toLowerCase()
+  for (const [suffix, encoding] of [['.br', 'br'], ['.gz', 'gzip']] as const) {
+    if (!accepted.includes(encoding)) continue
+    const variant = await stat(file + suffix).catch(() => null)
+    if (variant?.isFile() && variant.mtimeMs >= mtimeMs) return { path: file + suffix, encoding }
+  }
+  return null
 }
 
 export function createAppServer({ distDir = fileURLToPath(new URL('../dist/', import.meta.url)), env = process.env, fetchImpl = fetch }: { distDir?: string; env?: ServerEnv; fetchImpl?: typeof fetch } = {}) {
@@ -45,10 +59,17 @@ export function createAppServer({ distDir = fileURLToPath(new URL('../dist/', im
       const realRoot = await realpath(root)
       const realFile = await realpath(file)
       if (!realFile.startsWith(realRoot + sep)) { res.writeHead(403).end(); return }
-      const body = await readFile(realFile)
-      // Pliki w assets/ mają skrót treści w nazwie, więc mogą być buforowane bez końca.
+      const info = await stat(realFile)
+      // Pliki w assets/ mają skrót treści w nazwie, więc mogą być buforowane bez końca. Reszta (w tym /data/) jest
+      // rewalidowana: słaby ETag z rozmiaru i czasu modyfikacji pozwala odpowiedzieć 304 bez treści.
       const cache = path.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache'
-      res.writeHead(200, { 'Content-Type': types[extname(file)] ?? 'application/octet-stream', 'Cache-Control': cache })
+      const etag = `W/"${info.size.toString(36)}-${Math.floor(info.mtimeMs).toString(36)}"`
+      const headers: Record<string, string> = { 'Content-Type': types[extname(file)] ?? 'application/octet-stream', 'Cache-Control': cache, ETag: etag, Vary: 'Accept-Encoding' }
+      if (req.headers['if-none-match'] === etag) { res.writeHead(304, headers).end(); return }
+      const variant = await compressedVariant(realFile, info.mtimeMs, String(req.headers['accept-encoding'] ?? ''))
+      if (variant) headers['Content-Encoding'] = variant.encoding
+      const body = await readFile(variant?.path ?? realFile)
+      res.writeHead(200, headers)
       res.end(req.method === 'HEAD' ? undefined : body)
     } catch (error) {
       if (res.headersSent) { res.destroy(); return }

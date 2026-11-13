@@ -377,17 +377,18 @@ let mwCacheRef: MilkyWay | null = null
 
 /** Smuga Drogi Mlecznej: dla każdej próbki ekranu kierunek J2000 → jasność z siatki RA/Dec (dwuliniowo), potem
  *  powiększenie z wygładzaniem i rysowanie w trybie „screen”. Ziemia rysowana później zakrywa część pod horyzontem. */
-function drawMilkyWay(ctx: CanvasRenderingContext2D, proj: Projector, mw: MilkyWay, horizon: readonly HorizonPoint[], w: number, h: number, alpha: number) {
-  if (!mwCanvas || alpha <= 0) return
-  const cw = Math.ceil(w / MW_STEP)
-  const ch = Math.ceil(h / MW_STEP)
+function drawMilkyWay(ctx: CanvasRenderingContext2D, proj: Projector, mw: MilkyWay, horizon: readonly HorizonPoint[], w: number, h: number, alpha: number, step = MW_STEP) {
+  // Piksel ma najwyżej 255 · alpha: poniżej pół jednostki warstwa jest niewidoczna (w dzień), więc bez liczenia.
+  if (!mwCanvas || alpha * 255 < 0.5) return
+  const cw = Math.ceil(w / step)
+  const ch = Math.ceil(h / step)
   const mKey = `${cw}x${ch}|${alpha}|${proj.cx},${proj.cy},${proj.scale}|${proj.eqToView.join(',')}|${proj.horToView.join(',')}`
   if (mKey === mwCacheKey && horizon === mwCacheHorizon && mw === mwCacheRef && mwCanvas.width === cw && mwCanvas.height === ch) {
     ctx.save()
     ctx.globalCompositeOperation = 'screen'
     ctx.imageSmoothingEnabled = true
     ctx.imageSmoothingQuality = 'high'
-    ctx.drawImage(mwCanvas, 0, 0, cw * MW_STEP, ch * MW_STEP)
+    ctx.drawImage(mwCanvas, 0, 0, cw * step, ch * step)
     ctx.restore()
     return
   }
@@ -408,7 +409,7 @@ function drawMilkyWay(ctx: CanvasRenderingContext2D, proj: Projector, mw: MilkyW
   const { w: gw, h: gh, data } = mw
   for (let j = 0; j < ch; j++) {
     for (let i = 0; i < cw; i++) {
-      const [vx, vy, vz] = proj.unprojectView((i + 0.5) * MW_STEP, (j + 0.5) * MW_STEP, direction)
+      const [vx, vy, vz] = proj.unprojectView((i + 0.5) * step, (j + 0.5) * step, direction)
       // Tylko nad horyzontem (własnym, z wygaszaniem w 1°): ziemia przykrywa smugę niecałkowicie, a poza kręgiem
       // kopuły nie ma jej wcale.
       const hx = hm[0] * vx + hm[3] * vy + hm[6] * vz
@@ -449,7 +450,7 @@ function drawMilkyWay(ctx: CanvasRenderingContext2D, proj: Projector, mw: MilkyW
   ctx.globalCompositeOperation = 'screen'
   ctx.imageSmoothingEnabled = true
   ctx.imageSmoothingQuality = 'high'
-  ctx.drawImage(mwCanvas, 0, 0, cw * MW_STEP, ch * MW_STEP)
+  ctx.drawImage(mwCanvas, 0, 0, cw * step, ch * step)
   ctx.restore()
 }
 
@@ -474,6 +475,41 @@ export function SkyDome({ playing = false }: Props) {
   const [outlines, setOutlines] = useState<Outline[] | null>(null)
   const [size, setSize] = useState({ w: 800, h: 600 })
   const [view, setView] = useState<View>(FULL_DOME)
+  // Przeciąganie, kółko i suwak zmieniają widok najwyżej raz na klatkę: każda zmiana stanu to pełne przerysowanie
+  // (ok. 20 ms), a mysz i trackpad wysyłają więcej zdarzeń niż klatek (audyt C02).
+  const pendingView = useRef<View | null>(null)
+  const viewFrame = useRef(0)
+  // Podczas interakcji Droga Mleczna liczy się z rzadszych próbek; pełna jakość wraca po chwili bezruchu.
+  const [interacting, setInteracting] = useState(false)
+  const interactingRef = useRef(false)
+  const interactTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const scheduleView = (next: View) => {
+    pendingView.current = next
+    if (!interactingRef.current) {
+      interactingRef.current = true
+      setInteracting(true)
+    }
+    clearTimeout(interactTimer.current)
+    interactTimer.current = setTimeout(() => {
+      interactingRef.current = false
+      setInteracting(false)
+    }, 150)
+    if (viewFrame.current) return
+    viewFrame.current = requestAnimationFrame(() => {
+      viewFrame.current = 0
+      const v = pendingView.current
+      pendingView.current = null
+      if (v) setView(v)
+    })
+  }
+  const setViewNow = (next: View) => {
+    pendingView.current = null
+    setView(next)
+  }
+  useEffect(() => () => {
+    cancelAnimationFrame(viewFrame.current)
+    clearTimeout(interactTimer.current)
+  }, [])
   const [isPolarDome, setShowPolarDome] = useState(false)
   const [animationRequest, setAnimationRequest] = useState(0)
   const [hoverOutline, setHoverOutline] = useState<number | null>(null)
@@ -703,7 +739,7 @@ export function SkyDome({ playing = false }: Props) {
     }
 
     // Smuga Drogi Mlecznej pod siatką i liniami (wszystko na spodzie, pod gwiazdami); w dzień i zmierzchu słabsza razem z gwiazdami.
-    if (milkyWay) drawMilkyWay(uctx, proj, milkyWay, horizon, size.w, size.h, 0.3 * bright * bright)
+    if (milkyWay) drawMilkyWay(uctx, proj, milkyWay, horizon, size.w, size.h, 0.3 * bright * bright, interacting || playing ? MW_STEP * 2 : MW_STEP)
 
     const toScreenHor = (alt: number, az: number) => proj.hor(horizontalToVec({ altDeg: alt, azDeg: az }))
 
@@ -1356,7 +1392,7 @@ export function SkyDome({ playing = false }: Props) {
       if (drag.current.moved && view.fovDeg < 180) {
         anim.current = null
         const degPerPx = drag.current.view.fovDeg / (radius * 2)
-        setView({
+        scheduleView({
           ...drag.current.view,
           azDeg: (drag.current.view.azDeg - dx * degPerPx / Math.max(0.2, Math.cos(drag.current.view.altDeg * DEG)) + 360) % 360,
           altDeg: Math.max(-20, Math.min(90, drag.current.view.altDeg + dy * degPerPx)),
@@ -1397,10 +1433,9 @@ export function SkyDome({ playing = false }: Props) {
   // Przybliżanie suwakiem albo rolką nad kopułą.
   const setFov = (target: number) => {
     anim.current = null
-    setView((v) => {
-      const fovDeg = Math.max(MIN_FOV, Math.min(184, target))
-      return fovDeg >= 184 ? FULL_DOME : { ...v, fovDeg }
-    })
+    const base = pendingView.current ?? viewRef.current
+    const fovDeg = Math.max(MIN_FOV, Math.min(184, target))
+    scheduleView(fovDeg >= 184 ? FULL_DOME : { ...base, fovDeg })
   }
 
   // Rolka myszy przybliża tylko nad kopułą: nasłuch nie-pasywny, żeby zablokować przewijanie strony.
@@ -1416,7 +1451,8 @@ export function SkyDome({ playing = false }: Props) {
     }
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
-      setFovRef.current(viewRef.current.fovDeg * Math.exp(e.deltaY * 0.0015))
+      // Od widoku oczekującego: zdarzenia kółka w jednej klatce sumują się, zamiast liczyć od tej samej wartości.
+      setFovRef.current((pendingView.current ?? viewRef.current).fovDeg * Math.exp(e.deltaY * 0.0015))
     }
     el.addEventListener('mousedown', onMouseDown)
     el.addEventListener('wheel', onWheel, { passive: false })
@@ -1435,12 +1471,16 @@ export function SkyDome({ playing = false }: Props) {
       ? { dso: outlineObjects?.[hoverOutline] ?? null, region: outlines[hoverOutline].region, outline: outlines[hoverOutline] }
       : null
 
+  // Warstwy zachowują proporcje poprzedniej klatki, dopóki scena nie zostanie przerysowana.
+  const canvasStyle = { width: size.w, height: size.h }
+
   return (
     <div ref={stageRef} className="sky-stage">
-      <canvas ref={underRef} aria-hidden />
-      <canvas ref={glRef} aria-hidden />
+      <canvas ref={underRef} style={canvasStyle} aria-hidden />
+      <canvas ref={glRef} style={canvasStyle} aria-hidden />
       <canvas
         ref={overlayRef}
+        style={canvasStyle}
         className="overlay"
         role="img"
         aria-label={`Niebo${selected ? `, wybrany obiekt ${selected.id}` : ''}`}
@@ -1469,7 +1509,7 @@ export function SkyDome({ playing = false }: Props) {
         onDoubleClick={() => {
           if (reducedMotion()) {
             anim.current = null
-            setView(FULL_DOME)
+            setViewNow(FULL_DOME)
             return
           }
           anim.current = { from: view, to: FULL_DOME, start: performance.now(), dur: 900 }
@@ -1527,7 +1567,7 @@ export function SkyDome({ playing = false }: Props) {
       <div className="sky-hud br hud-stack">
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         {view !== FULL_DOME && (
-          <button className="hud-icon" onClick={() => { anim.current = null; setView(FULL_DOME) }} title="Cała kopuła" aria-label="Cała kopuła">
+          <button className="hud-icon" onClick={() => { anim.current = null; setViewNow(FULL_DOME) }} title="Cała kopuła" aria-label="Cała kopuła">
             <RefreshCw size={14} />
           </button>
         )}

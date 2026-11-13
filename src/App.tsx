@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { TopBar } from './components/TopBar'
 import { useCatalog } from './state/data'
 import { useStore } from './state/store'
@@ -57,13 +58,15 @@ export function App() {
       <TopBar />
       <main className="page" key={tab}>
         <div className="view-enter">
-          <Suspense fallback={<div className="empty">Wczytywanie…</div>}>
-            {tab === 'sky' && <SkyView />}
-            {tab === 'catalog' && <CatalogView />}
-            {tab === 'planner' && <PlannerView />}
-            {tab === 'equipment' && <EquipmentView />}
-            {tab === 'horizon' && <HorizonView />}
-          </Suspense>
+          <ErrorBoundary>
+            <Suspense fallback={<div className="empty">Wczytywanie…</div>}>
+              {tab === 'sky' && <SkyView />}
+              {tab === 'catalog' && <CatalogView />}
+              {tab === 'planner' && <PlannerView />}
+              {tab === 'equipment' && <EquipmentView />}
+              {tab === 'horizon' && <HorizonView />}
+            </Suspense>
+          </ErrorBoundary>
         </div>
       </main>
     </>

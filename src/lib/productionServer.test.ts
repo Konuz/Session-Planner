@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { request } from 'node:http'
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, utimes, writeFile } from 'node:fs/promises'
+import { brotliDecompressSync, gunzipSync } from 'node:zlib'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createAppServer } from '../../server/index.ts'
@@ -66,6 +67,60 @@ it('produkcyjny serwer dostarcza frontend i endpoint AstroBin z sekretami wyłą
     await rm(privateDir, { recursive: true, force: true })
   }
 })
+
+it('podaje wstępnie skompresowane warianty i odpowiada 304 na zgodny ETag (audyt C04)', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'tracker-compress-'))
+  await writeFile(join(dir, 'index.html'), '<html>Tracker</html>')
+  await mkdir(join(dir, 'data'))
+  const json = JSON.stringify({ objects: Array.from({ length: 400 }, (_, i) => ({ id: `NGC ${i}` })) })
+  await writeFile(join(dir, 'data', 'catalog.json'), json)
+  await writeFile(join(dir, 'data', 'sky.json'), '{"stale":true}')
+  const { compressDist } = await import('../../scripts/compress-dist.ts')
+  const result = await compressDist(dir)
+  expect(result.files).toBe(1)
+  // Wariant starszy od pliku (np. po częściowej przebudowie) nie może zostać podany.
+  await writeFile(join(dir, 'data', 'sky.json.br'), 'nieaktualne')
+  await utimes(join(dir, 'data', 'sky.json.br'), new Date(0), new Date(0))
+  const server = createAppServer({ distDir: dir, env: {} })
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
+  const address = server.address()
+  if (!address || typeof address === 'string') throw new Error('listen')
+  const port = address.port
+  try {
+    const br = await getBody(port, '/data/catalog.json', { 'Accept-Encoding': 'gzip, br' })
+    expect(br.headers['content-encoding']).toBe('br')
+    expect(br.headers.vary).toBe('Accept-Encoding')
+    expect(brotliDecompressSync(br.body).toString()).toBe(json)
+    expect(br.body.length).toBeLessThan(json.length / 3)
+    const gz = await getBody(port, '/data/catalog.json', { 'Accept-Encoding': 'gzip' })
+    expect(gz.headers['content-encoding']).toBe('gzip')
+    expect(gunzipSync(gz.body).toString()).toBe(json)
+    const plain = await getBody(port, '/data/catalog.json')
+    expect(plain.headers['content-encoding']).toBeUndefined()
+    expect(plain.body.toString()).toBe(json)
+    const etag = String(plain.headers.etag)
+    expect(etag).toMatch(/^W\/"/)
+    const notModified = await getBody(port, '/data/catalog.json', { 'If-None-Match': etag })
+    expect(notModified.status).toBe(304)
+    expect(notModified.body.length).toBe(0)
+    const stale = await getBody(port, '/data/sky.json', { 'Accept-Encoding': 'br' })
+    expect(stale.headers['content-encoding']).toBeUndefined()
+    expect(stale.body.toString()).toBe('{"stale":true}')
+  } finally {
+    await new Promise<void>((r, reject) => server.close((e) => e ? reject(e) : r()))
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+/** Surowa treść bez automatycznej dekompresji, którą robi fetch. */
+function getBody(port: number, path: string, headers: Record<string, string> = {}) {
+  return new Promise<{ status: number; headers: Record<string, string | string[] | undefined>; body: Buffer }>((resolve, reject) => {
+    request({ host: '127.0.0.1', port, path, headers }, (res) => {
+      const chunks: Buffer[] = []
+      res.on('data', (c: Buffer) => chunks.push(c)).on('end', () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: Buffer.concat(chunks) }))
+    }).on('error', reject).end()
+  })
+}
 
 /** fetch nie pozwala ustawić nagłówka Host, więc żądanie idzie przez node:http. */
 function get(port: number, path: string, headers: Record<string, string> = {}) {
