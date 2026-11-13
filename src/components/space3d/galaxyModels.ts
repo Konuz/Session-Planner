@@ -13,15 +13,23 @@ export type GalaxyProfile = {
   axisRatio: number
   core: number
   bar?: boolean
+  /** Galaktyki nieregularne: PA poprzeczki na niebie (bez niego poprzeczka leży wzdłuż osi wielkiej). */
+  barPa?: number
+  /** Galaktyki nieregularne: długość poprzeczki w jednostkach modelu (średnica = 100). */
+  barLength?: number
   knots?: number
 }
 
 // Typy: https://ned.ipac.caltech.edu/level5/Mateo/table1.html
 // M33: https://www.nao.ac.jp/en/gallery/weekly/2017/20170307-subaru.html
+// M33: zgrubienie ok. 3 % światła w podczerwieni (Kam i in. 2015, za https://arxiv.org/abs/1902.07222).
+// LMC: poprzeczka o półosi 2,13 kpc w PA 121° (Rathore i in. 2025, https://doi.org/10.3847/1538-4357/ad93ae).
 // Parametry rozkładu gwiazd są ilustracją morfologii, nie rekonstrukcją pojedynczych gwiazd.
 export const LOCAL_GROUP_SHAPES: Record<string, GalaxyProfile> = {
-  'M 31': { kind: 'spiral', label: 'Sb - spiralna, duże zgrubienie i pierścień', axisRatio: 1, core: 0.28 },
-  'M 33': { kind: 'flocculent', label: 'Scd - spiralna, luźne i poszarpane ramiona', axisRatio: 1, core: 0 },
+  'M 31': { kind: 'spiral', label: 'Sb - spiralna, duże zgrubienie i pierścień', axisRatio: 1, core: 0.28, bar: true },
+  'M 33': { kind: 'flocculent', label: 'Scd - spiralna, luźne i poszarpane ramiona', axisRatio: 1, core: 0.03 },
+  // Poprzeczka 4,26 kpc przy średnicy z katalogu (646′, 161 tys. lś ≈ 9,3 kpc) to 46 j. modelu.
+  'ESO 56-115': { kind: 'irregular', label: 'SBm - Magellanowa, poprzeczka i obszary gwiazdotwórcze', axisRatio: 0.85, core: 0, bar: true, barPa: 121, barLength: 46, knots: 8 },
   'M 32': { kind: 'elliptical', label: 'cE2 - zwarta eliptyczna', axisRatio: 0.8, core: 0.65 },
   'M 110': { kind: 'elliptical', label: 'dE5 - karłowata eliptyczna', axisRatio: 0.5, core: 0.12 },
   'NGC 147': { kind: 'elliptical', label: 'dE5 - rozproszona eliptyczna', axisRatio: 0.5, core: 0 },
@@ -119,13 +127,15 @@ export function localGroupGalaxy(o: DSO, profile: GalaxyProfile, texture: THREE.
     do { r = -Math.log(Math.max(1e-9, rnd() * rnd())) * length } while (r > 49)
     return r
   }
+  // M33: skupiska młodych gwiazd w losowych miejscach obu ramion; ich promienie mają ten sam rozkład co dysk.
+  const armClumps = flocculent ? Array.from({ length: 48 }, (_, i) => ({ arm: i % 2, r: radius(11), da: gauss() * 0.35 })) : []
   for (let i = 0; i < count; i++) {
     let x: number, y: number, z: number
     let color: [number, number, number]
     const part = rnd()
     if (spiral) {
       if (part < profile.core) {
-        // M31: klasyczne zgrubienie i wydłużona składowa poprzeczki. M33: bez dużego zgrubienia.
+        // M31: klasyczne zgrubienie i wydłużona składowa poprzeczki. M33: tylko małe zgrubienie.
         // https://www.aanda.org/articles/aa/pdf/2018/10/aa32517-17.pdf
         const r = radius(2.5)
         const a = rnd() * Math.PI * 2
@@ -133,7 +143,7 @@ export function localGroupGalaxy(o: DSO, profile: GalaxyProfile, texture: THREE.
         x = r * Math.sqrt(1 - h * h) * Math.cos(a)
         y = r * Math.sqrt(1 - h * h) * Math.sin(a)
         z = r * h * 0.65
-        if (rnd() < 0.35) {
+        if (profile.bar && rnd() < 0.35) {
           // PA poprzeczki 55,7° rzutujemy z powrotem do płaszczyzny dysku nachylonego o 77°.
           const barAngle = -Math.atan(Math.tan((55.7 - (o.paDeg ?? 35)) * Math.PI / 180) / Math.cos(77 * Math.PI / 180))
           x *= 1.6
@@ -146,16 +156,20 @@ export function localGroupGalaxy(o: DSO, profile: GalaxyProfile, texture: THREE.
         // Pierścień M31: ok. 10 kpc od centrum (NASA/Spitzer), na tle dysku i ramion.
         // https://science.nasa.gov/asset/webb/infrared-universe-andromeda-galaxy/
         const ring = !flocculent && part > 0.96
-        const arm = Math.floor(rnd() * 2)
-        let r = ring ? 14.8 + gauss() * 2.4 : radius(flocculent ? 18 : 11)
+        let arm = Math.floor(rnd() * 2)
+        // Skala dysku 11 j. modelu; dla M33 to 1,7 kpc przy średnicy 50 tys. lś (Kam i in. 2015).
+        let r = ring ? 14.8 + gauss() * 2.4 : radius(11)
         // M33: dwa słabe, niesymetryczne ramiona ze skupiskami zamiast jednolitych wstęg.
         // https://www.aanda.org/articles/aa/pdf/2024/05/aa48910-23.pdf
-        if (flocculent && !disk && rnd() < 0.6) {
-          r = Math.max(2, Math.min(48, 8 + Math.floor(rnd() * 4) * 10 + arm * 3 + gauss() * 2))
+        const clump = flocculent && !disk && rnd() < 0.6 ? armClumps[Math.floor(rnd() * armClumps.length)] : null
+        if (clump) {
+          arm = clump.arm
+          r = Math.max(1, clump.r + gauss() * 1.2)
         }
         const pitch = (flocculent ? 22 + arm * 6 : 12) * Math.PI / 180
         const spiralAngle = Math.log(1 + r / 3) / Math.tan(pitch) + arm * Math.PI
-        const a = disk || ring ? rnd() * Math.PI * 2 : spiralAngle + gauss() * (flocculent ? 0.5 : 0.35) + (flocculent ? 0.45 * Math.sin(r * 0.35 + arm * 2) : 0)
+        const scatter = () => (clump ? clump.da + gauss() * 0.12 : gauss() * (flocculent ? 0.5 : 0.35))
+        const a = disk || ring ? rnd() * Math.PI * 2 : spiralAngle + scatter() + (flocculent ? 0.45 * Math.sin(r * 0.35 + arm * 2) : 0)
         if (ring) r += 1.5 * Math.sin(a) + 0.8 * Math.sin(3 * a)
         x = Math.cos(a) * r
         y = Math.sin(a) * r
@@ -185,8 +199,13 @@ export function localGroupGalaxy(o: DSO, profile: GalaxyProfile, texture: THREE.
         y = Math.sin(a) * r * profile.axisRatio
         color = [0.44, 0.49, 0.56]
       } else if (profile.bar && part < 0.8) {
-        x = (rnd() - 0.5) * 55
-        y = gauss() * 3 + x * 0.12
+        x = (rnd() - 0.5) * (profile.barLength ?? 55)
+        y = gauss() * 3 + (profile.barPa === undefined ? x * 0.12 : 0)
+        if (profile.barPa !== undefined) {
+          // Model leży w płaszczyźnie nieba: oś x w PA galaktyki, oś y w PA − 90°.
+          const t = ((o.paDeg ?? 0) - profile.barPa) * Math.PI / 180
+          ;[x, y] = [x * Math.cos(t) - y * Math.sin(t), x * Math.sin(t) + y * Math.cos(t)]
+        }
         color = [0.65, 0.73, 0.86]
       } else {
         const [cx, cy, spread] = knots[Math.floor(rnd() * knots.length)]

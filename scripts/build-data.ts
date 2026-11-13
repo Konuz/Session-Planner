@@ -196,6 +196,10 @@ async function buildCatalog() {
     wiki.set(key, entry)
   }
 
+  // Obiekty bez oznaczenia NGC/IC/M/Sh2/B w Wikidata: tytuły artykułów (sprawdzone w API Wikipedii 13.11.2026).
+  const WIKI_EXTRA: Record<string, { pl: string; en: string }> = {
+    'ESO 56-115': { pl: 'Wielki Obłok Magellana', en: 'Large Magellanic Cloud' },
+  }
   const looksLikeCode = (title: string) => /^(M|NGC|IC|Sh ?2|Barnard|B|LDN|LBN|Messier)\s*-?\s*\d/i.test(title)
 
   const entries: Entry[] = old.map((o) => {
@@ -218,7 +222,7 @@ async function buildCatalog() {
     const ids = o.designations.map((d) => designation(d.catalog, d.id))
     const primary = designation(o.primary.catalog, o.primary.id)
     const keys = o.designations.map((d) => joinKey(designation(d.catalog, d.id))).filter((k): k is string => k !== null)
-    const w = keys.map((k) => wiki.get(k)).find((d) => d !== undefined)
+    const w = WIKI_EXTRA[primary] ?? keys.map((k) => wiki.get(k)).find((d) => d !== undefined)
     const plName = w?.pl && !looksLikeCode(w.pl) ? w.pl.replace(/\s*\(.*\)$/, '') : ''
     const { choice, illuminator } = distancePlan.objects[i]
     const row: unknown[] = [
