@@ -1,5 +1,7 @@
 // Składanie obrazu na płótnie: tło, a na nim zdjęcie wklejone trójkątami afinicznymi (bez szwów i ramki).
 import { affineFromTriangles, expandTriangle, warpTriangles, type OwnPhotoRecord, type Pt, type TanView } from './ownPhoto'
+import { measureSince, perfNow } from './perf'
+import type { PhotoMaskRequest, PhotoMaskResult } from '../workers/photoMask.worker'
 
 type Canvas = OffscreenCanvas | HTMLCanvasElement
 type Context = OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D
@@ -14,12 +16,37 @@ function canvas(width: number, height: number): Canvas {
 const context = (c: Canvas) => c.getContext('2d') as Context
 
 // Zdjęcie z wyciętymi czarnymi brzegami w pełnej rozdzielczości; najwyżej dwa naraz (ok. 40 MB każde).
-const masked = new Map<string, Promise<Canvas>>()
+type Source = Canvas | ImageBitmap
+const masked = new Map<string, Promise<Source>>()
 
-async function maskedPhoto(record: OwnPhotoRecord): Promise<Canvas> {
+let maskWorker: Worker | null = null
+let maskRequest = 0
+const maskWaiting = new Map<number, { resolve(bitmap: ImageBitmap): void; reject(error: Error): void }>()
+
+/** Maska w workerze (audyt C07); bez Workera lub OffscreenCanvas (np. stare przeglądarki) — na głównym wątku. */
+function maskedInWorker(record: OwnPhotoRecord): Promise<ImageBitmap> | null {
+  if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') return null
+  if (!maskWorker) {
+    maskWorker = new Worker(new URL('../workers/photoMask.worker.ts', import.meta.url), { type: 'module' })
+    maskWorker.onmessage = (e: MessageEvent<PhotoMaskResult>) => {
+      const waiting = maskWaiting.get(e.data.id)
+      maskWaiting.delete(e.data.id)
+      if ('bitmap' in e.data) waiting?.resolve(e.data.bitmap)
+      else waiting?.reject(new Error(e.data.error))
+    }
+  }
+  const id = ++maskRequest
+  const request: PhotoMaskRequest = { id, image: record.image, mask: record.mask, width: record.width, height: record.height }
+  return new Promise((resolve, reject) => {
+    maskWaiting.set(id, { resolve, reject })
+    maskWorker!.postMessage(request)
+  })
+}
+
+async function maskedPhoto(record: OwnPhotoRecord): Promise<Source> {
   let photo = masked.get(record.photoId)
   if (!photo) {
-    photo = (async () => {
+    photo = maskedInWorker(record) ?? (async () => {
       const c = canvas(record.width, record.height)
       const ctx = context(c)
       const image = await createImageBitmap(record.image)
@@ -41,7 +68,12 @@ async function maskedPhoto(record: OwnPhotoRecord): Promise<Canvas> {
     })()
     photo.catch(() => masked.delete(record.photoId))
     masked.set(record.photoId, photo)
-    while (masked.size > 2) masked.delete(masked.keys().next().value!)
+    while (masked.size > 2) {
+      const oldest = masked.keys().next().value!
+      // Bitmapa z workera zwalniana jawnie; składanie w toku dostało ją wcześniej i kończy na swojej kopii referencji.
+      void masked.get(oldest)!.then((s) => { if ('close' in s) setTimeout(() => s.close(), 5000) }, () => {})
+      masked.delete(oldest)
+    }
   }
   return photo
 }
@@ -52,6 +84,13 @@ async function toBlob(c: Canvas): Promise<Blob> {
 }
 
 export async function composeOwnPhoto(background: Blob | null, record: OwnPhotoRecord, view: TanView): Promise<Blob> {
+  const start = perfNow()
+  const blob = await composeOwnPhotoBlob(background, record, view)
+  measureSince('photo:compose', start)
+  return blob
+}
+
+async function composeOwnPhotoBlob(background: Blob | null, record: OwnPhotoRecord, view: TanView): Promise<Blob> {
   const out = canvas(view.sizePx, view.sizePx)
   const ctx = context(out)
   if (background) {
@@ -70,7 +109,7 @@ export async function composeOwnPhoto(background: Blob | null, record: OwnPhotoR
       return Math.sqrt(Math.abs(a * d - b * c))
     }).sort((x, y) => x - y)
     const k = Math.min(1, 2 * scales[scales.length >> 1])
-    let source: Canvas = await maskedPhoto(record)
+    let source: Source = await maskedPhoto(record)
     if (k < 1) {
       const small = canvas(Math.max(1, Math.round(record.width * k)), Math.max(1, Math.round(record.height * k)))
       const sctx = context(small)

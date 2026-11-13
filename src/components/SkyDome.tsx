@@ -28,6 +28,7 @@ import { loadOutlines, pointInOutline, polygonArea, type Outline } from '../lib/
 import { affineFrom3, FULL_DOME, makeProjector, type Projector, type View } from '../lib/projection'
 import { loadMilkyWay, loadSky, type MilkyWay, type SkyData } from '../lib/sky'
 import { useCatalog, useNight, useSelected, useSite, useTime } from '../state/data'
+import { measureSince, perfNow } from '../lib/perf'
 import { useStore } from '../state/store'
 import { MoonDisc } from './MoonDisc'
 import { Range } from './Range'
@@ -704,6 +705,7 @@ export function SkyDome({ playing = false }: Props) {
     const glCanvas = glRef.current
     const under = underRef.current
     if (!overlay || !glCanvas || !under) return
+    const drawStart = perfNow()
     for (const c of [overlay, glCanvas, under]) {
       const w = Math.round(size.w * dpr)
       const h = Math.round(size.h * dpr)
@@ -1337,6 +1339,7 @@ export function SkyDome({ playing = false }: Props) {
         ctx.fillText(selected.id, p[0] + 16, p[1] + 26)
       }
     }
+    measureSince('dome:draw', drawStart)
   })
 
   // ---------- Interakcja ----------

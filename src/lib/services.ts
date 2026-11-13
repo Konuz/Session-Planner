@@ -1,15 +1,27 @@
 // Usługi sieciowe bez klucza API: pogoda i geokodowanie (Open-Meteo), opisy (Wikipedia REST).
-// Odpowiedzi trzymane w pamięci i w localStorage z czasem ważności, żeby wolne łącze nie blokowało widoku.
+// Odpowiedzi trzymane w localStorage z czasem ważności, żeby wolne łącze nie blokowało widoku; zapytania w locie
+// są wspólne dla komponentów.
 
-function readCache<T>(key: string, maxAgeMs: number): T | null {
+/** undefined: brak ważnego wpisu. Zapisany wynik null (np. brak artykułu) jest trafieniem (audyt C13). */
+function readCache<T>(key: string, maxAgeMs: number): T | undefined {
   try {
     const raw = localStorage.getItem(key)
-    if (!raw) return null
+    if (!raw) return undefined
     const { at, data } = JSON.parse(raw) as { at: number; data: T }
-    return Date.now() - at < maxAgeMs ? data : null
+    return Date.now() - at < maxAgeMs ? data : undefined
   } catch {
-    return null
+    return undefined
   }
+}
+
+/** Jedno zapytanie w locie na klucz: komponenty montowane razem dostają ten sam wynik (audyt C14). */
+const inFlight = new Map<string, Promise<unknown>>()
+function once<T>(key: string, load: () => Promise<T>): Promise<T> {
+  const running = inFlight.get(key) as Promise<T> | undefined
+  if (running) return running
+  const promise = load().finally(() => inFlight.delete(key))
+  inFlight.set(key, promise)
+  return promise
 }
 
 function writeCache(key: string, data: unknown) {
@@ -54,7 +66,11 @@ export async function fetchWeather(lat: number, lon: number): Promise<WeatherHou
   const key = `wx2:${lat.toFixed(2)},${lon.toFixed(2)}`
   const cached = readCache<WeatherHour[]>(key, 30 * 60_000)
   if (Array.isArray(cached) && cached.every(validWeatherHour)) return cached
-  const vars = 'cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,temperature_2m,dew_point_2m,wind_speed_10m,visibility'
+  return once(key, () => loadWeather(key, lat, lon))
+}
+
+async function loadWeather(key: string, lat: number, lon: number): Promise<WeatherHour[]> {
+  const vars ='cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,temperature_2m,dew_point_2m,wind_speed_10m,visibility'
   // Wiatry wysokie osobno: ich brak nie może odrzucać całej godziny pogody.
   const jetVars = ['wind_speed_300hPa', 'wind_speed_250hPa', 'wind_speed_200hPa']
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=${vars},${jetVars.join(',')}&forecast_days=8&timezone=UTC&timeformat=unixtime`
@@ -163,21 +179,32 @@ export interface WikiSummary {
 export async function fetchWikiSummary(titlePl: string, titleEn: string, fallbackQuery: string): Promise<WikiSummary | null> {
   const key = `wiki:${titlePl || titleEn || fallbackQuery}`
   const cached = readCache<WikiSummary | null>(key, 14 * 86_400_000)
-  if (cached !== null) return cached
+  if (cached !== undefined) return cached
+  return once(key, () => loadWikiSummary(key, titlePl, titleEn, fallbackQuery))
+}
+
+async function loadWikiSummary(key: string, titlePl: string, titleEn: string, fallbackQuery: string): Promise<WikiSummary | null> {
+  // Brak artykułu (4xx, ujednoznacznienie) jest pewną odpowiedzią i trafia do pamięci; błąd sieci lub serwera nie,
+  // inaczej chwilowy brak łącza ukryłby opis na 14 dni.
+  let failed = false
   const tryTitle = async (lang: 'pl' | 'en', title: string): Promise<WikiSummary | null> => {
     if (!title) return null
     try {
       const res = await fetch(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, '_'))}`)
-      if (!res.ok) return null
+      if (!res.ok) {
+        if (res.status >= 500 || res.status === 429) failed = true
+        return null
+      }
       const j = await res.json()
       if (j.type === 'disambiguation' || !j.extract) return null
       return { title: j.title, extract: j.extract, url: j.content_urls?.desktop?.page ?? '', lang }
     } catch {
+      failed = true
       return null
     }
   }
   const result = (await tryTitle('pl', titlePl)) ?? (await tryTitle('en', titleEn)) ?? (await tryTitle('en', fallbackQuery))
-  writeCache(key, result)
+  if (result || !failed) writeCache(key, result)
   return result
 }
 

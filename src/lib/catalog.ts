@@ -1,5 +1,7 @@
 // Katalog obiektów: wczytanie zwartego pliku public/data/catalog.json, typy, filtry i wyszukiwanie.
 import type { DistanceInfo, DistanceScope } from './distance.ts'
+// Rozszerzenie .ts: serwer (Node bez bundlera) importuje ten moduł w czasie wykonania; perf.ts nie ma importów.
+import { measureSince, perfNow } from './perf.ts'
 
 export type ObjectType = 'G' | 'GG' | 'EN' | 'RN' | 'DN' | 'PN' | 'SNR' | 'OC' | 'GC' | 'CN' | 'X'
 
@@ -230,8 +232,11 @@ export function quickSearch(catalog: readonly DSO[], query: string): DSO[] {
 }
 
 export async function loadCatalog(): Promise<DSO[]> {
+  const start = perfNow()
   const res = await fetch('/data/catalog.json')
   if (!res.ok) throw new Error(`Nie udało się wczytać katalogu (HTTP ${res.status})`)
   const data = (await res.json()) as { rows: Row[]; sources?: SourceRow[]; unresolved?: number[] }
-  return parseCatalog(data.rows, data.sources, data.unresolved)
+  const catalog = parseCatalog(data.rows, data.sources, data.unresolved)
+  measureSince('catalog:load', start)
+  return catalog
 }

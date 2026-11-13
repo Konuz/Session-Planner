@@ -30,7 +30,26 @@ describe('przedziały widoczności', () => {
     vi.resetModules()
     await import('../workers/visibility.worker')
     scope.onmessage({ data: { id: 1, ra: new Float64Array([0]), dec: new Float64Array([89]), site, darkStart: start, darkEnd: end, minAltDeg: 20, horizon: [] } } as MessageEvent)
+    await vi.waitFor(() => expect(postMessage).toHaveBeenCalled())
     expect(postMessage.mock.calls[0][0].hours[0]).toBeCloseTo(minutes / 60, 5)
+  })
+
+  it('worker liczy tylko najnowsze z zadań czekających w kolejce, ze współrzędnymi z pierwszego (audyt C12)', async () => {
+    const postMessage = vi.fn()
+    const scope = { onmessage: null as unknown as (e: MessageEvent) => void, postMessage }
+    vi.stubGlobal('self', scope)
+    vi.resetModules()
+    await import('../workers/visibility.worker')
+    const end = start + 60 * minute
+    const req = (id: number, minAltDeg: number, coords: boolean) => ({ data: { id, ...(coords ? { ra: new Float64Array([0]), dec: new Float64Array([89]) } : {}), site, darkStart: start, darkEnd: end, minAltDeg, horizon: [] } } as MessageEvent)
+    scope.onmessage(req(1, 20, true))
+    scope.onmessage(req(2, 25, false))
+    scope.onmessage(req(3, 30, false))
+    await vi.waitFor(() => expect(postMessage).toHaveBeenCalled())
+    await new Promise((r) => setTimeout(r, 10))
+    expect(postMessage).toHaveBeenCalledTimes(1)
+    expect(postMessage.mock.calls[0][0].id).toBe(3)
+    expect(postMessage.mock.calls[0][0].hours[0]).toBeCloseTo(1, 5)
   })
 
   it('przycina przedziały do ciemnego okna i nie łączy przerw horyzontu', () => {

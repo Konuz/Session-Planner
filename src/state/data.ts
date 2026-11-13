@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import type { Site } from '../lib/astro'
 import { loadCatalog, type DSO } from '../lib/catalog'
 import { darkWindow, nightPhases, type NightPhases } from '../lib/night'
+import { measureSince, perfNow } from '../lib/perf'
 import { fetchWeather, type WeatherHour } from '../lib/services'
 import type { VisibilityRequest, VisibilityResult } from '../workers/visibility.worker'
 import { useStore } from './store'
@@ -96,19 +97,33 @@ export interface CatalogVisibility {
   best: Float64Array
 }
 
+// Ostatni wynik z jego parametrami: ponowne wejście do Katalogu z tymi samymi ustawieniami nie czeka na worker (C12).
+let lastVisibility: { key: string; value: CatalogVisibility } | null = null
+const visibilityKey = (catalog: DSO[], site: Site, darkStart: number, darkEnd: number, minAlt: number, horizon: readonly unknown[]) =>
+  `${catalog.length}|${site.latDeg},${site.lonDeg},${site.elevationM}|${darkStart}|${darkEnd}|${minAlt}|${JSON.stringify(horizon)}`
+
 export function useCatalogVisibility(): CatalogVisibility | null {
   const { catalog } = useCatalog()
   const site = useSite()
   const night = useNight()
   const minAlt = useStore((s) => s.minAltDeg)
   const horizon = useStore((s) => s.horizon)
-  const [result, setResult] = useState<CatalogVisibility | null>(null)
+  const [result, setResult] = useState<CatalogVisibility | null>(() => {
+    if (!catalog || !lastVisibility) return null
+    const [darkStart, darkEnd] = darkWindow(night)
+    return lastVisibility.key === visibilityKey(catalog, site, darkStart, darkEnd, minAlt, horizon) ? lastVisibility.value : null
+  })
 
   useEffect(() => {
     if (!catalog) return
+    const [darkStart, darkEnd] = darkWindow(night)
+    const key = visibilityKey(catalog, site, darkStart, darkEnd, minAlt, horizon)
+    if (lastVisibility?.key === key) {
+      setResult(lastVisibility.value)
+      return
+    }
     worker ??= new Worker(new URL('../workers/visibility.worker.ts', import.meta.url), { type: 'module' })
     const id = ++requestId
-    const [darkStart, darkEnd] = darkWindow(night)
     const needCoords = sentCatalog !== catalog
     if (needCoords) sentCatalog = catalog
     const req: VisibilityRequest = {
@@ -120,8 +135,13 @@ export function useCatalogVisibility(): CatalogVisibility | null {
       minAltDeg: minAlt,
       horizon,
     }
+    const sent = perfNow()
     const onMessage = (e: MessageEvent<VisibilityResult>) => {
-      if (e.data.id === id) setResult({ maxAlt: e.data.maxAlt, hours: e.data.hours, best: e.data.best })
+      if (e.data.id !== id) return
+      measureSince('visibility:roundtrip', sent)
+      const value = { maxAlt: e.data.maxAlt, hours: e.data.hours, best: e.data.best }
+      lastVisibility = { key, value }
+      setResult(value)
     }
     worker.addEventListener('message', onMessage)
     worker.postMessage(req)

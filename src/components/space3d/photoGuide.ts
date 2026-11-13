@@ -362,6 +362,11 @@ export function usePhotoGuide(handle: Space3DHandle | null, project: PhotoProjec
   pickRef.current = onPick
   const selectedRef = useRef(selected)
   selectedRef.current = selected
+  // Przebudowa tylko po zmianie pól, które widać w znacznikach i wachlarzu. Ukryty przewodnik (edycja wycinków, gdzie
+  // każdy pointermove zmienia x/y) się nie przebudowuje; zmiany dogania raz, gdy znów jest widoczny (audyt C05).
+  const cutsKey = project ? project.cuts.map((c) => [c.id, c.type, c.enabled, c.distLy, c.uncertaintyLy, c.raDeg, c.decDeg, c.x, c.y, c.radius].join(':')).join('|') : ''
+  const builtKey = useRef(cutsKey)
+  if (visible) builtKey.current = cutsKey
   useEffect(() => {
     const project = projectRef.current
     if (!handle || !project) return
@@ -377,7 +382,8 @@ export function usePhotoGuide(handle: Space3DHandle | null, project: PhotoProjec
     }
     return () => { guide.dispose(); guideRef.current = null }
     // Gwiazdy Gaia zmieniają projekt, ale nie znaczniki: przebudowa tylko przy zmianie zdjęcia lub wycinków.
-  }, [handle, project?.id, project?.cuts, colors])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handle, project?.id, project?.image, builtKey.current, colors])
   useEffect(() => { guideRef.current?.setVisible(visible) }, [visible])
   useEffect(() => { guideRef.current?.setSelected(selected) }, [selected])
   return guideRef

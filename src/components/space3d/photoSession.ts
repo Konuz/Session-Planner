@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { refreshCutDistances, regressorDistance, regressorEligible, type RegressorResult } from '../../lib/distance'
 import { fieldOfView } from '../../lib/observatory'
 import type { PhotoCut, PhotoProject, PhotoStars } from '../../lib/photo'
-import { hasUnsavedPhoto, readPhoto, writePhoto } from '../../lib/photoStorage'
+import { hasUnsavedPhoto, photoImageUrl, readPhoto, writePhoto } from '../../lib/photoStorage'
 import { useCatalog } from '../../state/data'
 
 const saveFailure = 'Nie udało się zapisać zmian zdjęcia. Ponów zapis przed zamknięciem aplikacji.'
@@ -104,8 +104,10 @@ export function usePhotoSession(): PhotoSession {
       const response = await fetch('/api/photo/solve', { method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream', 'X-Photo-Name': encodeURIComponent(file.name) }, body: file, signal: abort.signal })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error ?? 'Nie udało się wczytać zdjęcia.')
+      // Obraz z serwera przychodzi jako data: (kilka MB); w projekcie trzymany jest krótki adres blob: (audyt C06).
+      const image = await photoImageUrl((result as PhotoProject).image)
       if (!abort.signal.aborted) {
-        change(result as PhotoProject)
+        change({ ...(result as PhotoProject), image })
         setEditing(true); setActiveId(result.cuts[0]?.id ?? null); setReady(true)
       }
     } catch (e) { if (!abort.signal.aborted) setError(e instanceof Error ? e.message : 'Nie udało się wczytać zdjęcia.') }

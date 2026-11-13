@@ -29,22 +29,42 @@ let cachedUx = new Float64Array(0)
 let cachedUy = new Float64Array(0)
 let cachedUz = new Float64Array(0)
 
+// Liczone jest tylko najnowsze zadanie: przeciąganie suwaka wysyła ich serię, a starsze wyniki i tak są odrzucane
+// po id. Zadania czekające w kolejce wiadomości trafiają tu przed timerem, więc pośrednie są pomijane (audyt C12).
+let latest: VisibilityRequest | null = null
+let scheduled = false
+
 self.onmessage = (e: MessageEvent<VisibilityRequest>) => {
-  const { id, ra, dec, site, darkStart, darkEnd, minAltDeg, horizon } = e.data
-  if (ra && dec) {
-    const len = ra.length
-    cachedUx = new Float64Array(len)
-    cachedUy = new Float64Array(len)
-    cachedUz = new Float64Array(len)
-    for (let i = 0; i < len; i++) {
-      const r = ra[i] * DEG
-      const d = dec[i] * DEG
-      const cosD = Math.cos(d)
-      cachedUx[i] = cosD * Math.cos(r)
-      cachedUy[i] = cosD * Math.sin(r)
-      cachedUz[i] = Math.sin(d)
-    }
+  const { ra, dec } = e.data
+  // Współrzędne przychodzą raz: zapamiętać je od razu, nawet gdy samo zadanie zostanie pominięte.
+  if (ra && dec) storeCoords(ra, dec)
+  latest = e.data
+  if (scheduled) return
+  scheduled = true
+  setTimeout(() => {
+    scheduled = false
+    const req = latest
+    latest = null
+    if (req) compute(req)
+  }, 0)
+}
+
+function storeCoords(ra: Float64Array, dec: Float64Array) {
+  const len = ra.length
+  cachedUx = new Float64Array(len)
+  cachedUy = new Float64Array(len)
+  cachedUz = new Float64Array(len)
+  for (let i = 0; i < len; i++) {
+    const r = ra[i] * DEG
+    const d = dec[i] * DEG
+    const cosD = Math.cos(d)
+    cachedUx[i] = cosD * Math.cos(r)
+    cachedUy[i] = cosD * Math.sin(r)
+    cachedUz[i] = Math.sin(d)
   }
+}
+
+function compute({ id, site, darkStart, darkEnd, minAltDeg, horizon }: VisibilityRequest) {
   const ux = cachedUx
   const uy = cachedUy
   const uz = cachedUz

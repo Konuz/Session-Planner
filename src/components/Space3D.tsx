@@ -8,6 +8,7 @@ import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js'
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js'
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
 import { galacticVector, type Vec3 } from '../lib/astro'
+import { measureSince, perfNow } from '../lib/perf'
 import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO, type DSO, type ObjectType } from '../lib/catalog'
 import { useCatalog, useSelected } from '../state/data'
 import { useStore } from '../state/store'
@@ -149,6 +150,8 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
     const mount = mountRef.current
     const starNamesOverlay = starNamesOverlayRef.current
     if (!mount || !starNamesOverlay || !objectRef.current) return
+    // Od budowy sceny (skala, obiekty tła, modele) do pierwszej narysowanej klatki.
+    let sceneStart: number | null = perfNow()
     const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' })
     renderer.setPixelRatio(Math.min(1.5, devicePixelRatio))
@@ -692,6 +695,10 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
         || canvas.width !== renderedWidth || canvas.height !== renderedHeight || objectGuide.visible !== renderedGuide
         || (earth && !reduced && now - lastRender >= 100) || now - lastRender >= 1000) {
         renderer.render(scene, camera)
+        if (sceneStart !== null) {
+          measureSince('space3d:scene→first-frame', sceneStart)
+          sceneStart = null
+        }
         sceneDirty.current = false
         renderedCamera.copy(camera.matrixWorld)
         renderedProjection.copy(camera.projectionMatrix)
