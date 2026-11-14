@@ -11,7 +11,7 @@ import { frameBasis, halfFieldTan } from '../../lib/frameBasis'
 import { fmtDistance } from '../../lib/format'
 import { AXIS_DASH, AXIS_LENGTH, EARTH_Z } from '../../lib/observatory'
 import { cutsInThreeD, photoAnchorKind, type PhotoProject } from '../../lib/photo'
-import { scenePoint, toScene, UNIVERSE_GALAXY_SCALE, type SpaceScale } from '../../lib/space3d'
+import { scenePoint, toScene, UNIVERSE_GALAXY_SCALE, UNIVERSE_MIN_SPAN, type SpaceScale } from '../../lib/space3d'
 import { framePose, sideView, SPACE_FOV } from '../../lib/spaceCamera'
 import { diveScale } from '../../lib/spaceDive'
 import { milkyWayCone, universeCone } from '../../lib/spacePhoto'
@@ -302,11 +302,14 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, s
   const framed: Vec3[] = [from.toArray() as Vec3, reach.toArray() as Vec3, ...marks.filter((m) => new THREE.Vector3(...m.position).distanceTo(sunPos) >= start).map((m) => m.position)]
   const middle = from.clone().lerp(reach, 0.5)
   const span = scale === 'galaxy' ? length : from.distanceTo(reach)
+  // Wszechświat lokalny: kamera co najmniej tak daleko jak w kadrze obiektu, więc zakładka zawsze oddala do skali Grupy
+  // Lokalnej, także przy zdjęciu samej Drogi Mlecznej (krótki stożek).
+  const minDistance = scale === 'universe' ? Math.max(UNIVERSE_MIN_SPAN * 1.08, span * 0.6) : Math.max(unit, span * 0.6)
 
   return {
     group, cone, fieldTan, basis, length, labels: layer.root,
     frameCamera(options) {
-      handle.flyTo(framePose(framed, sideView(dir.toArray() as Vec3, [middle.x, 0, middle.z]), { fovDeg: 50, aspect: camera.aspect, room: [0.5, 0.42], minDistance: Math.max(unit, span * 0.6) }), undefined, options?.zoom ?? false)
+      handle.flyTo(framePose(framed, sideView(dir.toArray() as Vec3, [middle.x, 0, middle.z]), { fovDeg: 50, aspect: camera.aspect, room: [0.5, 0.42], minDistance }), undefined, options?.zoom ?? false)
     },
     setOpacity(opacity, cone, faces, axis) {
       sight.setOpacity(opacity, cone, faces, axis)

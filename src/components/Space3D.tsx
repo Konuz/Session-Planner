@@ -14,7 +14,7 @@ import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO, type DSO, type ObjectType } from 
 import { useCatalog, useSelected } from '../state/data'
 import { useStore } from '../state/store'
 import type { PhotoProject } from '../lib/photo'
-import { GALACTIC_LIMIT_LY, LOG_UNIT, UNIVERSE_GALAXY_SCALE, layerFades, mixFades, sunPosition, type SpaceScale } from '../lib/space3d'
+import { GALACTIC_LIMIT_LY, LOG_UNIT, UNIVERSE_GALAXY_SCALE, UNIVERSE_MIN_SPAN, layerFades, mixFades, sunPosition, type SpaceScale } from '../lib/space3d'
 import { constellationView, framePose, sideView, SPACE_FAR, SPACE_FOV, type CameraPose } from '../lib/spaceCamera'
 import { ease, lerpPose, zoomPose, type Pose } from '../lib/spaceDive'
 import {
@@ -475,7 +475,7 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       placed = dist !== null && !(tab === 'galaxy' && dist > GALACTIC_LIMIT_LY)
       // Obiekt Galaktyki bez odległości w skali Wszechświata: zbliżenie na Drogę Mleczną, w której kończy się jego kierunek.
       const insideMilkyWay = dist === null && object.type !== 'G' && object.type !== 'GG'
-      const minSpan = tab === 'galaxy' ? 8 : (insideMilkyWay ? 16 : 70) / UNIVERSE_GALAXY_SCALE
+      const minSpan = tab === 'galaxy' ? 8 : insideMilkyWay ? 16 / UNIVERSE_GALAXY_SCALE : UNIVERSE_MIN_SPAN
       const dir = toThree(galacticVector(object)).normalize()
       target = placed ? position(object, dist!) : sunPos.clone()
       // Rozmiar kadru wokół celu: kreski linii skalują się z nim, punkty i podpisy mają stały rozmiar w pikselach.

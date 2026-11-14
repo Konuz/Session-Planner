@@ -13,6 +13,8 @@ export const GALACTIC_LIMIT_LY = 150_000
 export const UNIVERSE_GALAXY_SCALE = 0.12
 /** Jednostki sceny na dekadę odległości w części logarytmicznej (22 j. dawnego Wszechświata lokalnego). */
 export const LOG_UNIT = 22 / UNIVERSE_GALAXY_SCALE
+/** Najmniejszy kadr zakładki Wszechświat lokalny (j. sceny): Droga Mleczna z sąsiadami z Grupy Lokalnej (70 j. dawnej skali). */
+export const UNIVERSE_MIN_SPAN = 70 / UNIVERSE_GALAXY_SCALE
 /** Wszechświat lokalny: obiekty Galaktyki i Ziemia widoczne do FADE_NEAR j. od początku układu, zgaszone od FADE_FAR. */
 export const FADE_NEAR = 250
 export const FADE_FAR = 500

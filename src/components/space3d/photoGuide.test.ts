@@ -3,7 +3,7 @@ import { Line, LineDashedMaterial, LineSegments, PerspectiveCamera, Scene, Sprit
 import { NO_DISTANCE } from '../../lib/distance'
 import { frameBasis, halfFieldTan } from '../../lib/frameBasis'
 import type { PhotoCut, PhotoProject } from '../../lib/photo'
-import { sunPosition, type SpaceScale } from '../../lib/space3d'
+import { UNIVERSE_MIN_SPAN, sunPosition, type SpaceScale } from '../../lib/space3d'
 import type { CameraPose } from '../../lib/spaceCamera'
 import type { Space3DHandle } from '../Space3D'
 import { createPhotoGuide } from './photoGuide'
@@ -163,4 +163,15 @@ it('przelot zakładek ze zdjęciem: kadr stożka leci ze zmianą skali, pierwszy
   f.guide.frameCamera()
   f.guide.frameCamera({ zoom: true })
   expect(calls).toEqual([[undefined, false], [undefined, true]])
+})
+
+it('zdjęcie samej Drogi Mlecznej (np. Sh2-181): zakładka Wszechświat oddala kamerę do skali Grupy Lokalnej', () => {
+  const milkyWayOnly = () => ({ ...comaProject(), cuts: [cut('Sh2-181', 6600, 0.1, 0.1), cut('Sh2-180', 5400, -0.1, 0)] })
+  const universe = fixture('universe', milkyWayOnly()), galaxy = fixture('galaxy', milkyWayOnly())
+  universe.guide.frameCamera()
+  galaxy.guide.frameCamera()
+  const distance = (f: ReturnType<typeof fixture>) => f.camera.position.distanceTo(f.handle.controls.target)
+  // Ta sama najmniejsza odległość co kadr obiektu we Wszechświecie (Space3D: 70 j. dawnej skali × 1,08).
+  expect(distance(universe)).toBeGreaterThanOrEqual(UNIVERSE_MIN_SPAN * 1.08 - 1e-6)
+  expect(distance(universe) / distance(galaxy)).toBeGreaterThan(20)
 })
