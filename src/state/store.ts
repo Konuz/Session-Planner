@@ -6,6 +6,7 @@ import type { Mosaic } from '../lib/framing'
 import type { HorizonPoint } from '../lib/horizon'
 import { nightDateOf } from '../lib/night'
 import { planExposures, type Exposure } from '../lib/exposures'
+import { DEFAULT_WEATHER_PROVIDER, normalizeWeatherProvider, type WeatherProviderId } from '../lib/services'
 import type { Levels } from '../lib/stretch'
 
 export interface Location {
@@ -109,6 +110,7 @@ interface State {
   space3DOpen: boolean
   location: Location
   savedLocations: Location[]
+  weatherProvider: WeatherProviderId
   nightDate: string
   /** Kursor czasu [ms UTC]; null = środek nocy / teraz. */
   timeMs: number | null
@@ -158,6 +160,7 @@ interface State {
   setLocation(loc: Location): void
   saveLocation(loc: Location): void
   removeLocation(name: string): void
+  setWeatherProvider(provider: WeatherProviderId): void
   setNightDate(date: string): void
   setTime(t: number | null): void
   select(index: number | null, find?: boolean): void
@@ -226,6 +229,7 @@ export const useStore = create<State>()(
       space3DOpen: false,
       location: HOME,
       savedLocations: [HOME],
+      weatherProvider: DEFAULT_WEATHER_PROVIDER,
       nightDate: nightDateOf(Date.now(), HOME.timeZone),
       timeMs: null,
       selectedIndex: null,
@@ -265,6 +269,7 @@ export const useStore = create<State>()(
       setLocation: (location) => set({ location, nightDate: nightDateOf(Date.now(), location.timeZone), timeMs: null }),
       saveLocation: (loc) => set((s) => ({ savedLocations: [loc, ...s.savedLocations.filter((l) => l.name !== loc.name)].slice(0, 12) })),
       removeLocation: (name) => set((s) => ({ savedLocations: s.savedLocations.filter((l) => l.name !== name) })),
+      setWeatherProvider: (weatherProvider) => set({ weatherProvider: normalizeWeatherProvider(weatherProvider) }),
       setNightDate: (nightDate) => set({ nightDate, timeMs: null }),
       setTime: (timeMs) => set({ timeMs }),
       select: (selectedIndex, find = true) =>
@@ -407,6 +412,7 @@ export const useStore = create<State>()(
       partialize: (s) => ({
         location: s.location,
         savedLocations: s.savedLocations,
+        weatherProvider: s.weatherProvider,
         selectedIndex: s.selectedIndex,
         equipment: s.equipment,
         savedTelescopes: s.savedTelescopes,
@@ -441,6 +447,7 @@ export const useStore = create<State>()(
         const opacity = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0.1, Math.min(1, v)) : 1)
         return {
           ...current, ...p, skyGroups: { ...current.skyGroups, ...p?.skyGroups }, framingStretch: { ...p?.framingStretch }, ownPhotos: { ...p?.ownPhotos },
+          weatherProvider: normalizeWeatherProvider(p?.weatherProvider),
           ownPhotosOpacity: opacity(p?.ownPhotosOpacity), outlinesOpacity: opacity(p?.outlinesOpacity),
         }
       },

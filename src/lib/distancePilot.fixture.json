@@ -462,8 +462,8 @@
     "status": "measured",
     "usable3D": false
    },
-   "expect": "unverified",
-   "note": "Cosmicflows-4 (Tully–Fisher) ma σ 26 % > 20 %: zamiast niego Wikidata (niezweryfikowane), decyzja 7.11.2026"
+   "expect": "catalog",
+   "note": "pilotaż: Cosmicflows-4 (Tully–Fisher) z σ 26 % > 20 %, bez 3D; od 14.11.2026 próg 50 %: CF4 w 3D zamiast Wikidata"
   },
   {
    "id": "NGC 5195",

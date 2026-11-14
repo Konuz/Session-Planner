@@ -87,6 +87,48 @@ paralaks), stożek 0,45°”).
     (pilotaż z NED: −1,9 %). IC 4277: odmowa (brak z i CF4).
   - Pasek pokazuje „Regresor: N w toku”, liczba obiektów w 3D rośnie po wyniku; zapis w IndexedDB z `distanceOrigin: 'regressor'`.
 
+## Obszary H II i próg 50 % (14.11.2026)
+Projekt: `docs/superpowers/specs/2026-11-14-odleglosci-h-ii-design.md`, plan: `docs/superpowers/plans/2026-11-14-odleglosci-h-ii.md`.
+- **Próg:** decyzja użytkownika 14.11.2026. Do 3D trafia odległość z σ ≤ 50 % (`MAX_RELATIVE_UNCERTAINTY = 0.5`,
+  wcześniej 20 %), dla wszystkich obiektów i regresora. Pomiar w progu wygrywa z Wikidata. „Wikidata zamiast σ > 50 %”:
+  7 obiektów (wcześniej 1048 przy 20 %), np. NGC 5169 ma teraz CF4 z σ 26 %.
+- **Krok H II** (`scripts/hiiDistances.ts`, dla EN i CN po Hunt & Reffert). Zwraca pierwszy krok z σ ≤ 50 %, a gdy
+  żaden go nie ma, pierwszą wartość z literatury (dalej reguła Wikidata):
+  1. paralaksa z katalogu H II WISE (Anderson i in. 2014, J/ApJS/212/1, `Meth` = Parallax): 34 obiekty;
+  2. Foster & Brunt 2015 (J/AJ/150/147, widma gwiazd, po nazwie Sh2): 84;
+  3. pozostałe odległości WISE (kinematyczne autorów z rozstrzygnięciem bliżej/dalej): 111;
+  4. własna odległość kinematyczna (`scripts/kinematicDistance.ts`): 29, tylko z σ ≤ 50 % (mediana σ 36 %).
+     Wartości z σ > 50 % odrzucamy, bo w katalogu blokowałyby regresor wycinka. Nie liczymy jej w kierunku centrum
+     Galaktyki (|l| < 15°): ruchy niekołowe, a prędkość poza punktem stycznym dawała 8 kpc z σ 2 % (LBN 1, LBN 3).
+  - Region WISE dobierany po nazwie Sharplessa, a bez niej, gdy środek obiektu leży w promieniu regionu. Promień
+    obiektu się nie liczy: przy nim duże mgławice przejmowały małe regiony w tle (LBN 159 → 12,7 kpc, LBN 249 → 10 kpc).
+     - Model: krzywa Reid i in. 2019 (A5), Monte Carlo jak Wenger i in. 2018 (2000 próbek, stałe ziarno,
+       korelacja V⊙–V̄s −0,99, σ prędkości 5 km/s); `verified: false`.
+     - Prędkości z WISE, Russeil 2003 i Foster & Brunt. Tracery mają pierwszeństwo w kolejności: linie rekombinacyjne,
+       molekularne, Hα; HI pomijamy.
+     - Przy rozbieżności tracerów > 10 km/s odległości nie liczymy.
+     - W wewnętrznej Galaktyce bierzemy rozwiązanie bliższe, chyba że WISE podaje KDA.
+  Wyjątek na sztywno dla Sh2-155 zastąpiło ogólne dopasowanie Foster & Brunt (ta sama wartość 0,84 ± 0,04 kpc).
+- **Zasięg:**
+  - Sh2: z odległością 4 → 163 z 305, w 3D 4 → 162;
+  - EN + CN z odległością 59 → 302, w 3D 300;
+  - cały katalog w 3D 10 188 → 11 148.
+- **Wartości kontrolne:**
+  - Sh2-252: 2,1 ± 0,1 kpc, paralaksa WISE (Foster & Brunt: 2,23 kpc);
+  - Sh2-180: 5,41 kpc (Foster & Brunt);
+  - Sh2-183: 6,6 kpc (WISE);
+  - Sh2-187: 1,58 kpc (σ 20,3 %, teraz w 3D);
+  - Sh2-181: 2,43 kpc ± 32 %, kinematycznie z CO Russeil 2003 (regresor: 2,2 kpc).
+  - NGC 2174 i IC 2159: bez odległości. Środek NGC 2174 leży poza regionami WISE z odległością, a kierunek blisko
+    antycentrum daje zbyt niepewną kinematykę. Regresor odmówił.
+- **Ograniczenie metody:** ruchy strumieniowe w ramionach spiralnych.
+  - W3(OH): model daje 3,1 kpc przy paralaksie 1,95 kpc.
+  - W II ćwiartce wartości A5 są o ok. 25–30 % mniejsze niż z płaskiej krzywej Russeil 2003.
+  - Dlatego własna kinematyka stoi na końcu kolejności, po pomiarach.
+  - Dopasowanie po pozycji może przypisać optycznej mgławicy region WISE leżący za nią. Przykład: LBN 76 → 12,8 kpc,
+    środek w obrysie regionu G021.143−00.298.
+- **Poza zakresem:** próg CST Hunt & Reffert (NGC 2175: CST 4,35, 1769 pc z Gaia, w katalogu Wikidata 7273 lś).
+
 ## Weryfikacja
 `npm test`, `npm run typecheck`, `npm run build`; zrzuty Playwright (IC 434, M51) w
 `output/odleglosci-wdrozenie-2026-11-06/` po ponownej astrometrii przez `/api/photo/solve` i pobraniu gwiazd.

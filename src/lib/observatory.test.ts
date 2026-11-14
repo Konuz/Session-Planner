@@ -56,7 +56,7 @@ it('łączy włączone wycinki i gwiazdy zdjęcia, pomija obiekty bez ustalonej 
   const cut = (id: string, enabled: boolean, type: PhotoCut['type'], distLy: number | null = 1300, uncertaintyLy: number | null = 100): PhotoCut => ({ id, type, raDeg: 0, decDeg: 0, x: 10, y: 20, radius: 30, enabled, distLy, uncertaintyLy, distanceScope: 'illuminator', distanceMethod: 'paralaksa HD 37903', distanceSource: 'Bailer-Jones i in. 2021', distanceRef: '2021AJ....161..147B', distanceOrigin: 'stars' })
   const star: PhotoStar = { id: 'Gaia DR3 1', x: 5, y: 6, raDeg: 0, decDeg: 0, gMag: 8, bpRp: 0.4, parallaxMas: 2.5, parallaxOverError: 30, distLy: 1290, distLoLy: 1250, distHiLy: 1330 }
   const faint: PhotoStar = { ...star, id: 'Gaia DR3 2', parallaxOverError: 2, distLy: null, distLoLy: null, distHiLy: null }
-  const project = { cuts: [cut('IC 434', true, 'EN'), cut('NGC 2024', false, 'EN'), cut('NGC 2023', true, 'G'), cut('IC 435', true, 'RN', null, null), cut('NGC 5169', true, 'G', 1.8e8, 4.7e7)], stars: { stars: [star, faint], magLimit: 15, fetchedAt: 0 } } as unknown as PhotoProject
+  const project = { cuts: [cut('IC 434', true, 'EN'), cut('NGC 2024', false, 'EN'), cut('NGC 2023', true, 'G'), cut('IC 435', true, 'RN', null, null), cut('NGC 5169', true, 'G', 1.8e8, 1e8)], stars: { stars: [star, faint], magLimit: 15, fetchedAt: 0 } } as unknown as PhotoProject
   const items = observatoryItems(project)
   expect(items.map((i) => [i.id, i.category])).toEqual([['IC 434', 'nebulae'], ['NGC 2023', 'galaxies'], ['Gaia DR3 1', 'stars']])
   expect(items[0]).toMatchObject({ distLoLy: 1200, distHiLy: 1400, radius: 30, scope: 'illuminator', method: 'paralaksa HD 37903', ref: '2021AJ....161..147B' })

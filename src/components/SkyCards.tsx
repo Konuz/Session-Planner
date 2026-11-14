@@ -4,7 +4,7 @@ import { angularDistanceDeg, bodyAltAz, computeOptics, moonInfo, moonJ2000, rise
 import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO } from '../lib/catalog'
 import { fmtDate, fmtDeg, fmtDistance, fmtNum, fmtSize, fmtTime } from '../lib/format'
 import { darkWindow, nightPhases } from '../lib/night'
-import { seeingEstimate, skyRating, weatherAt } from '../lib/services'
+import { WEATHER_PROVIDERS, skyRating, weatherAt, weatherProviderInfo, weatherSeeing, windRating, type WeatherProviderId, type WeatherSeeingResult } from '../lib/services'
 import { useNight, useSelected, useSite, useTime, useWeather } from '../state/data'
 import { useStore } from '../state/store'
 import { MoonDisc } from './MoonDisc'
@@ -158,18 +158,44 @@ function RatingFace({ score, label }: { score: number; label: string }) {
   )
 }
 
+const QUALITY_COLOR = { dobry: 'var(--ok)', średni: 'var(--warn)', zły: 'var(--bad)' } as const
+
+function seeingTooltip(seeing: WeatherSeeingResult | null, jetKmh: number | null): string | undefined {
+  if (!seeing) return undefined
+  const parts = [`Seeing ${seeing.label}`]
+  if (seeing.source === 'profile') {
+    if (seeing.blArcsec !== null) parts.push(`warstwa graniczna ~${fmtNum(seeing.blArcsec, 1)}″`)
+    if (seeing.faArcsec !== null) parts.push(`swobodna atmosfera ~${fmtNum(seeing.faArcsec, 1)}″`)
+    if (jetKmh !== null) parts.push(`prąd strumieniowy ${Math.round(jetKmh)} km/h`)
+    if (seeing.pblM !== null) parts.push(`PBL ${seeing.pblM} m`)
+  } else if (jetKmh !== null) {
+    parts.push(`prąd strumieniowy ${Math.round(jetKmh)} km/h`)
+  }
+  return parts.join(' · ')
+}
+
 export function WeatherCard() {
   const [weekView, setWeekView] = useState(false)
   const time = useTime()
   const night = useNight()
   const site = useSite()
+  const provider = useStore((s) => s.weatherProvider)
+  const setWeatherProvider = useStore((s) => s.setWeatherProvider)
+  const providerInfo = weatherProviderInfo(provider)
   const { hours, error, loading } = useWeather()
   const h = weatherAt(hours, time)
   const nightHours = hours.filter((x) => x.t >= night.startMs && x.t <= night.endMs)
   // Bez zachodu Słońca: noc polarna to noc przez całą dobę, dzień polarny to dzień.
   const isNight = night.sunset === null ? !night.polarDay : time > night.sunset && (night.sunrise === null || time < night.sunrise)
   const rating = h ? skyRating(h) : null
-  const seeing = h ? seeingEstimate(h.jetKmh) : null
+  const wind = h ? windRating(h.wind) : null
+  const seeing = h ? weatherSeeing(h) : null
+  const seeingLabelTitle = seeing?.source === 'profile'
+    ? 'Szacunek z pionowego profilu atmosfery Cₙ² (warstwa graniczna + swobodna atmosfera), nie pomiar'
+    : seeing?.source === 'jet'
+      ? 'Szacunek z wiatru prądu strumieniowego (300–200 hPa), nie pomiar'
+      : 'Szacunek seeingu (wybrane źródło nie udostępnia danych górnych warstw atmosfery)'
+  const seeingValueTitle = seeingTooltip(seeing, h?.jetKmh ?? null) ?? (!providerInfo.hasUpperAir ? 'Brak danych górnych warstw atmosfery w tym źródle' : undefined)
   const tz = useStore((s) => s.location.timeZone)
   const week = useMemo(() => {
     // 7 × nightPhases (po kilka wyszukiwań efemeryd) tylko wtedy, gdy widok tygodnia jest otwarty.
@@ -198,8 +224,18 @@ export function WeatherCard() {
         <span className="weather-title-label">{weekView ? 'Warunki na 7 nocy' : 'Warunki tej nocy'}</span>
         <span className="sub weather-time" aria-hidden={weekView} style={{ visibility: weekView ? 'hidden' : 'visible' }}>{fmtTime(time, tz)}</span>
         <button className={`switch weather-period${weekView ? ' on' : ''}`} onClick={() => setWeekView(!weekView)} role="switch" aria-checked={weekView} aria-label={weekView ? 'Pokaż warunki tej nocy' : 'Pokaż prognozę na 7 nocy'} style={{ background: 'none', border: 0, padding: 0 }}><span className="track" /><span>{weekView ? '7 nocy' : '1 noc'}</span></button>
+        <select
+          id="weather-provider"
+          className="control weather-select"
+          value={provider}
+          aria-label="Dostawca prognozy pogody"
+          onChange={(e) => setWeatherProvider(e.target.value as WeatherProviderId)}
+        >
+          {WEATHER_PROVIDERS.map((p) => (
+            <option key={p.id} value={p.id}>{p.label}</option>
+          ))}
+        </select>
       </h2>
-      <p className="dim weather-note">Przełącz zakres prognozy: tej nocy lub kolejnych 7 nocy.</p>
       {weekView ? (
         <div className="wx-week">
           {week.map((day) => <div className="wx-week-row" key={day.date}>
@@ -207,7 +243,7 @@ export function WeatherCard() {
             {day.score === null || day.rating === null ? <span className="dim">Brak danych</span> : <RatingFace score={day.score} label={day.rating} />}
             {day.cloud !== null && <small>Zachmurzenie {day.cloud}% - min. {day.minTemp}°C</small>}
           </div>)}
-          <p className="dim" style={{ fontSize: 11, marginBottom: 0 }}>Średnia ocena i zachmurzenie w ciemnym oknie każdej nocy. Prognoza: Open-Meteo.</p>
+          <p className="dim" style={{ fontSize: 11, marginBottom: 0 }}>Średnia ocena i zachmurzenie w ciemnym oknie każdej nocy. Prognoza: {providerInfo.shortLabel}.</p>
         </div>
       ) : h && rating ? (
         <div className="wx-current">
@@ -222,10 +258,11 @@ export function WeatherCard() {
               <CloudMoon size={15} /> <span>Zachmurzenie</span> <span className="v">{Math.round(h.cloud)}%</span>
               <Droplets size={15} /> <span>Wilgotność</span> <span className="v">{Math.round(h.humidity)}%</span>
               <Thermometer size={15} /> <span>Punkt rosy</span> <span className="v">{fmtNum(h.dew, 0)}°C</span>
-              <Wind size={15} /> <span>Wiatr</span> <span className="v">{Math.round(h.wind)} km/h</span>
-              <Sparkles size={15} /> <span title="Szacunek z wiatru prądu strumieniowego (300–200 hPa), nie pomiar">Seeing</span>
+              <Wind size={15} /> <span title="Do 15 km/h akceptowalny, 16–24 km/h umiarkowany (ryzykowny przy długiej ogniskowej), powyżej 24 km/h za silny">Wiatr</span>
+              <span className="v" title={wind?.note} style={{ color: wind ? QUALITY_COLOR[wind.label] : undefined }}>{Math.round(h.wind)} km/h</span>
+              <Sparkles size={15} /> <span title={seeingLabelTitle}>Seeing</span>
               {/* Ocena (dobry/średni/zły) tylko kolorem wartości; słownie w dymku. */}
-              <span className="v" title={seeing && h.jetKmh !== null ? `Seeing ${seeing.label} · prąd strumieniowy ${Math.round(h.jetKmh)} km/h` : undefined} style={{ color: seeing ? (seeing.label === 'dobry' ? 'var(--ok)' : seeing.label === 'średni' ? 'var(--warn)' : 'var(--bad)') : undefined }}>
+              <span className="v" title={seeingValueTitle} style={{ color: seeing ? QUALITY_COLOR[seeing.label] : undefined }}>
                 {seeing ? `~${fmtNum(seeing.arcsec, 1)}″` : '-'}
               </span>
             </div>
@@ -239,7 +276,7 @@ export function WeatherCard() {
               </div>
               <div className="dim figures" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, marginTop: 4 }}>
                 <span>{fmtTime(nightHours[0].t, tz)}</span>
-                <span>zachmurzenie godzinowe · Open-Meteo</span>
+                <span>zachmurzenie godzinowe · {providerInfo.shortLabel}</span>
                 <span>{fmtTime(nightHours[nightHours.length - 1].t, tz)}</span>
               </div>
             </>

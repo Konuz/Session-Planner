@@ -74,11 +74,15 @@ it('Zucker 2020: linie widzenia w obrysie mgławicy ciemnej, rozbieżne linie be
   expect(zuckerChoice(entry(['LDN 1630'], 'DN', 86.3858, -0.9809, 165.6), spread)).toBeNull()
 })
 
-it('Wikidata zastępuje pomiar z σ > 20 %, ale nie pewny pomiar; bez Wikidata zostaje pomiar', () => {
+it('Wikidata zastępuje pomiar z σ > 50 %, ale nie pomiar w progu; bez Wikidata zostaje pomiar', () => {
+  // NGC 5169: CF4 z σ ≈ 26 % mieści się w progu 50 % (decyzja 14.11.2026) i wygrywa z Wikidata.
   const ngc5169 = cf4Choice({ raDeg: 202.04, decDeg: 46.67, dm: 33.705, eDm: 0.57, methods: ['Tully–Fisher'] })
   expect(ngc5169.sigmaLy! / ngc5169.ly).toBeGreaterThan(0.2)
-  expect(withWikidataFallback(ngc5169, 156554880)).toMatchObject({ ly: 156554880, sigmaLy: null, source: { verified: false, method: 'Wikidata, niezweryfikowane' } })
-  expect(withWikidataFallback(ngc5169, null)).toBe(ngc5169)
+  expect(withWikidataFallback(ngc5169, 156554880)).toBe(ngc5169)
+  const vague = cf4Choice({ raDeg: 202.04, decDeg: 46.67, dm: 33.705, eDm: 1.2, methods: ['Tully–Fisher'] })
+  expect(vague.sigmaLy! / vague.ly).toBeGreaterThan(0.5)
+  expect(withWikidataFallback(vague, 156554880)).toMatchObject({ ly: 156554880, sigmaLy: null, source: { verified: false, method: 'Wikidata, niezweryfikowane' } })
+  expect(withWikidataFallback(vague, null)).toBe(vague)
   const m51 = cf4Choice({ raDeg: 202.4696, decDeg: 47.1952, dm: 29.606, eDm: 0.08, methods: ['TRGB'] })
   expect(withWikidataFallback(m51, 24787856)).toBe(m51)
   expect(withWikidataFallback(null, 1500)?.ly).toBe(1500)

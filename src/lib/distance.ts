@@ -20,7 +20,7 @@ export interface DistanceInfo {
   source: string
   /** Bibcode ADS; '' gdy brak. */
   ref: string
-  /** false: wartość niesprawdzona (Wikidata), tylko gdy nie ma innej. */
+  /** false: wartość niesprawdzona lub pośrednia (Wikidata, odległość kinematyczna); gwiazda oświetlająca z pola ma przed nią pierwszeństwo. */
   verified: boolean
 }
 
@@ -29,9 +29,9 @@ export type CutDistance = Pick<PhotoCut, 'distLy' | 'uncertaintyLy' | 'distanceS
 export const NO_DISTANCE: CutDistance = { distLy: null, uncertaintyLy: null, distanceScope: 'object', distanceMethod: '', distanceSource: '', distanceRef: '', distanceOrigin: 'catalog' }
 
 /** Największa względna niepewność (1σ) odległości pokazywanej w 3D. */
-export const MAX_RELATIVE_UNCERTAINTY = 0.2
+export const MAX_RELATIVE_UNCERTAINTY = 0.5
 
-/** Ustalona odległość: dodatnia i (gdy niepewność jest znana) z σ ≤ 20 %. Obiektów bez niej nie pokazujemy w 3D. */
+/** Ustalona odległość: dodatnia i (gdy niepewność jest znana) z σ ≤ 50 % (decyzja 14.11.2026; wcześniej 20 %). Obiektów bez niej nie pokazujemy w 3D. */
 export function hasDistance(d: { distLy: number | null; uncertaintyLy: number | null }): boolean {
   if (d.distLy === null || !Number.isFinite(d.distLy) || d.distLy <= 0) return false
   return d.uncertaintyLy === null || d.uncertaintyLy <= d.distLy * MAX_RELATIVE_UNCERTAINTY
@@ -127,12 +127,42 @@ export function cutDistance(object: Pick<DSO, 'distLy' | 'distUncLy' | 'distInfo
 
 const CUT_FIELDS = ['distLy', 'uncertaintyLy', 'distanceScope', 'distanceMethod', 'distanceSource', 'distanceRef', 'distanceOrigin'] as const
 
+/** Scala potwierdzone oznaczenia tego samego regionu H II. Zachowuje geometrię głównego wpisu i ręczny wybór odległości. */
+export function canonicalPhotoCuts(cuts: PhotoCut[], byId: ReadonlyMap<string, DSO>): PhotoCut[] {
+  const groups = new Map<string, { geometry: PhotoCut; distance: PhotoCut }>()
+  let changed = false
+  for (const cut of cuts) {
+    const primary = byId.get(byId.get(cut.id)?.photoPrimaryId ?? '')
+    const id = primary?.id ?? cut.id
+    const group = groups.get(id)
+    if (!group) {
+      groups.set(id, { geometry: cut, distance: cut })
+      changed ||= !!primary
+      continue
+    }
+    changed = true
+    if (cut.id === id) group.geometry = cut
+    const current = group.distance
+    const manual = cut.distanceOrigin === 'user'
+    const currentManual = current.distanceOrigin === 'user'
+    if (manual !== currentManual ? manual : cut.id === id) group.distance = cut
+  }
+  if (!changed) return cuts
+  return [...groups].map(([id, { geometry, distance }]) => {
+    if (geometry.id === id && geometry === distance) return geometry
+    const primary = byId.get(id)
+    const fields = Object.fromEntries(CUT_FIELDS.map((field) => [field, distance[field]])) as CutDistance
+    return { ...geometry, ...fields, id, raDeg: primary?.raDeg ?? geometry.raDeg, decDeg: primary?.decDeg ?? geometry.decDeg }
+  })
+}
+
 /** Odległości wycinków ustalane przez aplikację odświeżone z bieżącego katalogu i gwiazd Gaia pola (gwiazda
  *  oświetlająca); wybór z edycji i wartość regresora (gdy łańcuch nic nie daje) zostają. Bez zmian zwraca ten sam projekt. */
 export function refreshCutDistances<P extends { cuts: PhotoCut[]; stars: { stars: PhotoStar[] } | null }>(project: P, catalog: DSO[], byId: Map<string, DSO>): P {
   const stars = project.stars?.stars ?? null
-  let changed = false
-  const cuts = project.cuts.map((cut) => {
+  const canonical = canonicalPhotoCuts(project.cuts, byId)
+  let changed = canonical !== project.cuts
+  const cuts = canonical.map((cut) => {
     const object = cut.distanceOrigin === 'user' ? undefined : byId.get(cut.id)
     if (!object) return cut
     const next = cutDistance(object, stars, object.illuminator?.cluster != null ? catalog[object.illuminator.cluster] ?? null : null)
@@ -165,7 +195,7 @@ const regressorFields = (distLy: number, uncertaintyLy: number | null, scope: Di
   ({ distLy, uncertaintyLy, distanceScope: scope, distanceMethod: `regresor, niezweryfikowane: ${method}`, distanceSource: 'astro-regressor (model)', distanceRef: '', distanceOrigin: 'regressor' })
 
 /** Wartość regresora do pokazania (zawsze jako niezweryfikowana, z metodą modelu) albo null, gdy nie jest sensowna:
- *  odmowa, błąd, grupa poniżej 5 gwiazd albo niepewność ponad 20 %. */
+ *  odmowa, błąd, grupa poniżej 5 gwiazd albo niepewność ponad 50 %. */
 export function regressorDistance(result: RegressorResult, raDeg: number, decDeg: number): CutDistance | null {
   if (result.status !== 'ok') return null
   let d: CutDistance

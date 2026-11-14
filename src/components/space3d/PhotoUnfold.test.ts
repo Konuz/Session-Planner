@@ -25,22 +25,23 @@ function render(overrides: Partial<PhotoSession> = {}, visible = true) {
   return renderToStaticMarkup(createElement(PhotoUnfold, { session, visible }))
 }
 
-it('pokazuje licznik obiektów, zakres odległości i licznik obiektów poza 3D, bez planów i okna zdjęcia', () => {
+it('pokazuje licznik obiektów i zakres odległości, bez linku poza 3D, planów i okna zdjęcia', () => {
   const html = render()
   expect(html).toContain('OBIEKTY ZDJĘCIA')
   expect(html).toContain('3 obiektów w przestrzeni')
   expect(html).toContain('≈ 11–410 mln lś')
-  expect(html).toContain('1 poza 3D')
+  expect(html).not.toContain('poza 3D')
   expect(html).not.toContain('Główny plan')
   expect(html).not.toContain('Z Ziemi')
 })
 
-it('wybrany obiekt ma odległość, przybliżenie i przejście do źródła odległości', () => {
+it('wybrany obiekt ma odległość i ikonę przybliżenia bez przycisków Przybliż i Źródło odległości', () => {
   const html = render({ activeId: 'PGC 28757' })
   expect(html).toContain('aria-label="Wybrany obiekt"')
   expect(html).toContain('≈ 410 mln lś')
-  expect(html).toContain('Przybliż')
-  expect(html).toContain('Źródło odległości')
+  expect(html).toContain('aria-label="Przybliż obiekt"')
+  expect(html).not.toContain('>Przybliż<')
+  expect(html).not.toContain('Źródło odległości')
 })
 
 it('znika w edycji wycinków, poza skalą i bez projektu', () => {

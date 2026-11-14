@@ -128,9 +128,9 @@ it('migruje wycinki wersji 2: wartość katalogu do odświeżenia, wybór z SIMB
   expect(cuts[2]).toMatchObject({ distLy: null, distanceSource: '', distanceMethod: '', distanceOrigin: 'catalog' })
 })
 
-it('w 3D pokazuje tylko włączone wycinki z ustaloną odległością (σ ≤ 20 %)', () => {
+it('w 3D pokazuje tylko włączone wycinki z ustaloną odległością (σ ≤ 50 %)', () => {
   const cut = (id: string, distLy: number | null, uncertaintyLy: number | null, enabled = true) => ({ id, distLy, uncertaintyLy, enabled }) as PhotoCut
-  const cuts = [cut('a', 1000, null), cut('b', null, null), cut('c', 1000, 200), cut('d', 1000, 201), cut('e', 1000, 10, false), cut('f', 0, null)]
+  const cuts = [cut('a', 1000, null), cut('b', null, null), cut('c', 1000, 500), cut('d', 1000, 501), cut('e', 1000, 10, false), cut('f', 0, null)]
   expect(cutsInThreeD(cuts).map((c) => c.id)).toEqual(['a', 'c'])
   expect(hasDistance({ distLy: 5, uncertaintyLy: null })).toBe(true)
   expect(hasDistance({ distLy: Number.NaN, uncertaintyLy: null })).toBe(false)

@@ -15,6 +15,10 @@ export interface DSO {
   i: number
   id: string
   aliases: string[]
+  /** Główne oznaczenie tego samego regionu H II przy wykrywaniu wycinków zdjęcia. */
+  photoPrimaryId?: string
+  /** Potwierdzone oznaczenia zapasowe wyświetlane w edytorze wycinka. */
+  photoAliases?: string[]
   namePl: string
   namesEn: string[]
   type: ObjectType
@@ -104,9 +108,15 @@ export type SourceRow = [number, string, string, string, number]
  *  indeks tabeli źródeł (−1: brak), gwiazda oświetlająca [oznaczenie, RA, Dec, V (99: brak), indeks gromady (−1: brak)]. */
 type Row = [string, string, string, string, ObjectType, number, number, number, number, number, number, number, string, number, string, string, number?, number?, [string, number, number, number, number]?]
 
-export function parseCatalog(rows: Row[], sourceRows: SourceRow[] = [], unresolvedRows: number[] = []): DSO[] {
+export function parseCatalog(rows: Row[], sourceRows: SourceRow[] = [], unresolvedRows: number[] = [], photoAliases: Record<string, string> = {}): DSO[] {
   const unresolved = new Set(unresolvedRows)
   const sources = sourceRows.map(([scope, method, source, ref, verified]): DistanceInfo => ({ scope: SCOPES[scope], method, source, ref, verified: verified === 1 }))
+  const aliasesByPrimary = new Map<string, string[]>()
+  for (const [alias, primary] of Object.entries(photoAliases)) {
+    const aliases = aliasesByPrimary.get(primary) ?? []
+    aliases.push(alias)
+    aliasesByPrimary.set(primary, aliases)
+  }
   return rows.map((r, i) => {
     const ill = r[18]
     const aliases = r[1] ? r[1].split('|') : []
@@ -117,6 +127,8 @@ export function parseCatalog(rows: Row[], sourceRows: SourceRow[] = [], unresolv
       i,
       id: r[0],
       aliases,
+      photoPrimaryId: photoAliases[r[0]],
+      photoAliases: aliasesByPrimary.get(r[0]),
       namePl: r[2],
       namesEn,
       type: r[4],
@@ -247,8 +259,8 @@ export async function loadCatalog(): Promise<DSO[]> {
   const start = perfNow()
   const res = await fetch('/data/catalog.json')
   if (!res.ok) throw new Error(`Nie udało się wczytać katalogu (HTTP ${res.status})`)
-  const data = (await res.json()) as { rows: Row[]; sources?: SourceRow[]; unresolved?: number[] }
-  const catalog = parseCatalog(data.rows, data.sources, data.unresolved)
+  const data = (await res.json()) as { rows: Row[]; sources?: SourceRow[]; unresolved?: number[]; photoAliases?: Record<string, string> }
+  const catalog = parseCatalog(data.rows, data.sources, data.unresolved, data.photoAliases)
   measureSince('catalog:load', start)
   return catalog
 }

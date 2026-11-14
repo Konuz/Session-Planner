@@ -19,8 +19,9 @@ import { join } from 'node:path'
 import * as Astronomy from 'astronomy-engine'
 import sharp from 'sharp'
 import { simbadId } from '../src/lib/distance.ts'
-import { checkIdentity, cf4Choice, clusterKey, cw21Choice, findCw21, findHr23, findRl22, parseCw21, parseRl22, rl22Choice, hr23Choice, ILLUMINATOR_MATCH_DEG, KNOWN_DISCREPANCIES, withWikidataFallback, matchCf4, parseCf4, parseHr23, parseSimbadIdents, parseVizierTsv, parseZucker, redshiftChoice, separationDeg, simbadKey, WIKIDATA, zuckerChoice, type Choice, type Entry, type Hr23Cluster, type SimbadObject, type SourceKey } from './catalogDistances.ts'
+import { checkIdentity, cf4Choice, clusterKey, cw21Choice, findCw21, findHr23, findRl22, parseCw21, parseRl22, rl22Choice, hr23Choice, ILLUMINATOR_MATCH_DEG, KNOWN_DISCREPANCIES, withWikidataFallback, matchCf4, parseCf4, parseHr23, parseSimbadIdents, parseVizierTsv, parseZucker, photoNebulaAliases, redshiftChoice, separationDeg, simbadKey, WIKIDATA, zuckerChoice, type Choice, type Entry, type Hr23Cluster, type SimbadObject, type SourceKey } from './catalogDistances.ts'
 import { cachedBytes, cachedText } from './download.ts'
+import { hiiChoice, parseFosterBrunt, parseRusseil, parseWise, type HiiSources } from './hiiDistances.ts'
 import { newPlanetaryNebulae, parseV84 } from './planetaryNebulae.ts'
 
 const ROOT = join(import.meta.dirname, '..')
@@ -214,6 +215,13 @@ async function buildCatalog() {
     const list = designations.map(joinKey).filter((k): k is string => k !== null).map((k) => distances.get(k)).find((d) => d !== undefined)
     return list ? Math.round(median(list)) : null
   })
+  // Nowe źródła dopisujemy po dotychczasowych, w kolejności dodania, żeby zachować indeksy w zapisanym katalogu.
+  const appended = ['2015AJ....150..147F', '2021AJ....161..147B', '2014ApJS..212....1A', '2019ApJ...885..131R']
+  for (const ref of [null, ...appended]) {
+    for (const { choice } of distancePlan.objects) {
+      if (choice && (ref === null ? !appended.includes(choice.source.ref) : choice.source.ref === ref)) distancePlan.sourceIndex(choice.source)
+    }
+  }
 
   // Kolumny: id, oznaczenia, nazwa PL, nazwy EN, typ, RA, Dec, wymiar a, b, PA, mag, jasność pow., gwiazdozbiór,
   // odległość [ly], artykuł pl, artykuł en; tylko przy odległości lub gwieździe oświetlającej: względna niepewność [‰],
@@ -248,7 +256,7 @@ async function buildCatalog() {
     return row
   })
   const withDist = rows.filter((row) => row[13] !== 0).length
-  writeFileSync(join(OUT, 'catalog.json'), JSON.stringify({ v: 2, sources: distancePlan.sources, unresolved: distancePlan.unresolved, rows }))
+  writeFileSync(join(OUT, 'catalog.json'), JSON.stringify({ v: 2, sources: distancePlan.sources, unresolved: distancePlan.unresolved, photoAliases: distancePlan.photoAliases, rows }))
   mkdirSync(join(ROOT, 'docs', 'odleglosci'), { recursive: true })
   writeFileSync(join(ROOT, 'docs', 'odleglosci', 'tozsamosc.json'), JSON.stringify(distancePlan.review, null, 1) + '\n')
   console.log(`catalog: ${rows.length} obiektów, ${withDist} z odległością (${Object.entries(distancePlan.counts).map(([k, v]) => `${k} ${v}`).join(', ')})`)
@@ -267,6 +275,12 @@ async function planDistances(entries: Entry[], wikidata: (designations: string[]
   const cw21 = parseCw21(await vizier('cw21-pn', '-source=J/A%2BA/656/A110/tablea1&-out=PNG,Name,Rel,RUWE,pnRAdeg,pnDEdeg,pnRad,rcomb,b_rcomb,B_rcomb'))
   const cw21ByPng = new Map(cw21.map((pn) => [pn.png, pn]))
   const vdbStars = new Map(parseVizierTsv(await vizier('vdb-vii21', '-source=VII/21&-out=VdB,DM,HD')).map((row) => [Number(row.VdB), row.HD ? `HD ${row.HD}` : row.DM.replace(/\s+/g, ' ')]))
+  // Obszary H II: Foster & Brunt 2015, katalog WISE (Anderson i in. 2014) i prędkości Russeil 2003 (scripts/hiiDistances.ts).
+  const hii: HiiSources = {
+    fb: parseFosterBrunt(await vizier('fb15-table2', '-source=J/AJ/150/147/table2&-out.all')),
+    wise: parseWise(await vizier('wise14-hii', '-source=J/ApJS/212/1/wisecat&-out.all')),
+    russeil: parseRusseil(await vizier('russeil03-v', '-source=J/A%2BA/397/133/table1&-out.all')),
+  }
   const hr23ByKey = new Map<string, Hr23Cluster>()
   for (const c of hr23) for (const name of c.names) if (!hr23ByKey.has(clusterKey(name))) hr23ByKey.set(clusterKey(name), c)
   const cf4ByEntry = matchCf4(entries, cf4)
@@ -279,7 +293,7 @@ async function planDistances(entries: Entry[], wikidata: (designations: string[]
     if (!sourceKeys.has(id)) { sourceKeys.set(id, sources.length); sources.push([SCOPES.indexOf(key.scope), key.method, key.source, key.ref, key.verified ? 1 : 0]) }
     return sourceKeys.get(id)!
   }
-  const counts: Record<string, number> = { 'Hunt & Reffert': 0, CF4: 0, z: 0, Zucker: 0, 'Ranasinghe & Leahy': 0, 'Chornay & Walton': 0, Wikidata: 0, 'Wikidata zamiast σ > 20 %': 0, 'bez tożsamości': 0 }
+  const counts: Record<string, number> = { 'Hunt & Reffert': 0, CF4: 0, z: 0, Zucker: 0, 'Ranasinghe & Leahy': 0, 'Chornay & Walton': 0, 'WISE paralaksa': 0, 'Foster & Brunt': 0, WISE: 0, kinematyczna: 0, 'gwiazdy jonizujące': 0, Wikidata: 0, 'Wikidata zamiast σ > 50 %': 0, 'bez tożsamości': 0 }
   const review: { position: object[]; aliases: object[]; types: object[]; known: object[] } = { position: [], aliases: [], types: [], known: KNOWN_DISCREPANCIES }
   const clusters = new Map<number, Hr23Cluster>()
   const identities = entries.map((e) => checkIdentity(e, simbad))
@@ -295,8 +309,18 @@ async function planDistances(entries: Entry[], wikidata: (designations: string[]
     }
     const usable = e.designations.filter((d) => !identity.foreignAliases.some((a) => a.alias === d))
     const measured = (() => {
+      if (id === 'Sh2-101' && e.type === 'EN' && identity.verdict === 'ok' && identity.mainId === 'LBN 071.58+02.86') {
+        // HD 227018 (Gaia DR3 2059434898612310656), Bailer-Jones r_med_geo i percentyle 16–84.
+        return { key: 'gwiazdy jonizujące', choice: {
+          ly: 2107.6736 * LY_PER_UNIT['http://www.wikidata.org/entity/Q12129'],
+          sigmaLy: (2183.071 - 2044.608) / 2 * LY_PER_UNIT['http://www.wikidata.org/entity/Q12129'],
+          source: { scope: 'illuminator', method: 'paralaksa gwiazdy jonizującej HD 227018 (Gaia DR3 2059434898612310656)', source: 'Bailer-Jones i in. 2021, odległość geometryczna', ref: '2021AJ....161..147B', verified: true },
+        } satisfies Choice }
+      }
       const cluster = findHr23(e, usable, hr23ByKey)
       if (cluster) { clusters.set(i, cluster); return { key: 'Hunt & Reffert', choice: hr23Choice(cluster) } }
+      const hiiStep = hiiChoice(e, usable, hii)
+      if (hiiStep) return hiiStep
       const galaxy = cf4ByEntry.get(i)
       if (galaxy) return { key: 'CF4', choice: cf4Choice(galaxy) }
       if (e.type === 'G' || e.type === 'GG') {
@@ -312,7 +336,7 @@ async function planDistances(entries: Entry[], wikidata: (designations: string[]
       return cloud ? { key: 'Zucker', choice: cloud } : null
     })()
     const choice = withWikidataFallback(measured?.choice ?? null, wikidata(usable))
-    if (choice?.source === WIKIDATA) counts[measured ? 'Wikidata zamiast σ > 20 %' : 'Wikidata']++
+    if (choice?.source === WIKIDATA) counts[measured ? 'Wikidata zamiast σ > 50 %' : 'Wikidata']++
     else if (measured) counts[measured.key]++
     return choice
   })
@@ -339,6 +363,7 @@ async function planDistances(entries: Entry[], wikidata: (designations: string[]
   })
   return {
     sources, sourceIndex, review, counts: { ...counts, 'gwiazdy oświetlające': illuminators.size },
+    photoAliases: photoNebulaAliases(entries, identities),
     unresolved: identities.flatMap((identity, i) => identity.verdict === 'position' ? [i] : []),
     objects: entries.map((_, i) => ({ choice: choices[i], illuminator: illuminators.get(i) ?? null })),
   }

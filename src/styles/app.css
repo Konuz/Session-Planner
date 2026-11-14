@@ -495,16 +495,14 @@ input[type='checkbox']:checked::after {
 .photo-notice { font: 10px var(--mono); color: var(--warn); }
 .photo-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: hidden; }
 .photo-circle { pointer-events: stroke; cursor: pointer; }
-.photo-draggable { pointer-events: all; cursor: move; touch-action: none; }
-.photo-resize { pointer-events: all; cursor: ew-resize; touch-action: none; }
 .photo-label { text-anchor: middle; fill: var(--text); stroke: var(--bg); stroke-width: 3px; paint-order: stroke; font: 11px var(--mono); pointer-events: none; }
+.photo-label.muted { fill: var(--text-dim); }
 /* Lista obiektów zdjęcia (Wszechświat lokalny). */
 .photo-window-panel { position: absolute; top: 12px; right: 12px; z-index: 4; display: flex; flex-direction: column; gap: 9px; width: 264px; max-height: calc(100% - 100px); padding: 12px; overflow-y: auto; border: 1px solid var(--border-strong); background: var(--card); font-size: 11px; }
 .pw-heading { display: grid; gap: 3px; }
 .pw-eyebrow { color: var(--accent); font: 9px var(--mono); letter-spacing: 0.2em; }
 .pw-heading strong { font: 600 13px var(--display); }
 .pw-meta { color: var(--text-dim); font: 10px var(--mono); }
-.pw-actions .button.small { height: 28px; min-height: 28px; padding: 0 6px; justify-content: center; }
 .pw-search { width: 100%; min-height: 28px; flex: none; padding: 0 8px; border: 1px solid var(--border-strong); background: var(--bg); color: var(--text); font: 11px var(--mono); }
 .pw-list { flex: 0 1 auto; min-height: 64px; max-height: 300px; overflow: auto; border: 1px solid var(--border); }
 .pw-row { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 8px; padding: 0 8px; cursor: pointer; }
@@ -514,15 +512,16 @@ input[type='checkbox']:checked::after {
 .pw-row-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pw-row-dist { font-size: 10px; color: var(--text-dim); }
 .pw-selection { display: grid; gap: 7px; flex: none; padding-top: 9px; border-top: 1px solid var(--border-strong); }
-.pw-selected { display: flex; align-items: center; gap: 10px; }
-.pw-selected .pw-thumb { width: 56px; height: 56px; border-color: var(--text); }
-.pw-selected > div { display: grid; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
+.pw-selected { position: relative; display: grid; justify-items: center; gap: 8px; text-align: center; }
+.pw-selected .pw-thumb { width: 120px; height: 120px; border-color: var(--text); }
+.pw-selected-meta { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
 .pw-selected strong { font-size: 13px; }
+.pw-zoom { position: absolute; top: 0; right: 0; width: 26px; height: 26px; display: grid; place-items: center; padding: 0; border: 1px solid transparent; background: transparent; color: var(--accent); cursor: pointer; transition: color 0.15s var(--ease-std), border-color 0.15s var(--ease-std), background-color 0.15s var(--ease-std); }
+.pw-zoom:hover, .pw-zoom:focus-visible { border-color: var(--accent); background: var(--accent-faint); color: var(--text); }
 .pw-selection p, .pw-note { margin: 0; color: var(--text-dim); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
-.pw-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
-.pw-excluded { text-align: left; font-size: 10px; }
 @media (max-width: 700px) {
   .photo-window-panel { top: 8px; right: 8px; width: 200px; padding: 8px; max-height: calc(100% - 150px); }
+  .pw-selected .pw-thumb { width: 96px; height: 96px; }
   .pw-note { display: none; }
 }
 .photo-controls { position: absolute; bottom: 12px; left: 12px; right: 12px; z-index: 5; padding: 8px 10px; border: 1px solid var(--border-strong); background: var(--card); }
@@ -648,15 +647,15 @@ input[type='checkbox']:checked::after {
 .wx-rows svg { color: var(--accent); }
 .wx-rows .v { font-family: var(--mono); text-align: right; }
 .weather-card { display: flex; flex-direction: column; min-height: 0; }
-.weather-title { display: grid; grid-template-columns: minmax(0, 1fr) 44px 86px; }
+.weather-title { display: grid; grid-template-columns: minmax(0, 1fr) 44px 86px; row-gap: 7px; }
 .weather-title-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .weather-time { width: 44px; text-align: right; }
 .weather-period { width: 86px; flex: none; justify-content: flex-start; gap: 6px; white-space: nowrap; }
-.weather-note { flex: none; font-size: 11px; margin: -6px 0 10px; }
+.control.weather-select { grid-column: 1 / -1; justify-self: start; width: fit-content; max-width: 100%; min-width: 0; height: auto; min-height: 26px; padding: 2px 24px 2px 8px; font: 11.5px var(--mono); text-transform: none; letter-spacing: normal; background-position: right 8px center; }
 .wx-week, .wx-current, .wx-empty {
-  flex: 0 0 200px;
-  height: 200px;
-  min-height: 200px;
+  flex: 0 0 250px;
+  height: 250px;
+  min-height: 250px;
   overflow-y: auto;
   padding-right: 12px;
   scrollbar-width: thin;
@@ -677,8 +676,8 @@ input[type='checkbox']:checked::after {
   display: block;
   width: auto;
   max-width: 100%;
-  height: 220px;
-  margin: 2px auto 10px;
+  height: 158px;
+  margin: 0 auto 4px;
   -webkit-mask-image: radial-gradient(ellipse 50% 52% at 50% 47%, #000 45%, transparent 100%);
   mask-image: radial-gradient(ellipse 50% 52% at 50% 47%, #000 45%, transparent 100%);
 }

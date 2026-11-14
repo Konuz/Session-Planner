@@ -1,5 +1,5 @@
 // Odległości wycinków bez odległości z astro-regressor (Python przez pixi): kolejka zadań w tle, jedno naraz
-// (2–5 min na obiekt, zapytania do Gaia, VizieR, IRSA, SDSS). Wyniki „ok” i odmowy modelu w scripts/.cache/regressor;
+// (Gaia dla mgławic i gromad, dodatkowe katalogi dla galaktyk). Wyniki „ok” i odmowy modelu w scripts/.cache/regressor;
 // awarie usług nie trafiają do pamięci i można je ponowić. Bez pixi lub katalogu regresora usługa jest wyłączona.
 import { spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -11,9 +11,10 @@ import { fileURLToPath } from 'node:url'
 import { REGRESSOR_TYPES, type RegressorResult } from '../src/lib/distance.ts'
 
 /** Wersja wrappera i poprawek regresora: zmiana unieważnia zapamiętane wyniki. */
-export const REGRESSOR_VERSION = 1
+export const REGRESSOR_VERSION = 2
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const RUN_MS = 10 * 60_000
+const STELLAR_RUN_MS = 90_000
 const MAX_TARGETS = 40
 const MAX_QUEUE = 200
 const MAX_BODY = 64 * 1024
@@ -49,20 +50,25 @@ export function pixiRunner(env: RegressorEnv = process.env as RegressorEnv): Reg
   const manifest = join(dir, 'pixi.toml')
   const wrapper = join(ROOT, 'scripts', 'regressor', 'cut_distance.py')
   return (t) => new Promise((done) => {
+    const runMs = ['G', 'GG'].includes(t.type) ? RUN_MS : STELLAR_RUN_MS
     const args = ['run', '--manifest-path', manifest, 'python', wrapper, '--ra', String(t.raDeg), '--dec', String(t.decDeg), '--radius', String(t.radiusDeg), '--type', t.type]
     const child = spawn(env.PIXI ?? 'pixi', args, { cwd: ROOT, env: { ...process.env, REGRESSOR_DIR: dir }, windowsHide: true, detached: process.platform !== 'win32' })
     let stdout = ''
     child.stdout.on('data', (chunk: Buffer) => { if (stdout.length < 1_000_000) stdout += chunk })
     child.stderr.resume()
+    let timedOut = false
     const timer = setTimeout(() => {
       if (!child.pid) return
+      timedOut = true
+      done({ status: 'error', message: `Przekroczono limit czasu regresora (${runMs / 1000} s).` })
       if (process.platform === 'win32') spawnSync(join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'taskkill.exe'), ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true, timeout: 5000 })
       else try { process.kill(-child.pid, 'SIGKILL') } catch { child.kill('SIGKILL') }
-    }, RUN_MS)
+    }, runMs)
     child.on('error', (error) => { clearTimeout(timer); done({ status: 'error', message: error.message }) })
     child.on('close', () => {
       clearTimeout(timer)
-      try { done(parseResult(stdout)) } catch { done({ status: 'error', message: 'Regresor zakończył się bez wyniku (limit czasu lub błąd środowiska).' }) }
+      if (timedOut) return
+      try { done(parseResult(stdout)) } catch { done({ status: 'error', message: 'Proces regresora zakończył się bez wyniku.' }) }
     })
   })
 }

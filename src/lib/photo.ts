@@ -94,7 +94,7 @@ export function distanceSummary(d: Pick<PhotoCut, 'distLy' | 'uncertaintyLy' | '
   return [value, d.distanceScope === 'object' ? '' : SCOPE_LABELS[d.distanceScope], d.distanceMethod, d.distanceSource].filter(Boolean).join(' · ')
 }
 
-/** Wycinki pokazywane w 3D: włączone i z ustaloną odległością (σ ≤ 20 %). Pozostałych nie ma w scenie ani na liście. */
+/** Wycinki pokazywane w 3D: włączone i z ustaloną odległością (σ ≤ 50 %). Pozostałych nie ma w scenie ani na liście. */
 export function cutsInThreeD(cuts: PhotoCut[]): PhotoCut[] {
   return cuts.filter((cut) => cut.enabled && hasDistance(cut))
 }

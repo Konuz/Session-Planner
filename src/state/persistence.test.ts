@@ -166,3 +166,22 @@ it('krycie warstw z uszkodzonego zapisu wraca do zakresu 10–100%', async () =>
   expect(useStore.getState().ownPhotosOpacity).toBe(1)
   expect(useStore.getState().outlinesOpacity).toBe(1)
 })
+
+it('wybrany dostawca pogody trafia do zapisu, a nieprawidłowy z zapisu wraca do Open-Meteo', async () => {
+  vi.resetModules()
+  let saved: string | null = JSON.stringify({ state: { weatherProvider: 'nieznany-dostawca' }, version: 1 })
+  const storage = { getItem: () => saved, setItem: (_: string, value: string) => { saved = value } }
+  vi.stubGlobal('localStorage', storage)
+  vi.stubGlobal('window', { localStorage: storage })
+  const first = await import('./store')
+  await Promise.resolve()
+  expect(first.useStore.getState().weatherProvider).toBe('openmeteo')
+
+  first.useStore.getState().setWeatherProvider('ecmwf')
+  expect(saved).toContain('"weatherProvider":"ecmwf"')
+
+  vi.resetModules()
+  const second = await import('./store')
+  await Promise.resolve()
+  expect(second.useStore.getState().weatherProvider).toBe('ecmwf')
+})

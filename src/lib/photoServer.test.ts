@@ -292,6 +292,32 @@ it('bez parametru odpowiedź jak dotąd', async () => {
   }
 })
 
+it.each([
+  ['Sh2-101', 'LBN 168', 'LBN 171', 'LBN 171'],
+  ['Sh2-90', 'LBN 144', 'LBN 145', 'Sh2-92'],
+])('importuje %s raz, zachowując sąsiednią mgławicę', async (primary, alias, neighbor, neighborPrimary) => {
+  solve.mockResolvedValue({
+    stdout: JSON.stringify({ ...solved, objects: [
+      { id: alias, x: 10, y: 16, radius: 10 },
+      { id: neighbor, x: 15, y: 16, radius: 12 },
+      { id: primary, x: 18, y: 16, radius: 11 },
+    ] }),
+  } as never)
+  const { upload, close } = await solveServer()
+  try {
+    const response = await upload(await grayImage(3))
+    expect(response.status).toBe(200)
+    const { cuts } = await response.json()
+    expect(cuts).toHaveLength(2)
+    expect(cuts.map((cut: { id: string }) => cut.id)).toEqual(expect.arrayContaining([neighborPrimary, primary]))
+    const cut = cuts.find((item: { id: string }) => item.id === primary)
+    expect(cut).toMatchObject({ x: 18, radius: 11 })
+    if (primary === 'Sh2-101') expect(cut).toMatchObject({ distLy: 6874, distanceScope: 'illuminator', distanceOrigin: 'catalog' })
+  } finally {
+    await close()
+  }
+})
+
 it('tryb obiektu: nieaktualny most bez komendy grid to 503 z instrukcją', async () => {
   fakeBridge([16, 16])
   const current = solve.getMockImplementation()!

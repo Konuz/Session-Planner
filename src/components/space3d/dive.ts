@@ -12,6 +12,7 @@ import {
 import type { ObservatoryScene } from '../observatory/scene'
 import type { Space3DHandle } from '../Space3D'
 import type { PhotoGuide } from './photoGuide'
+import { setEarthOpacity } from './earthModel'
 
 /** Na końcu nurkowania 1 jednostka Obserwatorium ≈ 1 lś: sąsiednie obiekty rozlatują się poza kadr. */
 const END_SCALE = 0.001
@@ -71,7 +72,6 @@ export class SpaceDive {
   /** Poza sceny 3D na krańcu ustawienia (naprzód: bieżąca; wstecz: zapamiętana przy wejściu). */
   readonly spacePose: SpacePose
   private obsEnd: { position: Vec3; target: Vec3 } | null = null
-  private earthMaterial: THREE.Material | null
 
   constructor(private o: DiveOptions) {
     const { space, guide } = o
@@ -80,13 +80,11 @@ export class SpaceDive {
     this.spacePose = o.spacePose ?? { position: space.camera.position.toArray() as Vec3, target: space.controls.target.toArray() as Vec3, up: space.camera.up.toArray() as Vec3, fov: space.camera.fov, near: space.camera.near }
     this.roll = guide ? uprightRoll(guide.basis, this.spacePose.up) : 0
     this.bridge = guide ? makeBridge(space.sunPos.toArray() as Vec3, guide.basis, [0, 0, EARTH_Z], this.roll) : null
-    this.earthMaterial = space.earth ? space.earth.material as THREE.Material : null
     guide?.setVisible(true)
     space.stopIntro()
     space.setExternal(true)
     space.override.camera = true
     space.controls.enabled = false
-    if (this.earthMaterial) this.earthMaterial.transparent = true
     if (import.meta.env.DEV) (window as unknown as { __spaceDive?: DiveDev }).__spaceDive = { freeze: (t) => { this.frozen = t }, seam: () => this.seamCheck(), earthPx: () => this.spaceEarthPx(), distance: () => this.o.space.camera.position.distanceTo(this.o.space.sunPos) }
     this.raf = requestAnimationFrame(this.loop)
   }
@@ -218,8 +216,10 @@ export class SpaceDive {
     // Warstwy wygaszane w Space3D z odległości kamery mnożą swoje krycie przez te dwa (podpisy gasną szybciej).
     space.override.labelFade = Math.min(fades.layers, fades.labels)
     fadeLayers(space, guide, fades.layers, fades.labels)
-    if (this.earthMaterial) this.earthMaterial.opacity = fades.spaceEarth
-    if (space.earth) space.earth.visible = fades.spaceEarth > 0
+    if (space.earth) {
+      setEarthOpacity(space.earth, fades.spaceEarth)
+      space.earth.visible = fades.spaceEarth > 0
+    }
     guide?.setOpacity(fades.guide, fades.cone, fades.coneFaces, fades.spaceAxis)
   }
 
@@ -265,7 +265,7 @@ export class SpaceDive {
 /** Krycie warstw tła sceny 3D (bez znaczników/wycinków zdjęcia i Ziemi) i osobno napisów; bazowe krycie zapamiętane w materiale. */
 function fadeLayers(space: Space3DHandle, guide: PhotoGuide | null, fade: number, labels = fade) {
   space.scene.traverse((object) => {
-    if (object === space.earth || (guide && (object === guide.group || isInside(object, guide.group)))) return
+    if ((space.earth && (object === space.earth || isInside(object, space.earth))) || (guide && (object === guide.group || isInside(object, guide.group)))) return
     const material = (object as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined
     const f = object instanceof THREE.Sprite ? Math.min(fade, labels) : fade
     for (const m of Array.isArray(material) ? material : material ? [material] : []) {
@@ -303,9 +303,7 @@ export function restoreSpace(space: Space3DHandle, guide: PhotoGuide | null, pos
     guide.placeMarkers()
   }
   if (space.earth) {
-    const material = space.earth.material as THREE.Material
-    material.opacity = 1
-    material.transparent = false
+    setEarthOpacity(space.earth, 1)
     space.earth.visible = true
   }
   camera.up.set(...(pose?.up ?? UP))

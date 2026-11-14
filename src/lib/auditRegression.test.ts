@@ -86,7 +86,7 @@ describe('braki prognozy', () => {
     expect(skyRating({ ...hour, cloud: null } as unknown as WeatherHour)).toBeNull()
     expect(fmtNum(null as unknown as number)).toBe('-')
   })
-  it.each(['cloud_cover', 'dew_point_2m', 'visibility'])('odrzuca niepełną godzinę %s przed konwersją i zapisem', async (field) => {
+  it.each(['cloud_cover', 'relative_humidity_2m', 'temperature_2m', 'dew_point_2m', 'wind_speed_10m'])('odrzuca niepełną godzinę %s przed konwersją i zapisem', async (field) => {
     const h: Record<string, unknown> = { time: [start / 1000] }
     for (const key of ['cloud_cover', 'cloud_cover_low', 'cloud_cover_mid', 'cloud_cover_high', 'relative_humidity_2m', 'temperature_2m', 'dew_point_2m', 'wind_speed_10m', 'visibility']) h[key] = [10]
     h[field] = [null]
@@ -95,6 +95,28 @@ describe('braki prognozy', () => {
     vi.stubGlobal('fetch', async () => new Response(JSON.stringify({ hourly: h })))
     expect(await fetchWeather(51, 17)).toEqual([])
     expect(JSON.parse(setItem.mock.calls[0][1]).data).toEqual([])
+  })
+  it('brak widzialności i rozbicia warstw chmur nie odrzuca godziny ani nie udaje mgły (0 km)', async () => {
+    const h: Record<string, unknown> = {
+      time: [start / 1000],
+      cloud_cover: [0],
+      cloud_cover_low: [null],
+      cloud_cover_mid: [null],
+      cloud_cover_high: [null],
+      relative_humidity_2m: [40],
+      temperature_2m: [10],
+      dew_point_2m: [0],
+      wind_speed_10m: [5],
+      visibility: [null],
+    }
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn() })
+    vi.stubGlobal('fetch', async () => new Response(JSON.stringify({ hourly: h })))
+    const [parsed] = await fetchWeather(51, 17)
+    expect(parsed.visibilityKm).toBeNull()
+    expect(parsed.cloudLow).toBeNull()
+    expect(skyRating(parsed)?.score).toBe(100)
+    expect(skyRating({ ...parsed, visibilityKm: 5 })?.score).toBe(90)
+    expect(skyRating({ ...parsed, visibilityKm: 0 })?.score).toBe(90)
   })
   it('brak wiatrów wysokich nie odrzuca godziny, a seeing jest wtedy nieznany', async () => {
     const h: Record<string, unknown> = { time: [start / 1000] }

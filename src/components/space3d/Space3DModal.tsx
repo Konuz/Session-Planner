@@ -41,7 +41,6 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
   const project = session.project
   const settings = useSpaceSettings(o, project)
   useCutDistances(session)
-  const regressing = useRegressor(session)
   const inputRef = useRef<HTMLInputElement>(null)
   const [handle, setHandle] = useState<Space3DHandle | null>(null)
   const [mode, setMode] = useState<Mode>('scale')
@@ -59,7 +58,9 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
   // ponowne tworzenie i niszczenie kontekstu WebGL dawało białą klatkę na końcu powrotu.
   const [obsAlive, setObsAlive] = useState(false)
   const [obsVisible, setObsVisible] = useState(false)
-  const { stars, retry } = useGaiaStars(session, galaxy || obsAlive || mode !== 'scale')
+  const { stars, retry } = useGaiaStars(session, galaxy || session.editing || obsAlive || mode !== 'scale')
+  const regressorJobs = useRegressor(session, stars.status === 'error')
+  const regressing = [...regressorJobs.values()].filter((job) => job.status === 'queued' || job.status === 'running').length
   useEffect(() => { setObsAlive(false); setObsVisible(false) }, [project?.id, galaxy])
   // Dane Obserwatorium: w stanie zdjęcia na bieżąco, poza nim dopiero przy nurkowaniu (edycja wycinków nie przebudowuje
   // ukrytej sceny); gwiazdy Gaia, które przyjdą w trakcie przejścia, trafiają do niego po nim.
@@ -186,10 +187,10 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
   return <SpaceWindow
     label={showPhoto ? 'Obserwatorium 3D zdjęcia' : 'Pozycja 3D'}
     kicker={showPhoto ? 'KONUZASTRO / Obserwatorium 3D' : 'KONUZASTRO / Pozycja 3D'}
-    title={project && (showPhoto || !galaxy) ? project.name : o ? `${o.id}${o.namePl ? ` · ${o.namePl}` : ''}` : 'Wybierz obiekt'}
+    title={project ? project.name : o ? `${o.id}${o.namePl ? ` · ${o.namePl}` : ''}` : 'Wybierz obiekt'}
     subtitle={showPhoto ? 'Obiekty zdjęcia wzdłuż linii widzenia' : SUBTITLE[settings.scale]}
     summaryRef={setSummary}
-    summary={!showPhoto && o && !(project && !galaxy) ? <strong>{dist !== null ? `Odległość ≈ ${fmtDistance(dist)}` : 'Odległość nieznana'}</strong> : null}
+    summary={!showPhoto && !project && o ? <strong>{dist !== null ? `Odległość ≈ ${fmtDistance(dist)}` : 'Odległość nieznana'}</strong> : null}
     className={`space-window ${panels ? 'is-photo' : 'is-scale'}${diving ? ' is-diving' : ''}${editing ? ' is-editing' : ''}`}
     // Panele wsuwają się i zwijają przez całą fazę wejścia danego kierunku (naprzód dłużej niż wstecz).
     style={diving ? { '--dive-enter': `${DIVE_PHASE_MS[mode].enter}ms` } as CSSProperties : undefined}
@@ -198,8 +199,8 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
     <SpaceToolbar o={o} settings={settings} onScale={chooseScale} crumb={showPhoto ? project.name : undefined}
       onConstellationView={handle && mode === 'scale' && !editing ? handle.viewConstellation : undefined}>
       {showPhoto && <div ref={setToolbarSlot} className="space-toolbar-slot" />}
-      {regressing.length > 0 && <div className="photo-regressor-progress">
-        <span>Regresor · w toku: {regressing.length}</span>
+      {regressing > 0 && <div className="photo-regressor-progress">
+        <span>Regresor · w toku: {regressing}</span>
         <progress aria-label="Szacowanie odległości przez regresor" />
       </div>}
     </SpaceToolbar>
@@ -207,7 +208,7 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
       <div className={`space-scene${mode === 'photo' || editing ? ' is-hidden' : ''}`}>
         <Space3D settings={settings} photo={project} onHandle={setHandle} />
       </div>
-      {project && !galaxy && <PhotoUnfold key={project.id} session={session} visible={mode === 'scale'} guideRef={guideRef} />}
+      {project && <PhotoUnfold key={project.id} session={session} scale={settings.scale} visible={mode === 'scale'} guideRef={guideRef} />}
       {mode === 'scale' && <>
         <PhotoImport session={session} inputRef={inputRef} showButton={!project} />
         <PhotoMessages session={session} />
@@ -215,7 +216,7 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
         {editing && <PhotoFlatView session={session} />}
       </>}
     </div>
-    {editing && <PhotoCutEditor session={session} regressing={regressing} />}
+    {editing && <PhotoCutEditor session={session} regressorJobs={regressorJobs} />}
     {(obsAlive || mode !== 'scale') && obsProject && stage && summary && <Observatory project={obsProject} slots={{ stage, toolbar: showPhoto ? toolbarSlot : null, summary: showPhoto ? summary : null }}
       stars={stars} onRetryStars={retry} diving={diving} hidden={mode === 'scale' || (mode === 'in' && !obsVisible)} onScene={(scene) => { obsScene.current = scene }} />}
   </SpaceWindow>

@@ -23,8 +23,14 @@ export function overlapGroups(boxes: LabelBox[]): number[][] {
 
 /** Połowa rozwarcia jednej strony wachlarza: przy większym obrocie tekst przestaje być czytelny. */
 export const FAN_HALF = 70 * Math.PI / 180
-/** Do tylu ramion mały wachlarz o nieparzystej liczbie obiektów zajmuje tylko prawą stronę. */
+/** Do tylu ramion wachlarz zajmuje tylko lewą stronę; powyżej rozkłada się na obie strony. */
 const ONE_SIDE_MAX = 10
+/** Najmniejszy odstęp osi ramion przy środku (11,76 px wysokości wewnętrznego końca + ~2 px przerwy). */
+const INNER_PITCH = 14
+/** Domyślna odległość wewnętrznego końca środkowego ramienia od środka wachlarza. */
+const BASE_RADIUS = 40
+/** Minimalny prześwit wewnętrznego końca skrajnego ramienia od środka wachlarza. */
+const MIN_CLEARANCE = 24
 
 export interface FanSpoke {
   /** Kąt ramienia na ekranie w radianach: 0 w prawo, dodatni w dół (oś y ekranu). */
@@ -33,20 +39,35 @@ export interface FanSpoke {
   left: boolean
 }
 
+export interface FanLayout {
+  /** Odległość wewnętrznego końca ramienia od pozornego środka zbiegu ramion. */
+  radius: number
+  /** Przesunięcie pozornego środka za punkt (cx, cy), tak żeby kliny szły jeden tuż pod drugim. */
+  pivotShift: number
+  /** Połowa kąta rozwarcia liczniejszej strony wachlarza. */
+  maxHalfArc: number
+  spokes: FanSpoke[]
+}
+
 /**
  * Wachlarz `count` ramion zgodnie z ruchem wskazówek zegara: prawa strona z góry na dół, potem lewa z dołu do góry.
- * `radius` to odległość początku tekstu od środka, przy której sąsiednie wiersze o wysokości `pitch` się nie nakładają.
+ * Kąt między sąsiednimi ramionami dopasowany jest do zwężającego się kształtu paska o szerokości `spokeWidth`,
+ * dzięki czemu paski układają się jeden tuż pod drugim przy odstępie `pitch` na zewnętrznym końcu i bez nakładania przy środku.
  */
-export function fanLayout(count: number, pitch: number): { radius: number; spokes: FanSpoke[] } {
-  const right = count > ONE_SIDE_MAX || count % 2 === 0 ? Math.ceil(count / 2) : count
-  const left = count - right
-  const radius = Math.max(40, right * pitch / (2 * FAN_HALF))
-  // Kilka ramion stoi ciasno wokół poziomu (odstęp jednego wiersza), zamiast rozjeżdżać się na całe rozwarcie.
-  const side = (n: number, middle: number, isLeft: boolean): FanSpoke[] => {
-    const arc = Math.min(2 * FAN_HALF, n * pitch / radius)
-    return Array.from({ length: n }, (_, i) => ({ angle: middle - arc / 2 + (i + 0.5) / n * arc, left: isLeft }))
-  }
-  return { radius, spokes: [...side(right, 0, false), ...side(left, Math.PI, true)] }
+export function fanLayout(count: number, pitch: number, spokeWidth = 200): FanLayout {
+  const left = count > ONE_SIDE_MAX ? Math.ceil(count / 2) : count
+  const right = count - left
+  const maxCount = Math.max(left, right)
+  const w = Math.max(80, spokeWidth)
+  const innerPitch = Math.min(INNER_PITCH, pitch * 0.5)
+  const idealStep = (pitch - innerPitch) / w
+  const step = maxCount > 0 ? Math.min(idealStep, (2 * FAN_HALF) / maxCount) : idealStep
+  const radius = pitch / step - w
+  const maxHalfArc = maxCount > 1 ? ((maxCount - 1) / 2) * step : 0
+  const pivotShift = Math.min(radius - BASE_RADIUS, radius * Math.cos(maxHalfArc) - MIN_CLEARANCE)
+  const side = (n: number, middle: number, isLeft: boolean): FanSpoke[] =>
+    Array.from({ length: n }, (_, i) => ({ angle: middle + (i - (n - 1) / 2) * step, left: isLeft }))
+  return { radius, pivotShift, maxHalfArc, spokes: [...side(right, 0, false), ...side(left, Math.PI, true)] }
 }
 
 /** „2 obiekty”, „5 obiektów”, „22 obiekty”. */

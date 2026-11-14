@@ -1,9 +1,11 @@
 // Lista obiektów zdjęcia we Wszechświecie lokalnym: wirtualizowana lista według odległości z wyszukiwaniem i wybrany
 // obiekt z przelotem kamery do jego znacznika. Scena (stożek pola i znaczniki jak w Drodze Mlecznej): photoGuide.ts.
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { ZoomIn, ZoomOut } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { fmtDistance, fmtDistanceRange } from '../../lib/format'
 import { cutsInThreeD, distanceSummary, photoCropSquare, type PhotoCut, type PhotoProject } from '../../lib/photo'
+import type { SpaceScale } from '../../lib/space3d'
 import type { PhotoGuide } from './photoGuide'
 import type { PhotoSession } from './photoSession'
 
@@ -11,6 +13,8 @@ interface Props {
   session: PhotoSession
   /** Znaczniki zdjęcia w scenie: wskazanie z listy i przelot do obiektu. */
   guideRef?: RefObject<PhotoGuide | null>
+  /** Skala sceny: jej zmiana kadruje ponownie stożek, więc zeruje stan przybliżenia. */
+  scale?: SpaceScale
   /** Panel pokazany (tylko w skali, poza edycją i nurkowaniem). */
   visible?: boolean
 }
@@ -42,17 +46,29 @@ function ObjectList({ cuts, project, activeId, onChoose, onHover }: { cuts: Phot
   </div>
 }
 
-export function PhotoUnfold({ session, guideRef, visible = true }: Props) {
+export function PhotoUnfold({ session, guideRef, scale, visible = true }: Props) {
   const { project, editing, activeId, setActiveId } = session
   const [query, setQuery] = useState('')
+  const [zoomed, setZoomed] = useState(false)
   const cuts = useMemo(() => cutsInThreeD(project?.cuts ?? []).sort((a, b) => a.distLy! - b.distLy! || a.id.localeCompare(b.id)), [project?.cuts])
   const needle = query.trim().toLocaleLowerCase()
   const shown = useMemo(() => needle ? cuts.filter((cut) => cut.id.toLocaleLowerCase().includes(needle)) : cuts, [cuts, needle])
   const active = activeId ? cuts.find((cut) => cut.id === activeId) : undefined
 
+  useEffect(() => { setZoomed(false) }, [activeId, scale, project?.id])
+
   if (!project || editing || !visible) return null
-  const excluded = project.cuts.length - cuts.length
   const hover = (id: string | null) => guideRef?.current?.setHover(id)
+  const toggleZoom = () => {
+    if (!active) return
+    if (zoomed) {
+      guideRef?.current?.frameCamera()
+      setZoomed(false)
+    } else {
+      guideRef?.current?.focus(active.id)
+      setZoomed(true)
+    }
+  }
 
   return <aside className="photo-window-panel" aria-label="Obiekty zdjęcia w przestrzeni">
     <div className="pw-heading">
@@ -65,16 +81,23 @@ export function PhotoUnfold({ session, guideRef, visible = true }: Props) {
     {cuts.length > 0 && !shown.length && <p className="pw-note">Brak obiektów pasujących do wyszukiwania.</p>}
     {active && <section className="pw-selection" aria-label="Wybrany obiekt">
       <div className="pw-selected">
+        <button
+          type="button"
+          className="pw-zoom"
+          onClick={toggleZoom}
+          aria-label={zoomed ? 'Oddal widok' : 'Przybliż obiekt'}
+          title={zoomed ? 'Oddal widok' : 'Przybliż obiekt'}
+        >
+          {zoomed ? <ZoomOut size={15} aria-hidden /> : <ZoomIn size={15} aria-hidden />}
+        </button>
         <CutPreview project={project} cut={active} />
-        <div><strong>{active.id}</strong><span className="figures">≈ {fmtDistance(active.distLy)}</span></div>
+        <div className="pw-selected-meta">
+          <strong>{active.id}</strong>
+          <span className="figures">≈ {fmtDistance(active.distLy)}</span>
+        </div>
       </div>
       <p>{distanceSummary(active)}</p>
-      <div className="pw-actions">
-        <button type="button" className="button small" onClick={() => guideRef?.current?.focus(active.id)}>Przybliż</button>
-        <button type="button" className="button small" onClick={() => session.setEditing(true)}>Źródło odległości</button>
-      </div>
     </section>}
-    {excluded > 0 && <button type="button" className="link-button pw-excluded" onClick={() => session.setEditing(true)}>{excluded} poza 3D · sprawdź wycinki i odległości</button>}
     {!cuts.length && <p className="pw-note">Włącz wycinki z ustaloną odległością w edytorze, aby pokazać zdjęcie w przestrzeni.</p>}
   </aside>
 }

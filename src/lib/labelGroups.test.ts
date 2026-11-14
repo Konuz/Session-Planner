@@ -15,41 +15,72 @@ it('stykające się krawędziami ramki nie tworzą grupy', () => {
   expect(overlapGroups([box(0, 0), box(100, 0), box(0, 37)])).toEqual([[0], [1], [2]])
 })
 
-it('mały wachlarz ma jedną stronę, z góry na dół', () => {
-  const { radius, spokes } = fanLayout(5, 16)
-  expect(radius).toBe(40)
-  expect(spokes.every((s) => !s.left)).toBe(true)
+it.each([1, 2, 4, 5, 10])('mały wachlarz (%i) ma tylko lewą stronę, z dołu do góry', (count) => {
+  const pitch = 30
+  const width = 220
+  const { radius, pivotShift, spokes } = fanLayout(count, pitch, width)
+  expect(spokes).toHaveLength(count)
+  expect(spokes.every((s) => s.left)).toBe(true)
   expect(spokes.map((s) => s.angle)).toEqual([...spokes.map((s) => s.angle)].sort((a, b) => a - b))
-  expect(spokes[0].angle).toBeGreaterThan(-FAN_HALF)
-  expect(spokes[4].angle).toBeLessThan(FAN_HALF)
-  // Ciasno wokół poziomu: sąsiednie ramiona o jeden wiersz, a nie rozrzucone po całym rozwarciu.
-  expect((spokes[1].angle - spokes[0].angle) * radius).toBeCloseTo(16)
-  expect(spokes[0].angle + spokes[4].angle).toBeCloseTo(0)
+  expect(spokes[0].angle).toBeGreaterThan(Math.PI - FAN_HALF)
+  expect(spokes[count - 1].angle).toBeLessThan(Math.PI + FAN_HALF)
+  expect(spokes[0].angle + spokes[count - 1].angle).toBeCloseTo(2 * Math.PI)
+  expect(radius - pivotShift).toBeGreaterThanOrEqual(40 - 1e-9)
+  for (let i = 1; i < spokes.length; i++) {
+    const step = spokes[i].angle - spokes[i - 1].angle
+    // Na zewnętrznym końcu paski leżą jeden tuż pod drugim (dokładnie `pitch`), a przy środku się nie nakładają.
+    expect(step * (radius + width)).toBeCloseTo(pitch)
+    expect(step * radius).toBeGreaterThanOrEqual(14 - 1e-9)
+  }
 })
 
-it.each([2, 4, 10, 34, 40])('rozkłada %i ramion symetrycznie po obu stronach', (count) => {
-  const { spokes } = fanLayout(count, 17)
+it('po zapełnieniu lewej strony kolejny pasek rozkłada wszystkie po obu stronach', () => {
+  const pitch = 30
+  const width = 220
+  const { radius, spokes } = fanLayout(11, pitch, width)
+  const right = spokes.filter((spoke) => !spoke.left)
+  const left = spokes.filter((spoke) => spoke.left)
+  expect(left).toHaveLength(6)
+  expect(right).toHaveLength(5)
+  for (let i = 1; i < spokes.length; i++) {
+    if (spokes[i].left !== spokes[i - 1].left) continue
+    const step = spokes[i].angle - spokes[i - 1].angle
+    expect(step * (radius + width)).toBeCloseTo(pitch)
+    expect(step * radius).toBeGreaterThanOrEqual(14 - 1e-9)
+  }
+})
+
+it.each([12, 14, 34, 40])('rozkłada %i ramion symetrycznie po obu stronach i trzyma stały odstęp', (count) => {
+  const pitch = 30
+  const width = 220
+  const { radius, pivotShift, maxHalfArc, spokes } = fanLayout(count, pitch, width)
   const right = spokes.filter((spoke) => !spoke.left)
   const left = spokes.filter((spoke) => spoke.left).reverse()
   expect(left).toHaveLength(count / 2)
   expect(right).toHaveLength(count / 2)
   right.forEach((spoke, i) => expect(spoke.angle + left[i].angle).toBeCloseTo(Math.PI))
+  expect(radius * Math.cos(maxHalfArc) - pivotShift).toBeGreaterThanOrEqual(24 - 1e-9)
+  for (let i = 1; i < right.length; i++) {
+    expect((right[i].angle - right[i - 1].angle) * (radius + width)).toBeCloseTo(pitch)
+  }
 })
 
-it('duży wachlarz dzieli ramiona na dwie strony i trzyma odstęp wierszy', () => {
-  const pitch = 16
-  const { radius, spokes } = fanLayout(34, pitch)
-  expect(spokes.filter((s) => !s.left)).toHaveLength(17)
-  expect(spokes.filter((s) => s.left)).toHaveLength(17)
-  // Sąsiednie ramiona tej samej strony: łuk na promieniu początku tekstu nie krótszy niż wiersz.
-  for (let i = 1; i < spokes.length; i++) {
-    if (spokes[i].left !== spokes[i - 1].left) continue
-    expect((spokes[i].angle - spokes[i - 1].angle) * radius).toBeGreaterThanOrEqual(pitch - 1e-9)
-  }
-  // Zgodnie z ruchem wskazówek zegara: lewa strona zaczyna na dole (sin > 0) i kończy na górze.
+it('duży wachlarz przy krótkich paskach mieści się w zakresie 2 * FAN_HALF bez nakładania', () => {
+  const pitch = 30
+  const width = 100
+  const { radius, spokes } = fanLayout(40, pitch, width)
+  const right = spokes.filter((s) => !s.left)
   const left = spokes.filter((s) => s.left)
+  expect(right).toHaveLength(20)
+  expect(left).toHaveLength(20)
+  expect(right[19].angle - right[0].angle).toBeLessThan(2 * FAN_HALF)
+  for (let i = 1; i < right.length; i++) {
+    const step = right[i].angle - right[i - 1].angle
+    expect(step * (radius + width)).toBeCloseTo(pitch)
+    expect(step * radius).toBeGreaterThanOrEqual(14 - 1e-9)
+  }
   expect(Math.sin(left[0].angle)).toBeGreaterThan(0)
-  expect(Math.sin(left[16].angle)).toBeLessThan(0)
+  expect(Math.sin(left[19].angle)).toBeLessThan(0)
   expect(left.every((s) => Math.cos(s.angle) < 0)).toBe(true)
 })
 

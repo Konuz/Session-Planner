@@ -101,8 +101,9 @@ it('regresor: pokazuje sensowne wartości jako niezweryfikowane z metodą modelu
   expect(ic4278.distanceMethod).toContain('z widma SDSS')
   expect(regressorDistance({ status: 'abstain', reason: 'NO_KINEMATICALLY_COHERENT_CLUSTER' }, 0, 0)).toBeNull()
   expect(regressorDistance({ status: 'error', message: '503' }, 0, 0)).toBeNull()
-  // NGC 5169 (CF4, σ 26 %) i grupa poniżej 5 gwiazd: bez wartości.
-  expect(regressorDistance({ status: 'ok', kind: 'cf4', distance_pc: 55.08e6, lo_pc: 42.36e6, hi_pc: 71.61e6 }, 0, 0)).toBeNull()
+  // NGC 5169 (CF4, σ 26 %) mieści się w progu 50 %; σ > 50 % i grupa poniżej 5 gwiazd: bez wartości.
+  expect(regressorDistance({ status: 'ok', kind: 'cf4', distance_pc: 55.08e6, lo_pc: 42.36e6, hi_pc: 71.61e6 }, 0, 0)?.distLy).toBeCloseTo(55.08e6 * LY_PER_PC, -4)
+  expect(regressorDistance({ status: 'ok', kind: 'cf4', distance_pc: 1000, lo_pc: 400, hi_pc: 1500 }, 0, 0)).toBeNull()
   expect(regressorDistance({ status: 'ok', kind: 'group', members: 4, distance_pc: 400, lo_pc: 390, hi_pc: 410, cone_deg: 0.3 }, 0, 0)).toBeNull()
 })
 

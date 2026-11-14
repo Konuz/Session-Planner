@@ -9,6 +9,7 @@ import { objectCount, overlapGroups, type LabelBox } from '../../lib/labelGroups
 import { photoCropSquare } from '../../lib/photo'
 import { GALACTIC_LIMIT_LY } from '../../lib/space3d'
 import { openLabelFan, type LabelFan } from '../labelFan'
+import { createEarthAssets, createEarthMesh, setEarthOpacity, type EarthAssets } from '../space3d/earthModel'
 
 export type ObservatoryView = 'structure' | 'earth' | 'top' | 'side'
 /** Krycia części sceny w nurkowaniu z Drogi Mlecznej (1: bez zmian). */
@@ -128,7 +129,7 @@ export class ObservatoryScene {
   private dataDisposables: { dispose(): void }[] = []
   private photoTexture: THREE.Texture | null = null
   private photoImage: HTMLImageElement | null = null
-  private earthMap: THREE.Texture | null = null
+  private earthAssets: EarthAssets | null = null
   private items: ObservatoryItem[] = []
   private visible = new Set<string>()
   private selected: string | null = null
@@ -139,7 +140,7 @@ export class ObservatoryScene {
   private photo: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial> | null = null
   private frame: THREE.LineLoop | null = null
   private grid: THREE.GridHelper
-  private earth: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial> | null = null
+  private earth: THREE.Mesh | null = null
   private pyramid: THREE.LineSegments<THREE.BufferGeometry, THREE.LineBasicMaterial> | null = null
   private axisLine: THREE.Line<THREE.BufferGeometry, THREE.LineDashedMaterial> | null = null
   private tickMaterial: THREE.MeshBasicMaterial | null = null
@@ -210,6 +211,10 @@ export class ObservatoryScene {
     this.disposables.push(ringMap, ringMaterial, previewMaterial, anchorMap, this.anchorMaterial)
 
     this.scene.add(this.axis, this.data)
+    const earthLight = new THREE.DirectionalLight(0xfff8ee, 2.1)
+    earthLight.position.set(12, 16, EARTH_Z + 18)
+    earthLight.target.position.set(0, 0, EARTH_Z)
+    this.scene.add(new THREE.AmbientLight(0xcfe4ff, 0.65), earthLight, earthLight.target)
     this.earthLabel = this.label('obs-label obs-earth', 'Ziemia')
 
     const pointer = { x: 0, y: 0 }
@@ -286,16 +291,14 @@ export class ObservatoryScene {
 
     // Ziemia i ostrosłup pola: od Ziemi do narożników kadru.
     const earthPos = new THREE.Vector3(0, 0, EARTH_Z)
-    // Ta sama tekstura co w widoku Drogi Mlecznej (Space3D); scena nie ma świateł, więc materiał bez cieniowania.
-    const earthMap = this.earthMap ??= new THREE.TextureLoader().load(`${import.meta.env.BASE_URL}textures/earth.webp`, () => { this.dirty = true })
-    earthMap.colorSpace = THREE.SRGBColorSpace
-    const earthMaterial = new THREE.MeshBasicMaterial({ map: earthMap, transparent: true })
-    const earth = this.earth = new THREE.Mesh(new THREE.SphereGeometry(1.5, 48, 32), earthMaterial)
+    const assets = this.earthAssets ??= createEarthAssets(import.meta.env.BASE_URL, this.renderer.capabilities.getMaxAnisotropy(), () => { this.dirty = true })
+    const rig = createEarthMesh(1.5, assets)
+    const earth = this.earth = rig.mesh
     earth.position.copy(earthPos)
     const pyramidMaterial = new THREE.LineBasicMaterial({ color: this.accent, transparent: true, opacity: 0.35 })
     const pyramid = this.pyramid = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(corners.flatMap((c) => [earthPos, c])), pyramidMaterial)
     this.data.add(earth, pyramid)
-    this.dataDisposables.push(earthMaterial, earth.geometry, pyramidMaterial, pyramid.geometry)
+    this.dataDisposables.push(...rig.disposables, pyramidMaterial, pyramid.geometry)
 
     // Oś linii widzenia z podziałką dekad.
     const axisMaterial = new THREE.LineDashedMaterial({ color: this.accent, dashSize: AXIS_DASH, gapSize: AXIS_DASH, transparent: true, opacity: 0.7 })
@@ -428,7 +431,7 @@ export class ObservatoryScene {
     }
     ;(this.grid.material as THREE.LineBasicMaterial).opacity = f.grid
     this.grid.visible = f.grid > 0
-    if (this.earth) { this.earth.material.opacity = f.earth; this.earth.visible = f.earth > 0 }
+    if (this.earth) { setEarthOpacity(this.earth, f.earth); this.earth.visible = f.earth > 0 }
     if (this.pyramid) { this.pyramid.material.opacity = 0.35 * f.pyramid; this.pyramid.visible = f.pyramid > 0 }
     if (this.axisLine) this.axisLine.material.opacity = 0.7 * f.axis
     if (this.tickMaterial) this.tickMaterial.opacity = 0.6 * f.axis
@@ -808,7 +811,7 @@ export class ObservatoryScene {
     cancelAnimationFrame(this.raf)
     this.clearData()
     this.photoTexture?.dispose()
-    this.earthMap?.dispose()
+    this.earthAssets?.dispose()
     this.resizeObserver.disconnect()
     this.controls.dispose()
     for (const d of this.disposables) d.dispose()

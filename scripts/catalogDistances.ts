@@ -103,6 +103,30 @@ export function checkIdentity(entry: Entry, simbad: Map<string, SimbadObject>): 
   return { verdict: sepDeg > IDENTITY_LIMIT_DEG ? 'position' : 'ok', mainId: primary.mainId, otype: primary.otype, sepDeg, foreignAliases, typeNote }
 }
 
+/** Wycinki H II: oznaczenie Lyndsa sprowadzamy do jednoznacznego oznaczenia Sharplessa z SIMBAD. */
+export function photoNebulaAliases(entries: Entry[], identities: readonly Identity[]): Record<string, string> {
+  const groups = new Map<string, Entry[]>()
+  entries.forEach((entry, i) => {
+    const identity = identities[i]
+    if (entry.type !== 'EN' || identity.verdict !== 'ok' || identity.otype !== 'HII') return
+    const group = groups.get(identity.mainId) ?? []
+    group.push(entry)
+    groups.set(identity.mainId, group)
+  })
+  const aliases: Record<string, string> = {}
+  for (const group of groups.values()) {
+    const sharpless = group.filter((entry) => /^Sh2-\d+$/.test(entry.designations[0]))
+    if (sharpless.length !== 1) continue
+    const [primary] = sharpless
+    for (const alias of group) {
+      if (!/^LBN \d+$/.test(alias.designations[0])) continue
+      const separation = separationDeg(primary.raDeg, primary.decDeg, alias.raDeg, alias.decDeg)
+      if (separation <= (primary.majArcmin + alias.majArcmin) / 120) aliases[alias.designations[0]] = primary.designations[0]
+    }
+  }
+  return aliases
+}
+
 /** Wynik łańcucha: wartość w lś, 1σ (null: nieznana) i klucz tabeli źródeł. */
 export interface Choice { ly: number; sigmaLy: number | null; source: SourceKey }
 export interface SourceKey { scope: DistanceScope; method: string; source: string; ref: string; verified: boolean }
@@ -220,8 +244,8 @@ export const KNOWN_DISCREPANCIES = [
   { id: 'NGC 1435', note: 'mgławica refleksyjna (Merope), w aplikacji EN; SIMBAD: ISM' },
 ]
 
-/** Wikidata (niezweryfikowane), gdy łańcuch nic nie dał albo jego pomiar ma σ > 20 % i nie trafiłby do 3D
- *  (decyzja użytkownika 7.11.2026). Bez wartości Wikidata zostaje pomiar, nawet niepewny. */
+/** Wikidata (niezweryfikowane), gdy łańcuch nic nie dał albo jego pomiar ma σ > 50 % i nie trafiłby do 3D
+ *  (decyzja użytkownika 7.11.2026, próg 50 % od 14.11.2026). Bez wartości Wikidata zostaje pomiar, nawet niepewny. */
 export function withWikidataFallback(measured: Choice | null, wikidataLy: number | null): Choice | null {
   if (measured && hasDistance({ distLy: measured.ly, uncertaintyLy: measured.sigmaLy })) return measured
   return wikidataLy ? { ly: wikidataLy, sigmaLy: null, source: WIKIDATA } : measured

@@ -22,6 +22,7 @@ import {
   galaxyTexture, localGroupGalaxy, milkyWay, position, textSprite, toThree, type StarNameLayout,
 } from './space3d/galaxyModels'
 import { GALAXY_LEVELS, type ConstellationStar, type SpaceSettings } from './space3d/spaceSettings'
+import { createEarthAssets, createEarthMesh } from './space3d/earthModel'
 
 interface Props {
   settings: SpaceSettings
@@ -60,7 +61,7 @@ export interface Space3DHandle {
   setExternal(on: boolean): void
   step(now: number): void
   /** Nadpisania nurkowania: kamera bez OrbitControls, krycie warstw tła i promień Ziemi w jednostkach sceny
-   *  (earthBlend: 0 – znacznik do 16 px, 1 – earthRadius; pośrednie wartości dają płynną zmianę wielkości). */
+   *  (earthBlend: 0 – znacznik do 7 px, 1 – earthRadius; pośrednie wartości dają płynną zmianę wielkości). */
   override: { camera: boolean; layerFade: number; labelFade: number; earthRadius: number | null; earthBlend: number }
 }
 
@@ -358,12 +359,13 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
 
     // Ziemia jako umowny znacznik naszego położenia (rozmiar poza skalą).
     let earth: THREE.Mesh
+    let earthClouds: THREE.Mesh
     {
-      // Tekstura: https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg
-      const map = new THREE.TextureLoader().load(`${import.meta.env.BASE_URL}textures/earth.webp`)
-      map.colorSpace = THREE.SRGBColorSpace
-      // Kula jednostkowa: promień w scenie ustawia skala (znacznik do 16 px, nie więcej niż earthCap).
-      earth = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 32), new THREE.MeshPhongMaterial({ map, shininess: 12, specular: 0x233344 }))
+      const assets = createEarthAssets(import.meta.env.BASE_URL, renderer.capabilities.getMaxAnisotropy())
+      // Kula jednostkowa: promień w scenie ustawia skala (znacznik do 7 px, nie więcej niż earthCap).
+      const rig = createEarthMesh(1, assets)
+      earth = rig.mesh
+      earthClouds = rig.clouds
       const axis = new THREE.Group()
       axis.position.copy(sunPos)
       // Biegun ziemski J2000: l = 122,932°, b = 27,128°; płaszczyzna Galaktyki to XZ.
@@ -371,12 +373,12 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       axis.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), toThree(galacticVector({ raDeg: 0, decDeg: 90 })).normalize())
       axis.add(earth)
       scene.add(axis)
-      scene.add(new THREE.AmbientLight(0xffffff, 1.5))
-      const light = new THREE.DirectionalLight(0xffffff, 2)
+      scene.add(new THREE.AmbientLight(0xcfe4ff, 0.65))
+      const light = new THREE.DirectionalLight(0xfff8ee, 2.1)
       light.position.copy(sunPos).add(new THREE.Vector3(10, 15, 10))
       light.target.position.copy(sunPos)
       scene.add(light, light.target)
-      disposables.push(earth.geometry, earth.material as THREE.Material, map)
+      disposables.push(assets, ...rig.disposables)
     }
     const earthLabel = label('Ziemia', '#93cfff', sunPos, -30)
     const mwLabel = label('Droga Mleczna', '#e6edf7')
@@ -603,8 +605,12 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       for (const hook of hooks) hook(now)
       const delta = Math.min((now - lastTick) / 1000, 0.05)
       lastTick = now
-      // Powolny obrót poglądowy: jeden obrót na trzy minuty, niezależnie od liczby klatek.
-      if (!reduced) earth.rotation.y = ((performance.now() - t0) / 180_000) * Math.PI * 2
+      // Powolny obrót poglądowy: jeden obrót na trzy minuty, niezależnie od liczby klatek; chmury dryfują nieco szybciej.
+      if (!reduced) {
+        const spin = ((performance.now() - t0) / 180_000) * Math.PI * 2
+        earth.rotation.y = spin
+        earthClouds.rotation.y = spin * 0.25
+      }
       if (flight && !override.camera) {
         flight.start ??= now
         const t = Math.min(1, (now - flight.start) / flight.ms)
@@ -653,8 +659,8 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
         const height = Math.max(1, renderer.domElement.clientHeight)
         const unitsPerPixel = 2 * depth * Math.tan(THREE.MathUtils.degToRad(camera.getEffectiveFOV()) / 2) / height
         earthScreenPosition.copy(sunPos).project(camera)
-        // Ziemia jest znacznikiem: promień do 16 px, z odstępem od widocznych gwiazd.
-        let radiusPixels = 16
+        // Ziemia jest znacznikiem: promień do 7 px, z odstępem od widocznych gwiazd.
+        let radiusPixels = 7
         const skyAmount = skyView?.amount ?? 0
         // Gwiazdozbiory 3D są tylko w zakładce Droga Mleczna: ukryte nie zmniejszają znacznika Ziemi.
         if (showConstellationsRef.current && tab === 'galaxy' && skyAmount < 1) {
@@ -668,10 +674,12 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
             radiusPixels = Math.min(radiusPixels, Math.max(0, gap - 7))
           }
         }
-        radiusPixels = THREE.MathUtils.lerp(radiusPixels, 11, skyAmount)
+        radiusPixels = THREE.MathUtils.lerp(radiusPixels, 8, skyAmount)
         // Z daleka (Wszechświat lokalny) znacznik Ziemi maleje do zera razem z warstwami Galaktyki.
         const marker = (depth > 0 ? Math.min(earthCap, radiusPixels * unitsPerPixel) : earthCap) * fades.galactic
-        earth.scale.setScalar(override.earthRadius === null ? marker : marker + (override.earthRadius - marker) * override.earthBlend)
+        const earthScale = override.earthRadius === null ? marker : marker + (override.earthRadius - marker) * override.earthBlend
+        earth.scale.setScalar(earthScale)
+        if (!override.camera) earth.visible = earthScale > 1e-6
       }
       {
         // Przy zbliżeniu gwiazdy pozostają widoczne, a z daleka nie zlewają się w jasną plamę.

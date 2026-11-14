@@ -4,12 +4,13 @@
 import { Box, ImagePlus, Settings2, X } from 'lucide-react'
 import { useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO } from '../../lib/catalog'
-import { hasDistance, MAX_RELATIVE_UNCERTAINTY, NO_DISTANCE, SCOPE_LABELS, type DistanceScope } from '../../lib/distance'
+import { hasDistance, MAX_RELATIVE_UNCERTAINTY, NO_DISTANCE, REGRESSOR_TYPES, SCOPE_LABELS, type DistanceScope } from '../../lib/distance'
 import { coveredPhotoCircles, cutsInThreeD, distanceSummary, photoFrame, type PhotoCut, type PhotoDistance, type PhotoDistances } from '../../lib/photo'
 import { hasUnsavedPhoto } from '../../lib/photoStorage'
+import { useCatalog } from '../../state/data'
 import { useStore } from '../../state/store'
 import { CloseButton } from '../CloseButton'
-import type { PhotoSession, StarsStatus } from './photoSession'
+import type { PhotoSession, RegressorJob, StarsStatus } from './photoSession'
 
 const ACCEPT = '.jpg,.jpeg,.png,.webp,.tif,.tiff,.fit,.fits,.fts'
 
@@ -35,15 +36,14 @@ export function PhotoMessages({ session }: { session: PhotoSession }) {
   </>
 }
 
-/** Widok edycji: płaskie zdjęcie z okręgami wycinków na całej scenie (nad paskiem zdjęcia); przeciąganie okręgu
- *  i jego uchwytu (promień). */
+/** Widok edycji: płaskie zdjęcie z okręgami wycinków na całej scenie (nad paskiem zdjęcia). Okręgi pokazują położenie
+ *  z rozwiązania i służą tylko do zaznaczania (klik w obwódkę); bez przesuwania i zmiany promienia. */
 export function PhotoFlatView({ session }: { session: PhotoSession }) {
-  const { project, updateCut, activeId, setActiveId } = session
+  const { project, activeId, setActiveId } = session
   const colors = useStore((s) => s.annotationColors)
   const svgRef = useRef<SVGSVGElement>(null)
   const [size, setSize] = useState({ width: 800, height: 520, bar: 63 })
   const prefix = useId().replace(/:/g, '')
-  const dragRef = useRef<{ id: string; x: number; y: number; original: PhotoCut; resize: boolean } | null>(null)
   useLayoutEffect(() => {
     const svg = svgRef.current
     if (!svg) return
@@ -59,48 +59,58 @@ export function PhotoFlatView({ session }: { session: PhotoSession }) {
   if (!project) return null
   const { width, height } = size
   const frame = photoFrame(width, height, project, { top: 16, bottom: (size.bar ? size.bar + 12 : 0) + 16, side: 16 })
-  // Okręgi tylko obiektów pokazywanych w 3D (z ustaloną odległością).
-  const enabled = cutsInThreeD(project.cuts)
-  const circles = enabled.map((cut) => ({ cut, x: frame.x + cut.x * frame.scale, y: frame.y + cut.y * frame.scale, radius: cut.radius * frame.scale }))
+  // Okręgi wszystkich obiektów rozwiązania; spoza 3D (bez odległości lub odznaczone) bledsze. Od największego,
+  // żeby obwódki mniejszych okręgów leżały na wierzchu.
+  const inThreeD = new Set(cutsInThreeD(project.cuts))
+  const circles = [...project.cuts].sort((a, b) => b.radius - a.radius)
+    .map((cut) => ({ cut, x: frame.x + cut.x * frame.scale, y: frame.y + cut.y * frame.scale, radius: cut.radius * frame.scale }))
   const covered = coveredPhotoCircles(circles)
 
-  function point(e: React.PointerEvent<SVGElement>) {
-    const rect = svgRef.current!.getBoundingClientRect()
-    return { x: (e.clientX - rect.left) * width / rect.width, y: (e.clientY - rect.top) * height / rect.height }
-  }
-  function startDrag(e: React.PointerEvent<SVGElement>, cut: PhotoCut, resize: boolean) {
-    e.preventDefault(); e.stopPropagation()
-    setActiveId(cut.id)
-    dragRef.current = { id: cut.id, ...point(e), original: { ...cut }, resize }
-    e.currentTarget.setPointerCapture(e.pointerId)
-  }
-  function drag(e: React.PointerEvent<SVGElement>) {
-    const d = dragRef.current
-    if (!d || !project) return
-    const p = point(e)
-    if (d.resize) updateCut(d.id, { radius: Math.max(4, Math.min(Math.max(project.width, project.height) * 2, d.original.radius + (p.x - d.x) / frame.scale)) })
-    else updateCut(d.id, { x: d.original.x + (p.x - d.x) / frame.scale, y: d.original.y + (p.y - d.y) / frame.scale })
-  }
-
-  return <svg ref={svgRef} className="photo-overlay" viewBox={`0 0 ${width} ${height}`} aria-label="Zdjęcie z wycinkami obiektów" onPointerMove={drag} onPointerUp={() => { dragRef.current = null }} onPointerCancel={() => { dragRef.current = null }}>
+  return <svg ref={svgRef} className="photo-overlay" viewBox={`0 0 ${width} ${height}`} aria-label="Zdjęcie z wycinkami obiektów">
     <image id={`${prefix}-image`} href={project.image} width={project.width} height={project.height} transform={`translate(${frame.x} ${frame.y}) scale(${frame.scale})`} />
     {circles.map(({ cut, x, y, radius }, i) => {
+      const muted = !inThreeD.has(cut) && activeId !== cut.id
       return <g key={cut.id}>
-        <circle cx={x} cy={y} r={radius} fill="transparent" stroke={activeId === cut.id ? 'var(--accent)' : colors[cut.type] ?? DEFAULT_ANNOTATION_COLORS[cut.type]} strokeWidth={activeId === cut.id ? 2 : 1.4} strokeDasharray={covered[i] ? '5 4' : undefined} className="photo-draggable" onPointerDown={(e) => startDrag(e, cut, false)} onClick={() => setActiveId(cut.id)}><title>{`${cut.id}: ${distanceSummary(cut)}`}</title></circle>
-        {activeId === cut.id && <circle cx={x + radius} cy={y} r={5} fill="var(--accent)" className="photo-resize" onPointerDown={(e) => startDrag(e, cut, true)} />}
-        <text x={x} y={y + radius + 14} className="photo-label">{cut.id}</text>
+        <circle cx={x} cy={y} r={radius} fill="none" stroke={activeId === cut.id ? 'var(--accent)' : colors[cut.type] ?? DEFAULT_ANNOTATION_COLORS[cut.type]} strokeOpacity={muted ? 0.5 : undefined} strokeWidth={activeId === cut.id ? 2 : 1.4} strokeDasharray={covered[i] ? '5 4' : undefined} />
+        {/* Szersza niewidoczna obwódka do kliknięcia; wnętrze okręgu nie łapie kursora. */}
+        <circle cx={x} cy={y} r={radius} fill="none" stroke="transparent" strokeWidth={12} className="photo-circle" onClick={() => setActiveId(cut.id)}><title>{`${cut.id}: ${distanceSummary(cut)}`}</title></circle>
+        <text x={x} y={y + radius + 14} className={muted ? 'photo-label muted' : 'photo-label'}>{cut.id}</text>
       </g>
     })}
   </svg>
 }
 
+const REGRESSOR_REFUSALS: Record<string, string> = {
+  FIELD_POPULATION_KINEMATICS: 'zbyt duży rozrzut prędkości grupy gwiazd',
+  NO_SUPPORTED_CLUSTER: 'brak spójnej grupy gwiazd',
+  NO_KINEMATICALLY_COHERENT_CLUSTER: 'brak grupy o zgodnych ruchach własnych',
+  EMPTY_SIGHTLINE: 'brak danych o gwiazdach w tym polu',
+  TOO_FEW_STARS: 'zbyt mało gwiazd z odległością',
+  NO_MATCHED_EXTRAGALACTIC_DISTANCE: 'brak dopasowanej odległości galaktyki',
+}
+
+function regressorNotice(cut: PhotoCut, job: RegressorJob | undefined): string | undefined {
+  if (hasDistance(cut) || cut.distanceOrigin === 'user') return undefined
+  if (job?.status === 'queued') return 'Regresor: oczekuje w kolejce.'
+  if (job?.status === 'running') return 'Regresor: szacowanie w toku.'
+  if (job?.result?.status === 'error') return `Regresor: ${job.result.message}`
+  if (job?.status === 'error' || job?.status === 'unknown') return 'Regresor: nie udało się odczytać wyniku.'
+  if (job?.result?.status === 'abstain') return `Regresor: ${REGRESSOR_REFUSALS[job.result.reason] ?? 'brak podstaw do oszacowania odległości'}.`
+  if (job?.status === 'done') return 'Regresor: oszacowanie nie spełniło kryteriów jakości.'
+  if (!REGRESSOR_TYPES.includes(cut.type)) return 'Regresor nie obsługuje tego typu obiektu.'
+  return undefined
+}
+
 /** Panel wycinków: widoczność, wybór źródła odległości i zakres pomiaru, dokładność astrometrii. */
-export function PhotoCutEditor({ session, regressing = [] }: { session: PhotoSession; regressing?: string[] }) {
+export function PhotoCutEditor({ session, regressorJobs }: { session: PhotoSession; regressorJobs?: ReadonlyMap<string, RegressorJob> }) {
   const { project, updateCut, activeId, setActiveId } = session
+  const { catalog } = useCatalog()
   const colors = useStore((s) => s.annotationColors)
   const [distances, setDistances] = useState<{ key: string; data: PhotoDistances } | null>(null)
   const [distanceRetry, setDistanceRetry] = useState(0)
   const active = project?.cuts.find((c) => c.id === activeId)
+  const aliases = active ? catalog?.find((object) => object.id === active.id)?.photoAliases : undefined
+  const activeRegressorNotice = active && regressorNotice(active, regressorJobs?.get(active.id))
   const distanceKey = project && active ? `${project.id}:${active.id}` : ''
   const distanceData = distances?.key === distanceKey ? distances.data : null
   const selectedDistance = distanceData?.measurements.findIndex((m) => m.distLy === active?.distLy && m.uncertaintyLy === active?.uncertaintyLy && m.distanceSource === active?.distanceSource && m.distanceMethod === active?.distanceMethod) ?? -1
@@ -118,14 +128,15 @@ export function PhotoCutEditor({ session, regressing = [] }: { session: PhotoSes
 
   return <div className="photo-editor">
     <div className="photo-editor-heading"><strong>Wycinki zdjęcia</strong><CloseButton label="Zamknij edycję wycinków" onClick={() => session.setEditing(false)} /></div>
-    <p className="dim">Propozycje z katalogu. Zaznacz widoczne obiekty; przesuń okrąg i jego uchwyt. Obiekty bez ustalonej odległości nie trafiają do 3D.</p>
+    <p className="dim">Obiekty z rozwiązania zdjęcia. Wybierz obiekt z listy albo kliknij obwódkę jego okręgu; zaznacz, które pokazać w 3D. Obiekty bez ustalonej odległości nie trafiają do 3D (na zdjęciu są bledsze).</p>
     <div className="photo-object-list">{project.cuts.map((c) => <div key={c.id} className={activeId === c.id ? 'active' : ''}>
-      <input type="checkbox" aria-label={`Pokaż ${c.id}`} checked={c.enabled && hasDistance(c)} disabled={!hasDistance(c)} title={hasDistance(c) ? undefined : regressing.includes(c.id) ? 'Regresor szacuje odległość (w tle, kilka minut)' : 'Bez ustalonej odległości: obiekt nie trafia do 3D'} onChange={(e) => updateCut(c.id, { enabled: e.target.checked })} />
+      <input type="checkbox" aria-label={`Pokaż ${c.id}`} checked={c.enabled && hasDistance(c)} disabled={!hasDistance(c)} title={hasDistance(c) ? undefined : regressorNotice(c, regressorJobs?.get(c.id)) ?? 'Bez ustalonej odległości: obiekt nie trafia do 3D'} onChange={(e) => updateCut(c.id, { enabled: e.target.checked })} />
       <button onClick={() => setActiveId(c.id)}><span style={{ color: colors[c.type] ?? DEFAULT_ANNOTATION_COLORS[c.type] }}>{c.id}</span><small>{TYPE_INFO[c.type].short}</small></button>
     </div>)}</div>
     {project.cuts.length === 0 && <p>Brak obiektów katalogowych w tym kadrze.</p>}
     {active && <div className="photo-fields">
       <strong>{active.id}</strong>
+      {!!aliases?.length && <small className="dim">{aliases.join(', ')}</small>}
       <label>Źródło odległości<select value={selectedDistance < 0 ? active.distLy ? 'saved' : 'unknown' : selectedDistance} title={distanceSummary(active)} onChange={(e) => {
         if (e.target.value === 'unknown') { updateCut(active.id, { ...NO_DISTANCE, distanceOrigin: 'user' }); return }
         const measurement = distanceData?.measurements[Number(e.target.value)]
@@ -141,6 +152,7 @@ export function PhotoCutEditor({ session, regressing = [] }: { session: PhotoSes
       {!hasDistance(active) && <p className="photo-notice">{active.distLy ? `Niepewność powyżej ${MAX_RELATIVE_UNCERTAINTY * 100} %: obiekt nie trafia do 3D.` : 'Bez ustalonej odległości obiekt nie trafia do 3D.'}</p>}
       {active.distanceRef && <a href={`https://ui.adsabs.harvard.edu/abs/${encodeURIComponent(active.distanceRef)}/abstract`} target="_blank" rel="noreferrer">Publikacja źródłowa ↗</a>}
       <div className="photo-distance-status" aria-live="polite">
+        {activeRegressorNotice && <p className="photo-notice">{activeRegressorNotice}</p>}
         {!distanceData && <p className="dim">Pobieranie pomiarów…</p>}
         {distanceData?.warnings.map((warning) => <p key={warning} className="photo-notice">{warning}</p>)}
         {!!distanceData?.warnings.length && <button className="button small" onClick={() => { setDistances(null); setDistanceRetry((n) => n + 1) }}>Ponów pobieranie</button>}

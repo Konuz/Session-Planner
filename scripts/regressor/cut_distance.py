@@ -7,6 +7,7 @@ Uruchamianie (serwer, server/regressor.ts):
 status: ok (wartość), abstain (model odmówił; wynik trwały) albo error (awaria usługi lub programu; do ponowienia).
 """
 import argparse, contextlib, json, math, os, sys
+from io import StringIO
 
 ROOT = os.environ.get("REGRESSOR_DIR") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "astro-regressor-main")
 sys.path.insert(0, os.path.abspath(ROOT))
@@ -15,6 +16,73 @@ sys.path.insert(0, os.path.abspath(ROOT))
 # populacja gwiazd w stożku nic o nich nie mówi, a skok ekstynkcji ma w regresorze stałą niepewność ±7 %.
 OTYPES = {"EN": "HII", "RN": "RNe", "CN": "Cl*", "OC": "OpC", "GC": "Cl*", "G": "G", "GG": "GrG"}
 NEBULAE = {"EN", "RN", "CN"}
+GAVO = "https://dc.zah.uni-heidelberg.de/tap/sync"
+GAIA_ARCHIVES = (
+    ("https://gaia.ari.uni-heidelberg.de/tap/sync", "gaiaedr3_complements.distances"),
+    ("https://gea.esac.esa.int/tap-server/tap/sync", "external.gaiaedr3_distance"),
+)
+STELLAR_COLUMNS = ("source_id", "ra", "dec", "parallax", "parallax_error", "pmra", "pmdec",
+                   "phot_g_mean_mag", "astrometric_params_solved", "pseudocolour")
+CALIBRATION_COLUMNS = ("source_id", "ecl_lat", "nu_eff_used_in_astrometry")
+
+
+def tap_csv(url, query, columns):
+    import pandas as pd
+    import requests
+
+    response = requests.post(url, data={"REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": "csv", "QUERY": query},
+                             timeout=(5, 12))
+    response.raise_for_status()
+    table = pd.read_csv(StringIO(response.text), dtype={"source_id": "int64"})
+    if not set(columns).issubset(table.columns):
+        raise ValueError("Nieoczekiwane kolumny odpowiedzi TAP")
+    return table
+
+
+def fetch_stellar_cone(ra, dec, cone):
+    import requests
+    from catalogs import apply_gaia_calibration
+
+    columns = (*STELLAR_COLUMNS, "r_med_photogeo")
+    region = f"1=CONTAINS(POINT('ICRS', g.ra,g.dec),CIRCLE('ICRS',{ra},{dec},{cone}))"
+    quality = "AND g.parallax_error > 0 AND g.parallax/g.parallax_error > 1.5 AND (g.ruwe < 1.4 OR g.ruwe IS NULL)"
+    order = "ORDER BY snr DESC, source_id ASC"
+    select = ", ".join(f"g.{c} AS {c}" for c in STELLAR_COLUMNS)
+    try:
+        stars = tap_csv(GAVO, f"SELECT TOP 500 {select}, g.r_med_photogeo, g.parallax/g.parallax_error AS snr "
+                             f"FROM gedr3dist.litewithdist AS g WHERE {region} {quality} {order}", columns)
+    except (requests.RequestException, ValueError):
+        stars = None
+
+    if stars is not None and stars.empty:
+        return stars
+
+    codes = []
+    for url, distance_table in GAIA_ARCHIVES:
+        # Jedna próba na usługę. Po 429 kolejne źródło, bez ponawiania w okresie Retry-After.
+        try:
+            if stars is None:
+                astrometry = tap_csv(url, f"SELECT TOP 1000 {select}, g.ecl_lat, g.nu_eff_used_in_astrometry, "
+                                          f"g.parallax/g.parallax_error AS snr FROM gaiadr3.gaia_source AS g "
+                                          f"WHERE {region} {quality} {order}", (*STELLAR_COLUMNS, *CALIBRATION_COLUMNS[1:]))
+                if astrometry.empty:
+                    return astrometry
+                ids = ",".join(str(source_id) for source_id in astrometry["source_id"])
+                distances = tap_csv(url, f"SELECT source_id, r_med_photogeo FROM {distance_table} "
+                                         f"WHERE source_id IN ({ids})", ("source_id", "r_med_photogeo"))
+                full = astrometry.merge(distances, on="source_id", validate="one_to_one").head(500)
+            else:
+                ids = ",".join(str(source_id) for source_id in stars["source_id"])
+                calibration = tap_csv(url, f"SELECT {', '.join(CALIBRATION_COLUMNS)} "
+                                           f"FROM gaiadr3.gaia_source WHERE source_id IN ({ids})", CALIBRATION_COLUMNS)
+                full = stars.merge(calibration, on="source_id", validate="one_to_one")
+                if len(full) != len(stars):
+                    raise ValueError("Niepełne dane do korekty paralaksy")
+            return apply_gaia_calibration(full)
+        except (requests.RequestException, ValueError) as error:
+            status = error.response.status_code if isinstance(error, requests.HTTPError) and error.response is not None else None
+            codes.append(str(status) if status is not None else type(error).__name__)
+    raise RuntimeError(f"Gaia chwilowo niedostępna ({', '.join(codes)})")
 
 
 def finite(x):
@@ -22,7 +90,6 @@ def finite(x):
 
 
 def run(ra, dec, radius, app_type):
-    from catalogs import fetch_all_catalogs
     from estimators import synthesize_target_distance
 
     galaxy = app_type in ("G", "GG")
@@ -31,13 +98,16 @@ def run(ra, dec, radius, app_type):
     name = f"POS {ra:.5f} {dec:+.5f}"
     meta = {"ra": ra, "dec": dec, "object_type": OTYPES[app_type], "canonical_name": name, "input_name": name, "is_extended": not galaxy,
             "radius_deg": r_on, "opacity_class": None, "v_lsr_kms": None, "ppv_components": 1}
-    df, tables = fetch_all_catalogs(ra, dec, cone, 500, show_progress=False)
-    status = {row["catalog"]: row for row in tables.get("query_status").to_dict("records")} if "query_status" in tables else {}
-    # Awaria usługi to nie odmowa modelu: pusty stożek z błędem zapytania nie może trafić do pamięci jako wynik.
-    needed = ("sdss_spec", "cosmicflows4") if galaxy else ("base",)
-    failed = [k for k in needed if status.get(k, {}).get("status") == "error"]
-    if failed:
-        return {"status": "error", "message": "; ".join(f"{k}: {status[k]['error'][:160]}" for k in failed)}
+    if galaxy:
+        from catalogs import fetch_all_catalogs
+
+        df, tables = fetch_all_catalogs(ra, dec, cone, 500, show_progress=False)
+        status = {row["catalog"]: row for row in tables["query_status"].to_dict("records")}
+        failed = [k for k in ("sdss_spec", "cosmicflows4") if status.get(k, {}).get("status") == "error"]
+        if failed:
+            return {"status": "error", "message": "; ".join(f"{k}: {status[k]['error'][:160]}" for k in failed)}
+    else:
+        df, tables = fetch_stellar_cone(ra, dec, cone), {}
     primary, _, members = synthesize_target_distance(meta, df, tables, cone, use_registry=False, prefer_nearest=app_type in NEBULAE)
     mode, method = primary.get("mode"), str(primary.get("method", ""))
     d, lo, hi = primary.get("distance_pc"), primary.get("lo_pc"), primary.get("hi_pc")

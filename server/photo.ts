@@ -10,7 +10,7 @@ import { Worker } from 'node:worker_threads'
 import sharp from 'sharp'
 import { parseCatalog, type DSO } from '../src/lib/catalog.ts'
 import { blackBorderMask } from '../src/lib/blackBorderMask.ts'
-import { catalogDistance } from '../src/lib/distance.ts'
+import { canonicalPhotoCuts, catalogDistance } from '../src/lib/distance.ts'
 import type { OwnPhotoSolved } from '../src/lib/ownPhoto.ts'
 import type { PhotoProject } from '../src/lib/photo.ts'
 import { loadPhotoDistances } from './photoDistances.ts'
@@ -58,7 +58,7 @@ const starsCache = new Map<string, Awaited<ReturnType<typeof loadPhotoStars>>>()
 
 function getCatalogById(): Promise<Map<string, DSO>> {
   cachedCatalogById ??= readFile(catalogPath, 'utf8')
-    .then((raw) => { const data = JSON.parse(raw); return new Map(parseCatalog(data.rows, data.sources, data.unresolved).map((o) => [o.id, o])) })
+    .then((raw) => { const data = JSON.parse(raw); return new Map(parseCatalog(data.rows, data.sources, data.unresolved, data.photoAliases).map((o) => [o.id, o])) })
     .catch((err) => {
       cachedCatalogById = null
       throw err
@@ -258,11 +258,13 @@ export async function photoApi(req: IncomingMessage, res: ServerResponse, env: P
       return
     }
     const byId = await getCatalogById()
-    const cuts = result.objects.flatMap((p) => {
+    const detected = result.objects.flatMap((p) => {
       const o = byId.get(p.id)
       // Gwiazda oświetlająca dochodzi później, z gwiazd Gaia pola (klient po pobraniu gwiazd).
-      return o ? [{ ...p, type: o.type, raDeg: o.raDeg, decDeg: o.decDeg, enabled: true, ...catalogDistance(o) }] : []
-    }).sort((a, b) => a.id.localeCompare(b.id, 'pl', { numeric: true }))
+      const primary = byId.get(o?.photoPrimaryId ?? '') ?? o
+      return o && primary ? [{ ...p, type: o.type, raDeg: o.raDeg, decDeg: o.decDeg, enabled: true, ...catalogDistance(primary) }] : []
+    })
+    const cuts = canonicalPhotoCuts(detected, byId).sort((a, b) => a.id.localeCompare(b.id, 'pl', { numeric: true }))
     const { width, height, objects: _objects, ...astrometry } = result
     const project: PhotoProject = { version: 3, id: createHash('sha256').update(image).digest('hex'), name, image: `data:image/jpeg;base64,${image.toString('base64')}`, width, height, createdAt: Date.now(), cuts, astrometry, stars: null }
     json(200, project)

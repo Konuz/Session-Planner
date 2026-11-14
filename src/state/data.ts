@@ -155,17 +155,18 @@ export function useCatalogVisibility(): CatalogVisibility | null {
 
 export function useWeather(): { hours: WeatherHour[]; error: string | null; loading: boolean } {
   const loc = useStore((s) => s.location)
+  const provider = useStore((s) => s.weatherProvider)
   const [state, setState] = useState<{ key: string; hours: WeatherHour[]; error: string | null }>({ key: '', hours: [], error: null })
-  const key = `${loc.latDeg},${loc.lonDeg}`
+  const key = `${provider}|${loc.latDeg},${loc.lonDeg}`
   useEffect(() => {
     let alive = true
-    fetchWeather(loc.latDeg, loc.lonDeg)
+    fetchWeather(loc.latDeg, loc.lonDeg, provider)
       .then((hours) => alive && setState({ key, hours, error: null }))
       .catch((e: Error) => alive && setState({ key, hours: [], error: e.message }))
     return () => {
       alive = false
     }
-  }, [key, loc.latDeg, loc.lonDeg])
+  }, [key, loc.latDeg, loc.lonDeg, provider])
   return useMemo(
     () => ({ hours: state.key === key ? state.hours : [], error: state.key === key ? state.error : null, loading: state.key !== key }),
     [state, key],

@@ -1,7 +1,7 @@
 // Sesja zdjęcia okna „Pozycja 3D”: odczyt i zapis w IndexedDB, astrometria nowego zdjęcia, edycja wycinków
 // i gwiazdy Gaia. Wspólna dla Drogi Mlecznej, Wszechświata lokalnego i Obserwatorium.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { refreshCutDistances, regressorDistance, regressorEligible, type RegressorResult } from '../../lib/distance'
+import { cutDistance, refreshCutDistances, regressorDistance, regressorEligible, type RegressorResult } from '../../lib/distance'
 import { fieldOfView } from '../../lib/observatory'
 import type { PhotoCut, PhotoProject, PhotoStars } from '../../lib/photo'
 import { hasUnsavedPhoto, photoImageUrl, readPhoto, writePhoto } from '../../lib/photoStorage'
@@ -161,11 +161,17 @@ export function useCutDistances(session: PhotoSession) {
   useEffect(() => {
     if (!project || !catalog || !byId) return
     const next = refreshCutDistances(project, catalog, byId)
-    if (next !== project) sessionRef.current.change(next)
+    if (next !== project) {
+      const current = sessionRef.current
+      const primary = current.activeId && byId.get(current.activeId)?.photoPrimaryId
+      if (primary && next.cuts.some((cut) => cut.id === primary)) current.setActiveId(primary)
+      current.change(next)
+    }
   }, [project, catalog, byId])
 }
 
-type RegressorJob = { key: string; status: 'queued' | 'running' | 'done' | 'error' | 'unknown'; result?: RegressorResult }
+export type RegressorJob = { key: string; status: 'queued' | 'running' | 'done' | 'error' | 'unknown'; result?: RegressorResult }
+const NO_REGRESSOR_JOBS: ReadonlyMap<string, RegressorJob> = new Map()
 const REGRESSOR_POLL_MS = 15_000
 const REGRESSOR_POLL_MAX_MS = 120_000
 /** Limit wycinków w jednym zapytaniu serwera (`MAX_TARGETS` w server/regressor.ts). */
@@ -174,89 +180,124 @@ const REGRESSOR_BATCH = 40
 /**
  * Regresor (astro-regressor na serwerze) dla wycinków bez żadnej odległości: zgłoszenie w tle po astrometrii i odpytywanie
  * co 15 s. Sensowną wartość wpisuje jako niezweryfikowaną (origin „regressor”); odmowy i awarie zostawiają brak odległości.
- * Zwraca identyfikatory wycinków, na które regresor jeszcze pracuje.
+ * Zwraca aktualny stan i wynik ostatniej próby dla każdego zgłoszonego wycinka.
  */
-export function useRegressor(session: PhotoSession): string[] {
+export function useRegressor(session: PhotoSession, starsFailed: boolean): ReadonlyMap<string, RegressorJob> {
   const { catalog } = useCatalog()
   const byId = useMemo(() => catalog && new Map(catalog.map((o) => [o.id, o])), [catalog])
-  const [ready, setReady] = useState(false)
-  const [pending, setPending] = useState<{ projectId: string; ids: string[] } | null>(null)
+  const [ready, setReady] = useState<boolean | null>(null)
+  const [attempts, setAttempts] = useState<{ projectId: string; jobs: ReadonlyMap<string, RegressorJob> } | null>(null)
+  const attemptsRef = useRef(attempts)
   const sessionRef = useRef(session)
   sessionRef.current = session
   const { project } = session
-  const targets = useMemo(() => project && byId ? project.cuts.filter((cut) => regressorEligible(cut, byId.get(cut.id))) : [], [project, byId])
+  const targets = useMemo(() => project && catalog && byId ? project.cuts.filter((cut) => {
+    const object = byId.get(cut.id)
+    return object && !object.photoPrimaryId && regressorEligible(cut, object) &&
+      (!object.illuminator || project.stars !== null || starsFailed) &&
+      cutDistance(object, project.stars?.stars ?? null, catalog[object.illuminator?.cluster ?? -1] ?? null).distLy === null
+  }) : [], [project, catalog, byId, starsFailed])
   const targetKey = targets.map((cut) => cut.id).join('|')
 
   useEffect(() => {
     const abort = new AbortController()
-    fetch('/api/photo/regressor', { signal: abort.signal }).then((r) => r.ok ? r.json() : null).then((data) => setReady(data?.ready === true)).catch(() => {})
+    fetch('/api/photo/regressor', { signal: abort.signal }).then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (!abort.signal.aborted) setReady(data?.ready === true) })
+      .catch(() => { if (!abort.signal.aborted) setReady(false) })
     return () => abort.abort()
   }, [])
 
   useEffect(() => {
-    if (!ready || !project || !targets.length) { setPending(null); return }
+    if (!project || ready === null || !targets.length) return
+    const previous = attemptsRef.current?.projectId === project.id ? attemptsRef.current.jobs : NO_REGRESSOR_JOBS
+    const pending = targets.filter((cut) => {
+      const job = previous.get(cut.id)
+      return !job || job.status === 'queued' || job.status === 'running'
+    })
+    if (!pending.length) return
+    const ids = pending.map((cut) => cut.id)
+    const update = (jobs: ReadonlyMap<string, RegressorJob>) => {
+      const next = { projectId: project.id, jobs: new Map([...previous, ...jobs]) }
+      attemptsRef.current = next
+      setAttempts(next)
+    }
+    if (!ready) {
+      update(new Map(ids.map((id) => [id, { key: '', status: 'error', result: { status: 'error', message: 'Usługa jest niedostępna.' } }])))
+      return
+    }
     const scale = fieldOfView(project.astrometry.wcs, project.width, project.height)
     if (!scale) return
     const degPerPx = scale.widthDeg / project.width
     const abort = new AbortController()
     let timer: ReturnType<typeof setTimeout> | undefined
-    const ids = targets.map((cut) => cut.id)
-    const apply = (jobs: RegressorJob[]) => {
+    const apply = (jobs: ReadonlyMap<string, RegressorJob>) => {
       const latest = sessionRef.current.project
-      if (!latest || latest.id !== project.id || abort.signal.aborted) return []
-      const results = new Map(jobs.flatMap((job, i) => job.status === 'done' && job.result ? [[ids[i], job.result] as const] : []))
+      if (!latest || latest.id !== project.id || abort.signal.aborted) return false
       let changed = false
       const cuts = latest.cuts.map((cut) => {
-        const result = results.get(cut.id)
+        const job = jobs.get(cut.id)
+        const result = job?.status === 'done' ? job.result : undefined
         const distance = result && regressorEligible(cut, byId?.get(cut.id)) ? regressorDistance(result, cut.raDeg, cut.decDeg) : null
         if (!distance) return cut
         changed = true
         return { ...cut, ...distance }
       })
       if (changed) sessionRef.current.change({ ...latest, cuts })
-      const waiting = jobs.flatMap((job, i) => job.status === 'queued' || job.status === 'running' ? [ids[i]] : [])
-      setPending({ projectId: project.id, ids: waiting })
-      return waiting
+      update(jobs)
+      return [...jobs.values()].some((job) => job.status === 'queued' || job.status === 'running')
     }
     // Odpytywanie co 15 s; po błędzie odstęp rośnie dwukrotnie do 2 min, a w ukrytej karcie czeka na jej pokazanie (C08).
     let delay = REGRESSOR_POLL_MS
-    const poll = (keys: string[]) => {
+    const poll = (jobs: ReadonlyMap<string, RegressorJob>) => {
       timer = setTimeout(() => {
         if (document.hidden) {
-          const resume = () => { document.removeEventListener('visibilitychange', resume); if (!abort.signal.aborted) poll(keys) }
+          const resume = () => { document.removeEventListener('visibilitychange', resume); if (!abort.signal.aborted) poll(jobs) }
           document.addEventListener('visibilitychange', resume)
           abort.signal.addEventListener('abort', () => document.removeEventListener('visibilitychange', resume))
           return
         }
-        // Klucze po 40 (limit serwera) w kolejności wycinków.
+        const running = [...jobs].filter(([, job]) => job.status === 'queued' || job.status === 'running')
+        const keys = running.map(([, job]) => job.key)
         const chunks = Array.from({ length: Math.ceil(keys.length / REGRESSOR_BATCH) }, (_, i) => keys.slice(i * REGRESSOR_BATCH, (i + 1) * REGRESSOR_BATCH))
         Promise.all(chunks.map((chunk) => fetch(`/api/photo/regressor?${new URLSearchParams({ keys: chunk.join(',') })}`, { signal: abort.signal })
           .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() as Promise<{ jobs: RegressorJob[] }> })))
           .then((parts) => {
             delay = REGRESSOR_POLL_MS
-            if (apply(parts.flatMap((p) => p.jobs)).length) poll(keys)
+            const polled = parts.flatMap((part) => part.jobs)
+            const next = new Map(jobs)
+            running.forEach(([id], i) => next.set(id, polled[i]))
+            if (apply(next)) poll(next)
           })
           .catch(() => {
             if (abort.signal.aborted) return
             delay = Math.min(REGRESSOR_POLL_MAX_MS, delay * 2)
-            poll(keys)
+            poll(jobs)
           })
       }, delay)
     }
-    const all = targets.map((cut) => ({ raDeg: cut.raDeg, decDeg: cut.decDeg, radiusDeg: Math.min(2, Math.max(0.001, cut.radius * degPerPx)), type: cut.type }))
+    const all = pending.map((cut) => ({ raDeg: cut.raDeg, decDeg: cut.decDeg, radiusDeg: Math.min(2, Math.max(0.001, cut.radius * degPerPx)), type: cut.type }))
     const batches = Array.from({ length: Math.ceil(all.length / REGRESSOR_BATCH) }, (_, i) => all.slice(i * REGRESSOR_BATCH, (i + 1) * REGRESSOR_BATCH))
     // Identyfikator zdjęcia jako grupa: jego wycinki idą na serwerze przed zadaniami poprzednich zdjęć.
     Promise.all(batches.map((batch) => fetch('/api/photo/regressor', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: abort.signal,
       body: JSON.stringify({ targets: batch, group: project.id }),
-    }).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() as Promise<{ jobs: RegressorJob[] }> })))
+    }).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() as Promise<{ jobs: RegressorJob[] }> })
+      .catch((): { jobs: RegressorJob[] } => ({
+        jobs: batch.map(() => ({ key: '', status: 'error', result: { status: 'error', message: 'Nie udało się zgłosić wycinka.' } })),
+      }))))
       .then((parts) => {
-        const jobs = parts.flatMap((p) => p.jobs)
-        if (apply(jobs).length) poll(jobs.map((job) => job.key))
+        const jobs = new Map(parts.flatMap((part) => part.jobs).map((job, i) => [ids[i], job]))
+        if (apply(jobs)) poll(jobs)
       })
-      .catch((e: Error) => { if (!abort.signal.aborted) console.warn('Regresor: zgłoszenie wycinków nie powiodło się.', e.message) })
     return () => { abort.abort(); clearTimeout(timer) }
     // Zmiana pozostałych pól projektu (np. zapis gwiazd) nie zgłasza wycinków ponownie.
   }, [ready, project?.id, targetKey])
-  return pending && pending.projectId === project?.id ? pending.ids : []
+  // Zadanie może pozostać na serwerze, gdy wynik z gwiazdy oświetlającej dotrze wcześniej.
+  if (!attempts || attempts.projectId !== project?.id) return NO_REGRESSOR_JOBS
+  const visible = new Map<string, RegressorJob>()
+  for (const cut of targets) {
+    const job = attempts.jobs.get(cut.id)
+    if (job) visible.set(cut.id, job)
+  }
+  return visible
 }
