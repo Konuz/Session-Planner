@@ -1,6 +1,7 @@
 // Pozycja obiektu w przestrzeni 3D (three.js, ładowane leniwie z okna „Pozycja 3D”). Odległości z Wikidata (mediana
-// podanych wartości), kierunek ze współrzędnych galaktycznych. Dwie skale: Droga Mleczna (liniowa, 1 j. = 1000 lś)
-// i Wszechświat lokalny (logarytmiczna). W tle wszystkie obiekty katalogu z odległością. Ustawienia z paska narzędzi okna.
+// podanych wartości), kierunek ze współrzędnych galaktycznych. Jedna scena: Droga Mleczna liniowo (1 j. = 1000 lś),
+// dalsze obiekty w skali logarytmicznej. Zakładki Droga Mleczna i Wszechświat lokalny przelatują kamerą bliżej lub dalej;
+// warstwy drugiej skali wygasza odległość kamery. W tle wszystkie obiekty katalogu z odległością. Ustawienia z paska okna.
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
@@ -13,11 +14,11 @@ import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO, type DSO, type ObjectType } from 
 import { useCatalog, useSelected } from '../state/data'
 import { useStore } from '../state/store'
 import type { PhotoProject } from '../lib/photo'
-import { GALACTIC_LIMIT_LY, sunPosition } from '../lib/space3d'
-import { constellationView, framePose, sideView, SPACE_FOV, type CameraPose } from '../lib/spaceCamera'
-import { ease, lerpPose, type Pose } from '../lib/spaceDive'
+import { GALACTIC_LIMIT_LY, LOG_UNIT, UNIVERSE_GALAXY_SCALE, layerFades, mixFades, sunPosition, type SpaceScale } from '../lib/space3d'
+import { constellationView, framePose, sideView, SPACE_FAR, SPACE_FOV, type CameraPose } from '../lib/spaceCamera'
+import { ease, lerpPose, zoomPose, type Pose } from '../lib/spaceDive'
 import {
-  LOCAL_GROUP_SHAPES, MILKY_WAY_DIAMETER_LY, UNIVERSE_GALAXY_SCALE, addStarNameLabels, domeMaterial, dotTexture, fixedSizeTextSprite,
+  LOCAL_GROUP_SHAPES, MILKY_WAY_DIAMETER_LY, addStarNameLabels, domeMaterial, dotTexture, fixedSizeTextSprite,
   galaxyTexture, localGroupGalaxy, milkyWay, position, textSprite, toThree, type StarNameLayout,
 } from './space3d/galaxyModels'
 import { GALAXY_LEVELS, type ConstellationStar, type SpaceSettings } from './space3d/spaceSettings'
@@ -29,9 +30,8 @@ interface Props {
   onHandle?(handle: Space3DHandle | null): void
 }
 
-/** Scena Space3D dla modułów okna: znaczniki zdjęcia w Drodze Mlecznej i nurkowanie do Obserwatorium. */
+/** Scena Space3D dla modułów okna: znaczniki zdjęcia i nurkowanie do Obserwatorium. Uchwyt nie zmienia się przy zmianie zakładki. */
 export interface Space3DHandle {
-  scale: 'galaxy' | 'universe'
   scene: THREE.Scene
   camera: THREE.PerspectiveCamera
   controls: OrbitControls
@@ -54,17 +54,16 @@ export interface Space3DHandle {
   /** Koniec przelotu kamery i obrotu poglądowego. */
   stopIntro(): void
   /** Płynny przelot kamery z bieżącej pozy (cięcie przy ograniczonym ruchu). */
-  flyTo(pose: CameraPose, ms?: number): void
+  flyTo(pose: CameraPose, ms?: number, zoom?: boolean): void
   viewConstellation(abbr: string): void
   /** Klatki z zewnątrz: własna pętla stoi, a klatkę liczy step(now) (nurkowanie; w stanie zdjęcia brak klatek). */
   setExternal(on: boolean): void
   step(now: number): void
   /** Nadpisania nurkowania: kamera bez OrbitControls, krycie warstw tła i promień Ziemi w jednostkach sceny
    *  (earthBlend: 0 – znacznik do 16 px, 1 – earthRadius; pośrednie wartości dają płynną zmianę wielkości). */
-  override: { camera: boolean; layerFade: number; earthRadius: number | null; earthBlend: number }
+  override: { camera: boolean; layerFade: number; labelFade: number; earthRadius: number | null; earthBlend: number }
 }
 
-/** Przepisuje do bufora tylko punkty niewyłączonych rodzajów i ogranicza do nich zakres rysowania. */
 /**
  * Ta sama klatka z dokładnością do niewidocznych zmian (1e-6 względnie, ok. 0,002 px). Tłumienie OrbitControls
  * przesuwa kamerę o coraz mniejsze ułamki jeszcze przez kilka sekund, więc dokładne `equals` nigdy nie odpoczywa.
@@ -74,7 +73,10 @@ function sameMatrix(a: THREE.Matrix4, b: THREE.Matrix4): boolean {
   return true
 }
 
-function showTypes(bg:{ geometry: THREE.BufferGeometry; types: ObjectType[]; pos: Float32Array; col: Float32Array }, hidden: ObjectType[]) {
+type BackgroundPoints = { geometry: THREE.BufferGeometry; material: THREE.PointsMaterial; counts: number[]; types: ObjectType[]; pos: Float32Array; col: Float32Array }
+
+/** Przepisuje do bufora tylko punkty niewyłączonych rodzajów i ogranicza do nich zakres rysowania. */
+function showTypes(bg: { geometry: THREE.BufferGeometry; types: ObjectType[]; pos: Float32Array; col: Float32Array }, hidden: ObjectType[]) {
   const pos = bg.geometry.getAttribute('position') as THREE.BufferAttribute
   const col = bg.geometry.getAttribute('color') as THREE.BufferAttribute
   let n = 0
@@ -93,10 +95,17 @@ const UP: Vec3 = [0, 1, 0]
 /** Przelot kamery: startowy znad Galaktyki i krótszy przy zmianie obiektu lub kadru. */
 const INTRO_MS = 2200
 const FLY_MS = 900
+/** Przelot przy zmianie zakładki (zbliżenie albo oddalenie ok. 8 razy). */
+const SWITCH_MS = 1600
+/** Krycie modelu Drogi Mlecznej z daleka: 52 tys. punktów sumuje się jak dawne 12 tys. we Wszechświecie lokalnym. */
+const MW_FAR_OPACITY = 0.14
 const easeOut = (t: number) => 1 - (1 - t) ** 3
 
 export default function Space3D({ settings, photo, onHandle }: Props) {
   const { scale, galaxyLevel, hiddenTypes, showConstellations, showStarNames, constellationChoice, constellations } = settings
+  // Zakładka nie przebudowuje sceny: przy budowie wyznacza kadr startowy, potem zmienia ją efekt [o, scale].
+  const scaleRef = useRef(scale)
+  scaleRef.current = scale
   const photoRef = useRef(photo)
   photoRef.current = photo
   const onHandleRef = useRef(onHandle)
@@ -107,8 +116,9 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
   // useEffect, więc wtedy trafiłby w odłączony fragment i listener na document trzymałby całą scenę (audyt C01).
   useLayoutEffect(() => () => controlsRef.current?.disconnect(), [])
   const pinRef = useRef<HTMLDivElement>(null)
-  // Punkty tła posortowane wg odległości: suwak zmienia tylko zakres rysowania, bez przebudowy sceny.
-  const bgRef = useRef<{ geometry: THREE.BufferGeometry; counts: number[]; types: ObjectType[]; pos: Float32Array; col: Float32Array } | null>(null)
+  // Punkty tła posortowane wg odległości: obiekty Galaktyki (filtr rodzajów) i galaktyki (suwak zmienia tylko zakres rysowania).
+  const galacticRef = useRef<BackgroundPoints | null>(null)
+  const extragalacticRef = useRef<BackgroundPoints | null>(null)
   const galaxyLevelRef = useRef(galaxyLevel)
   galaxyLevelRef.current = galaxyLevel
   const hiddenTypesRef = useRef(hiddenTypes)
@@ -138,8 +148,8 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
   const objectRef = useRef(o)
   objectRef.current = o
   const hasObject = !!o
-  /** Zmiana wybranego obiektu w istniejącej scenie (bez nowego renderera). */
-  const showObjectRef = useRef<((object: DSO) => void) | null>(null)
+  /** Zmiana wybranego obiektu lub zakładki w istniejącej scenie (bez nowego renderera), jednym przelotem. */
+  const showObjectRef = useRef<((object: DSO, scale: SpaceScale) => void) | null>(null)
   const constellationChoiceRef = useRef(constellationChoice)
   constellationChoiceRef.current = constellationChoice
   const { catalog } = useCatalog()
@@ -160,7 +170,7 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
     renderer.domElement.setAttribute('aria-label', 'Widok 3D. Lewy przycisk myszy: obrót wokół celu, prawy: rozglądanie, środkowy: przesuwanie, kółko: zbliżenie do kursora, WASD lub strzałki: lot, Q i E: w dół i w górę, Shift: szybciej.')
     mount.appendChild(renderer.domElement)
     const scene = new THREE.Scene()
-    const camera = new THREE.PerspectiveCamera(SPACE_FOV, mount.clientWidth / mount.clientHeight, 0.1, 5000)
+    const camera = new THREE.PerspectiveCamera(SPACE_FOV, mount.clientWidth / mount.clientHeight, 0.1, SPACE_FAR)
     const controls = new OrbitControls(camera, renderer.domElement)
     controlsRef.current = controls
     // PPM jest przechwytywany jako swobodne rozglądanie, bez obiegania celu przez OrbitControls.
@@ -175,6 +185,8 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
     controls.dampingFactor = 0.08
     controls.autoRotate = !reduced
     controls.autoRotateSpeed = 0.35
+    // Zoom kółkiem kończy się, zanim najdalsze galaktyki wyjdą za płaszczyznę far.
+    controls.maxDistance = 6000
     const disposables: { dispose(): void }[] = [renderer, controls]
     constellationGroupRef.current = null
     addConstellationsRef.current = null
@@ -183,7 +195,7 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
     const stars = galaxyTexture()
     disposables.push(stars)
 
-    const sunPos = new THREE.Vector3(...sunPosition(scale))
+    const sunPos = new THREE.Vector3(...sunPosition())
     // Podpisy mają stałą wielkość na ekranie; podpis punktu (anchor) trzyma też stały odstęp w pikselach od niego.
     const label = (text: string, color: string, anchor?: THREE.Vector3, offsetPx = 0) => {
       const sprite = textSprite(text, color)
@@ -197,17 +209,19 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       return sprite
     }
 
-    // Tło: obiekty katalogu z odległością.
-    const bg = withDistance
-      .filter((c) => (scale === 'galaxy' ? c.distLy! < GALACTIC_LIMIT_LY : c.distLy! > GALACTIC_LIMIT_LY && !LOCAL_GROUP_SHAPES[c.id]))
-      .sort((a, b) => a.distLy! - b.distLy!)
-    const localGroup = scale === 'universe' ? withDistance.filter((c) => LOCAL_GROUP_SHAPES[c.id]) : []
-    {
-      const pos = new Float32Array(bg.length * 3)
-      const col = new Float32Array(bg.length * 3)
+    // Zakładka sceny (zmienia ją showObjectRef) i krycia warstw z odległości kamery, liczone w każdej klatce.
+    let tab: SpaceScale = scaleRef.current
+    let fades = layerFades(Infinity, tab)
+    // Tło: obiekty katalogu z odległością. Obiekty Galaktyki i galaktyki to osobne warstwy (filtr rodzajów, suwak galaktyk).
+    const galactic = withDistance.filter((c) => c.distLy! < GALACTIC_LIMIT_LY).sort((a, b) => a.distLy! - b.distLy!)
+    const extragalactic = withDistance.filter((c) => c.distLy! > GALACTIC_LIMIT_LY && !LOCAL_GROUP_SHAPES[c.id]).sort((a, b) => a.distLy! - b.distLy!)
+    const localGroup = withDistance.filter((c) => LOCAL_GROUP_SHAPES[c.id])
+    const backgroundPoints = (list: DSO[], size: number, counts: number[]): BackgroundPoints => {
+      const pos = new Float32Array(list.length * 3)
+      const col = new Float32Array(list.length * 3)
       const tmp = new THREE.Color()
-      bg.forEach((c, i) => {
-        const p = position(c, c.distLy!, scale)
+      list.forEach((c, i) => {
+        const p = position(c, c.distLy!)
         pos.set([p.x, p.y, p.z], i * 3)
         tmp.setHex(typeRGB[c.type])
         col.set([tmp.r, tmp.g, tmp.b], i * 3)
@@ -217,17 +231,21 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       g.setAttribute('color', new THREE.BufferAttribute(col, 3))
       // Okrągłe kropki: tekstura koła zamiast domyślnego kwadratu.
       const dot = dotTexture()
-      const m = new THREE.PointsMaterial({ size: scale === 'universe' ? 2.5 : 5, sizeAttenuation: false, vertexColors: true, map: dot, transparent: true, opacity: 0.8, depthWrite: false })
+      const m = new THREE.PointsMaterial({ size, sizeAttenuation: false, vertexColors: true, map: dot, transparent: true, opacity: 0.8, depthWrite: false })
       scene.add(new THREE.Points(g, m))
       disposables.push(g, m, dot)
-      const counts = GALAXY_LEVELS.map(({ maxLy }) => (scale === 'universe' ? bg.filter((c) => c.distLy! <= maxLy).length : bg.length))
-      bgRef.current = { geometry: g, counts, types: bg.map((c) => c.type), pos: pos.slice(), col: col.slice() }
-      if (scale === 'galaxy') showTypes(bgRef.current, hiddenTypesRef.current)
-      else g.setDrawRange(0, counts[galaxyLevelRef.current])
+      return { geometry: g, material: m, counts, types: list.map((c) => c.type), pos: pos.slice(), col: col.slice() }
     }
+    galacticRef.current = backgroundPoints(galactic, 5, GALAXY_LEVELS.map(() => galactic.length))
+    showTypes(galacticRef.current, hiddenTypesRef.current)
+    extragalacticRef.current = backgroundPoints(extragalactic, 2.5, GALAXY_LEVELS.map(({ maxLy }) => extragalactic.filter((c) => c.distLy! <= maxLy).length))
+    extragalacticRef.current.geometry.setDrawRange(0, extragalacticRef.current.counts[galaxyLevelRef.current])
+    const galacticPoints = galacticRef.current
+    const extragalacticPoints = extragalacticRef.current
 
-    let milkyWayMaterial: THREE.PointsMaterial | undefined
     const localGalaxyModels: THREE.Points[] = []
+    /** Warstwy Wszechświata lokalnego (pierścienie, kopuły, ich podpisy): krycie z odległości kamery. */
+    const extragalacticFaders: ((fade: number, labelFade: number) => void)[] = []
     const constellationPoints: { group: THREE.Group; position: THREE.Vector3 }[] = []
     const constellationFigures = new Map<string, { group: THREE.Group; lines: LineSegments2; dots: THREE.Points; segments: number[]; stars: THREE.Vector3[] }>()
     let skyView: { group: THREE.Group; forward: THREE.Vector3; amount: number; update(amount: number): void; project(star: Vec3): Vec3; restore(): void } | null = null
@@ -239,7 +257,7 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       controls.zoomToCursor = true
       textLayoutDirty.current = sceneDirty.current = true
     }
-    if (scale === 'galaxy') {
+    {
       // Dane mogą nadejść już w trakcie przelotu startowego: dołącz je bez nowego renderera i resetu kamery.
       addConstellationsRef.current = () => {
         const constellations = constellationsRef.current
@@ -258,7 +276,7 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
               // Brak pomiaru przerywa linię; nie łączymy sąsiadów ponad brakującą gwiazdą.
               if (!a || !b) continue
               for (const s of [a, b]) {
-                const p = position({ raDeg: s[0], decDeg: s[1] }, s[2], 'galaxy')
+                const p = position({ raDeg: s[0], decDeg: s[1] }, s[2])
                 segments.push(p.x, p.y, p.z)
                 points.set(s.join(','), p)
               }
@@ -288,44 +306,50 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
           group.add(figure)
           disposables.push(geometry, starGeometry)
         }
-        group.visible = showConstellationsRef.current
+        group.visible = showConstellationsRef.current && tab === 'galaxy'
         scene.add(group)
         constellationGroupRef.current = group
         textLayoutDirty.current = true
         sceneDirty.current = true
       }
       addConstellationsRef.current()
-      const mw = milkyWay(52000, stars)
-      milkyWayMaterial = mw.material as THREE.PointsMaterial
-      scene.add(mw)
-      disposables.push(mw.geometry, mw.material as THREE.Material)
-      const gc = label('Centrum Galaktyki', '#ffd9a0')
-      gc.position.set(0, 3, 0)
-      scene.add(gc)
-    } else {
-      // Pierścienie odległości (skala logarytmiczna) i Droga Mleczna w środku.
+    }
+    const mw = milkyWay(52000, stars)
+    const milkyWayMaterial = mw.material as THREE.PointsMaterial
+    scene.add(mw)
+    disposables.push(mw.geometry, mw.material as THREE.Material)
+    const gcLabel = label('Centrum Galaktyki', '#ffd9a0')
+    gcLabel.position.set(0, 3, 0)
+    scene.add(gcLabel)
+    {
+      // Pierścienie odległości (skala logarytmiczna) z kopułami; wymiary dawnej sceny Wszechświata × 1/0,12.
+      const u = 1 / UNIVERSE_GALAXY_SCALE
       for (const [ly, text] of [[1e6, '1 mln lś'], [1e7, '10 mln lś'], [1e8, '100 mln lś'], [1e9, '1 mld lś']] as const) {
-        const r = Math.log10(ly / 1e4) * 22
-        const ring = new THREE.Mesh(new THREE.RingGeometry(r - 0.08, r + 0.08, 128), new THREE.MeshBasicMaterial({ color: 0x00e0ff, transparent: true, opacity: 0.18, side: THREE.DoubleSide }))
+        const r = Math.log10(ly / 1e4) * LOG_UNIT
+        const ringMaterial = new THREE.MeshBasicMaterial({ color: 0x00e0ff, transparent: true, opacity: 0.18, side: THREE.DoubleSide })
+        const ring = new THREE.Mesh(new THREE.RingGeometry(r - 0.08 * u, r + 0.08 * u, 128), ringMaterial)
         ring.rotation.x = -Math.PI / 2
         scene.add(ring)
-        disposables.push(ring.geometry, ring.material as THREE.Material)
+        disposables.push(ring.geometry, ringMaterial)
         // Półprzezroczysta kopuła nad pierścieniem: odległość czytelna także dla wysokości nad płaszczyzną.
-        const dome = new THREE.Mesh(new THREE.SphereGeometry(r, 64, 24, 0, Math.PI * 2, 0, Math.PI / 2), domeMaterial())
+        const domeShader = domeMaterial()
+        const dome = new THREE.Mesh(new THREE.SphereGeometry(r, 64, 24, 0, Math.PI * 2, 0, Math.PI / 2), domeShader)
         scene.add(dome)
-        disposables.push(dome.geometry, dome.material as THREE.Material)
+        disposables.push(dome.geometry, domeShader)
         const t = label(text, '#6fdcf0')
-        t.position.set(r + 2, 1, 0)
+        t.position.set(r + 2 * u, u, 0)
         scene.add(t)
+        extragalacticFaders.push((fade, labelFade) => {
+          ring.visible = dome.visible = fade > 0
+          t.visible = labelFade > 0
+          ringMaterial.opacity = 0.18 * fade
+          domeShader.uniforms.opacity.value = fade
+          t.material.opacity = labelFade
+        })
       }
-      const mw = milkyWay(12000, stars)
-      mw.scale.setScalar(UNIVERSE_GALAXY_SCALE)
-      localGalaxyModels.push(mw)
-      scene.add(mw)
-      disposables.push(mw.geometry, mw.material as THREE.Material)
       localGroup.forEach((c) => {
         const model = localGroupGalaxy(c, LOCAL_GROUP_SHAPES[c.id], stars)
-        model.position.copy(position(c, c.distLy!, 'universe'))
+        model.position.copy(position(c, c.distLy!))
         localGalaxyModels.push(model)
         scene.add(model)
         disposables.push(model.geometry, model.material as THREE.Material)
@@ -333,8 +357,8 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
     }
 
     // Ziemia jako umowny znacznik naszego położenia (rozmiar poza skalą).
-    let earth: THREE.Mesh | undefined
-    if (scale === 'galaxy') {
+    let earth: THREE.Mesh
+    {
       // Tekstura: https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg
       const map = new THREE.TextureLoader().load(`${import.meta.env.BASE_URL}textures/earth.webp`)
       map.colorSpace = THREE.SRGBColorSpace
@@ -354,20 +378,48 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       scene.add(light, light.target)
       disposables.push(earth.geometry, earth.material as THREE.Material, map)
     }
-    const sunLabel = scale === 'galaxy' ? label('Ziemia', '#93cfff', sunPos, -30) : label('Droga Mleczna', '#e6edf7')
-    if (scale === 'universe') sunLabel.position.set(0, -4.2, 0)
-    scene.add(sunLabel)
+    const earthLabel = label('Ziemia', '#93cfff', sunPos, -30)
+    const mwLabel = label('Droga Mleczna', '#e6edf7')
+    mwLabel.position.set(0, -4.2 / UNIVERSE_GALAXY_SCALE, 0)
+    scene.add(earthLabel, mwLabel)
+    // Warstwy z przełącznikami jednej zakładki: gwiazdozbiory i podpisy Ziemi, centrum Galaktyki albo Drogi Mlecznej.
+    const applyScale = () => {
+      if (constellationGroupRef.current) constellationGroupRef.current.visible = showConstellationsRef.current && tab === 'galaxy'
+      earthLabel.visible = gcLabel.visible = tab === 'galaxy'
+      mwLabel.visible = tab === 'universe'
+      textLayoutDirty.current = sceneDirty.current = true
+    }
+    applyScale()
+    // Krycia warstw: zakładka ma swoje warstwy w pełni, druga skala zależy od odległości kamery od początku układu, a w przelocie
+    // zakładek krycia obu zakładek się przenikają. Nurkowanie mnoży je przez swoje wygaszanie (podpisy gasną szybciej).
+    const applyFades = () => {
+      const distance = camera.position.length()
+      fades = flight?.fromScale && flight.fromScale !== tab
+        ? mixFades(layerFades(distance, flight.fromScale), layerFades(distance, tab), flight.progress)
+        : layerFades(distance, tab)
+      const layer = override.layerFade, labels = override.labelFade
+      galacticPoints.material.opacity = 0.8 * fades.galactic * layer
+      galacticPoints.material.visible = fades.galactic * layer > 0
+      extragalacticPoints.material.opacity = 0.8 * fades.extragalactic * layer
+      extragalacticPoints.material.visible = fades.extragalactic * layer > 0
+      for (const fader of extragalacticFaders) fader(fades.extragalactic * layer, fades.extragalactic * labels)
+      earthLabel.material.opacity = gcLabel.material.opacity = fades.galactic * labels
+      mwLabel.material.opacity = fades.extragalactic * labels
+    }
 
     // Przelot kamery: jedna interpolacja pozy (cel liniowo, kamera po sferze wokół celu), startowa znad Galaktyki.
-    camera.position.set(0, scale === 'galaxy' ? 120 : 200, 0.01)
-    let flight: { from: Pose; to: Pose; start: number | null; ms: number; easing(t: number): number; fromFov: number; toFov: number; fromNear: number; toNear: number; fromSky: number; toSky: number } | null = null
+    camera.position.set(0, tab === 'galaxy' ? 120 : 200 / UNIVERSE_GALAXY_SCALE, 0.01)
+    // Zakładka sprzed ostatniej zmiany: przelot zakładek przenika krycia warstw od niej do bieżącej (fromScale, progress).
+    let previousTab: SpaceScale = tab
+    let flight: { from: Pose; to: Pose; start: number | null; ms: number; easing(t: number): number; zoom: boolean; fromScale: SpaceScale | null; progress: number; fromFov: number; toFov: number; fromNear: number; toNear: number; fromSky: number; toSky: number } | null = null
     const setProjection = (fov: number, near: number) => {
       if (fov === camera.fov && near === camera.near) return
       camera.fov = fov
       camera.near = near
       camera.updateProjectionMatrix()
     }
-    const fly = (pose: CameraPose, ms: number, fov = SPACE_FOV, near = 0.1, toSky = 0, easing = easeOut) => {
+    /** zoom: przelot zakładek, odległość od celu zmienia się geometrycznie (zoomPose). */
+    const fly = (pose: CameraPose, ms: number, fov = SPACE_FOV, near = 0.1, toSky = 0, easing = easeOut, zoom = false) => {
       // Wyzeruj bezwładność, zachowując pozę ostatniej widocznej klatki.
       const position = camera.position.toArray() as Vec3
       const target = controls.target.toArray() as Vec3
@@ -388,7 +440,7 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
         else skyView?.update(toSky)
         return
       }
-      flight = { from: { position, target, up: UP }, to: { ...pose, up: UP }, start: null, ms, easing, fromFov: camera.fov, toFov: fov, fromNear: camera.near, toNear: near, fromSky: skyView?.amount ?? 0, toSky }
+      flight = { from: { position, target, up: UP }, to: { ...pose, up: UP }, start: null, ms, easing, zoom, fromScale: zoom ? previousTab : null, progress: 0, fromFov: camera.fov, toFov: fov, fromNear: camera.near, toNear: near, fromSky: skyView?.amount ?? 0, toSky }
     }
 
     // Wybrany obiekt: linia od Ziemi, pion do płaszczyzny Galaktyki i podpis. Zmiana obiektu przebudowuje tylko
@@ -400,7 +452,7 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
     let placed = false
     // Największy promień znacznika Ziemi: nie zasłania bliskiego obiektu.
     let earthCap = 0.35
-    const showObject = (object: DSO, ms: number) => {
+    const showObject = (object: DSO, ms: number, zoom = false) => {
       constellationReturn = null
       clearSkyView()
       for (const child of [...objectGuide.children]) {
@@ -418,12 +470,12 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       current = object
       const dist = object.distLy ?? null
       // Obiekt dalszy niż zasięg skali Drogi Mlecznej pokazany jak bez odległości: tylko kierunek, bez oddalania kadru.
-      placed = dist !== null && !(scale === 'galaxy' && dist > GALACTIC_LIMIT_LY)
+      placed = dist !== null && !(tab === 'galaxy' && dist > GALACTIC_LIMIT_LY)
       // Obiekt Galaktyki bez odległości w skali Wszechświata: zbliżenie na Drogę Mleczną, w której kończy się jego kierunek.
       const insideMilkyWay = dist === null && object.type !== 'G' && object.type !== 'GG'
-      const minSpan = scale === 'galaxy' ? 8 : insideMilkyWay ? 16 : 70
+      const minSpan = tab === 'galaxy' ? 8 : (insideMilkyWay ? 16 : 70) / UNIVERSE_GALAXY_SCALE
       const dir = toThree(galacticVector(object)).normalize()
-      target = placed ? position(object, dist!, scale) : sunPos.clone()
+      target = placed ? position(object, dist!) : sunPos.clone()
       // Rozmiar kadru wokół celu: kreski linii skalują się z nim, punkty i podpisy mają stały rozmiar w pikselach.
       const sep = sunPos.distanceTo(target)
       const k = Math.max(minSpan, sep * 2.2) / 40
@@ -435,13 +487,13 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
         // Pion obiektu do płaszczyzny Galaktyki i linia w płaszczyźnie do Słońca: z przerywaną tworzą trójkąt,
         // który w obu skalach pokazuje wysokość nad dyskiem i kierunek w jego płaszczyźnie.
         const foot = new THREE.Vector3(target.x, sunPos.y, target.z)
-        const drop = new THREE.Line(new THREE.BufferGeometry().setFromPoints([target, foot, sunPos]), new THREE.LineBasicMaterial({ color: 0x00e0ff, transparent: true, opacity: scale === 'universe' ? 0.6 : 0.35 }))
+        const drop = new THREE.Line(new THREE.BufferGeometry().setFromPoints([target, foot, sunPos]), new THREE.LineBasicMaterial({ color: 0x00e0ff, transparent: true, opacity: tab === 'universe' ? 0.6 : 0.35 }))
         objectGuide.add(line, drop, label(object.id, '#00e0ff', target, 26))
       } else {
         // Tylko kierunek ze Słońca. Ta sama informacja w obu skalach: obiekt Galaktyki leży w Drodze Mlecznej
         // (promień kończy się na jej krawędzi), galaktyka poza nią (promień wychodzi poza Drogę Mleczną).
         // Przecięcie promienia ze sferą wokół centrum Galaktyki: krawędź dysku albo granica danej skali.
-        const radius = scale === 'galaxy' ? (insideMilkyWay ? MILKY_WAY_DIAMETER_LY / 2000 : GALACTIC_LIMIT_LY / 1000) : (insideMilkyWay ? (MILKY_WAY_DIAMETER_LY / 2000) * UNIVERSE_GALAXY_SCALE : Math.log10(1e9 / 1e4) * 22)
+        const radius = insideMilkyWay ? MILKY_WAY_DIAMETER_LY / 2000 : tab === 'galaxy' ? GALACTIC_LIMIT_LY / 1000 : Math.log10(1e9 / 1e4) * LOG_UNIT
         const b = sunPos.dot(dir)
         const length = -b + Math.sqrt(b * b - sunPos.lengthSq() + radius * radius)
         const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([sunPos, sunPos.clone().addScaledVector(dir, length)]), new THREE.LineDashedMaterial({ color: 0x00e0ff, ...dashes }))
@@ -457,10 +509,18 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       const reach = placed ? target : sunPos.clone().addScaledVector(dir, minSpan * 0.4)
       const middle = sunPos.clone().lerp(reach, 0.5)
       const sight = reach.clone().sub(sunPos)
-      fly(framePose([sunPos.toArray() as Vec3, reach.toArray() as Vec3], sideView(sight.toArray() as Vec3, scale === 'galaxy' ? [middle.x, 0, middle.z] : undefined),
-        { fovDeg: SPACE_FOV, aspect: camera.aspect, room: [0.42, 0.42], minDistance: minSpan * 1.08 }), ms)
+      fly(framePose([sunPos.toArray() as Vec3, reach.toArray() as Vec3], sideView(sight.toArray() as Vec3, tab === 'galaxy' ? [middle.x, 0, middle.z] : undefined),
+        { fovDeg: SPACE_FOV, aspect: camera.aspect, room: [0.42, 0.42], minDistance: minSpan * 1.08 }), ms, SPACE_FOV, 0.1, 0, zoom ? ease : easeOut, zoom)
     }
-    showObjectRef.current = (object) => { if (object !== current) showObject(object, FLY_MS) }
+    // Zmiana zakładki (także razem z obiektem) to jeden przelot ze zmianą skali; sama zmiana obiektu – zwykły przelot.
+    showObjectRef.current = (object, scale) => {
+      if (scale !== tab) {
+        previousTab = tab
+        tab = scale
+        applyScale()
+        showObject(object, SWITCH_MS, true)
+      } else if (object !== current) showObject(object, FLY_MS)
+    }
     const t0 = performance.now()
     let raf = 0
     let lastTick = performance.now()
@@ -517,7 +577,7 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
     const textProjMatrix = new THREE.Matrix4()
     let lastTextWidth = 0, lastTextHeight = 0, lastTextGuideVisible = false
     let lastLabelW = 0, lastLabelH = 0, lastLabelAnnotations: boolean | null = null, lastLabelLevel = -1
-    let lastLabelHidden: readonly ObjectType[] | null = null
+    let lastLabelHidden: readonly ObjectType[] | null = null, lastLabelScale: SpaceScale | null = null
     // Renderowanie na żądanie: bez ruchu kamery i zmian sceny nie rysujemy co klatkę (GPU, bateria).
     const renderedCamera = new THREE.Matrix4()
     const renderedProjection = new THREE.Matrix4()
@@ -526,7 +586,7 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
     const hooks = new Set<(now: number) => void>()
     const claims: Space3DHandle['claims'] = new Set()
     const layout: Space3DHandle['layout'] = new Set()
-    const override: Space3DHandle['override'] = { camera: false, layerFade: 1, earthRadius: null, earthBlend: 0 }
+    const override: Space3DHandle['override'] = { camera: false, layerFade: 1, labelFade: 1, earthRadius: null, earthBlend: 0 }
     let external = false
     let sizedW = mount.clientWidth, sizedH = mount.clientHeight
     const fitSize = () => {
@@ -544,12 +604,13 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       const delta = Math.min((now - lastTick) / 1000, 0.05)
       lastTick = now
       // Powolny obrót poglądowy: jeden obrót na trzy minuty, niezależnie od liczby klatek.
-      if (earth && !reduced) earth.rotation.y = ((performance.now() - t0) / 180_000) * Math.PI * 2
+      if (!reduced) earth.rotation.y = ((performance.now() - t0) / 180_000) * Math.PI * 2
       if (flight && !override.camera) {
         flight.start ??= now
         const t = Math.min(1, (now - flight.start) / flight.ms)
         const eased = flight.easing(t)
-        const pose = lerpPose(flight.from, flight.to, eased)
+        flight.progress = eased
+        const pose = (flight.zoom ? zoomPose : lerpPose)(flight.from, flight.to, eased)
         skyView?.update(THREE.MathUtils.lerp(flight.fromSky, flight.toSky, eased))
         setProjection(THREE.MathUtils.lerp(flight.fromFov, flight.toFov, eased), THREE.MathUtils.lerp(flight.fromNear, flight.toNear, eased))
         camera.position.set(...pose.position)
@@ -581,10 +642,11 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       if (!rightLook && !override.camera) controls.update()
       if (photoRef.current) controls.autoRotate = false
       camera.updateMatrixWorld()
-      if (skyView && (!showConstellationsRef.current || constellationChoiceRef.current !== skyView.group.name ||
+      applyFades()
+      if (skyView && (tab !== 'galaxy' || !showConstellationsRef.current || constellationChoiceRef.current !== skyView.group.name ||
         (!flight && !override.camera && camera.getWorldDirection(constellationDirection).dot(skyView.forward) < 0.999999))) clearSkyView()
       for (const hook of layout) hook(now)
-      if (earth) {
+      {
         textCameraPosition.copy(sunPos).applyMatrix4(camera.matrixWorldInverse)
         const depth = -textCameraPosition.z
         const width = renderer.domElement.clientWidth
@@ -594,7 +656,8 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
         // Ziemia jest znacznikiem: promień do 16 px, z odstępem od widocznych gwiazd.
         let radiusPixels = 16
         const skyAmount = skyView?.amount ?? 0
-        if (showConstellationsRef.current && skyAmount < 1) {
+        // Gwiazdozbiory 3D są tylko w zakładce Droga Mleczna: ukryte nie zmniejszają znacznika Ziemi.
+        if (showConstellationsRef.current && tab === 'galaxy' && skyAmount < 1) {
           for (const star of constellationPoints) {
             if (!star.group.visible) continue
             if (skyView?.group === star.group) starScreenPosition.set(...skyView.project(star.position.toArray() as Vec3))
@@ -606,14 +669,16 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
           }
         }
         radiusPixels = THREE.MathUtils.lerp(radiusPixels, 11, skyAmount)
-        const marker = depth > 0 ? Math.min(earthCap, radiusPixels * unitsPerPixel) : earthCap
+        // Z daleka (Wszechświat lokalny) znacznik Ziemi maleje do zera razem z warstwami Galaktyki.
+        const marker = (depth > 0 ? Math.min(earthCap, radiusPixels * unitsPerPixel) : earthCap) * fades.galactic
         earth.scale.setScalar(override.earthRadius === null ? marker : marker + (override.earthRadius - marker) * override.earthBlend)
       }
-      if (milkyWayMaterial) {
+      {
         // Przy zbliżeniu gwiazdy pozostają widoczne, a z daleka nie zlewają się w jasną plamę.
         const close = 1 - THREE.MathUtils.smoothstep(camera.position.distanceTo(controls.target), 20, 100)
         milkyWayMaterial.size = 2.4 + close * 0.8
-        milkyWayMaterial.opacity = (0.17 + close * 0.13) * override.layerFade
+        // Gaśnie razem z warstwami Galaktyki: w Drodze Mlecznej pełna, we Wszechświecie z daleka jak dawne 12 tys. punktów.
+        milkyWayMaterial.opacity = (0.17 + close * 0.13) * override.layerFade * THREE.MathUtils.lerp(1, MW_FAR_OPACITY, 1 - fades.galactic)
       }
       for (const model of localGalaxyModels) {
         // Zbliżenie względem promienia modelu: także małe galaktyki zachowują czytelne gwiazdy.
@@ -621,7 +686,8 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
         const close = 1 - THREE.MathUtils.smoothstep(distance, 2, 10)
         const material = model.material as THREE.PointsMaterial
         material.size = 2.4 + close * 0.8
-        material.opacity = 0.1 + close * 0.18
+        material.opacity = (0.1 + close * 0.18) * fades.extragalactic
+        material.visible = fades.extragalactic > 0
       }
       objectGuide.visible = !photoRef.current
       const textViewportHeight = renderer.domElement.clientHeight
@@ -725,7 +791,9 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
     labels.style.cssText = 'position:absolute;inset:0;pointer-events:none'
     mount.appendChild(labels)
     const labelCtx = labels.getContext('2d')!
-    const bgPos = bg.map((c) => position(c, c.distLy!, scale))
+    const galacticPos = galactic.map((c) => position(c, c.distLy!))
+    const extragalacticPos = extragalactic.map((c) => position(c, c.distLy!))
+    const localGroupPos = localGroup.map((c) => position(c, c.distLy!))
     const projected = new THREE.Vector3()
     const sizeLabels = () => {
       const r = Math.min(2, devicePixelRatio)
@@ -745,6 +813,7 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
         annotationsRef.current === lastLabelAnnotations &&
         galaxyLevelRef.current === lastLabelLevel &&
         hiddenTypesRef.current === lastLabelHidden &&
+        tab === lastLabelScale &&
         sameMatrix(labelCameraMatrix, camera.matrixWorld) &&
         sameMatrix(labelProjMatrix, camera.projectionMatrix)
       ) {
@@ -755,23 +824,31 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       lastLabelAnnotations = annotationsRef.current
       lastLabelLevel = galaxyLevelRef.current
       lastLabelHidden = hiddenTypesRef.current
+      lastLabelScale = tab
       labelCameraMatrix.copy(camera.matrixWorld)
       labelProjMatrix.copy(camera.projectionMatrix)
       labelCtx.clearRect(0, 0, w, h)
       hits = []
       const hidden = hiddenTypesRef.current
-      const limit = scale === 'universe' ? bgRef.current!.counts[galaxyLevelRef.current] : bg.length
+      // Podpisy i kliknięcia warstwy bieżącej zakładki: obiekty Galaktyki albo galaktyki z Grupą Lokalną.
+      // Wygaszona warstwa (oddalenie z Drogi Mlecznej, zbliżenie we Wszechświecie) nie ma podpisów.
+      const galaxy = tab === 'galaxy'
+      const fade = galaxy ? fades.galactic : fades.extragalactic
+      const list = galaxy ? galactic : extragalactic
+      const listPos = galaxy ? galacticPos : extragalacticPos
+      const limit = fade === 0 ? 0 : galaxy ? galactic.length : extragalacticPoints.counts[galaxyLevelRef.current]
       const candidates: { c: DSO; x: number; y: number; d: number; localGroup: boolean }[] = []
       for (let i = 0; i < limit; i++) {
-        const c = bg[i]
-        if (c.i === current.i || (scale === 'galaxy' && hidden.includes(c.type))) continue
-        projected.copy(bgPos[i]).project(camera)
+        const c = list[i]
+        if (c.i === current.i || (galaxy && hidden.includes(c.type))) continue
+        projected.copy(listPos[i]).project(camera)
         if (projected.z > 1 || Math.abs(projected.x) > 1 || Math.abs(projected.y) > 1) continue
-        candidates.push({ c, x: ((projected.x + 1) / 2) * w, y: ((1 - projected.y) / 2) * h, d: camera.position.distanceToSquared(bgPos[i]), localGroup: false })
+        candidates.push({ c, x: ((projected.x + 1) / 2) * w, y: ((1 - projected.y) / 2) * h, d: camera.position.distanceToSquared(listPos[i]), localGroup: false })
       }
-      for (const c of localGroup) {
+      for (let i = 0; i < localGroup.length && !galaxy && fade > 0; i++) {
+        const c = localGroup[i]
         if (c.i === current.i) continue
-        const p = position(c, c.distLy!, 'universe')
+        const p = localGroupPos[i]
         projected.copy(p).project(camera)
         if (projected.z > 1 || Math.abs(projected.x) > 1 || Math.abs(projected.y) > 1) continue
         candidates.push({ c, x: ((projected.x + 1) / 2) * w, y: ((1 - projected.y) / 2) * h, d: camera.position.distanceToSquared(p), localGroup: true })
@@ -779,6 +856,7 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       candidates.sort((a, b) => Number(b.localGroup) - Number(a.localGroup) || a.d - b.d)
       for (const l of candidates) hits.push({ c: l.c, x: l.x, y: l.y, box: null })
       if (!annotationsRef.current) return
+      labelCtx.globalAlpha = fade
       labelCtx.font = '10px ui-monospace, Consolas, monospace'
       labelCtx.lineJoin = 'round'
       labelCtx.lineWidth = 3
@@ -937,10 +1015,14 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
     }
     document.addEventListener('visibilitychange', onVis)
     onHandleRef.current?.({
-      scale, scene, camera, controls, renderer, mount, overlay: labels, sunPos, earth: earth ?? null, hooks, claims, layout, anchors, override, step,
+      scene, camera, controls, renderer, mount, overlay: labels, sunPos, earth, hooks, claims, layout, anchors, override, step,
       invalidate: () => { sceneDirty.current = true },
       stopIntro: () => { flight = null; controls.autoRotate = false },
-      flyTo: (pose, ms = FLY_MS) => { constellationReturn = null; controls.autoRotate = false; fly(pose, ms) },
+      flyTo: (pose, ms, zoom = false) => {
+        constellationReturn = null
+        controls.autoRotate = false
+        fly(pose, ms ?? (zoom ? SWITCH_MS : FLY_MS), SPACE_FOV, 0.1, 0, zoom ? ease : easeOut, zoom)
+      },
       viewConstellation: (abbr) => {
         if (constellationReturn?.abbr === abbr) {
           const { pose, fov, near } = constellationReturn
@@ -1058,14 +1140,14 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       renderer.domElement.remove()
       labels.remove()
     }
-  }, [hasObject, scale, withDistance, select, typeRGB])
+  }, [hasObject, withDistance, select, typeRGB])
 
-  useEffect(() => { if (o) showObjectRef.current?.(o) }, [o])
+  useEffect(() => { if (o) showObjectRef.current?.(o, scale) }, [o, scale])
 
   useEffect(() => { addConstellationsRef.current?.() }, [constellations])
 
   useEffect(() => {
-    if (constellationGroupRef.current) constellationGroupRef.current.visible = showConstellations
+    if (constellationGroupRef.current) constellationGroupRef.current.visible = showConstellations && scaleRef.current === 'galaxy'
     textLayoutDirty.current = true
     sceneDirty.current = true
   }, [showConstellations])
@@ -1093,13 +1175,13 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
   }, [showStarNames])
 
   useEffect(() => {
-    const bg = bgRef.current
-    if (bg && scale === 'universe') bg.geometry.setDrawRange(0, bg.counts[galaxyLevel])
+    const bg = extragalacticRef.current
+    if (bg) bg.geometry.setDrawRange(0, bg.counts[galaxyLevel])
     sceneDirty.current = true
   }, [galaxyLevel])
 
   useEffect(() => {
-    if (bgRef.current && scale === 'galaxy') showTypes(bgRef.current, hiddenTypes)
+    if (galacticRef.current) showTypes(galacticRef.current, hiddenTypes)
     sceneDirty.current = true
   }, [hiddenTypes])
 

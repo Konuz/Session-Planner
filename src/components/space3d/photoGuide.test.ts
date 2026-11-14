@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { LineSegments, PerspectiveCamera, Scene, Sprite, SpriteMaterial, Texture, Vector3 } from 'three'
+import { Line, LineDashedMaterial, LineSegments, PerspectiveCamera, Scene, Sprite, SpriteMaterial, Texture, Vector3 } from 'three'
 import { NO_DISTANCE } from '../../lib/distance'
 import { frameBasis, halfFieldTan } from '../../lib/frameBasis'
 import type { PhotoCut, PhotoProject } from '../../lib/photo'
@@ -38,7 +38,7 @@ function fixture(scale: SpaceScale, project = comaProject()) {
   const mount = { clientWidth: 1280, clientHeight: 800, style: {}, appendChild: vi.fn(), getBoundingClientRect: () => ({ left: 0, top: 0 }), ...listeners }
   const canvas = { addEventListener: vi.fn(), removeEventListener: vi.fn() }
   const handle = {
-    scale, camera, scene, mount, controls, sunPos: new Vector3(...sunPosition(scale)), renderer: { domElement: canvas },
+    camera, scene, mount, controls, sunPos: new Vector3(...sunPosition()), renderer: { domElement: canvas },
     claims: new Set<(x: number, y: number, click: boolean) => boolean>(), layout: new Set<(now: number) => void>(), anchors: new Set<Vector3>(), invalidate: vi.fn(),
     flyTo(pose: CameraPose) {
       camera.position.set(...pose.position)
@@ -64,7 +64,7 @@ it('we Wszechświecie lokalnym każdy znacznik leży w stożku pola, a stożek s
   const basis = frameBasis(astrometry, WIDTH, HEIGHT)!
   const [tx, ty] = halfFieldTan(basis, WIDTH, HEIGHT)
   const axis = new Vector3(...basis.center), x = new Vector3(...basis.x), y = new Vector3(...basis.y)
-  const sun = new Vector3(...sunPosition('universe'))
+  const sun = new Vector3(...sunPosition())
   // Wszystkie wycinki (także mgławica Drogi Mlecznej, tuż przy Ziemi) mają znacznik.
   expect(f.sprites).toHaveLength(43)
   let farthest = 0
@@ -139,4 +139,28 @@ it('ruch nad nakładką nie kasuje podświetlenia znacznika wybranego w wachlarz
   expect(sprite.scale.x).toBe(base)
   f.guide.dispose()
   expect(f.canvas.removeEventListener).toHaveBeenCalledWith('pointermove', move)
+})
+
+it('zdjęcie samej Drogi Mlecznej we Wszechświecie: kadr i kreski jak dawniej, w jednolicie większej skali (× 1/0,12)', () => {
+  const milkyWayOnly = () => ({ ...comaProject(), cuts: [cut('LDN 1', 1500, 0.1, 0.1), cut('B 33', 1300, -0.1, 0)] })
+  const universe = fixture('universe', milkyWayOnly()), galaxy = fixture('galaxy', milkyWayOnly())
+  universe.guide.frameCamera()
+  // Dawny minimalny odstęp kamery: 1 j. Wszechświata lokalnego.
+  expect(universe.camera.position.distanceTo(universe.handle.controls.target)).toBeGreaterThanOrEqual(1 / 0.12 - 1e-9)
+  const dash = (f: ReturnType<typeof fixture>) => {
+    let size = 0
+    f.guide.group.traverse((o) => { if (o instanceof Line && o.material instanceof LineDashedMaterial) size ||= o.material.dashSize })
+    return size
+  }
+  expect(dash(universe) / dash(galaxy)).toBeCloseTo(1 / 0.12, 9)
+})
+
+it('przelot zakładek ze zdjęciem: kadr stożka leci ze zmianą skali, pierwszy kadr zwykłym przelotem', () => {
+  const f = fixture('universe')
+  const calls: unknown[][] = []
+  const fly = f.handle.flyTo.bind(f.handle)
+  f.handle.flyTo = (pose, ...rest: unknown[]) => { calls.push(rest); fly(pose) }
+  f.guide.frameCamera()
+  f.guide.frameCamera({ zoom: true })
+  expect(calls).toEqual([[undefined, false], [undefined, true]])
 })

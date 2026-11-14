@@ -16,6 +16,8 @@ const mix = (a: Vec3, ka: number, b: Vec3, kb: number): Vec3 => [a[0] * ka + b[0
 
 export interface CameraPose { position: Vec3; target: Vec3 }
 export const SPACE_FOV = 50
+/** Płaszczyzna far sceny „Pozycja 3D”: obejmuje najdalsze galaktyki z kamery oddalonej do granicy zoomu. */
+export const SPACE_FAR = 20_000
 
 /** Rzut kierunków z Ziemi na płaszczyznę i kamera odsunięta prostopadle do tej płaszczyzny. */
 export function constellationView(stars: readonly Vec3[], observer: Vec3, aspect: number) {

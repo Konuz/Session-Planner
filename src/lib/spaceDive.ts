@@ -4,6 +4,7 @@
 // od bieżącej kamery Drogi Mlecznej (bez oddalania): zbliża ją logarytmicznie do Ziemi i obraca do pozy mostu.
 import type { Vec3 } from './astro'
 import { EARTH_Z, PHOTO_UNFOLD_MS, orbitOffset } from './observatory'
+import { SPACE_FAR } from './spaceCamera'
 
 export type DiveDirection = 'in' | 'out'
 export type DivePhase = 'dive' | 'enter'
@@ -179,6 +180,17 @@ export function lerpPose(a: Pose, b: Pose, t: number): Pose {
   return { target, position: [target[0] + offset[0], target[1] + offset[1], target[2] + offset[2]], up: slerpDirection(a.up, b.up, t) }
 }
 
+/** Przelot ze zmianą skali (zakładki „Pozycja 3D”): jak lerpPose, ale odległość od celu zmienia się geometrycznie,
+ *  więc oddalenie ×8 nie pędzi na początku i nie pełznie na końcu. */
+export function zoomPose(a: Pose, b: Pose, t: number): Pose {
+  const pose = lerpPose(a, b, t)
+  const length = (p: Pose) => Math.hypot(p.position[0] - p.target[0], p.position[1] - p.target[1], p.position[2] - p.target[2])
+  const from = length(a), to = length(b), now = length(pose)
+  if (!(from > 0 && to > 0 && now > 0)) return pose
+  const k = from ** (1 - t) * to ** t / now
+  return { ...pose, position: pose.position.map((v, i) => pose.target[i] + (v - pose.target[i]) * k) as Vec3 }
+}
+
 export const guideAlignment = (k: number) => ramp(k, CONE_OPEN_K, ALIGN_K)
 /** Względny rozstaw linii siatki, dopasowany w tej samej fazie co stożek. */
 export const diveGridScale = (k: number) => 1 + 8 * (1 - guideAlignment(k))
@@ -263,5 +275,5 @@ export function diveFades(k: number): DiveFades {
 /** Płaszczyzny near i far kamery Drogi Mlecznej zależne od odległości od Ziemi (w nurkowaniu ułamki jednostki). */
 export function nearFar(distance: number): { near: number; far: number } {
   const near = Math.min(0.1, Math.max(1e-5, distance * 0.01))
-  return { near, far: Math.min(5000, Math.max(300, near * 1e6)) }
+  return { near, far: Math.min(SPACE_FAR, Math.max(300, near * 1e6)) }
 }

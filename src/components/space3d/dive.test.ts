@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { expect, it } from 'vitest'
-import { ALIGN_K, DIVE_PHASE_MS } from '../../lib/spaceDive'
-import { SpaceDive } from './dive'
+import { ALIGN_K, DIVE_PHASE_MS, diveFades } from '../../lib/spaceDive'
+import { SpaceDive, restoreSpace } from './dive'
 
 it('odsłania obserwatorium dopiero po pierwszej gotowej klatce sterowanej przejściem', () => {
   const events: string[] = []
@@ -80,4 +80,25 @@ it('zdjęcie Obserwatorium rozkłada się dopiero w fazie wejścia', () => {
   frame.call(dive, 48)
   expect(phases).toEqual(['dive', 'enter'])
   expect(obsProgress.at(-1)).toBeCloseTo(0.5, 5)
+})
+
+it('nurkowanie przekazuje scenie krycie warstw i szybsze krycie podpisów, a powrót przywraca 1', () => {
+  const camera = new THREE.PerspectiveCamera()
+  const space = {
+    override: { camera: true, layerFade: 1, labelFade: 1, earthRadius: null, earthBlend: 0 },
+    scene: new THREE.Scene(), overlay: { style: {} }, earth: null, camera,
+    controls: { enableDamping: false, enabled: false, target: new THREE.Vector3(), update() {} },
+    invalidate() {}, setExternal() {},
+  }
+  const dive: SpaceDive = Object.create(SpaceDive.prototype)
+  Object.assign(dive, { o: { space, guide: null } })
+  const fadeSpace = Reflect.get(dive, 'fadeSpace') as (k: number) => void
+  fadeSpace.call(dive, 0.2)
+  const f = diveFades(0.2)
+  expect(space.override.layerFade).toBe(f.layers)
+  expect(space.override.labelFade).toBe(Math.min(f.layers, f.labels))
+  expect(space.override.labelFade).toBeLessThan(space.override.layerFade)
+  restoreSpace(space as never, null, null)
+  expect(space.override.layerFade).toBe(1)
+  expect(space.override.labelFade).toBe(1)
 })

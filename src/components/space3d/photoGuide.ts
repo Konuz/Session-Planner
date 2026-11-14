@@ -11,7 +11,7 @@ import { frameBasis, halfFieldTan } from '../../lib/frameBasis'
 import { fmtDistance } from '../../lib/format'
 import { AXIS_DASH, AXIS_LENGTH, EARTH_Z } from '../../lib/observatory'
 import { cutsInThreeD, photoAnchorKind, type PhotoProject } from '../../lib/photo'
-import { scenePoint, toScene, type SpaceScale } from '../../lib/space3d'
+import { scenePoint, toScene, UNIVERSE_GALAXY_SCALE, type SpaceScale } from '../../lib/space3d'
 import { framePose, sideView, SPACE_FOV } from '../../lib/spaceCamera'
 import { diveScale } from '../../lib/spaceDive'
 import { milkyWayCone, universeCone } from '../../lib/spacePhoto'
@@ -41,8 +41,8 @@ export interface PhotoGuide {
   /** Długość linii widzenia w jednostkach sceny (tys. lś). */
   length: number
   /** Przelot kamery na Ziemię, stożek i znaczniki, z boku linii widzenia. Kadr obejmuje sam stożek (bez stałego
-   *  oddalenia na dysk Galaktyki), żeby obiekty zdjęcia nie zbijały się w jeden punkt. */
-  frameCamera(): void
+   *  oddalenia na dysk Galaktyki), żeby obiekty zdjęcia nie zbijały się w jeden punkt. zoom: przelot zakładek (zmiana skali). */
+  frameCamera(options?: { zoom?: boolean }): void
   labels: HTMLDivElement
   setOpacity(opacity: number, cone?: number, faces?: number, axis?: number): void
   /** Dopasowanie końca i kresek linii do osi Obserwatorium podczas nurkowania. */
@@ -166,14 +166,16 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, s
   // skala log. liczy się od centrum Galaktyki, więc scenePosition mijałoby wąski stożek pola o kilka jednostek.
   const cuts = cutsInThreeD(project.cuts).map((cut) => {
     const toward = new THREE.Vector3(...toScene(galacticVector(cut)))
-    const reach = new THREE.Vector3(...scenePoint(toward.toArray() as Vec3, cut.distLy!, scale)).distanceTo(sunPos)
+    const reach = new THREE.Vector3(...scenePoint(toward.toArray() as Vec3, cut.distLy!)).distanceTo(sunPos)
     return { cut, kind: photoAnchorKind(cut.distLy, scale), world: sunPos.clone().addScaledVector(toward, reach), reach }
   })
   const placed = cuts.filter((c) => c.kind === 'position' || c.kind === 'local').sort((a, b) => a.cut.distLy! - b.cut.distLy!)
   const outside = cuts.filter((c) => c.kind === 'outside')
   const length = scale === 'galaxy' ? milkyWayCone(cuts.map((c) => c.cut.distLy!)).length : universeCone(placed.map((c) => c.reach))
+  // Najmniejsze odstępy (kreski, kadr, przybliżenie) w jednostkach zakładki: Wszechświat lokalny jak dawniej, × 1/0,12.
+  const unit = scale === 'universe' ? 1 / UNIVERSE_GALAXY_SCALE : 1
   // Skala kresek w jednostkach długości stożka.
-  const k = Math.max(length, 2) / 16
+  const k = Math.max(length, 2 * unit) / 16
   const sight = createSightCone(handle, basis, project, length, accent, k)
   const { group, cone, line, fieldTan, materials, disposables } = sight
   group.name = 'photo-guide'
@@ -303,8 +305,8 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, s
 
   return {
     group, cone, fieldTan, basis, length, labels: layer.root,
-    frameCamera() {
-      handle.flyTo(framePose(framed, sideView(dir.toArray() as Vec3, [middle.x, 0, middle.z]), { fovDeg: 50, aspect: camera.aspect, room: [0.5, 0.42], minDistance: Math.max(1, span * 0.6) }))
+    frameCamera(options) {
+      handle.flyTo(framePose(framed, sideView(dir.toArray() as Vec3, [middle.x, 0, middle.z]), { fovDeg: 50, aspect: camera.aspect, room: [0.5, 0.42], minDistance: Math.max(unit, span * 0.6) }), undefined, options?.zoom ?? false)
     },
     setOpacity(opacity, cone, faces, axis) {
       sight.setOpacity(opacity, cone, faces, axis)
@@ -333,7 +335,7 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, s
       if (!mark) return
       const v = camera.position.clone().sub(controls.target).normalize()
       const target = new THREE.Vector3(...mark.position)
-      handle.flyTo({ target: mark.position, position: target.addScaledVector(v, Math.max(0.15, length * 0.03)).toArray() as Vec3 })
+      handle.flyTo({ target: mark.position, position: target.addScaledVector(v, Math.max(0.15 * unit, length * 0.03)).toArray() as Vec3 })
     },
     dispose() {
       handle.layout.delete(updateLayout)
@@ -349,11 +351,12 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, s
   }
 }
 
-/** Znaczniki zdjęcia w scenie bieżącej skali: odbudowa przy zmianie wycinków lub sceny, kadr przy nowym zdjęciu i scenie. */
-export function usePhotoGuide(handle: Space3DHandle | null, project: PhotoProject | null, visible: boolean, selected: string | null, onPick: (id: string) => void): RefObject<PhotoGuide | null> {
+/** Stożek i znaczniki zdjęcia według zakładki: odbudowa przy zmianie wycinków, sceny lub zakładki; kadr przy nowym zdjęciu,
+ *  scenie i zakładce (sama zmiana zakładki to przelot ze zmianą skali, jak bez zdjęcia). */
+export function usePhotoGuide(handle: Space3DHandle | null, project: PhotoProject | null, scale: SpaceScale, visible: boolean, selected: string | null, onPick: (id: string) => void): RefObject<PhotoGuide | null> {
   const colors = useStore((s) => s.annotationColors)
   const guideRef = useRef<PhotoGuide | null>(null)
-  const framed = useRef<{ handle: Space3DHandle | null; id: string }>({ handle: null, id: '' })
+  const framed = useRef<{ handle: Space3DHandle | null; id: string; scale: SpaceScale | null }>({ handle: null, id: '', scale: null })
   const visibleRef = useRef(visible)
   visibleRef.current = visible
   const projectRef = useRef(project)
@@ -371,19 +374,20 @@ export function usePhotoGuide(handle: Space3DHandle | null, project: PhotoProjec
     const project = projectRef.current
     if (!handle || !project) return
     const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#00e0ff'
-    const guide = createPhotoGuide(handle, project, handle.scale, colors, accent, (id) => pickRef.current(id))
+    const guide = createPhotoGuide(handle, project, scale, colors, accent, (id) => pickRef.current(id))
     if (!guide) return
     guideRef.current = guide
     guide.setVisible(visibleRef.current)
     guide.setSelected(selectedRef.current)
-    if (framed.current.handle !== handle || framed.current.id !== project.id) {
-      framed.current = { handle, id: project.id }
-      guide.frameCamera()
+    const previous = framed.current
+    if (previous.handle !== handle || previous.id !== project.id || previous.scale !== scale) {
+      framed.current = { handle, id: project.id, scale }
+      guide.frameCamera({ zoom: previous.handle === handle && previous.id === project.id })
     }
     return () => { guide.dispose(); guideRef.current = null }
     // Gwiazdy Gaia zmieniają projekt, ale nie znaczniki: przebudowa tylko przy zmianie zdjęcia lub wycinków.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handle, project?.id, project?.image, builtKey.current, colors])
+  }, [handle, project?.id, project?.image, builtKey.current, colors, scale])
   useEffect(() => { guideRef.current?.setVisible(visible) }, [visible])
   useEffect(() => { guideRef.current?.setSelected(selected) }, [selected])
   return guideRef

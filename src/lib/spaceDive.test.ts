@@ -1,7 +1,8 @@
 import { expect, it } from 'vitest'
 import { EARTH_Z, PLANE_WIDTH, distanceDomain, observatoryPosition } from './observatory'
 import type { Vec3 } from './astro'
-import { ALIGN_K, DIVE_PHASE_MS, bridgePoint, bridgePose, bridgeVector, coneLength, coneTan, diveFades, diveFrame, diveGridScale, diveMarkerPosition, divePose, diveScale, diveTotalMs, ease, guideAlignment, lerpPose, makeBridge, nearFar, startScale, turnWeight, unbridgePoint, unbridgeVector, uprightRoll, type DiveDirection, type Pose } from './spaceDive'
+import { SPACE_FAR } from './spaceCamera'
+import { ALIGN_K, DIVE_PHASE_MS, bridgePoint, bridgePose, bridgeVector, coneLength, coneTan, diveFades, diveFrame, diveGridScale, diveMarkerPosition, divePose, diveScale, diveTotalMs, ease, guideAlignment, lerpPose, makeBridge, nearFar, startScale, turnWeight, unbridgePoint, unbridgeVector, uprightRoll, zoomPose, type DiveDirection, type Pose } from './spaceDive'
 
 // Baza kadru: dowolny obrót (osie ortonormalne, x × y = −center).
 const center: Vec3 = [0.6, 0.48, 0.64]
@@ -272,7 +273,9 @@ it('przelot kamery zaczyna się i kończy w pozach krańcowych, near rośnie z o
   close(lerpPose(a, b, 0).position, a.position)
   close(lerpPose(a, b, 1).position, b.position)
   close(lerpPose(a, b, 1).up, b.up)
-  expect(nearFar(10)).toEqual({ near: 0.1, far: 5000 })
+  // Far jak w scenie: kamera oddalona kółkiem do granicy zoomu (6000 j.) nie obcina sceny na starcie nurkowania.
+  expect(nearFar(10)).toEqual({ near: 0.1, far: SPACE_FAR })
+  expect(nearFar(6000).far).toBe(SPACE_FAR)
   expect(nearFar(0.12).near).toBeCloseTo(0.0012, 12)
   expect(nearFar(0.12).far).toBeGreaterThan(300)
 })
@@ -295,4 +298,18 @@ it('nurkowanie zaczyna się w bieżącej kamerze, kończy w pozie szwu i nigdy s
   }
   // Kamera bliżej Ziemi niż koniec nurkowania: skala startowa nie spada poniżej u1 (bez oddalania na końcu).
   expect(startScale({ ...start, position: [-26.7, 0, 0.0001] }, bridge, seam, u1)).toBe(u1)
+})
+
+it('przelot zakładek: promień kamery zmienia się geometrycznie, kierunek i cel jak w lerpPose', () => {
+  const a: Pose = { position: [0, 10, 0], target: [0, 0, 0], up: [0, 1, 0] }
+  const b: Pose = { position: [600, 800, 40], target: [0, 0, 40], up: [0, 1, 0] }
+  close(zoomPose(a, b, 0).position, a.position)
+  close(zoomPose(a, b, 1).position, b.position)
+  close(zoomPose(a, b, 1).target, b.target)
+  const half = zoomPose(a, b, 0.5), linear = lerpPose(a, b, 0.5)
+  const offset = half.position.map((v, i) => v - half.target[i]) as Vec3
+  const linearOffset = linear.position.map((v, i) => v - linear.target[i]) as Vec3
+  expect(Math.hypot(...offset)).toBeCloseTo(100, 9)
+  close(half.target, linear.target)
+  close(offset.map((v) => v / 100) as Vec3, linearOffset.map((v) => v / Math.hypot(...linearOffset)) as Vec3)
 })

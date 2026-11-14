@@ -4,7 +4,7 @@
 import * as THREE from 'three'
 import type { Vec3 } from '../../lib/astro'
 import { EARTH_Z, PLANE_WIDTH } from '../../lib/observatory'
-import { SPACE_FOV } from '../../lib/spaceCamera'
+import { SPACE_FAR, SPACE_FOV } from '../../lib/spaceCamera'
 import {
   ALIGN_K, coneLength, coneTan, diveFades, diveFrame, diveGridScale, diveMarkerPosition, diveScale, divePose, diveTotalMs, ease, guideAlignment, guideRollWeight, lerpPose, makeBridge, nearFar, startScale, turnWeight, unbridgePoint, unbridgeVector, uprightRoll,
   type Bridge, type DiveDirection, type DiveFrame, type DivePhase, type Pose,
@@ -215,6 +215,8 @@ export class SpaceDive {
     const { space, guide } = this.o
     const fades = diveFades(k)
     space.override.layerFade = fades.layers
+    // Warstwy wygaszane w Space3D z odległości kamery mnożą swoje krycie przez te dwa (podpisy gasną szybciej).
+    space.override.labelFade = Math.min(fades.layers, fades.labels)
     fadeLayers(space, guide, fades.layers, fades.labels)
     if (this.earthMaterial) this.earthMaterial.opacity = fades.spaceEarth
     if (space.earth) space.earth.visible = fades.spaceEarth > 0
@@ -291,6 +293,7 @@ export function restoreSpace(space: Space3DHandle, guide: PhotoGuide | null, pos
   space.override.earthRadius = null
   space.override.earthBlend = 0
   space.override.layerFade = 1
+  space.override.labelFade = 1
   fadeLayers(space, guide, 1)
   if (guide) {
     guide.setOpacity(1, 1, 1)
@@ -317,7 +320,7 @@ export function restoreSpace(space: Space3DHandle, guide: PhotoGuide | null, pos
   }
   camera.fov = pose?.fov ?? SPACE_FOV
   camera.near = pose?.near ?? 0.1
-  camera.far = 5000
+  camera.far = SPACE_FAR
   camera.updateProjectionMatrix()
   camera.lookAt(controls.target)
   controls.enabled = true

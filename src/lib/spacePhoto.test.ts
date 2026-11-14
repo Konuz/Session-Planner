@@ -29,8 +29,8 @@ describe('universeCone', () => {
     expect(universeCone([96, 99.5, 101])).toBeLessThan(115)
   })
 
-  it('bez znaczników daje krótki stożek umowny', () => {
-    expect(universeCone([])).toBe(4)
-    expect(universeCone([0])).toBe(4)
+  it('bez znaczników daje krótki stożek umowny (dawne 4 j. Wszechświata × 1/0,12)', () => {
+    expect(universeCone([])).toBeCloseTo(4 / 0.12, 12)
+    expect(universeCone([0])).toBeCloseTo(4 / 0.12, 12)
   })
 })

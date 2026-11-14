@@ -25,7 +25,7 @@ Każda linia ma dowód: test (T), sprawdzenie w przeglądarce przy 1440 px (P) a
 | 17 | Szybkość: JS na start < 200 KB gzip, 3D ładowane leniwie, obliczenia w workerze, `prefers-reduced-motion` | build + P | ☑ |
 | 18 | Wygląd spójny ze stroną (tokeny, krój mono, klamry narożne, odnośnik do konuzastro.pl) | P | ☑ |
 | 19 | Obserwatorium 3D zdjęcia: gwiazdy Gaia DR3 (odległości Bailer-Jones, ϖ/σ ≥ 5) i wycinki na osi linii widzenia, suwak zdjęcie ↔ przestrzeń, widoki Struktura / Z Ziemi / Z góry / Z boku, histogram z przedziałem, lista i inspektor, przejście do Drogi Mlecznej | T (`observatory`, `photoStarsServer`, `photo`) + P + S (GAVO) | ☑ |
-| 20 | „Pozycja 3D” w oknie o wymiarach Obserwatorium (skale Droga Mleczna / Wszechświat lokalny, Esc, fokus), zdjęcie w Drodze Mlecznej jako linia widzenia, stożek pola i znaczniki, nurkowanie do rozłożonego zdjęcia i z powrotem | T (`frameBasis`, `spaceDive`) + P | ☑ |
+| 20 | „Pozycja 3D” w oknie o wymiarach Obserwatorium (skale Droga Mleczna / Wszechświat lokalny, Esc, fokus), zdjęcie w Drodze Mlecznej jako linia widzenia, stożek pola i znaczniki, nurkowanie do rozłożonego zdjęcia i z powrotem; od 14.11.2026 jedna scena dla obu zakładek | T (`frameBasis`, `spaceDive`, `space3d`, `photoGuide`) + P | ☑ |
 
 ## Stan na 22.10.2026
 
@@ -125,3 +125,13 @@ Chromium 148 z oknem (headful) z ANGLE D3D11 na NVIDIA GeForce RTX 5070 (rendere
 - Startowy JS 152,3 KB gzip; warstwa WebGL zdjęć to leniwy fragment 3,5 KB, ładowany dopiero przy pierwszym zdjęciu „moje”.
 - Drobiazgi z recenzji końcowej (6.11.2026): maska z progiem 0,5 (zdjęcie IC 434 obrócone o 25°: kliny wycięte bez ciemnej obwódki), biała tekstura 1 × 1 zamiast braku maski, błąd samej maski rysuje zdjęcie bez niej, usunięte zdjęcie nie jest dekodowane z kolejki, bufor poza ekranem wliczony do limitu pamięci i sprawdzany pod kątem kompletności, krycie z zapisu przycinane do 10–100% (test). Postacie gwiazdozbiorów mieszają się teraz zwykłą przezroczystością z Drogą Mleczną i liniami (leżą na innym płótnie); różnica jest niewidoczna przy ich kryciu, więc zostaje.
 - Ograniczenie: najmocniejsze powiększenie kopuły to 8°, więc zdjęcie ok. 1° zajmuje ok. 10% widoku.
+
+## Wspólna scena Pozycji 3D (14.11.2026)
+
+Pomiary Playwrightem (Chromium, swiftshader, 1600 × 900) na M 42, M 31 i zdjęciach M 51 i IC 434, porównane ze zrzutami sprzed zmiany:
+- Droga Mleczna (M 42, M 31, IC 434, M 51) i Wszechświat lokalny (M 42, M 31, M 51) wyglądają jak przed zmianą. Zdjęcie samej Drogi Mlecznej (IC 434) we Wszechświecie ma kadr dawnej sceny w skali × 1/0,12 (test `photoGuide`).
+- Położenia: poniżej 150 tys. lś jak dawna skala Drogi Mlecznej, dalej jak dawny Wszechświat × 1/0,12 (test `space3d`).
+- Przelot zakładek w obie strony (klatki co 0,2 s czasu strony) bez skoków; pierścienie i galaktyki nie pojawiają się w kadrze Drogi Mlecznej. Zmiana obiektu z M 31 na M 42, która przełącza zakładkę, daje jeden przelot. Przy ograniczonym ruchu zmiana zakładki jest cięciem. Oddalenie kółkiem do granicy zoomu nie gubi sceny.
+- Gwiazdozbiór z Ziemi (Orion) czyści się przy przejściu do Wszechświata; po powrocie gwiazdozbiory 3D są znów widoczne.
+- Po recenzji: obiekt bez odległości (NGC 1432) we Wszechświecie pokazuje galaktyki i Grupę Lokalną, gromada 136 tys. lś (NGC 4147) w Drodze Mlecznej nie ma pierścieni ani galaktyk, w nurkowaniu (k = 0,15 i 0,4) podpisy i pierścienie gasną z tłem, a zmiana zakładki ze zdjęciem M 51 to ten sam przelot co bez zdjęcia.
+- Szew nurkowania z obu zakładek (M 51, IC 434): środek Ziemi, kierunek linii widzenia i promień Ziemi w obu scenach zgodne do 1e-8 px. Cztery kolejne nurkowania tam i z powrotem, także po zmianie zakładki, wracają do sceny.

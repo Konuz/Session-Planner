@@ -76,7 +76,7 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
   // Edycja wycinków to osobny widok okna: płaskie zdjęcie na scenie, panel edytora z prawej, scena 3D wstrzymana.
   const editing = mode === 'scale' && !!project && session.editing
   // Stożek pola i znaczniki zdjęcia w obu skalach (we Wszechświecie lokalnym jak w Drodze Mlecznej).
-  const guideRef = usePhotoGuide(handle, project, mode !== 'photo' && !editing, session.activeId, session.setActiveId)
+  const guideRef = usePhotoGuide(handle, project, settings.scale, mode !== 'photo' && !editing, session.activeId, session.setActiveId)
   /** Przewodnik nurkowania sceny bieżącej skali. */
   const sceneGuide = useCallback(() => guideRef.current, [guideRef])
 

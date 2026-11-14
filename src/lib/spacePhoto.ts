@@ -1,9 +1,9 @@
 // Zdjęcie w scenach „Pozycja 3D” bez three.js: długość stożka pola w Drodze Mlecznej i we Wszechświecie lokalnym.
-import { GALACTIC_LIMIT_LY } from './space3d'
+import { GALACTIC_LIMIT_LY, UNIVERSE_GALAXY_SCALE } from './space3d'
 
 /** Zapas stożka za najdalszym obiektem zdjęcia. */
 const CONE_MARGIN = 1.12
-/** Długość stożka (j. sceny), gdy żaden obiekt zdjęcia nie leży w zasięgu skali. */
+/** Długość stożka (j. sceny), gdy żaden obiekt zdjęcia nie leży w zasięgu skali (Drogi Mlecznej; we Wszechświecie × 1/0,12). */
 const CONE_DEFAULT = 4
 
 /**
@@ -23,5 +23,5 @@ export function milkyWayCone(distancesLy: readonly number[]): { length: number; 
 /** Stożek pola we Wszechświecie lokalnym (j. sceny): tuż za najdalszym znacznikiem; `reaches`: odległości znaczników od Ziemi w scenie. */
 export function universeCone(reaches: readonly number[]): number {
   const farthest = Math.max(0, ...reaches.filter((r) => r > 0))
-  return farthest > 0 ? farthest * CONE_MARGIN : CONE_DEFAULT
+  return farthest > 0 ? farthest * CONE_MARGIN : CONE_DEFAULT / UNIVERSE_GALAXY_SCALE
 }

@@ -2,11 +2,10 @@
 import * as THREE from 'three'
 import { galacticVector, type Vec3 } from '../../lib/astro'
 import type { DSO } from '../../lib/catalog'
-import { scenePosition, toScene, UNIVERSE_GALAXY_SCALE, type SpaceScale } from '../../lib/space3d'
+import { scenePosition, toScene } from '../../lib/space3d'
 import type { ConstellationStar } from './spaceSettings'
 
 export const MILKY_WAY_DIAMETER_LY = 100_000
-export { UNIVERSE_GALAXY_SCALE }
 export type GalaxyProfile = {
   kind: 'spiral' | 'flocculent' | 'elliptical' | 'irregular'
   label: string
@@ -45,9 +44,9 @@ export type StarNameLayout = { group: THREE.Group; root: HTMLDivElement; anchors
 /** Galaktyczne (x ku centrum, y ku l = 90°, z ku biegunowi N) → three.js (y w górę). */
 export const toThree = (g: Vec3) => new THREE.Vector3(...toScene(g))
 
-/** Położenie w scenie: Droga Mleczna: tys. lś od centrum Galaktyki; Wszechświat: skala log. od Słońca. */
-export function position(o: Pick<DSO, 'raDeg' | 'decDeg'>, distLy: number, scale: SpaceScale): THREE.Vector3 {
-  return new THREE.Vector3(...scenePosition(o, distLy, scale))
+/** Położenie w scenie: Droga Mleczna liniowo (1 j. = 1000 lś), dalsze obiekty w skali log. od centrum Galaktyki. */
+export function position(o: Pick<DSO, 'raDeg' | 'decDeg'>, distLy: number): THREE.Vector3 {
+  return new THREE.Vector3(...scenePosition(o, distLy))
 }
 
 export function milkyWay(count: number, texture: THREE.Texture): THREE.Points {
@@ -225,7 +224,7 @@ export function localGroupGalaxy(o: DSO, profile: GalaxyProfile, texture: THREE.
   geometry.setAttribute('color', new THREE.BufferAttribute(col, 3))
   const material = galaxyMaterial(texture)
   const points = new THREE.Points(geometry, material)
-  points.scale.setScalar(UNIVERSE_GALAXY_SCALE * diameterLy / MILKY_WAY_DIAMETER_LY)
+  points.scale.setScalar(diameterLy / MILKY_WAY_DIAMETER_LY)
   // PA jest mierzone na niebie od północy ku wschodowi, nie względem osi sceny.
   const sight = toThree(galacticVector(o)).normalize()
   const north = toThree(galacticVector({ raDeg: o.raDeg, decDeg: o.decDeg + 0.01 }))
@@ -345,7 +344,7 @@ export function addStarNameLabels(group: THREE.Group, stars: ConstellationStar[]
     el.className = 'obs-label'
     el.textContent = star.name
     root.appendChild(el)
-    return { el, position: position(star, star.distLy, 'galaxy') }
+    return { el, position: position(star, star.distLy) }
   })
   overlay.appendChild(root)
   const anchors = labels.map((label) => ({ ...label, width: label.el.offsetWidth, height: label.el.offsetHeight }))
