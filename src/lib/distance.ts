@@ -76,7 +76,10 @@ export function simbadId(designation: string): string | null {
   const id = designation.trim()
   if (/^C \d/.test(id)) return null
   // „Abell N” w katalogu to tylko mgławice planetarne Abella (1966); w SIMBAD „PN A66 N” (samo „Abell N” to gromada galaktyk).
-  const rules: [RegExp, string][] = [[/^Sh2-(\d+)$/, 'SH 2-$1'], [/^B (\d+)$/, 'Barnard $1'], [/^vdB (\d+)$/, 'VDB $1'], [/^Mel (\d+)$/, 'Cl Melotte $1'], [/^Abell (\d+)$/, 'PN A66 $1']]
+  // Gromady z Hunt & Reffert 2023 (scripts/openClusters.ts): w SIMBAD „Cl Collinder 135”, „Cl VDBH 85”, „Cl Pal 5”.
+  const clusters = /^(Collinder|Trumpler|Berkeley|Stock|King|Dolidze|Czernik|Ruprecht|Haffner|Pismis|Basel|Bochum|Hogg|Lynga|Tombaugh|Waterloo|Westerlund|Roslund|Alessi|Ferrero|Harvard|Loden|Terzan) (\d+)$/
+  const rules: [RegExp, string][] = [[/^Sh2-(\d+)$/, 'SH 2-$1'], [/^B (\d+)$/, 'Barnard $1'], [/^vdB (\d+)$/, 'VDB $1'], [/^Mel (\d+)$/, 'Cl Melotte $1'], [/^Abell (\d+)$/, 'PN A66 $1'],
+    [clusters, 'Cl $1 $2'], [/^vdBH (\d+)$/, 'Cl VDBH $1'], [/^Palomar (\d+)$/, 'Cl Pal $1']]
   for (const [re, to] of rules) if (re.test(id)) return id.replace(re, to)
   return id
 }

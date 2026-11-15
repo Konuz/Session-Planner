@@ -1547,6 +1547,48 @@
    "simbad": "PB 8",
    "otype": "WD*",
    "sepDeg": 107.352
+  },
+  {
+   "id": "Loden 624",
+   "simbad": "Cl Loden 624",
+   "otype": "OpC",
+   "sepDeg": 0.338
+  },
+  {
+   "id": "Collinder 89",
+   "simbad": "Cl Collinder 89",
+   "otype": "OpC",
+   "sepDeg": 0.5
+  },
+  {
+   "id": "Collinder 107",
+   "simbad": "Cl Collinder 107",
+   "otype": "OpC",
+   "sepDeg": 0.471
+  },
+  {
+   "id": "Collinder 471",
+   "simbad": "Cl Collinder 471",
+   "otype": "err",
+   "sepDeg": 1.09
+  },
+  {
+   "id": "Mel 31",
+   "simbad": "Cl Melotte 31",
+   "otype": "OpC",
+   "sepDeg": 0.951
+  },
+  {
+   "id": "Collinder 70",
+   "simbad": "Cl Collinder 70",
+   "otype": "OpC",
+   "sepDeg": 0.728
+  },
+  {
+   "id": "Teutsch J1037.3-6034",
+   "simbad": "LISC 1206",
+   "otype": "Cl?",
+   "sepDeg": 0.583
   }
  ],
  "aliases": [

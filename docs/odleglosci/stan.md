@@ -14,8 +14,10 @@ tylko jako podpowiedź i wiersz w inspektorze obserwatorium.
   Dotyczy Obserwatorium, linii widzenia w Drodze Mlecznej, starej nakładki we Wszechświecie lokalnym i okręgów edycji.
   Gwiazdy Gaia bez odległości (ϖ/σ < 5) też nie trafiają do sceny ani listy. W liście wyboru wycinków obiekt bez
   odległości ma wyłączone pole; nazwę można kliknąć, żeby wybrać pomiar z SIMBAD/NED.
-- **Katalog** (`npm run build:data` → `scripts/catalogDistances.ts`): Hunt & Reffert 2023 (463 gromady, po nazwie
-  i pozycji), Cosmicflows-4 (3008 galaktyk, pozycja ≤ 0,5′ jeden do jednego), z z SIMBAD (4820, cz_CMB ≥ 3000 km/s,
+- **Katalog** (`npm run build:data` → `scripts/catalogDistances.ts`): Hunt & Reffert 2023 (1063 gromady, po nazwie
+  i pozycji; w tym 587 z 594 gromad dopisanych 15.11.2026 z tego katalogu przez `scripts/openClusters.ts`; nazwa
+  trafia do wiersza HR23, w którym jest główna: wcześniej Hiady, M 35, M 71 czy IC 2391 dostawały odległość grupy,
+  która miała ich nazwę tylko w AllNames), Cosmicflows-4 (3008 galaktyk, pozycja ≤ 0,5′ jeden do jednego), z z SIMBAD (4820, cz_CMB ≥ 3000 km/s,
   H₀ = 70), Zucker i in. 2020 (90 mgławic ciemnych, linie widzenia w obrysie), Wikidata na końcu jako
   „niezweryfikowane” (975 bez innego źródła). Decyzja 7.11.2026: gdy pomiar z łańcucha ma σ > 20 % (nie trafiłby
   do 3D), a Wikidata ma wartość, bierzemy Wikidata (1048 obiektów, głównie galaktyki CF4 z TF i płaszczyzną

@@ -87,20 +87,26 @@ const APP_CLASS: Record<string, string[]> = {
   PN: ['mgławica planetarna'], SNR: ['pozostałość po supernowej', 'mgławica'], OC: ['gromada'], GC: ['gromada'], CN: ['gromada', 'mgławica'],
 }
 
+/** Granica zgodności pozycji z SIMBAD; dla gromady co najmniej jej promień (środek rozległej gromady bywa różnie wyznaczany). */
+export function identityLimitDeg(type: string, majArcmin: number): number {
+  return type === 'OC' || type === 'GC' ? Math.max(IDENTITY_LIMIT_DEG, majArcmin / 120) : IDENTITY_LIMIT_DEG
+}
+
 export function checkIdentity(entry: Entry, simbad: Map<string, SimbadObject>): Identity {
   const lookup = (designation: string) => { const id = simbadId(designation); return id ? simbad.get(simbadKey(id)) : undefined }
+  const limit = identityLimitDeg(entry.type, entry.majArcmin)
   const primary = lookup(entry.designations[0])
   const foreignAliases = entry.designations.slice(1).flatMap((alias) => {
     const hit = lookup(alias)
     if (!hit || (primary && hit.mainId === primary.mainId)) return []
     const sepDeg = separationDeg(entry.raDeg, entry.decDeg, hit.raDeg, hit.decDeg)
-    return sepDeg > IDENTITY_LIMIT_DEG ? [{ alias, mainId: hit.mainId, sepDeg }] : []
+    return sepDeg > limit ? [{ alias, mainId: hit.mainId, sepDeg }] : []
   })
   if (!primary) return { verdict: 'missing', mainId: '', otype: '', sepDeg: null, foreignAliases, typeNote: '' }
   const sepDeg = separationDeg(entry.raDeg, entry.decDeg, primary.raDeg, primary.decDeg)
   const cls = typeClass(primary.otype)
   const typeNote = cls && APP_CLASS[entry.type] && !APP_CLASS[entry.type].includes(cls) ? `${entry.type} w aplikacji, ${primary.otype} (${cls}) w SIMBAD` : ''
-  return { verdict: sepDeg > IDENTITY_LIMIT_DEG ? 'position' : 'ok', mainId: primary.mainId, otype: primary.otype, sepDeg, foreignAliases, typeNote }
+  return { verdict: sepDeg > limit ? 'position' : 'ok', mainId: primary.mainId, otype: primary.otype, sepDeg, foreignAliases, typeNote }
 }
 
 /** Wycinki H II: oznaczenie Lyndsa sprowadzamy do jednoznacznego oznaczenia Sharplessa z SIMBAD. */
@@ -148,9 +154,18 @@ export function parseHr23(text: string): Hr23Cluster[] {
   })
 }
 
-/** Nazwa gromady do porównania: „Melotte_22” i „Mel 22” → „MEL22”, „NGC_2632” → „NGC2632”. */
+/** Gromada HR23 po kluczu nazwy: najpierw nazwy główne, potem AllNames (CWNU_1242 ma w AllNames „Melotte_25”, a Hiady to osobny wiersz). */
+export function hr23ByName(clusters: Hr23Cluster[]): Map<string, Hr23Cluster> {
+  const byKey = new Map<string, Hr23Cluster>()
+  for (const names of [(c: Hr23Cluster) => c.names.slice(0, 1), (c: Hr23Cluster) => c.names.slice(1)]) {
+    for (const c of clusters) for (const name of names(c)) if (!byKey.has(clusterKey(name))) byKey.set(clusterKey(name), c)
+  }
+  return byKey
+}
+
+/** Nazwa gromady do porównania: „Melotte_22” i „Mel 22” → „MEL22”, „NGC_2632” → „NGC2632”, „vdBH 85” i „BH_85” → „BH85”. */
 export function clusterKey(name: string): string {
-  return name.toUpperCase().replace(/^MELOTTE/, 'MEL').replace(/^COLLINDER/, 'CR').replace(/^TRUMPLER/, 'TR').replace(/[\s_-]+/g, '')
+  return name.toUpperCase().replace(/^MELOTTE/, 'MEL').replace(/^COLLINDER/, 'CR').replace(/^TRUMPLER/, 'TR').replace(/^VDBH/, 'BH').replace(/[\s_-]+/g, '')
 }
 
 export interface Cf4Galaxy { raDeg: number; decDeg: number; dm: number; eDm: number; methods: string[] }
