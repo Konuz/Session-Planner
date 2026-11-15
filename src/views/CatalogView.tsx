@@ -242,16 +242,17 @@ export default function CatalogView() {
           <b className="mono" style={{ fontSize: 15 }}>{catalog ? list.length.toLocaleString('pl-PL') : '…'}</b>
           <span className="dim" style={{ fontSize: 13 }}>z {catalog?.length.toLocaleString('pl-PL') ?? '…'}</span>
           {!vis && catalog && <span className="dim mono" style={{ fontSize: 11 }}>· liczenie widoczności…</span>}
-          {thumbSource === 'nsns' && <span className="dim mono" style={{ fontSize: 11 }}>· miniatury NSNS {SURVEYS.nsns.credit}</span>}
+          {thumbSource !== 'dss2' && <span className="dim mono" style={{ fontSize: 11 }}>· miniatury {SURVEYS[thumbSource].label} {SURVEYS[thumbSource].credit}</span>}
           <span style={{ flex: 1 }} />
           {onlyFavorites && <button className="button ghost icon-button" style={{ color: 'var(--bad)' }} title="Wyczyść ulubione" aria-label="Wyczyść ulubione" disabled={favoriteIds.length === 0} onClick={() => clearDialogRef.current?.showModal()}><Trash2 size={17} aria-hidden="true" /></button>}
           <button className={`button small${onlyFavorites ? ' active' : ''}`} aria-pressed={onlyFavorites} onClick={() => setOnlyFavorites((value) => !value)}>
             <Heart size={14} fill={onlyFavorites ? 'currentColor' : 'none'} /> Ulubione ({favoriteIds.length})
           </button>
           <select className="control catalog-sort" value={thumbSource} onChange={(e) => setThumbSource(e.target.value as typeof thumbSource)} aria-label="Źródło miniatur"
-            title={thumbSource === 'nsns' ? `NSNS true-color · ${SURVEYS.nsns.credit}. Małe obiekty i niebo na południe od −16°: DSS2.` : 'Miniatury z DSS2 (ESA/MAST)'}>
+            title={thumbSource !== 'dss2' ? `${SURVEYS[thumbSource].label} · ${SURVEYS[thumbSource].credit}. Małe obiekty i niebo na południe od −16°: DSS2.` : 'Miniatury z DSS2 (ESA/MAST)'}>
             <option value="dss2">Miniatury: DSS2</option>
-            <option value="nsns">Miniatury: NSNS</option>
+            <option value="nsns">Miniatury: NSNS true-color</option>
+            <option value="nsnsRgb">Miniatury: NSNS bez Hα</option>
           </select>
           <select className="control catalog-sort" value={sortBy} onChange={(e) => setSort(e.target.value as typeof sortBy)} aria-label="Sortowanie" disabled={!!filter.query}>
             {SORTS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}

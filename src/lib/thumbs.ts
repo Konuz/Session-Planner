@@ -27,10 +27,10 @@ export interface SkyImageOptions {
 }
 
 /** Źródło miniatur obiektów (karty katalogu, szczegóły, karty Nieba). */
-export type ThumbSource = 'dss2' | 'nsns'
+export type ThumbSource = 'dss2' | 'nsns' | 'nsnsRgb'
 
 export function isThumbSource(value: unknown): value is ThumbSource {
-  return value === 'dss2' || value === 'nsns'
+  return value === 'dss2' || value === 'nsns' || value === 'nsnsRgb'
 }
 
 // NSNS ma piksel 12,9″ (użyteczne ok. 20″): przy drobniejszej skali miniatura małego obiektu byłaby rozmytą plamą.
@@ -38,8 +38,8 @@ const NSNS_MIN_ARCSEC_PER_PX = 15
 
 /** Opcje obrazu miniatury: NSNS, gdy całe pole leży w pokryciu i skala ≥ 15″/px; w pozostałych przypadkach DSS2. */
 export function thumbImageOptions(source: ThumbSource, decDeg: number, fovDeg: number, sizePx: number, dssCoarser = 0): SkyImageOptions {
-  const nsns = source === 'nsns' && decDeg - fovDeg / 2 >= SURVEYS.nsns.minDecDeg && arcsecPerPixel(fovDeg, sizePx) >= NSNS_MIN_ARCSEC_PER_PX
-  return nsns ? { survey: 'nsns' } : { survey: 'dss2', coarser: dssCoarser }
+  const nsns = source !== 'dss2' && decDeg - fovDeg / 2 >= SURVEYS[source].minDecDeg && arcsecPerPixel(fovDeg, sizePx) >= NSNS_MIN_ARCSEC_PER_PX
+  return nsns ? { survey: source } : { survey: 'dss2', coarser: dssCoarser }
 }
 
 type Consumer = { resolve: (blob: Blob) => void; reject: (e: unknown) => void; cleanup: () => void }

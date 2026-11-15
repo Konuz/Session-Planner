@@ -111,6 +111,8 @@ describe('miniatury', () => {
     // Pole sięgające na południe od −16°: DSS2.
     expect(thumbImageOptions('nsns', -15, 4, 224)).toEqual({ survey: 'dss2', coarser: 0 })
     expect(thumbImageOptions('nsns', -13, 4, 224)).toEqual({ survey: 'nsns' })
+    expect(thumbImageOptions('nsnsRgb', -13, 4, 224)).toEqual({ survey: 'nsnsRgb' })
+    expect(thumbImageOptions('nsnsRgb', 47, 0.3, 224)).toEqual({ survey: 'dss2', coarser: 0 })
     expect(thumbImageOptions('dss2', 40, 4, 224)).toEqual({ survey: 'dss2', coarser: 0 })
   })
 

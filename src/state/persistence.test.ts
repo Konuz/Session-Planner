@@ -200,7 +200,7 @@ it('styl kopuł 3D wraca z zapisu, a nieznana wartość daje domyślny', async (
 })
 
 it('wygląd nieba i źródło miniatur wracają z zapisu, a nieznane wartości dają domyślne', async () => {
-  for (const [look, source, expected] of [['nsns', 'nsns', ['nsns', 'nsns']], ['mgła', 'sdss', ['default', 'dss2']]] as const) {
+  for (const [look, source, expected] of [['nsns', 'nsns', ['nsns', 'nsns']], ['nsnsRgb', 'nsnsRgb', ['nsnsRgb', 'nsnsRgb']], ['mgła', 'sdss', ['default', 'dss2']]] as const) {
     vi.resetModules()
     const json = JSON.stringify({ state: { skyLook: look, thumbSource: source }, version: 1 })
     const storage = { getItem: () => json, setItem: vi.fn() }
