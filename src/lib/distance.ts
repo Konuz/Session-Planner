@@ -71,6 +71,9 @@ export function redshiftDistance(z: number, raDeg: number, decDeg: number): { di
   return { distLy, uncertaintyLy: distLy * PECULIAR_KMS / czCmb, czCmb }
 }
 
+/** Mgławice planetarne odkryte przez amatorów (Le Dû i in. 2022, lista ręczna): „StDr 56”, „Ou 4”, „StDr Objet 1”. */
+export const AMATEUR_PN = /^(StDr|StDrBl|PaStDr|StRas|Pre|PreDr|PrePa|PreMo|Ra|Rai|Ras|RaMul|RaBel|RaEMol|Dr|St|LDu|LDuPa|LDu-IR|Mul|Mul-IR|MulPre|MulPreLDu|Ou|Pa|PaGo|PaMo|Fe|KnFe|SuFe|Su|DeGaPe|Hu|Tan|Kan|Ro|CaVa|Ch|Ga|Zol|MoMi|Mo|Jo|Zie)( Objet)? \d+$/
+
 /** Identyfikator w zapisie SIMBAD („Sh2-277” → „SH 2-277”, „B 33” → „Barnard 33”); null dla katalogów, których SIMBAD nie zna. */
 export function simbadId(designation: string): string | null {
   const id = designation.trim()
@@ -80,7 +83,7 @@ export function simbadId(designation: string): string | null {
   const clusters = /^(Collinder|Trumpler|Berkeley|Stock|King|Dolidze|Czernik|Ruprecht|Haffner|Pismis|Basel|Bochum|Hogg|Lynga|Tombaugh|Waterloo|Westerlund|Roslund|Alessi|Ferrero|Harvard|Loden|Terzan) (\d+)$/
   // Mgławice planetarne odkryte przez amatorów (Le Dû i in. 2022, lista ręczna): w SIMBAD „NAME PN Fe 6”; samo „Dr 21”
   // czy „Hu 2” to tam źródło radiowe i obłok HI.
-  if (/^(StDr|StDrBl|PaStDr|StRas|Pre|PreDr|PrePa|PreMo|Ra|Rai|Ras|RaMul|RaBel|RaEMol|Dr|St|LDu|LDuPa|LDu-IR|Mul|Mul-IR|MulPre|MulPreLDu|Ou|Pa|PaGo|PaMo|Fe|KnFe|SuFe|Su|DeGaPe|Hu|Tan|Kan|Ro|CaVa|Ch|Ga|Zol|MoMi|Mo|Jo|Zie)( Objet)? \d+$/.test(id)) return `NAME PN ${id}`
+  if (AMATEUR_PN.test(id)) return `NAME PN ${id}`
   const rules: [RegExp, string][] = [[/^Sh2-(\d+)$/, 'SH 2-$1'], [/^B (\d+)$/, 'Barnard $1'], [/^vdB (\d+)$/, 'VDB $1'], [/^Mel (\d+)$/, 'Cl Melotte $1'], [/^Abell (\d+)$/, 'PN A66 $1'],
     [clusters, 'Cl $1 $2'], [/^vdBH (\d+)$/, 'Cl VDBH $1'], [/^Palomar (\d+)$/, 'Cl Pal $1']]
   for (const [re, to] of rules) if (re.test(id)) return id.replace(re, to)

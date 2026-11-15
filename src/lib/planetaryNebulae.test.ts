@@ -65,7 +65,7 @@ it('lista ręczna: nowe obiekty spoza katalogów, każdy ze źródłem pozycji i
     expect(o.majArcmin).toBeGreaterThan(0)
     if (o.distance) expect(o.distance.ref).toMatch(/^\d{4}/)
   }
-  expect(catalogOf('Simeis 57')).toBeNull()
+  expect(catalogOf('Simeis 57')).toBe('BN')
 })
 
 it('Le Dû: wspólne oznaczenie daje aliasy, sama pozycja w polu obszaru H II nie', () => {

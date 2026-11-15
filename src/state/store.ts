@@ -149,6 +149,8 @@ interface State {
   showEllipses: boolean
   /** Grupy katalogów widoczne na kopule (znaczniki, elipsy i kontury). */
   skyGroups: Record<SkyGroup, boolean>
+  /** Rodziny katalogów z grupy „Inne” ukryte na kopule (EXTRA_CATALOGS w lib/catalog). */
+  skyExtraHidden: string[]
   showLabels: boolean
   showAnnotations: boolean
   /** Podpisy obiektów tła w widoku 3D (domyślnie wyłączone). */
@@ -199,6 +201,7 @@ interface State {
   setFilter(patch: Partial<CatalogFilter>): void
   setSort(s: State['sortBy']): void
   toggleSkyGroup(group: SkyGroup): void
+  toggleSkyExtra(id: string): void
   setAnnotationColor(type: ObjectType, color: string): void
   resetAnnotationColors(): void
   setOwnPhotosOpacity(value: number): void
@@ -272,6 +275,7 @@ export const useStore = create<State>()(
       ownPhotosOpacity: 1,
       showEllipses: false,
       skyGroups: Object.fromEntries(SKY_GROUPS.map((g) => [g, true])) as Record<SkyGroup, boolean>,
+      skyExtraHidden: [],
       showLabels: true,
       showAnnotations: true,
       show3DAnnotations: false,
@@ -416,6 +420,7 @@ export const useStore = create<State>()(
       setFilter: (patch) => set((s) => (Object.keys(patch) as (keyof CatalogFilter)[]).every((k) => Object.is(s.filter[k], patch[k])) ? s : { filter: { ...s.filter, ...patch } }),
       setSort: (sortBy) => set({ sortBy }),
       toggleSkyGroup: (group) => set((s) => ({ skyGroups: { ...s.skyGroups, [group]: !s.skyGroups[group] } })),
+      toggleSkyExtra: (id) => set((s) => ({ skyExtraHidden: s.skyExtraHidden.includes(id) ? s.skyExtraHidden.filter((value) => value !== id) : [...s.skyExtraHidden, id] })),
       setAnnotationColor: (type, color) => set((s) => ({ annotationColors: { ...s.annotationColors, [type]: color } })),
       resetAnnotationColors: () => set({ annotationColors: {} }),
       setOwnPhotosOpacity: (value) => set({ ownPhotosOpacity: Math.max(0.1, Math.min(1, value)) }),
@@ -458,6 +463,7 @@ export const useStore = create<State>()(
         ownPhotosOpacity: s.ownPhotosOpacity,
         showEllipses: s.showEllipses,
         skyGroups: s.skyGroups,
+        skyExtraHidden: s.skyExtraHidden,
         showLabels: s.showLabels,
         showAnnotations: s.showAnnotations,
         show3DAnnotations: s.show3DAnnotations,
@@ -475,6 +481,7 @@ export const useStore = create<State>()(
         return {
           ...current, ...p, skyGroups: { ...current.skyGroups, ...p?.skyGroups }, framingStretch: { ...p?.framingStretch }, ownPhotos: { ...p?.ownPhotos },
           weatherProvider: normalizeWeatherProvider(p?.weatherProvider),
+          skyExtraHidden: Array.isArray(p?.skyExtraHidden) ? p.skyExtraHidden.filter((id): id is string => typeof id === 'string') : current.skyExtraHidden,
           ownPhotosOpacity: opacity(p?.ownPhotosOpacity), outlinesOpacity: opacity(p?.outlinesOpacity),
           domeStyle: isDomeStyle(p?.domeStyle) ? p.domeStyle : current.domeStyle,
           domeOpacity: opacity(p?.domeOpacity),

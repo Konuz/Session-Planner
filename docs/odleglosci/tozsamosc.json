@@ -1597,6 +1597,12 @@
    "sepDeg": 2.888
   },
   {
+   "id": "RCW 11",
+   "simbad": "HD 50896",
+   "otype": "WR*",
+   "sepDeg": 0.283
+  },
+  {
    "id": "RCW 19",
    "simbad": "GUM 10",
    "otype": "HII",
@@ -1639,12 +1645,6 @@
    "sepDeg": 3.479
   },
   {
-   "id": "RCW 80",
-   "simbad": "SNR G309.2-00.6",
-   "otype": "SNR",
-   "sepDeg": 0.257
-  },
-  {
    "id": "RCW 97",
    "simbad": "RCW 97",
    "otype": "HII",
@@ -1673,6 +1673,12 @@
    "simbad": "RCW 168",
    "otype": "HII",
    "sepDeg": 2.756
+  },
+  {
+   "id": "HCG 48",
+   "simbad": "HCG 48",
+   "otype": "CGG",
+   "sepDeg": 4.016
   }
  ],
  "aliases": [
@@ -1893,10 +1899,34 @@
    "sepDeg": 1.05
   },
   {
+   "id": "RCW 57",
+   "alias": "Gum 38a",
+   "simbad": "NGC 3576",
+   "sepDeg": 0.348
+  },
+  {
+   "id": "RCW 119",
+   "alias": "Gum 57a",
+   "simbad": "HD 153426",
+   "sepDeg": 0.699
+  },
+  {
+   "id": "RCW 119",
+   "alias": "Gum 57b",
+   "simbad": "HD 153919",
+   "sepDeg": 0.27
+  },
+  {
    "id": "RCW 123",
    "alias": "Gum 59",
    "simbad": "GUM 59",
    "sepDeg": 0.288
+  },
+  {
+   "id": "RCW 130",
+   "alias": "WR 86",
+   "simbad": "HD 156327",
+   "sepDeg": 0.313
   },
   {
    "id": "RCW 132",
@@ -1915,6 +1945,12 @@
    "alias": "Gum 84",
    "simbad": "GUM 84",
    "sepDeg": 0.688
+  },
+  {
+   "id": "RCW 167",
+   "alias": "WR 113",
+   "simbad": "HD 168206",
+   "sepDeg": 0.476
   }
  ],
  "types": [
@@ -3219,11 +3255,6 @@
    "note": "EN w aplikacji, ** (gwiazda) w SIMBAD"
   },
   {
-   "id": "Ced 37",
-   "simbad": "IRAS 04366+5022",
-   "note": "CN w aplikacji, Y*O (gwiazda) w SIMBAD"
-  },
-  {
    "id": "Ced 55h",
    "simbad": "* eps Ori",
    "note": "EN w aplikacji, s*b (gwiazda) w SIMBAD"
@@ -3234,38 +3265,18 @@
    "note": "EN w aplikacji, AG? (galaktyka) w SIMBAD"
   },
   {
-   "id": "Ced 92",
-   "simbad": "RAFGL 5223",
-   "note": "EN w aplikacji, Or* (gwiazda) w SIMBAD"
-  },
-  {
    "id": "Ced 110",
    "simbad": "Ass Cha T 2-21",
    "note": "EN w aplikacji, TT* (gwiazda) w SIMBAD"
   },
   {
-   "id": "Ced 135a",
-   "simbad": "HD 148937",
-   "note": "EN w aplikacji, SB* (gwiazda) w SIMBAD"
-  },
-  {
-   "id": "Ced 135b",
-   "simbad": "HD 148937",
-   "note": "EN w aplikacji, SB* (gwiazda) w SIMBAD"
-  },
-  {
-   "id": "RCW 21",
-   "simbad": "PN VBRC 1",
-   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
+   "id": "RCW 11",
+   "simbad": "HD 50896",
+   "note": "EN w aplikacji, WR* (gwiazda) w SIMBAD"
   },
   {
    "id": "RCW 24",
    "simbad": "RCW 24",
-   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
-  },
-  {
-   "id": "RCW 44",
-   "simbad": "WRAY 17-31",
    "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
   },
   {
@@ -3289,61 +3300,6 @@
    "note": "EN w aplikacji, * (gwiazda) w SIMBAD"
   },
   {
-   "id": "RCW 76",
-   "simbad": "NGC 5189",
-   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
-  },
-  {
-   "id": "RCW 77",
-   "simbad": "PN MyCn 18",
-   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
-  },
-  {
-   "id": "RCW 80",
-   "simbad": "SNR G309.2-00.6",
-   "note": "EN w aplikacji, SNR (pozostałość po supernowej) w SIMBAD"
-  },
-  {
-   "id": "RCW 90",
-   "simbad": "RCW 90",
-   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
-  },
-  {
-   "id": "RCW 93",
-   "simbad": "PN Mz 1",
-   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
-  },
-  {
-   "id": "RCW 100",
-   "simbad": "PN Sp 1",
-   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
-  },
-  {
-   "id": "RCW 101",
-   "simbad": "PN Mz 3",
-   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
-  },
-  {
-   "id": "RCW 107",
-   "simbad": "HD 148937",
-   "note": "EN w aplikacji, SB* (gwiazda) w SIMBAD"
-  },
-  {
-   "id": "RCW 112",
-   "simbad": "NGC 6153",
-   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
-  },
-  {
-   "id": "RCW 124",
-   "simbad": "NGC 6302",
-   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
-  },
-  {
-   "id": "RCW 135",
-   "simbad": "PN M 1-26",
-   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
-  },
-  {
    "id": "RCW 136",
    "simbad": "PN H 1-44",
    "note": "EN w aplikacji, EB* (gwiazda) w SIMBAD"
@@ -3352,11 +3308,6 @@
    "id": "RCW 139",
    "simbad": "PN Bl 3-22",
    "note": "EN w aplikacji, Em* (gwiazda) w SIMBAD"
-  },
-  {
-   "id": "RCW 181",
-   "simbad": "PN YM 16",
-   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
   }
  ],
  "known": [

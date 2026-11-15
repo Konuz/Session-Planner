@@ -1,12 +1,12 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { CalendarCheck, Heart, Palette, RotateCcw, Search, Trash2 } from 'lucide-react'
+import { CalendarCheck, ChevronDown, Heart, Palette, RotateCcw, Search, Trash2 } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ObjectDetails } from '../components/ObjectDetails'
 import { Range } from '../components/Range'
 import { ScrambleText } from '../components/ScrambleText'
 import { Thumb } from '../components/Thumb'
 import { FavoriteButton } from '../components/FavoriteButton'
-import { CATALOGS, DEFAULT_ANNOTATION_COLORS, displayName, matchesFilter, searchScore, TYPE_INFO, EMPTY_FILTER, type DSO, type ObjectType } from '../lib/catalog'
+import { CATALOGS, DEFAULT_ANNOTATION_COLORS, EXTRA_CATALOGS, displayName, matchesFilter, searchScore, TYPE_INFO, EMPTY_FILTER, type DSO, type ObjectType } from '../lib/catalog'
 import { CONSTELLATION_PL } from '../lib/constellations'
 import { fmtDuration, fmtNum, fmtSize, fmtTime } from '../lib/format'
 import { SURVEYS } from '../lib/hips'
@@ -67,6 +67,39 @@ function AnnotationColorSettings() {
   )
 }
 
+const EXTRA_IDS = EXTRA_CATALOGS.map((c) => c.id)
+/** Klucz licznika obiektów z dowolnej rodziny „Inne”. */
+const EXTRA_TOTAL = '__extra'
+
+/** Przycisk „Inne”: lista rodzin katalogów spoza głównej listy (gromady HR23, odkrycia amatorów, Ced/RCW/Gum, Arp, HCG, WR). */
+function ExtraCatalogFilter({ selected, counts, onChange }: { selected: string[]; counts: Record<string, number>; onChange: (catalogs: string[]) => void }) {
+  const [open, setOpen] = useState(false)
+  const chosen = EXTRA_IDS.filter((id) => selected.includes(id))
+  const all = chosen.length === EXTRA_IDS.length
+  const toggle = (id: string) => onChange(selected.includes(id) ? selected.filter((c) => c !== id) : [...selected, id])
+  return (
+    <span className="annotation-color-settings" style={{ margin: 0 }}>
+      <button className={`toggle-chip${chosen.length ? ' on' : ''}`} title="Katalogi spoza głównej listy" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+        Inne <span className="faint">{chosen.length && !all ? `${chosen.length}/${EXTRA_IDS.length}` : counts[EXTRA_TOTAL] ?? 0}</span> <ChevronDown size={11} />
+      </button>
+      {open && (
+        <div className="popover type-filter" style={{ left: 0, right: 'auto' }} role="group" aria-label="Inne katalogi">
+          <label>
+            <input type="checkbox" checked={all} onChange={() => onChange(all ? selected.filter((c) => !EXTRA_IDS.includes(c)) : [...selected.filter((c) => !EXTRA_IDS.includes(c)), ...EXTRA_IDS])} />
+            Wszystkie inne <span className="faint">{counts[EXTRA_TOTAL] ?? 0}</span>
+          </label>
+          {EXTRA_CATALOGS.map(({ id, label, title }) => (
+            <label key={id} title={title}>
+              <input type="checkbox" checked={selected.includes(id)} onChange={() => toggle(id)} />
+              {label} <span className="faint">{counts[id] ?? 0}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </span>
+  )
+}
+
 export default function CatalogView() {
   const { catalog, error } = useCatalog()
   const vis = useCatalogVisibility()
@@ -102,7 +135,11 @@ export default function CatalogView() {
 
   const counts = useMemo(() => {
     const c: Record<string, number> = {}
-    if (catalog) for (const o of catalog) for (const k of o.catalogs) c[k] = (c[k] ?? 0) + 1
+    if (catalog) for (const o of catalog) {
+      for (const k of o.catalogs) c[k] = (c[k] ?? 0) + 1
+      // Obiekty z przynajmniej jednej rodziny „Inne” (bez podwójnego liczenia, np. NGC 2244 = Collinder 99).
+      if (o.catalogs.some((k) => EXTRA_IDS.includes(k))) c[EXTRA_TOTAL] = (c[EXTRA_TOTAL] ?? 0) + 1
+    }
     return c
   }, [catalog])
 
@@ -196,6 +233,7 @@ export default function CatalogView() {
                 {c.label} <span className="faint">{counts[c.id] ?? 0}</span>
               </button>
             ))}
+            <ExtraCatalogFilter selected={filter.catalogs} counts={counts} onChange={(catalogs) => setFilter({ catalogs })} />
           </div>
         </div>
         <div className="filter-group">

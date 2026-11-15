@@ -18,12 +18,12 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path'
 import * as Astronomy from 'astronomy-engine'
 import sharp from 'sharp'
-import { simbadId } from '../src/lib/distance.ts'
+import { isStarOtype, simbadId } from '../src/lib/distance.ts'
 import { checkIdentity, cf4Choice, cw21Choice, findCw21, findHr23, findRl22, hr23ByName, identityLimitDeg, parseCw21, parseRl22, rl22Choice, hr23Choice, ILLUMINATOR_MATCH_DEG, KNOWN_DISCREPANCIES, withWikidataFallback, matchCf4, parseCf4, parseHr23, parseSimbadIdents, parseVizierTsv, parseZucker, photoNebulaAliases, redshiftChoice, separationDeg, simbadKey, WIKIDATA, zuckerChoice, type Choice, type Entry, type Hr23Cluster, type SimbadObject, type SourceKey } from './catalogDistances.ts'
 import { cachedBytes, cachedText } from './download.ts'
 import { hiiChoice, parseFosterBrunt, parseRusseil, parseWise, type HiiSources } from './hiiDistances.ts'
-import { parseCederblad, parseRcw, planNebulae } from './brightNebulae.ts'
-import { MANUAL_OBJECTS } from './manualObjects.ts'
+import { GALAXY_TYPES, parseArp, parseCederblad, parseHcg, parseRcw, planNebulae } from './brightNebulae.ts'
+import { MANUAL_OBJECTS, WR_NEBULAE } from './manualObjects.ts'
 import { newPlanetaryNebulae, parseLeDu, parseV84, planLeDu, type PlanetaryNebula } from './planetaryNebulae.ts'
 import { displayOf, parseHr23Catalog, planClusters, type Hr23Entry } from './openClusters.ts'
 
@@ -263,13 +263,15 @@ async function buildCatalog() {
     // Nazwy zwyczajowe też się liczą: „RCW 86” jest nazwą SNR G315.4-02.3 z OpenNGC, nie jej oznaczeniem.
     const known = old.map((o) => ({ designations: [...o.designations.map((d) => designation(d.catalog, d.id)), ...o.commonNames], type: TYPE_CODE[o.type] ?? 'X', raDeg: o.raDeg, decDeg: o.decDeg, majArcmin: o.sizeMajorArcmin ?? 0 }))
     const hostNames = (i: number) => [...known[i].designations, ...old[i].commonNames.map((n) => `NAME ${n}`)]
-    const probe = planNebulae(list, known, () => false)
+    const options = { searchDeg: 0.5, closeDeg: 1 / 60 }
+    const probe = planNebulae(list, known, () => false, undefined, { searchDeg: options.searchDeg })
     const sim = await simbadObjects([...list.map((n) => n.primary), ...probe.checked.flatMap((c) => hostNames(c.known))])
-    const mainId = (names: string[]) => names.map((d) => { const id = simbadId(d); return id ? sim.get(simbadKey(id)) : undefined }).find((h) => h !== undefined)?.mainId ?? null
+    const lookup = (names: string[]) => names.map((d) => { const id = simbadId(d); return id ? sim.get(simbadKey(id)) : undefined }).find((h) => h !== undefined)
+    // Mgławica, którą SIMBAD utożsamia z gwiazdą (Ced 135a, RCW 107 → HD 148937), nie rozstrzyga: decyduje wspólne NGC/IC.
     const plan = planNebulae(list, known, (n, i) => {
-      const a = mainId([n.primary]), b = mainId(hostNames(i))
-      return a === null || b === null ? null : a === b
-    })
+      const a = lookup([n.primary]), b = lookup(hostNames(i))
+      return !a || !b || isStarOtype(a.otype) ? null : a.mainId === b.mainId
+    }, undefined, options)
     for (const [i, aliases] of plan.aliases) old[i].designations.push(...aliases.map((id) => ({ catalog: 'Other', id })))
     for (const n of plan.added) {
       old.push({
@@ -280,6 +282,48 @@ async function buildCatalog() {
       })
     }
     console.log(`Cederblad i RCW: ${plan.added.length} nowych z ${list.length}, aliasy dla ${plan.aliases.size} obiektów`)
+  }
+
+  // Numery WR przy mgławicach z tabeli Toalá i in. 2015 (scripts/manualObjects.ts).
+  {
+    const ids = old.map((o) => o.designations.map((d) => designation(d.catalog, d.id)))
+    const missing: string[] = []
+    let added = 0
+    for (const [wr, nebula] of WR_NEBULAE) {
+      if (ids.some((list) => list.includes(wr))) continue
+      const i = ids.findIndex((list) => list.includes(nebula))
+      if (i < 0) { missing.push(nebula); continue }
+      old[i].designations.push({ catalog: 'Other', id: wr })
+      added++
+    }
+    console.log(`WR: ${added} aliasów${missing.length ? `, bez mgławicy w katalogu: ${missing.join(', ')}` : ''}`)
+  }
+
+  // Galaktyki osobliwe Arpa i zwarte grupy Hicksona (scripts/brightNebulae.ts): ten sam obiekt według SIMBAD (albo
+  // wspólne oznaczenie M/NGC/IC/UGC) dostaje alias, reszta to nowe galaktyki i grupy.
+  {
+    const list = [
+      ...parseArp(await vizier('arp-vii192', '-source=VII/192/arpord&-out.all&-out.add=_RAJ,_DEJ&-oc.form=d')),
+      ...parseHcg(await vizier('hcg-vii213', '-source=VII/213/groups&-out.all&-out.add=_RAJ,_DEJ&-oc.form=d')),
+    ]
+    const known = old.map((o) => ({ designations: [...o.designations.map((d) => designation(d.catalog, d.id)), ...o.commonNames], type: TYPE_CODE[o.type] ?? 'X', raDeg: o.raDeg, decDeg: o.decDeg, majArcmin: o.sizeMajorArcmin ?? 0 }))
+    const probe = planNebulae(list, known, () => false, GALAXY_TYPES)
+    // (próba bez skrótów nazw i odległości, żeby SIMBAD dostał wszystkich kandydatów)
+    const sim = await simbadObjects([...list.map((n) => n.primary), ...probe.checked.flatMap((c) => known[c.known].designations)])
+    const mainId = (names: string[]) => names.map((d) => { const id = simbadId(d); return id ? sim.get(simbadKey(id)) : undefined }).find((h) => h !== undefined)?.mainId ?? null
+    const plan = planNebulae(list, known, (n, i) => {
+      const a = mainId([n.primary]), b = mainId(known[i].designations)
+      return a === null || b === null ? null : a === b
+    }, GALAXY_TYPES, { nameFirst: true, closeDeg: 0.5 / 60 })
+    for (const [i, aliases] of plan.aliases) old[i].designations.push(...aliases.map((id) => ({ catalog: 'Other', id })))
+    for (const n of plan.added) {
+      old.push({
+        primary: { catalog: 'Other', id: n.primary }, designations: [{ catalog: 'Other', id: n.primary }], commonNames: [],
+        type: n.type === 'GG' ? 'galaxy_group' : 'galaxy', raDeg: n.raDeg, decDeg: n.decDeg, sizeMajorArcmin: n.majArcmin || null, sizeMinorArcmin: null,
+        positionAngleDeg: null, magV: n.mag ?? null, surfaceBrightness: null, constellation: Astronomy.Constellation(n.raDeg / 15, n.decDeg).symbol,
+      })
+    }
+    console.log(`Arp i HCG: ${plan.added.length} nowych z ${list.length}, aliasy dla ${plan.aliases.size} obiektów`)
   }
 
   const distRows = await sparql('wd-dist.csv', `SELECT ?code ?dist ?unit WHERE {

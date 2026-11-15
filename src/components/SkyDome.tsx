@@ -19,7 +19,7 @@ import {
   type Mat3,
   type Vec3,
 } from '../lib/astro'
-import { catalogOf, DEFAULT_ANNOTATION_COLORS, displayName, skyGroupOf, TYPE_INFO, type DSO, type ObjectType } from '../lib/catalog'
+import { catalogOf, DEFAULT_ANNOTATION_COLORS, displayName, skyGroupOf, skyShown, TYPE_INFO, type DSO, type ObjectType } from '../lib/catalog'
 import { fmtTime } from '../lib/format'
 import { frameCorners, gnomonicInverse } from '../lib/framing'
 import { SURVEYS } from '../lib/hips'
@@ -558,6 +558,7 @@ export function SkyDome({ playing = false }: Props) {
   const ownPhotosOpacity = useStore((s) => s.ownPhotosOpacity)
   const showEllipses = useStore((s) => s.showEllipses)
   const skyGroups = useStore((s) => s.skyGroups)
+  const skyExtraHidden = useStore((s) => s.skyExtraHidden)
   const showLabels = useStore((s) => s.showLabels)
   const showAnnotations = useStore((s) => s.showAnnotations)
   const annotationColors = useStore((s) => s.annotationColors)
@@ -846,7 +847,7 @@ export function SkyDome({ playing = false }: Props) {
       // Suwak krycia konturów działa na obrysy i wypełnienia; podpisy (rysowane później razem z elipsami) zostają czytelne.
       ctx.globalAlpha = outlinesOpacity
       outlines.forEach((o, k) => {
-        if (!skyGroups[skyGroupOf(outlineObjects?.[k] ?? { catalogs: [catalogOf(o.id) ?? ''] })]) return
+        if (!skyShown(outlineObjects?.[k] ?? { catalogs: [catalogOf(o.id) ?? ''] }, skyGroups, skyExtraHidden)) return
         const key = outlineKey(k)
         const sel = selIds ? selIds.has(o.id) || o.also.some((a) => selIds.has(a)) : false
         const hov = key === hoverKey
@@ -907,7 +908,7 @@ export function SkyDome({ playing = false }: Props) {
     // Elipsy mniejsze niż 1,5 px pomijane, więc przy oddaleniu zostają tylko duże obiekty.
     if (showEllipses) {
       for (const d of depthObjects) {
-        if (!skyGroups[d.group] || outlined.has(d.o.id)) continue
+        if (!skyShown(d.o, skyGroups, skyExtraHidden) || outlined.has(d.o.id)) continue
         const a0 = (d.o.majArcmin / 120) * pxPerDeg
         if (a0 < 1.5) continue
         // Małe obiekty (jak B 33) powiększone do co najmniej 3 px, żeby dało się je zobaczyć i trafić.

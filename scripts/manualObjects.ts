@@ -56,3 +56,12 @@ export const MANUAL_OBJECTS: ManualObject[] = [
     source: 'Drechsler i in. 2023, RNAAS 7, 1 (pozycja przybliżona)',
   },
 ]
+
+/**
+ * Gwiazdy WR, których mgławica ma w katalogu oznaczenie (Toalá i in. 2015, A&A 578, A66, tabela 1): numer WR jako alias
+ * mgławicy, bo pod nim fotografowie jej szukają. Mgławice „Anon” (np. wokół WR 134) i G320.5−1.4, G2.4+1.4 bez wiersza.
+ */
+export const WR_NEBULAE: [wr: string, nebula: string][] = [
+  ['WR 6', 'Sh2-308'], ['WR 7', 'NGC 2359'], ['WR 18', 'NGC 3199'], ['WR 40', 'RCW 58'], ['WR 55', 'RCW 78'], ['WR 75', 'RCW 104'],
+  ['WR 85', 'RCW 118'], ['WR 86', 'RCW 130'], ['WR 113', 'RCW 167'], ['WR 124', 'Sh2-80'], ['WR 136', 'NGC 6888'],
+]

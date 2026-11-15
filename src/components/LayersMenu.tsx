@@ -3,7 +3,7 @@ import { ChevronDown } from 'lucide-react'
 import { Fragment, useCallback, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import type { ObjectType, SkyGroup } from '../lib/catalog'
-import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO } from '../lib/catalog'
+import { DEFAULT_ANNOTATION_COLORS, EXTRA_CATALOGS, TYPE_INFO } from '../lib/catalog'
 import { SURVEYS } from '../lib/hips'
 import { SKY_LOOKS, skyLookSurvey, type SkyLook } from '../lib/hipsSky'
 import { DOME_STYLES } from '../lib/space3d'
@@ -103,6 +103,8 @@ export function LayersMenu({ threeD = false, settings, typeCounts = [], defaultO
   const annotationColors = useStore((s) => s.annotationColors)
   const toggle = useStore((s) => s.toggle)
   const toggleGroup = useStore((s) => s.toggleSkyGroup)
+  const extraHidden = useStore((s) => s.skyExtraHidden)
+  const toggleExtra = useStore((s) => s.toggleSkyExtra)
   const domeStyle = useStore((s) => s.domeStyle)
   const setDomeStyle = useStore((s) => s.setDomeStyle)
   const domeOpacity = useStore((s) => s.domeOpacity)
@@ -226,6 +228,12 @@ export function LayersMenu({ threeD = false, settings, typeCounts = [], defaultO
               </Section>
               <Section title="Obiekty" on={GROUPS.filter(({ id }) => groups[id]).length} total={GROUPS.length} open={sections.objects} onToggle={() => setSections({ ...sections, objects: !sections.objects })}>
                 {GROUPS.map(({ id, label }) => <Switch key={id} on={groups[id]} onClick={() => toggleGroup(id)} label={label} />)}
+                {/* Rodziny katalogów w grupie „Inne” (gromady HR23, odkrycia amatorów, Ced/RCW/Gum, Arp, HCG, WR). */}
+                {groups.other && (
+                  <div className="layers-subgroup" role="group" aria-label="Katalogi w grupie Inne">
+                    {EXTRA_CATALOGS.map(({ id, label, title }) => <Switch key={id} on={!extraHidden.includes(id)} onClick={() => toggleExtra(id)} label={label} title={title} />)}
+                  </div>
+                )}
               </Section>
             </>
           )}

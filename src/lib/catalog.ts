@@ -1,5 +1,5 @@
 // Katalog obiektów: wczytanie zwartego pliku public/data/catalog.json, typy, filtry i wyszukiwanie.
-import type { DistanceInfo, DistanceScope } from './distance.ts'
+import { AMATEUR_PN, type DistanceInfo, type DistanceScope } from './distance.ts'
 // Rozszerzenie .ts: serwer (Node bez bundlera) importuje ten moduł w czasie wykonania; perf.ts nie ma importów.
 import { measureSince, perfNow } from './perf.ts'
 
@@ -86,8 +86,26 @@ export function catalogOf(designation: string): string | null {
   if (/^B \d/.test(designation)) return 'B'
   if (/^vdB /.test(designation)) return 'vdB'
   if (/^SNR /.test(designation)) return 'SNR'
+  for (const { id, test } of EXTRA_CATALOGS) if (test.test(designation)) return id
   return null
 }
+
+/**
+ * Katalogi spoza głównej listy (na kopule w grupie „Inne”, w filtrach Katalogu pod przyciskiem „Inne”), rodzinami:
+ * gromady Hunt & Reffert 2023 (scripts/openClusters.ts), mgławice odkryte przez amatorów (Le Dû 2022, lista ręczna),
+ * mgławice jasne Cederblada, RCW i Gum (scripts/brightNebulae.ts), galaktyki Arpa, grupy Hicksona i gwiazdy WR.
+ */
+export const EXTRA_CATALOGS: { id: string; label: string; title: string; test: RegExp }[] = [
+  {
+    id: 'Cl', label: 'Gromady (Cr, Stock, Be…)', title: 'Gromady z katalogów klasycznych i odkryć amatorów (Hunt & Reffert 2023)',
+    test: /^(Collinder|Cr|Trumpler|Tr|Berkeley|Be|Ruprecht|Ru|Czernik|Cz|Mel|Melotte|vdBH|Palomar|Pal|Stock|King|Dolidze|vdBergh|Pismis|Pismis-Moreno|Haffner|Basel|Bochum|Lynga|Hogg|Loden|Roslund|Harvard|Terzan|Tombaugh|Waterloo|Antalova|Markarian|Westerlund|Feinstein|Stephenson|Blanco|Biurakan|Barkhatova|Moffat|Havlen-Moffat|Mayer|Muzzio|Danks|Aveni-Hunter|Auner|Andrews-Lindsay|Turner|Pfleiderer|Sher|Negueruela|Teutsch|Alessi|Alessi-Teutsch|Juchert|Juchert-Saloran|Saloranta|Kronberger|Casado|Casado-Alessi|Skiff|Patchick|Ferrero|Riddle|Streicher|Renou|Pozzo|Can-Battlo|Archinal|Steine) [\dJ]/,
+  },
+  { id: 'PNam', label: 'Odkrycia amatorów (StDr, Ou…)', title: 'Mgławice odkryte przez amatorów (Le Dû i in. 2022, Zie 1, SDSO 1, Ou 4)', test: new RegExp(`${AMATEUR_PN.source}|^SDSO \\d`) },
+  { id: 'BN', label: 'Ced, RCW, Gum', title: 'Mgławice jasne: Cederblad, RCW, Gum, Simeis, DWB', test: /^(Ced|RCW|Gum|Simeis|Sim|DWB) \d/ },
+  { id: 'Arp', label: 'Arp', title: 'Atlas galaktyk osobliwych Arpa', test: /^Arp \d/ },
+  { id: 'HCG', label: 'HCG', title: 'Zwarte grupy galaktyk Hicksona', test: /^HCG \d/ },
+  { id: 'WR', label: 'WR', title: 'Gwiazdy Wolfa-Rayeta przy mgławicach (Toalá i in. 2015)', test: /^WR \d/ },
+]
 
 export interface Illuminator {
   /** Oznaczenie gwiazdy (HD lub BD). */
@@ -176,6 +194,15 @@ export type SkyGroup = (typeof SKY_GROUPS)[number]
 /** Grupa obiektu na kopule: liczy się najpopularniejszy katalog obiektu (M 42 = NGC 1976 należy do M). */
 export function skyGroupOf(o: Pick<DSO, 'catalogs'>): SkyGroup {
   return SKY_GROUPS.find((g) => o.catalogs.includes(g)) ?? 'other'
+}
+
+/** Obiekt widoczny na kopule: włączona grupa, a w grupie „Inne” przynajmniej jedna jego rodzina katalogów nieukryta. */
+export function skyShown(o: Pick<DSO, 'catalogs'>, groups: Record<SkyGroup, boolean>, extraHidden: readonly string[]): boolean {
+  const group = skyGroupOf(o)
+  if (!groups[group]) return false
+  if (group !== 'other' || !extraHidden.length) return true
+  const families = o.catalogs.filter((c) => EXTRA_CATALOGS.some((e) => e.id === c))
+  return !families.length || families.some((c) => !extraHidden.includes(c))
 }
 
 export interface CatalogFilter {

@@ -78,7 +78,7 @@ it('dopisuje nowe gromady, a znanym obiektom tylko aliasy', () => {
 })
 
 it('nowe katalogi gromad trafiają do „pozostałych” i mają nazwy SIMBAD', () => {
-  expect(catalogOf('Collinder 135')).toBeNull()
+  expect(catalogOf('Collinder 135')).toBe('Cl')
   expect(simbadId('Collinder 135')).toBe('Cl Collinder 135')
   expect(simbadId('Stock 2')).toBe('Cl Stock 2')
   expect(simbadId('vdBH 99')).toBe('Cl VDBH 99')

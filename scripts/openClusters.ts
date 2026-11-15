@@ -122,11 +122,12 @@ export function planClusters(clusters: Hr23Entry[], known: KnownObject[], same: 
   const owner = new Map<string, Hr23Entry>()
   for (const c of owners) { const n = clusterName(c.names[0]); if (n && !owner.has(n.display)) owner.set(n.display, c) }
   for (const c of clusters) {
-    const names = [...new Set(c.names.flatMap((raw) => {
+    // Bez powtórzeń różniących się tylko wielkością liter („Basel 11A” i „Basel_11a” w AllNames).
+    const names = c.names.flatMap((raw) => {
       const n = clusterName(raw)
       if (!n || (owner.get(n.display) ?? c) !== c || !signOk(n.display, c.decDeg)) return []
       return [n.display, ...(n.short ? [n.short] : [])]
-    }))]
+    }).filter((name, i, all) => all.findIndex((other) => other.toUpperCase() === name.toUpperCase()) === i)
     const sep = (i: number) => separationDeg(c.raDeg, c.decDeg, known[i].raDeg, known[i].decDeg)
     const byName = c.names.flatMap((raw) => byKey.get(nameKey(raw)) ?? []).find((i) => sep(i) <= Math.max(c.rtDeg, 0.25))
     if (byName !== undefined) { addAliases(byName, names); continue }
