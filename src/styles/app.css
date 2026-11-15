@@ -183,7 +183,7 @@ select option, select optgroup { background-color: var(--card-solid); color: var
 .button.active { background: var(--accent); color: #000; }
 .button.small { min-height: 28px; padding: 0 10px; font-size: 10px; }
 .button.ghost { border-color: transparent; background: transparent; color: var(--text-dim); }
-.button.ghost:hover { color: var(--accent); background: transparent; border-color: transparent; }
+.button.ghost:hover { background: var(--accent); border-color: var(--accent); color: #000; }
 .button:disabled { opacity: 0.35; pointer-events: none; }
 .button.icon-button, .icon-button { width: 36px; padding: 0; }
 .button.icon-button svg { flex: none; }
@@ -350,7 +350,9 @@ input[type='checkbox']:checked::after {
 }
 .picker-button { position: relative; }
 .picker-button:hover, .picker-button[aria-expanded='true'] { border-color: var(--accent); z-index: 1; }
+.picker-button:hover { background: var(--accent); color: #000; }
 .picker-button svg { color: var(--accent); }
+.picker-button:hover svg { color: #000; }
 .home-link { font: 11px var(--mono); letter-spacing: 0.12em; color: var(--text-dim); text-transform: uppercase; display: flex; align-items: center; gap: 6px; }
 .home-link:hover { color: var(--accent); text-decoration: none; }
 
@@ -369,6 +371,8 @@ input[type='checkbox']:checked::after {
 .popover.type-filter { width: 288px; max-width: calc(100vw - 24px); padding: 10px 12px; display: grid; gap: 2px; text-align: left; color: var(--text); letter-spacing: 0; }
 .annotation-color-settings { position: relative; margin: 6px 0; }
 .panel-title .annotation-color-settings { margin: 0; }
+.catalog-filter-actions { display: flex; align-items: center; gap: 6px; }
+.catalog-filter-actions .button.icon-button { width: 22px; min-height: 22px; height: 22px; }
 .popover.annotation-color-popover { width: 260px; max-height: none; overflow: visible; padding: 10px 12px; color: var(--text); letter-spacing: 0; }
 .annotation-color-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
 .annotation-color-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 27px; font-size: 8px; font-family: var(--sans); font-weight: 400; color: var(--text-2); }
@@ -521,7 +525,7 @@ input[type='checkbox']:checked::after {
 .pw-selected-meta { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
 .pw-selected strong { font-size: 13px; }
 .pw-zoom { position: absolute; top: 0; right: 0; width: 26px; height: 26px; display: grid; place-items: center; padding: 0; border: 1px solid transparent; background: transparent; color: var(--accent); cursor: pointer; transition: color 0.15s var(--ease-std), border-color 0.15s var(--ease-std), background-color 0.15s var(--ease-std); }
-.pw-zoom:hover, .pw-zoom:focus-visible { border-color: var(--accent); background: var(--accent-faint); color: var(--text); }
+.pw-zoom:hover, .pw-zoom:focus-visible { border-color: var(--accent); background: var(--accent); color: #000; }
 .pw-selection p, .pw-note { margin: 0; color: var(--text-dim); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
 @media (max-width: 700px) {
   .photo-window-panel { top: 8px; right: 8px; width: 200px; padding: 8px; max-height: calc(100% - 150px); }
@@ -533,7 +537,8 @@ input[type='checkbox']:checked::after {
 .photo-heading > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .photo-timeline { display: flex; align-items: center; gap: 8px; font: 9px var(--mono); }
 .photo-timeline input[type=range] { flex: 1; min-width: 30px; }
-.photo-timeline .icon-button { color: var(--accent); flex: none; background: none; border: 0; display: grid; place-items: center; cursor: pointer; padding: 2px; }
+.photo-timeline .icon-button { color: var(--accent); flex: none; background: none; border: 0; display: grid; place-items: center; cursor: pointer; padding: 2px; transition: background 0.15s var(--ease-std), color 0.15s var(--ease-std); }
+.photo-timeline .icon-button:hover { background: var(--accent); color: #000; }
 .photo-editor { position: absolute; top: 55px; left: 12px; width: 228px; max-height: calc(100% - 190px); overflow-y: auto; z-index: 7; padding: 12px; border: 1px solid var(--border-strong); background: var(--card); font-size: 11px; }
 .photo-editor-heading { display: flex; justify-content: space-between; align-items: center; }
 .photo-editor-heading .close-button, .photo-error .close-button { width: 24px; height: 24px; padding: 3px; flex: none; }
@@ -731,8 +736,9 @@ input[type='checkbox']:checked::after {
 .favorites-confirm p { margin: 16px 0 24px; color: var(--text-2); font-size: 13px; line-height: 1.6; }
 .favorites-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 /* Poziomy zdjęcia kadru: przycisk w prawym górnym rogu zdjęcia i okno pod nim bez przyciemnienia tła (podgląd na żywo). */
-.button.framing-stretch-button { position: absolute; top: 8px; right: 8px; width: 31px; height: 31px; min-height: 31px; padding: 0; background: rgba(0, 0, 0, 0.6); }
-.button.framing-eye-button { position: absolute; top: 8px; right: 45px; width: 31px; height: 31px; min-height: 31px; padding: 0; background: rgba(0, 0, 0, 0.6); }
+.button.framing-stretch-button { position: absolute; top: 8px; right: 8px; width: 31px; height: 31px; min-height: 31px; padding: 0; }
+.button.framing-eye-button { position: absolute; top: 8px; right: 45px; width: 31px; height: 31px; min-height: 31px; padding: 0; }
+.button.framing-stretch-button:not(:hover):not(.on), .button.framing-eye-button:not(:hover):not(.on) { background: rgba(0, 0, 0, 0.6); }
 /* Włączony przycisk (rozciągnięte zdjęcie, ukryty kadr) wygląda jak po najechaniu. */
 .framing-stretch-button.on, .framing-eye-button.on { background: var(--accent); color: #000; }
 .stretch-dialog { position: fixed; inset: auto; width: min(320px, calc(100% - 32px)); margin: 0; padding: 14px; display: none; flex-direction: column; gap: 10px; overflow: auto; border: 1px solid var(--border-strong); background: var(--card-solid); color: var(--text); }
@@ -771,11 +777,12 @@ input[type='checkbox']:checked::after {
 /* Rodzaj obiektu jak kategoria na karcie galerii: mono 10 px, wersaliki, kolor rodzaju. */
 .type-label { font: 10px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
 .thumb { position: relative; background: #05060b; overflow: hidden; }
-.favorite-button, .own-photo-button { position: absolute; top: 6px; right: 6px; z-index: 3; width: 26px; height: 26px; display: grid; place-items: center; padding: 0; border: 1px solid var(--border-strong); background: var(--card-solid); color: var(--text-2); cursor: pointer; }
-.favorite-button:hover, .favorite-button:focus-visible, .favorite-button.active { color: var(--accent); border-color: var(--accent); }
+.favorite-button, .own-photo-button { position: absolute; top: 6px; right: 6px; z-index: 3; width: 26px; height: 26px; display: grid; place-items: center; padding: 0; border: 1px solid var(--border-strong); background: var(--card-solid); color: var(--text-2); cursor: pointer; transition: background 0.15s var(--ease-std), border-color 0.15s var(--ease-std), color 0.15s var(--ease-std); }
+.favorite-button.active { color: var(--accent); border-color: var(--accent); }
 /* Przełącznik moje/domyślne zdjęcie: lustrzanie do serca, w lewym górnym rogu. */
 .own-photo-button { right: auto; left: 6px; }
-.own-photo-button:hover, .own-photo-button:focus-visible, .own-photo-button.active { color: var(--accent); border-color: var(--accent); }
+.own-photo-button.active { color: var(--accent); border-color: var(--accent); }
+.favorite-button:hover, .favorite-button:focus-visible, .own-photo-button:hover, .own-photo-button:focus-visible { background: var(--accent); border-color: var(--accent); color: #000; }
 .button.favorite-remove { background: var(--bad); border-color: var(--bad); color: var(--bg); }
 .button.favorite-action { width: 190px; flex: none; }
 .framing-button-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
@@ -851,8 +858,8 @@ input[type='checkbox']:checked::after {
 .hud-label { font: 10px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-2); }
 .hud-value { min-width: 1ch; font: 600 11px var(--mono); color: var(--accent); }
 /* Ikona „cała kopuła”: pojawia się po przybliżeniu na lewo od suwaka, poza układem (nie przesuwa innych). */
-.hud-icon { display: grid; place-items: center; padding: 0; background: none; border: 0; color: var(--accent); cursor: pointer; transition: color 0.15s var(--ease-std); }
-.hud-icon:hover { color: #fff; }
+.hud-icon { display: grid; place-items: center; padding: 4px; background: none; border: 0; color: var(--accent); cursor: pointer; transition: background 0.15s var(--ease-std), color 0.15s var(--ease-std); }
+.hud-icon:hover { background: var(--accent); color: #000; }
 
 /* ---------- Planer sesji ---------- */
 .planner { max-width: 1480px; margin: 0 auto; }

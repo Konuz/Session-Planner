@@ -41,7 +41,7 @@ function AnnotationColorSettings() {
 
   return (
     <div className="annotation-color-settings">
-      <button className="button ghost small" title="Ustaw kolory adnotacji" aria-label="Ustaw kolory adnotacji" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+      <button className="button ghost icon-button" title="Ustaw kolory adnotacji" aria-label="Ustaw kolory adnotacji" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
         <Palette size={13} />
       </button>
       {open && (
@@ -218,8 +218,10 @@ export default function CatalogView() {
     <div className="catalog-layout">
       <aside className="card catalog-filters">
         <h2 className="panel-title">Filtry <span className="spacer" />
-          <button className="button ghost small" onClick={() => { setFilter(EMPTY_FILTER); setQuery('') }} title="Wyczyść filtry"><RotateCcw size={13} /></button>
-          <AnnotationColorSettings />
+          <div className="catalog-filter-actions">
+            <button className="button ghost icon-button" onClick={() => { setFilter(EMPTY_FILTER); setQuery('') }} title="Wyczyść filtry"><RotateCcw size={13} /></button>
+            <AnnotationColorSettings />
+          </div>
         </h2>
         <div className="filter-group search-box">
           <Search size={15} />
