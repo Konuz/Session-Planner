@@ -22,6 +22,7 @@ import { simbadId } from '../src/lib/distance.ts'
 import { checkIdentity, cf4Choice, cw21Choice, findCw21, findHr23, findRl22, hr23ByName, identityLimitDeg, parseCw21, parseRl22, rl22Choice, hr23Choice, ILLUMINATOR_MATCH_DEG, KNOWN_DISCREPANCIES, withWikidataFallback, matchCf4, parseCf4, parseHr23, parseSimbadIdents, parseVizierTsv, parseZucker, photoNebulaAliases, redshiftChoice, separationDeg, simbadKey, WIKIDATA, zuckerChoice, type Choice, type Entry, type Hr23Cluster, type SimbadObject, type SourceKey } from './catalogDistances.ts'
 import { cachedBytes, cachedText } from './download.ts'
 import { hiiChoice, parseFosterBrunt, parseRusseil, parseWise, type HiiSources } from './hiiDistances.ts'
+import { parseCederblad, parseRcw, planNebulae } from './brightNebulae.ts'
 import { MANUAL_OBJECTS } from './manualObjects.ts'
 import { newPlanetaryNebulae, parseLeDu, parseV84, planLeDu, type PlanetaryNebula } from './planetaryNebulae.ts'
 import { displayOf, parseHr23Catalog, planClusters, type Hr23Entry } from './openClusters.ts'
@@ -238,6 +239,48 @@ async function buildCatalog() {
     })
   }
   await appendClusters(hr23Catalog.filter((c) => !c.cmdOk), hr23Catalog, 'klasyczne bez progu CMD')
+
+  // Mgławice jasne Cederblada i RCW (scripts/brightNebulae.ts) na końcu: obiekt katalogu, który SIMBAD uznaje za ten sam
+  // (albo przy braku rozstrzygnięcia ma wspólne oznaczenie NGC/IC), dostaje aliasy z numerami Gum.
+  {
+    // Pozycje Cederblada (1900, z literówkami w tablicy: Ced 6b z deklinacją −61° zamiast +61°, Ced 176d przesunięty o 1ʰ)
+    // bierzemy z SIMBAD, gdy zna obiekt; RCW zostaje z pozycjami katalogu, rozbieżności pokaże przegląd tożsamości.
+    const ced = parseCederblad(await vizier('ced-vii231', '-source=VII/231/catalog&-out.all'))
+    const cedSim = await simbadObjects(ced.map((n) => n.primary))
+    let moved = 0
+    for (const n of ced) {
+      const s = cedSim.get(simbadKey(n.primary))
+      if (!s) continue
+      if (separationDeg(n.raDeg, n.decDeg, s.raDeg, s.decDeg) > 0.25) moved++
+      n.raDeg = s.raDeg
+      n.decDeg = s.decDeg
+      // Typ z SIMBAD, gdy to mgławica: tablica Cederblada często nie podaje widma (wtedy przyjmujemy emisyjną).
+      if (n.type !== 'CN' && s.otype === 'RNe') n.type = 'RN'
+      if (n.type !== 'CN' && (s.otype === 'HII' || s.otype === 'GNe')) n.type = 'EN'
+    }
+    console.log(`Cederblad: pozycje z SIMBAD dla ${ced.filter((n) => cedSim.has(simbadKey(n.primary))).length} z ${ced.length}, ${moved} przesuniętych o > 0,25°`)
+    const list = [...ced, ...parseRcw(await vizier('rcw-vii216', '-source=VII/216/rcw&-out.all'))]
+    // Nazwy zwyczajowe też się liczą: „RCW 86” jest nazwą SNR G315.4-02.3 z OpenNGC, nie jej oznaczeniem.
+    const known = old.map((o) => ({ designations: [...o.designations.map((d) => designation(d.catalog, d.id)), ...o.commonNames], type: TYPE_CODE[o.type] ?? 'X', raDeg: o.raDeg, decDeg: o.decDeg, majArcmin: o.sizeMajorArcmin ?? 0 }))
+    const hostNames = (i: number) => [...known[i].designations, ...old[i].commonNames.map((n) => `NAME ${n}`)]
+    const probe = planNebulae(list, known, () => false)
+    const sim = await simbadObjects([...list.map((n) => n.primary), ...probe.checked.flatMap((c) => hostNames(c.known))])
+    const mainId = (names: string[]) => names.map((d) => { const id = simbadId(d); return id ? sim.get(simbadKey(id)) : undefined }).find((h) => h !== undefined)?.mainId ?? null
+    const plan = planNebulae(list, known, (n, i) => {
+      const a = mainId([n.primary]), b = mainId(hostNames(i))
+      return a === null || b === null ? null : a === b
+    })
+    for (const [i, aliases] of plan.aliases) old[i].designations.push(...aliases.map((id) => ({ catalog: 'Other', id })))
+    for (const n of plan.added) {
+      old.push({
+        primary: { catalog: 'Other', id: n.primary }, designations: [n.primary, ...n.aliases].map((id) => ({ catalog: 'Other', id })), commonNames: [],
+        type: n.type === 'CN' ? 'cluster_nebula' : n.type === 'RN' ? 'reflection_nebula' : 'emission_nebula', raDeg: n.raDeg, decDeg: n.decDeg,
+        sizeMajorArcmin: n.majArcmin || null, sizeMinorArcmin: n.minArcmin, positionAngleDeg: null, magV: null, surfaceBrightness: null,
+        constellation: Astronomy.Constellation(n.raDeg / 15, n.decDeg).symbol,
+      })
+    }
+    console.log(`Cederblad i RCW: ${plan.added.length} nowych z ${list.length}, aliasy dla ${plan.aliases.size} obiektów`)
+  }
 
   const distRows = await sparql('wd-dist.csv', `SELECT ?code ?dist ?unit WHERE {
     VALUES ?cat { ${CATALOG_QIDS} }
