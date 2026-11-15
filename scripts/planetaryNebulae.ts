@@ -13,6 +13,8 @@ export interface PlanetaryNebula {
   decDeg: number
   /** Średnica optyczna w minutach łuku; 0 bez pomiaru lub przy samej granicy. */
   diamArcmin: number
+  /** Mniejsza oś, gdy źródło podaje rozmiar a × b. */
+  minorArcmin?: number
 }
 
 /** „03 03 48.84” (godziny) albo „+64 53 28.2” (stopnie) → stopnie. */
@@ -41,9 +43,49 @@ export function parseV84(mainTsv: string, diamTsv: string): PlanetaryNebula[] {
   })
 }
 
+/**
+ * Le Dû i in. 2022 (VizieR J/A+A/666/A152, tabela 1): mgławice planetarne odkryte przez amatorów (StDr, Pre, Ra, Ou…)
+ * ze statusem HASH T/L/P i rozmiarem „11 x 4.6” w minutach łuku. Oznaczenie HASH („Kn 22”) jako alias; postać
+ * galaktyczna „LBN 157.08-03.61” to nie numer Lyndsa, więc jej nie bierzemy.
+ */
+export function parseLeDu(tsv: string): PlanetaryNebula[] {
+  return parseVizierTsv(tsv).flatMap((row) => {
+    const ra = sexagesimal(row.RAJ2000 ?? '', true), dec = sexagesimal(row.DEJ2000 ?? '', false)
+    if (!row.Name || !row.PNG || ra === null || dec === null) return []
+    const size = /^([\d.]+)(?:\s*x\s*([\d.]+))?$/.exec(row.Size ?? '')
+    const hash = (row.HName ?? '').replace(/\s+/g, ' ').trim()
+    return [{
+      name: row.Name.replace(/\s+/g, ' ').trim(), png: `PN G${row.PNG}`, idents: hash && !/^LBN \d+\.\d+[+-]/.test(hash) ? [hash] : [],
+      raDeg: ra, decDeg: dec, diamArcmin: size ? Number(size[1]) : 0, minorArcmin: size?.[2] ? Number(size[2]) : undefined,
+    }]
+  })
+}
+
 const key = (designation: string) => designation.toUpperCase().replace(/[\s_-]+/g, '')
 
 export interface Known { designations: string[]; raDeg: number; decDeg: number; nebula: boolean }
+
+/**
+ * Mgławice Le Dû: wspólne oznaczenie (nazwa, PN G albo nazwa HASH, np. „Sh 2-215” przy Pa 167) z obiektem katalogu
+ * w odległości ≤ 0,5° daje temu obiektowi aliasy; reszta to nowe obiekty. Bez dopasowania po samej pozycji: kandydaci
+ * PN potwierdzeni widmami leżą często w polu obszaru H II (StDr 57 przy środku Sh2-213).
+ */
+export function planLeDu(pns: PlanetaryNebula[], known: Known[]): { added: PlanetaryNebula[]; aliases: Map<number, string[]> } {
+  const byKey = new Map<string, number[]>()
+  known.forEach((k, i) => { for (const d of k.designations) byKey.set(key(d), [...(byKey.get(key(d)) ?? []), i]) })
+  // Zajęte oznaczenia porównujemy z myślnikami: „Hu 21” to nie „Hu 2-1”.
+  const exact = (d: string) => d.toUpperCase().replace(/\s+/g, '')
+  const taken = new Set(known.flatMap((k) => k.designations.map(exact)))
+  const plan = { added: [] as PlanetaryNebula[], aliases: new Map<number, string[]>() }
+  for (const pn of pns) {
+    const names = [pn.name, pn.png, ...pn.idents]
+    const hit = names.flatMap((d) => byKey.get(key(d)) ?? []).find((i) => separationDeg(known[i].raDeg, known[i].decDeg, pn.raDeg, pn.decDeg) <= 0.5)
+    const fresh = names.filter((d) => !taken.has(exact(d)))
+    fresh.forEach((d) => taken.add(exact(d)))
+    if (hit !== undefined) { if (fresh.length) plan.aliases.set(hit, [...(plan.aliases.get(hit) ?? []), ...fresh]) } else if (fresh.includes(pn.name)) plan.added.push({ ...pn, idents: pn.idents.filter((d) => fresh.includes(d)) })
+  }
+  return plan
+}
 
 /**
  * Mgławice planetarne, których jeszcze nie ma w katalogu: bez wspólnego oznaczenia (nazwa lub inne oznaczenia V/84)

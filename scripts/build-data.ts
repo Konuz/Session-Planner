@@ -22,7 +22,8 @@ import { simbadId } from '../src/lib/distance.ts'
 import { checkIdentity, cf4Choice, cw21Choice, findCw21, findHr23, findRl22, hr23ByName, identityLimitDeg, parseCw21, parseRl22, rl22Choice, hr23Choice, ILLUMINATOR_MATCH_DEG, KNOWN_DISCREPANCIES, withWikidataFallback, matchCf4, parseCf4, parseHr23, parseSimbadIdents, parseVizierTsv, parseZucker, photoNebulaAliases, redshiftChoice, separationDeg, simbadKey, WIKIDATA, zuckerChoice, type Choice, type Entry, type Hr23Cluster, type SimbadObject, type SourceKey } from './catalogDistances.ts'
 import { cachedBytes, cachedText } from './download.ts'
 import { hiiChoice, parseFosterBrunt, parseRusseil, parseWise, type HiiSources } from './hiiDistances.ts'
-import { newPlanetaryNebulae, parseV84 } from './planetaryNebulae.ts'
+import { MANUAL_OBJECTS } from './manualObjects.ts'
+import { newPlanetaryNebulae, parseLeDu, parseV84, planLeDu, type PlanetaryNebula } from './planetaryNebulae.ts'
 import { displayOf, parseHr23Catalog, planClusters } from './openClusters.ts'
 
 const ROOT = join(import.meta.dirname, '..')
@@ -158,13 +159,13 @@ async function buildCatalog() {
     parseV84(await vizier('v84-main', '-source=V/84/main&-out.all'), await vizier('v84-diam', '-source=V/84/diam&-out.all')),
     old.map((o) => ({ designations: o.designations.map((d) => designation(d.catalog, d.id)), raDeg: o.raDeg, decDeg: o.decDeg, nebula: !['galaxy', 'galaxy_group', 'open_cluster', 'globular_cluster'].includes(o.type) })),
   )
-  for (const pn of pns) {
-    old.push({
-      primary: { catalog: 'Other', id: pn.name }, designations: [{ catalog: 'Other', id: pn.name }, { catalog: 'Other', id: pn.png }], commonNames: [],
-      type: 'planetary_nebula', raDeg: pn.raDeg, decDeg: pn.decDeg, sizeMajorArcmin: pn.diamArcmin ? r(pn.diamArcmin, 2) : null, sizeMinorArcmin: null,
-      positionAngleDeg: null, magV: null, surfaceBrightness: null, constellation: Astronomy.Constellation(pn.raDeg / 15, pn.decDeg).symbol,
-    })
-  }
+  const appendPn = (pn: PlanetaryNebula) => old.push({
+    primary: { catalog: 'Other', id: pn.name }, designations: [pn.name, pn.png, ...pn.idents].map((id) => ({ catalog: 'Other', id })), commonNames: [],
+    type: 'planetary_nebula', raDeg: pn.raDeg, decDeg: pn.decDeg, sizeMajorArcmin: pn.diamArcmin ? r(pn.diamArcmin, 2) : null,
+    sizeMinorArcmin: pn.minorArcmin ? r(pn.minorArcmin, 2) : null,
+    positionAngleDeg: null, magV: null, surfaceBrightness: null, constellation: Astronomy.Constellation(pn.raDeg / 15, pn.decDeg).symbol,
+  })
+  for (const pn of pns) appendPn({ ...pn, idents: [] })
   console.log(`mgławice planetarne V/84: ${pns.length} nowych`)
 
   // Gromady Hunt & Reffert 2023 z katalogów optycznych i odkryć amatorów (scripts/openClusters.ts) po mgławicach
@@ -211,6 +212,24 @@ async function buildCatalog() {
     })
   }
   console.log(`gromady HR23: ${clusterPlan.added.length} nowych, aliasy dla ${clusterPlan.aliases.size} obiektów; na pozycji gromady katalogu:\n  ${verdicts.join('\n  ')}\n  odrzucone aliasy (${dropped.length}): ${dropped.join('; ')}`)
+
+  // Mgławice planetarne odkryte przez amatorów (Le Dû i in. 2022) po gromadach, potem lista ręczna (scripts/manualObjects.ts).
+  const known = () => old.map((o) => ({ designations: o.designations.map((d) => designation(d.catalog, d.id)), raDeg: o.raDeg, decDeg: o.decDeg, nebula: !['galaxy', 'galaxy_group', 'open_cluster', 'globular_cluster'].includes(o.type) }))
+  const leDu = parseLeDu(await vizier('ledu22-pn', '-source=J/A%2BA/666/A152/table1&-out.all'))
+  const leDuPlan = planLeDu(leDu, known())
+  for (const [i, aliases] of leDuPlan.aliases) old[i].designations.push(...aliases.map((id) => ({ catalog: 'Other', id })))
+  for (const pn of leDuPlan.added) appendPn(pn)
+  console.log(`mgławice planetarne Le Dû 2022: ${leDuPlan.added.length} nowych z ${leDu.length}; aliasy: ${[...leDuPlan.aliases].map(([i, a]) => `${designation(old[i].primary.catalog, old[i].primary.id)} ← ${a.join(', ')}`).join('; ')}`)
+  const taken = new Set(known().flatMap((k) => k.designations.map((d) => d.toUpperCase().replace(/\s+/g, ''))))
+  for (const m of MANUAL_OBJECTS) {
+    const ids = [m.primary, ...m.aliases]
+    if (ids.some((d) => taken.has(d.toUpperCase().replace(/\s+/g, '')))) { console.log(`lista ręczna: ${m.primary} już w katalogu, pomijam`); continue }
+    old.push({
+      primary: { catalog: 'Other', id: m.primary }, designations: ids.map((id) => ({ catalog: 'Other', id })), commonNames: m.commonNames,
+      type: m.type === 'PN' ? 'planetary_nebula' : 'emission_nebula', raDeg: m.raDeg, decDeg: m.decDeg, sizeMajorArcmin: m.majArcmin,
+      sizeMinorArcmin: m.minArcmin, positionAngleDeg: m.paDeg, magV: null, surfaceBrightness: null, constellation: Astronomy.Constellation(m.raDeg / 15, m.decDeg).symbol,
+    })
+  }
 
   const distRows = await sparql('wd-dist.csv', `SELECT ?code ?dist ?unit WHERE {
     VALUES ?cat { ${CATALOG_QIDS} }
@@ -262,7 +281,7 @@ async function buildCatalog() {
     return list ? Math.round(median(list)) : null
   })
   // Nowe źródła dopisujemy po dotychczasowych, w kolejności dodania, żeby zachować indeksy w zapisanym katalogu.
-  const appended = ['2015AJ....150..147F', '2021AJ....161..147B', '2014ApJS..212....1A', '2019ApJ...885..131R']
+  const appended = ['2015AJ....150..147F', '2021AJ....161..147B', '2014ApJS..212....1A', '2019ApJ...885..131R', ...MANUAL_OBJECTS.flatMap((m) => m.distance ? [m.distance.ref] : [])]
   for (const ref of [null, ...appended]) {
     for (const { choice } of distancePlan.objects) {
       if (choice && (ref === null ? !appended.includes(choice.source.ref) : choice.source.ref === ref)) distancePlan.sourceIndex(choice.source)
@@ -338,7 +357,7 @@ async function planDistances(entries: Entry[], wikidata: (designations: string[]
     if (!sourceKeys.has(id)) { sourceKeys.set(id, sources.length); sources.push([SCOPES.indexOf(key.scope), key.method, key.source, key.ref, key.verified ? 1 : 0]) }
     return sourceKeys.get(id)!
   }
-  const counts: Record<string, number> = { 'Hunt & Reffert': 0, CF4: 0, z: 0, Zucker: 0, 'Ranasinghe & Leahy': 0, 'Chornay & Walton': 0, 'WISE paralaksa': 0, 'Foster & Brunt': 0, WISE: 0, kinematyczna: 0, 'gwiazdy jonizujące': 0, Wikidata: 0, 'Wikidata zamiast σ > 50 %': 0, 'bez tożsamości': 0 }
+  const counts: Record<string, number> = { 'Hunt & Reffert': 0, CF4: 0, z: 0, Zucker: 0, 'Ranasinghe & Leahy': 0, 'Chornay & Walton': 0, 'WISE paralaksa': 0, 'Foster & Brunt': 0, WISE: 0, kinematyczna: 0, 'gwiazdy jonizujące': 0, publikacja: 0, Wikidata: 0, 'Wikidata zamiast σ > 50 %': 0, 'bez tożsamości': 0 }
   const review: { position: object[]; aliases: object[]; types: object[]; known: object[] } = { position: [], aliases: [], types: [], known: KNOWN_DISCREPANCIES }
   const clusters = new Map<number, Hr23Cluster>()
   const identities = entries.map((e) => checkIdentity(e, simbad))
@@ -354,6 +373,15 @@ async function planDistances(entries: Entry[], wikidata: (designations: string[]
     }
     const usable = e.designations.filter((d) => !identity.foreignAliases.some((a) => a.alias === d))
     const measured = (() => {
+      // Lista ręczna: odległość z publikacji (scripts/manualObjects.ts).
+      const manual = MANUAL_OBJECTS.find((m) => m.primary === id)?.distance
+      if (manual) {
+        const pc = LY_PER_UNIT['http://www.wikidata.org/entity/Q12129']
+        return { key: 'publikacja', choice: {
+          ly: manual.pc * pc, sigmaLy: manual.sigmaPc === null ? null : manual.sigmaPc * pc,
+          source: { scope: 'object', method: manual.method, source: manual.source, ref: manual.ref, verified: true },
+        } satisfies Choice }
+      }
       if (id === 'Sh2-101' && e.type === 'EN' && identity.verdict === 'ok' && identity.mainId === 'LBN 071.58+02.86') {
         // HD 227018 (Gaia DR3 2059434898612310656), Bailer-Jones r_med_geo i percentyle 16–84.
         return { key: 'gwiazdy jonizujące', choice: {

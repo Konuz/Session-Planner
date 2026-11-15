@@ -78,6 +78,9 @@ export function simbadId(designation: string): string | null {
   // „Abell N” w katalogu to tylko mgławice planetarne Abella (1966); w SIMBAD „PN A66 N” (samo „Abell N” to gromada galaktyk).
   // Gromady z Hunt & Reffert 2023 (scripts/openClusters.ts): w SIMBAD „Cl Collinder 135”, „Cl VDBH 85”, „Cl Pal 5”.
   const clusters = /^(Collinder|Trumpler|Berkeley|Stock|King|Dolidze|Czernik|Ruprecht|Haffner|Pismis|Basel|Bochum|Hogg|Lynga|Tombaugh|Waterloo|Westerlund|Roslund|Alessi|Ferrero|Harvard|Loden|Terzan) (\d+)$/
+  // Mgławice planetarne odkryte przez amatorów (Le Dû i in. 2022, lista ręczna): w SIMBAD „NAME PN Fe 6”; samo „Dr 21”
+  // czy „Hu 2” to tam źródło radiowe i obłok HI.
+  if (/^(StDr|StDrBl|PaStDr|StRas|Pre|PreDr|PrePa|PreMo|Ra|Rai|Ras|RaMul|RaBel|RaEMol|Dr|St|LDu|LDuPa|LDu-IR|Mul|Mul-IR|MulPre|MulPreLDu|Ou|Pa|PaGo|PaMo|Fe|KnFe|SuFe|Su|DeGaPe|Hu|Tan|Kan|Ro|CaVa|Ch|Ga|Zol|MoMi|Mo|Jo|Zie)( Objet)? \d+$/.test(id)) return `NAME PN ${id}`
   const rules: [RegExp, string][] = [[/^Sh2-(\d+)$/, 'SH 2-$1'], [/^B (\d+)$/, 'Barnard $1'], [/^vdB (\d+)$/, 'VDB $1'], [/^Mel (\d+)$/, 'Cl Melotte $1'], [/^Abell (\d+)$/, 'PN A66 $1'],
     [clusters, 'Cl $1 $2'], [/^vdBH (\d+)$/, 'Cl VDBH $1'], [/^Palomar (\d+)$/, 'Cl Pal $1']]
   for (const [re, to] of rules) if (re.test(id)) return id.replace(re, to)

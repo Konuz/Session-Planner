@@ -1771,6 +1771,12 @@
    "alias": "SNR G180.0-01.7",
    "simbad": "SNR G180.0-01.7",
    "sepDeg": 0.519
+  },
+  {
+   "id": "Ra 61",
+   "alias": "CBF 1",
+   "simbad": "[SSA2010] 1431",
+   "sepDeg": 122.693
   }
  ],
  "types": [
@@ -3068,6 +3074,11 @@
    "id": "ESO 279-14",
    "simbad": "ESO 279-14",
    "note": "PN w aplikacji, Sy2 (galaktyka) w SIMBAD"
+  },
+  {
+   "id": "Ou 4",
+   "simbad": "HD 202214",
+   "note": "EN w aplikacji, ** (gwiazda) w SIMBAD"
   }
  ],
  "known": [

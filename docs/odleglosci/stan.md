@@ -18,7 +18,8 @@ tylko jako podpowiedź i wiersz w inspektorze obserwatorium.
   i pozycji; w tym 587 z 594 gromad dopisanych 15.11.2026 z tego katalogu przez `scripts/openClusters.ts`; nazwa
   trafia do wiersza HR23, w którym jest główna: wcześniej Hiady, M 35, M 71 czy IC 2391 dostawały odległość grupy,
   która miała ich nazwę tylko w AllNames), Cosmicflows-4 (3008 galaktyk, pozycja ≤ 0,5′ jeden do jednego), z z SIMBAD (4820, cz_CMB ≥ 3000 km/s,
-  H₀ = 70), Zucker i in. 2020 (90 mgławic ciemnych, linie widzenia w obrysie), Wikidata na końcu jako
+  H₀ = 70), Zucker i in. 2020 (90 mgławic ciemnych, linie widzenia w obrysie), odległości z publikacji dla obiektów listy ręcznej
+  (`scripts/manualObjects.ts`: Zie 1 z Ogle i in. 2025, Simeis 57 z Oudshoorn i in. 2021), Wikidata na końcu jako
   „niezweryfikowane” (975 bez innego źródła). Decyzja 7.11.2026: gdy pomiar z łańcucha ma σ > 20 % (nie trafiłby
   do 3D), a Wikidata ma wartość, bierzemy Wikidata (1048 obiektów, głównie galaktyki CF4 z TF i płaszczyzną
   podstawową, np. NGC 5169); `withWikidataFallback`. Pomiar zostaje do wyboru w edycji wycinka (SIMBAD/NED).
