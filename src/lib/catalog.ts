@@ -97,10 +97,10 @@ export function catalogOf(designation: string): string | null {
  */
 export const EXTRA_CATALOGS: { id: string; label: string; title: string; test: RegExp }[] = [
   {
-    id: 'Cl', label: 'Gromady (Cr, Stock, Be…)', title: 'Gromady z katalogów klasycznych i odkryć amatorów (Hunt & Reffert 2023)',
+    id: 'Cl', label: 'Gromady', title: 'Gromady z katalogów klasycznych i odkryć amatorów: Collinder, Stock, Berkeley, Trumpler… (Hunt & Reffert 2023)',
     test: /^(Collinder|Cr|Trumpler|Tr|Berkeley|Be|Ruprecht|Ru|Czernik|Cz|Mel|Melotte|vdBH|Palomar|Pal|Stock|King|Dolidze|vdBergh|Pismis|Pismis-Moreno|Haffner|Basel|Bochum|Lynga|Hogg|Loden|Roslund|Harvard|Terzan|Tombaugh|Waterloo|Antalova|Markarian|Westerlund|Feinstein|Stephenson|Blanco|Biurakan|Barkhatova|Moffat|Havlen-Moffat|Mayer|Muzzio|Danks|Aveni-Hunter|Auner|Andrews-Lindsay|Turner|Pfleiderer|Sher|Negueruela|Teutsch|Alessi|Alessi-Teutsch|Juchert|Juchert-Saloran|Saloranta|Kronberger|Casado|Casado-Alessi|Skiff|Patchick|Ferrero|Riddle|Streicher|Renou|Pozzo|Can-Battlo|Archinal|Steine) [\dJ]/,
   },
-  { id: 'PNam', label: 'Odkrycia amatorów (StDr, Ou…)', title: 'Mgławice odkryte przez amatorów (Le Dû i in. 2022, Zie 1, SDSO 1, Ou 4)', test: new RegExp(`${AMATEUR_PN.source}|^SDSO \\d`) },
+  { id: 'PNam', label: 'Odkrycia amatorów', title: 'Mgławice odkryte przez amatorów: StDr, Pre, Ou… (Le Dû i in. 2022), Zie 1, SDSO 1, Ou 4', test: new RegExp(`${AMATEUR_PN.source}|^SDSO \\d`) },
   { id: 'BN', label: 'Ced, RCW, Gum', title: 'Mgławice jasne: Cederblad, RCW, Gum, Simeis, DWB', test: /^(Ced|RCW|Gum|Simeis|Sim|DWB) \d/ },
   { id: 'Arp', label: 'Arp', title: 'Atlas galaktyk osobliwych Arpa', test: /^Arp \d/ },
   { id: 'HCG', label: 'HCG', title: 'Zwarte grupy galaktyk Hicksona', test: /^HCG \d/ },
