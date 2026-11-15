@@ -95,6 +95,19 @@ export function FramingPanel() {
     if (o && center) setPhotoCenter({ objectIndex: o.i, raDeg: center.raDeg, decDeg: center.decDeg })
   }, [o?.i])
 
+  // Kółko myszy nad zdjęciem: powiększenie jak suwakiem (0,5–4×). Nasłuch nie jest pasywny, żeby strona się nie przewijała.
+  const hasView = !!(o && center)
+  useEffect(() => {
+    const el = svgRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      setZoom((z) => Math.min(4, Math.max(0.5, z * Math.exp(-e.deltaY * 0.0015))))
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [hasView])
+
   useEffect(() => {
     if (!center) return
     setCoordinateInput({ ra: fmtRa(center.raDeg), dec: fmtDec(center.decDeg) })
