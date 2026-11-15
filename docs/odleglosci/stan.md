@@ -61,8 +61,10 @@ paralaks), stożek 0,45°”).
   ±7 %), planetarnych, pozostałości po supernowych i „innych”. Wartość pokazujemy, gdy jest sensowna: grupa ≥ 5 gwiazd,
   σ ≤ 20 %, z galaktyki z widma SDSS przeliczane tak jak w katalogu (CMB, H₀ = 70, cz_CMB ≥ 3000 km/s).
 - **Przepływ**: klient (`useRegressor`) zgłasza wycinki w tle po astrometrii (`POST /api/photo/regressor`, pozycja
-  i promień wycinka z WCS) i odpytuje co 15 s; serwer (`server/regressor.ts`) uruchamia po jednym
-  `pixi run … python scripts/regressor/cut_distance.py` (limit 10 min, zabicie drzewa procesów). Wyniki „ok” i odmowy
+  i promień wycinka z WCS) i odpytuje w odstępach z `regressorPollDelay`; serwer (`server/regressor.ts`) wysyła zadania
+  po jednym do stałego procesu `pixi run … python scripts/regressor/cut_distance.py --serve` (od 14.11.2026: importy raz,
+  1–5 s na wycinek gwiazdowy; limit 90 s, galaktyki 2 min; zabicie drzewa procesów po limicie, awarii i 10 min
+  bezczynności). Galaktyki pytają tylko o widma SDSS i Cosmicflows-4 (wcześniej 14 katalogów, 200–400 s). Wyniki „ok” i odmowy
   w `scripts/.cache/regressor/<klucz>.json` (klucz z wersją wrappera); awarie usług (np. 503 Gaia) nie są zapamiętywane.
   Bez pixi lub `astro-regressor-main` usługa jest wyłączona (produkcja). Katalog lub gwiazda oświetlająca zastępują
   wartość regresora przy odświeżeniu.

@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, expect, it, vi } from 'vitest'
-import { createRegressorService, regressorApi, regressorKey, type RegressorRunner, type RegressorService } from '../../server/regressor.ts'
+import { createRegressorService, regressorApi, regressorKey, workerRunner, type RegressorRunner, type RegressorService, type WorkerLimits } from '../../server/regressor.ts'
 import type { RegressorResult } from './distance'
 
 const dir = mkdtempSync(join(tmpdir(), 'regressor-'))
@@ -84,6 +84,45 @@ it('przy pełnej kolejce nie zostawia w niej części partii (audyt C08)', async
   expect(await service.submit(batch(100))).toBeNull()
   expect(service.status([regressorKey({ ...lbn950, raDeg: 100 })])[0].status).toBe('unknown')
   release()
+})
+
+// Udawany wrapper `--serve`: wiersz gotowości, potem odpowiedź z pid procesu; ra 1 to zawieszenie, ra 2 awaria procesu.
+const FAKE_WORKER = `
+const lines = require('node:readline').createInterface({ input: process.stdin })
+console.log(JSON.stringify({ ready: true }))
+lines.on('line', (line) => {
+  const job = JSON.parse(line)
+  if (job.ra === 2) process.exit(1)
+  if (job.ra !== 1) console.log(JSON.stringify({ id: job.id, result: { status: 'abstain', reason: String(process.pid) } }))
+})`
+const fakeRunner = (script = FAKE_WORKER, limits: WorkerLimits = {}) =>
+  // Krótki limit tylko dla zawieszonego zadania; reszta ma zapas na start procesów pod obciążeniem całego zestawu testów.
+  workerRunner({ command: process.execPath, args: ['-e', script] }, { startupMs: 10_000, idleMs: 200, runMs: (t) => t.raDeg === 1 ? 500 : 10_000, ...limits })
+
+it('stały proces: kolejne zadania w jednym procesie, po limicie, awarii i bezczynności nowy proces', async () => {
+  const run = fakeRunner()
+  const at = (raDeg: number) => run({ ...lbn950, raDeg })
+  const first = await at(10)
+  expect(first.status).toBe('abstain')
+  expect(await at(11)).toEqual(first)
+  expect(await at(1)).toEqual({ status: 'error', message: 'Przekroczono limit czasu regresora (0.5 s).' })
+  const afterTimeout = await at(12)
+  expect(afterTimeout).toMatchObject({ status: 'abstain' })
+  expect(afterTimeout).not.toEqual(first)
+  expect((await at(2)).status).toBe('error')
+  const afterCrash = await at(13)
+  expect(afterCrash).toMatchObject({ status: 'abstain' })
+  expect(afterCrash).not.toEqual(afterTimeout)
+  await new Promise((r) => setTimeout(r, 600))
+  const afterIdle = await at(14)
+  expect(afterIdle).toMatchObject({ status: 'abstain' })
+  expect(afterIdle).not.toEqual(afterCrash)
+}, 60_000)
+
+it('stały proces: brak gotowości w limicie startu albo brak programu to błąd do ponowienia', async () => {
+  const silent = fakeRunner('setInterval(() => {}, 1000)', { startupMs: 300 })
+  expect(await silent(lbn950)).toEqual({ status: 'error', message: 'Regresor nie wystartował w 0.3 s.' })
+  expect((await workerRunner({ command: join(dir, 'brak-pixi.exe'), args: [] })(lbn950)).status).toBe('error')
 })
 
 it('odrzuca złe dane i zgłasza niedostępność bez uruchamiania regresora', async () => {

@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import type { DSO } from './catalog'
-import { cutDistance, hasDistance, illuminatorDistance, isStarOtype, redshiftDistance, refreshCutDistances, regressorDistance, regressorEligible, simbadId, type DistanceInfo } from './distance'
+import { cutDistance, hasDistance, illuminatorDistance, isStarOtype, redshiftDistance, refreshCutDistances, regressorDistance, regressorEligible, regressorPollDelay, simbadId, type DistanceInfo, type RegressorPollState } from './distance'
 import type { PhotoCut, PhotoStar } from './photo'
 
 const LY_PER_PC = 3.26156
@@ -121,4 +121,18 @@ it('regresor: tylko wycinki bez odległości, z rozstrzygniętą tożsamością 
   expect(refreshCutDistances(project, [object], new Map([['LBN 950', object]]))).toBe(project)
   const withCatalog = { ...object, distLy: 1300, distInfo: verified('Zucker 2020', 'cloud') } as DSO
   expect(refreshCutDistances(project, [withCatalog], new Map([['LBN 950', withCatalog]])).cuts[0]).toMatchObject({ distLy: 1300, distanceOrigin: 'catalog' })
+})
+
+it('odpytuje regresor często przy liczonym wycinku, rzadziej w kolejce, a po błędzie z odstępem do 2 min (C08)', () => {
+  const series = (start: number | null, states: RegressorPollState[]) => {
+    let delay = start
+    return states.map((state) => (delay = regressorPollDelay(delay, state)))
+  }
+  expect(series(null, ['running', 'running'])).toEqual([3000, 3000])
+  expect(series(null, ['queued', 'queued', 'queued', 'queued', 'queued'])).toEqual([5000, 7500, 11_250, 15_000, 15_000])
+  expect(series(3000, ['error', 'error', 'error', 'error', 'error'])).toEqual([15_000, 30_000, 60_000, 120_000, 120_000])
+  // Po powrocie serwera: kolejka od razu do 15 s, liczony wycinek do 3 s.
+  expect(series(120_000, ['queued'])).toEqual([15_000])
+  expect(series(120_000, ['running'])).toEqual([3000])
+  expect(series(null, ['error'])).toEqual([15_000])
 })

@@ -186,6 +186,29 @@ export type RegressorResult =
 /** Typy, dla których regresor ma sens (populacja gwiazd w stożku albo z i CF4 galaktyki). */
 export const REGRESSOR_TYPES: readonly string[] = ['EN', 'RN', 'CN', 'OC', 'GC', 'G', 'GG']
 
+/**
+ * Stan zadań zdjęcia na serwerze po zgłoszeniu albo ostatnim odpytaniu: `running` — stały proces liczy któryś z jego
+ * wycinków (3–5 s na wycinek); `queued` — wszystkie czekają w kolejce (za innym zdjęciem albo na start procesu: od ok. 20 s
+ * do kilku minut); `error` — odpytanie nie doszło do serwera.
+ */
+export type RegressorPollState = 'running' | 'queued' | 'error'
+export const REGRESSOR_POLL_RUNNING_MS = 3_000
+export const REGRESSOR_POLL_QUEUED_MS = 5_000
+export const REGRESSOR_POLL_MS = 15_000
+export const REGRESSOR_POLL_MAX_MS = 120_000
+
+/**
+ * Odstęp następnego odpytania regresora w ms; `previous` to poprzedni odstęp (null przy pierwszym po zgłoszeniu).
+ * Liczony wycinek: co 3 s, bo wynik przychodzi po 3–5 s, a odpytanie to tylko odczyt mapy w pamięci serwera.
+ * Kolejka: od 5 s, potem × 1,5 do 15 s (start procesu albo inne zdjęcie mogą trwać minuty). Błąd: od 15 s
+ * podwojenie do 2 min (C08); po powrocie serwera kolejka wraca od razu do najwyżej 15 s.
+ */
+export function regressorPollDelay(previous: number | null, state: RegressorPollState): number {
+  if (state === 'error') return Math.min(REGRESSOR_POLL_MAX_MS, Math.max(REGRESSOR_POLL_MS, (previous ?? 0) * 2))
+  if (state === 'running') return REGRESSOR_POLL_RUNNING_MS
+  return previous === null ? REGRESSOR_POLL_QUEUED_MS : Math.min(REGRESSOR_POLL_MS, Math.max(REGRESSOR_POLL_QUEUED_MS, previous * 1.5))
+}
+
 /** Wycinek do regresora: bez odległości z łańcucha i bez wyboru użytkownika, z rozstrzygniętą tożsamością. */
 export function regressorEligible(cut: PhotoCut, object: Pick<DSO, 'unresolved'> | undefined): boolean {
   return !!object && !object.unresolved && cut.distLy === null && cut.distanceOrigin !== 'user' && REGRESSOR_TYPES.includes(cut.type)

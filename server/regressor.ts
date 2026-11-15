@@ -1,7 +1,8 @@
-// Odległości wycinków bez odległości z astro-regressor (Python przez pixi): kolejka zadań w tle, jedno naraz
-// (Gaia dla mgławic i gromad, dodatkowe katalogi dla galaktyk). Wyniki „ok” i odmowy modelu w scripts/.cache/regressor;
-// awarie usług nie trafiają do pamięci i można je ponowić. Bez pixi lub katalogu regresora usługa jest wyłączona.
-import { spawn, spawnSync } from 'node:child_process'
+// Odległości wycinków bez odległości z astro-regressor (Python przez pixi): kolejka zadań w tle, jedno naraz, w jednym
+// stałym procesie wrappera (Gaia dla mgławic i gromad, widma SDSS i Cosmicflows-4 dla galaktyk). Wyniki „ok” i odmowy
+// modelu w scripts/.cache/regressor; awarie usług nie trafiają do pamięci i można je ponowić. Bez pixi lub katalogu
+// regresora usługa jest wyłączona.
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -13,8 +14,13 @@ import { REGRESSOR_TYPES, type RegressorResult } from '../src/lib/distance.ts'
 /** Wersja wrappera i poprawek regresora: zmiana unieważnia zapamiętane wyniki. */
 export const REGRESSOR_VERSION = 2
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
-const RUN_MS = 10 * 60_000
+/** Galaktyki: SDSS i CF4 równolegle, CF4 z trzema lustrami VizieR (każde zapytanie ma własny limit). */
+const RUN_MS = 2 * 60_000
 const STELLAR_RUN_MS = 90_000
+/** Start stałego procesu: pixi i importy Pythona (pomiar 2026-11-14 na HDD pod obciążeniem: 20 s – ok. 4 min). */
+const STARTUP_MS = 5 * 60_000
+/** Proces bez zadań przez ten czas kończy się i zwalnia pamięć; następne zadanie uruchomi go od nowa. */
+const IDLE_MS = 10 * 60_000
 const MAX_TARGETS = 40
 const MAX_QUEUE = 200
 const MAX_BODY = 64 * 1024
@@ -37,40 +43,93 @@ function validTarget(value: unknown): value is RegressorTarget {
     && Number.isFinite(t.radiusDeg) && t.radiusDeg > 0 && t.radiusDeg <= 2 && REGRESSOR_TYPES.includes(t.type)
 }
 
-function parseResult(stdout: string): RegressorResult {
-  const line = stdout.trim().split(/\r?\n/).pop() ?? ''
-  const result = JSON.parse(line) as RegressorResult
-  if (!['ok', 'abstain', 'error'].includes(result?.status)) throw new Error('Nieoczekiwany wynik regresora.')
-  return result
+function checkResult(value: unknown): RegressorResult {
+  const result = value as RegressorResult
+  return ['ok', 'abstain', 'error'].includes(result?.status) ? result : { status: 'error', message: 'Nieoczekiwany wynik regresora.' }
 }
 
-/** Uruchomienie wrappera przez pixi: tablica argumentów bez powłoki, limit czasu z zabiciem całego drzewa procesów. */
-export function pixiRunner(env: RegressorEnv = process.env as RegressorEnv): RegressorRunner {
-  const dir = resolve(env.REGRESSOR_DIR ?? join(ROOT, 'astro-regressor-main'))
-  const manifest = join(dir, 'pixi.toml')
-  const wrapper = join(ROOT, 'scripts', 'regressor', 'cut_distance.py')
-  return (t) => new Promise((done) => {
-    const runMs = ['G', 'GG'].includes(t.type) ? RUN_MS : STELLAR_RUN_MS
-    const args = ['run', '--manifest-path', manifest, 'python', wrapper, '--ra', String(t.raDeg), '--dec', String(t.decDeg), '--radius', String(t.radiusDeg), '--type', t.type]
-    const child = spawn(env.PIXI ?? 'pixi', args, { cwd: ROOT, env: { ...process.env, REGRESSOR_DIR: dir }, windowsHide: true, detached: process.platform !== 'win32' })
-    let stdout = ''
-    child.stdout.on('data', (chunk: Buffer) => { if (stdout.length < 1_000_000) stdout += chunk })
-    child.stderr.resume()
-    let timedOut = false
-    const timer = setTimeout(() => {
-      if (!child.pid) return
-      timedOut = true
-      done({ status: 'error', message: `Przekroczono limit czasu regresora (${runMs / 1000} s).` })
-      if (process.platform === 'win32') spawnSync(join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'taskkill.exe'), ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true, timeout: 5000 })
-      else try { process.kill(-child.pid, 'SIGKILL') } catch { child.kill('SIGKILL') }
-    }, runMs)
-    child.on('error', (error) => { clearTimeout(timer); done({ status: 'error', message: error.message }) })
-    child.on('close', () => {
-      clearTimeout(timer)
-      if (timedOut) return
-      try { done(parseResult(stdout)) } catch { done({ status: 'error', message: 'Proces regresora zakończył się bez wyniku.' }) }
+/** Zabicie całego drzewa procesów (pixi → python). */
+function killTree(child: ChildProcess) {
+  if (!child.pid || child.exitCode !== null) return
+  if (process.platform === 'win32') spawnSync(join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'taskkill.exe'), ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true, timeout: 5000 })
+  else try { process.kill(-child.pid, 'SIGKILL') } catch { child.kill('SIGKILL') }
+}
+
+/** Polecenie stałego procesu wrappera (`cut_distance.py --serve`); w testach udawany proces. */
+export interface WorkerCommand { command: string; args: string[]; cwd?: string; env?: NodeJS.ProcessEnv }
+export interface WorkerLimits { startupMs?: number; idleMs?: number; runMs?: (target: RegressorTarget) => number }
+interface Worker { child: ChildProcess; ready: Promise<void>; pending: Map<number, (result: RegressorResult) => void>; idle?: ReturnType<typeof setTimeout> }
+
+/**
+ * Jeden stały proces wrappera: pixi i importy Pythona raz, a nie przy każdym wycinku (pomiar 2026-11-14: 25–80 s → 3–5 s
+ * na wycinek). Wiersz JSON na zadanie w obie strony. Limit zadania liczy się od wysłania do gotowego procesu; po jego
+ * przekroczeniu albo awarii proces jest zabijany, zadania w toku dostają wynik „error” (do ponowienia), a następne
+ * zadanie uruchamia nowy proces.
+ */
+export function workerRunner(spec: WorkerCommand, { startupMs = STARTUP_MS, idleMs = IDLE_MS, runMs = (t) => ['G', 'GG'].includes(t.type) ? RUN_MS : STELLAR_RUN_MS }: WorkerLimits = {}): RegressorRunner {
+  let current: Worker | null = null
+  let seq = 0
+
+  function stop(worker: Worker, message: string) {
+    if (current === worker) current = null
+    clearTimeout(worker.idle)
+    killTree(worker.child)
+    for (const done of worker.pending.values()) done({ status: 'error', message })
+  }
+
+  function start(): Worker {
+    const child = spawn(spec.command, spec.args, { cwd: spec.cwd, env: spec.env, windowsHide: true, detached: process.platform !== 'win32' })
+    let markReady!: () => void
+    let failStart!: (error: Error) => void
+    const ready = new Promise<void>((resolve, reject) => { markReady = resolve; failStart = reject })
+    ready.catch(() => {})
+    const worker: Worker = { child, ready, pending: new Map() }
+    const startup = setTimeout(() => {
+      const message = `Regresor nie wystartował w ${startupMs / 1000} s.`
+      failStart(new Error(message))
+      stop(worker, message)
+    }, startupMs)
+    let buffer = ''
+    child.stdout!.setEncoding('utf8').on('data', (chunk: string) => {
+      const lines = (buffer + chunk).split(/\r?\n/)
+      buffer = lines.pop() ?? ''
+      for (const line of lines) {
+        let message: { ready?: unknown; id?: unknown; result?: unknown }
+        try { message = JSON.parse(line) } catch { continue }
+        if (message.ready === true) { clearTimeout(startup); markReady() }
+        else if (typeof message.id === 'number') worker.pending.get(message.id)?.(checkResult(message.result))
+      }
     })
-  })
+    child.stderr!.resume()
+    // Zapis do procesu, który właśnie padł (EPIPE): wynik i tak przyjdzie z obsługi zamknięcia.
+    child.stdin!.on('error', () => {})
+    const exited = (message: string) => {
+      clearTimeout(startup)
+      failStart(new Error(message))
+      stop(worker, message)
+    }
+    child.on('error', (error) => exited(error.message))
+    child.on('close', () => exited('Proces regresora zakończył się bez wyniku.'))
+    return worker
+  }
+
+  return async (t) => {
+    const worker = current ??= start()
+    clearTimeout(worker.idle)
+    try { await worker.ready } catch (error) { return { status: 'error', message: (error as Error).message } }
+    return new Promise((done) => {
+      const id = ++seq
+      const limit = runMs(t)
+      const timer = setTimeout(() => stop(worker, `Przekroczono limit czasu regresora (${limit / 1000} s).`), limit)
+      worker.pending.set(id, (result) => {
+        clearTimeout(timer)
+        worker.pending.delete(id)
+        if (!worker.pending.size && current === worker) worker.idle = setTimeout(() => stop(worker, 'Proces regresora zatrzymany.'), idleMs)
+        done(result)
+      })
+      worker.child.stdin!.write(JSON.stringify({ id, ra: t.raDeg, dec: t.decDeg, radius: t.radiusDeg, type: t.type }) + '\n')
+    })
+  }
 }
 
 export interface RegressorService {
@@ -167,11 +226,12 @@ export function regressorService(env: RegressorEnv): RegressorService {
   if (defaultService) return defaultService
   const dir = resolve(env.REGRESSOR_DIR ?? join(ROOT, 'astro-regressor-main'))
   let available: Promise<boolean> | null = null
+  const wrapper = join(ROOT, 'scripts', 'regressor', 'cut_distance.py')
   defaultService = createRegressorService({
-    runner: pixiRunner(env),
+    runner: workerRunner({ command: env.PIXI ?? 'pixi', args: ['run', '--manifest-path', join(dir, 'pixi.toml'), 'python', wrapper, '--serve'], cwd: ROOT, env: { ...process.env, REGRESSOR_DIR: dir } }),
     cacheDir: join(ROOT, 'scripts', '.cache', 'regressor'),
     // `pixi --version` asynchronicznie: zimny start pixi trwał do 10 s i blokował cały serwer (audyt C09).
-    ready: () => available ??= !existsSync(join(dir, 'pixi.toml')) || !existsSync(join(ROOT, 'scripts', 'regressor', 'cut_distance.py'))
+    ready: () => available ??= !existsSync(join(dir, 'pixi.toml')) || !existsSync(wrapper)
       ? Promise.resolve(false)
       : new Promise<boolean>((done) => {
         const child = spawn(env.PIXI ?? 'pixi', ['--version'], { windowsHide: true, stdio: 'ignore' })
