@@ -1,5 +1,5 @@
 // Składanie obrazu TAN z kafelków HiPS: wybór rzędu, pobranie kafelków z luster, dekodowanie, malowanie, JPEG.
-import { arcsecPerPixel, layoutTan, paintTan, SURVEYS, tileOrderFor, type HipsCancel, type HipsReply, type HipsRequest, type TilePixels } from '../lib/hips'
+import { arcsecPerPixel, layoutTan, paintSizeFor, paintTan, SURVEYS, tileOrderFor, type HipsCancel, type HipsReply, type HipsRequest, type TilePixels } from '../lib/hips'
 import { fetchTile } from '../lib/hipsTiles'
 
 // Zadania anulowane przez stronę: kafelki dalej trafiają do Cache Storage, ale bez dekodowania i malowania.
@@ -14,6 +14,8 @@ async function decode(blob: Blob): Promise<TilePixels> {
   try {
     decodeCanvas ??= new OffscreenCanvas(512, 512)
     decodeCtx ??= decodeCanvas.getContext('2d')!
+    // Płótno jest wspólne: bez czyszczenia kafelek z przezroczystością złożyłby się z poprzednim.
+    decodeCtx.clearRect(0, 0, 512, 512)
     decodeCtx.drawImage(bitmap, 0, 0)
     return { data: decodeCtx.getImageData(0, 0, 512, 512).data }
   } finally { bitmap.close() }
@@ -21,8 +23,10 @@ async function decode(blob: Blob): Promise<TilePixels> {
 
 async function render(req: HipsRequest): Promise<HipsReply | null> {
   const survey = SURVEYS[req.survey]
-  const order = tileOrderFor(arcsecPerPixel(req.fovDeg, req.sizePx), survey.maxOrder, req.coarser)
-  const layout = layoutTan({ raDeg: req.raDeg, decDeg: req.decDeg, fovDeg: req.fovDeg, sizePx: req.sizePx, order }, survey)
+  const scale = arcsecPerPixel(req.fovDeg, req.sizePx)
+  const order = tileOrderFor(scale, survey.maxOrder, req.coarser)
+  const paintPx = paintSizeFor(scale, order, survey, req.sizePx)
+  const layout = layoutTan({ raDeg: req.raDeg, decDeg: req.decDeg, fovDeg: req.fovDeg, sizePx: paintPx, order }, survey)
   const tiles = new Map<number, TilePixels | null>()
   await Promise.all(
     layout.tiles.map(async (n) => {
@@ -33,8 +37,16 @@ async function render(req: HipsRequest): Promise<HipsReply | null> {
   if (cancelled.has(req.id)) return null
   const rgba = paintTan(layout, tiles, req.mode)
   if (!rgba) throw new Error('brak kafelków')
-  const canvas = new OffscreenCanvas(req.sizePx, req.sizePx)
-  canvas.getContext('2d')!.putImageData(new ImageData(rgba as Uint8ClampedArray<ArrayBuffer>, req.sizePx, req.sizePx), 0, 0)
+  let canvas = new OffscreenCanvas(paintPx, paintPx)
+  canvas.getContext('2d')!.putImageData(new ImageData(rgba as Uint8ClampedArray<ArrayBuffer>, paintPx, paintPx), 0, 0)
+  if (paintPx < req.sizePx) {
+    const painted = canvas
+    canvas = new OffscreenCanvas(req.sizePx, req.sizePx)
+    const ctx = canvas.getContext('2d')!
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
+    ctx.drawImage(painted, 0, 0, req.sizePx, req.sizePx)
+  }
   const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.9 })
   return { id: req.id, blob, complete: layout.tiles.every((n) => tiles.get(n)) }
 }

@@ -100,6 +100,20 @@ describe('miniatury', () => {
     expect(FakeWorker.posted[1]).toMatchObject({ sizePx: 224, coarser: 1, fovDeg: 0.283 })
   })
 
+  it('miniatura NSNS: tylko duże pole w pokryciu, inaczej DSS2 z rzędem grubszym o 1', async () => {
+    const { getThumb, thumbImageOptions } = await import('./thumbs')
+    // NGC 7000 (120′): pole 3,4°, 55″/px.
+    await getThumb({ raDeg: 314.7, decDeg: 44.3, majArcmin: 120 } as DSO, undefined, 'nsns')
+    expect(FakeWorker.posted[0]).toMatchObject({ survey: 'nsns', coarser: 0, sizePx: 224 })
+    // M 51 (11′): pole 0,31°, 5″/px — za drobno dla NSNS.
+    await getThumb({ raDeg: 202.47, decDeg: 47.2, majArcmin: 11 } as DSO, undefined, 'nsns')
+    expect(FakeWorker.posted[1]).toMatchObject({ survey: 'dss2', coarser: 1 })
+    // Pole sięgające na południe od −16°: DSS2.
+    expect(thumbImageOptions('nsns', -15, 4, 224)).toEqual({ survey: 'dss2', coarser: 0 })
+    expect(thumbImageOptions('nsns', -13, 4, 224)).toEqual({ survey: 'nsns' })
+    expect(thumbImageOptions('dss2', 40, 4, 224)).toEqual({ survey: 'dss2', coarser: 0 })
+  })
+
   it('błąd workera odrzuca obietnicę', async () => {
     FakeWorker.reply = (msg) => ({ id: msg.id, error: 'brak kafelków' })
     const { getSkyImage } = await import('./thumbs')

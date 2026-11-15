@@ -1,7 +1,7 @@
 // Obrazy nieba składane w workerze. Wspólne są tylko trwające pobrania Blobów;
 // URL należy do wyświetlającego komponentu, a gotowe obrazy do ograniczonego Cache Storage.
 import type { DSO } from './catalog'
-import type { HipsCancel, HipsReply, HipsRequest, ImageMode, SurveyId } from './hips'
+import { arcsecPerPixel, SURVEYS, type HipsCancel, type HipsReply, type HipsRequest, type ImageMode, type SurveyId } from './hips'
 import { imageCache } from './imageCache'
 
 const cache = imageCache('tracker-thumbs-v2', 128)
@@ -24,6 +24,22 @@ export interface SkyImageOptions {
   survey?: SurveyId
   mode?: ImageMode
   coarser?: number
+}
+
+/** Źródło miniatur obiektów (karty katalogu, szczegóły, karty Nieba). */
+export type ThumbSource = 'dss2' | 'nsns'
+
+export function isThumbSource(value: unknown): value is ThumbSource {
+  return value === 'dss2' || value === 'nsns'
+}
+
+// NSNS ma piksel 12,9″ (użyteczne ok. 20″): przy drobniejszej skali miniatura małego obiektu byłaby rozmytą plamą.
+const NSNS_MIN_ARCSEC_PER_PX = 15
+
+/** Opcje obrazu miniatury: NSNS, gdy całe pole leży w pokryciu i skala ≥ 15″/px; w pozostałych przypadkach DSS2. */
+export function thumbImageOptions(source: ThumbSource, decDeg: number, fovDeg: number, sizePx: number, dssCoarser = 0): SkyImageOptions {
+  const nsns = source === 'nsns' && decDeg - fovDeg / 2 >= SURVEYS.nsns.minDecDeg && arcsecPerPixel(fovDeg, sizePx) >= NSNS_MIN_ARCSEC_PER_PX
+  return nsns ? { survey: 'nsns' } : { survey: 'dss2', coarser: dssCoarser }
 }
 
 type Consumer = { resolve: (blob: Blob) => void; reject: (e: unknown) => void; cleanup: () => void }
@@ -120,7 +136,8 @@ export function getSkyImage(raDeg: number, decDeg: number, fovDeg: number, sizeP
   })
 }
 
-export function getThumb(o: DSO, signal?: AbortSignal): Promise<Blob> {
-  // 224 px (rozmiar karty katalogu) z rzędem grubszym o 1: bez rombów pikseli HEALPix; 12 miniatur ok. 2 MB.
-  return getSkyImage(o.raDeg, o.decDeg, thumbFovDeg(o), 224, signal, { coarser: 1 })
+export function getThumb(o: DSO, signal?: AbortSignal, source: ThumbSource = 'dss2'): Promise<Blob> {
+  // 224 px (rozmiar karty katalogu); DSS2 z rzędem grubszym o 1: bez rombów pikseli HEALPix; 12 miniatur ok. 2 MB.
+  const fovDeg = thumbFovDeg(o)
+  return getSkyImage(o.raDeg, o.decDeg, fovDeg, 224, signal, thumbImageOptions(source, o.decDeg, fovDeg, 224, 1))
 }

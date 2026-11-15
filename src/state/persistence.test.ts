@@ -185,3 +185,16 @@ it('wybrany dostawca pogody trafia do zapisu, a nieprawidłowy z zapisu wraca do
   await Promise.resolve()
   expect(second.useStore.getState().weatherProvider).toBe('ecmwf')
 })
+
+it('wygląd nieba i źródło miniatur wracają z zapisu, a nieznane wartości dają domyślne', async () => {
+  for (const [look, source, expected] of [['nsns', 'nsns', ['nsns', 'nsns']], ['mgła', 'sdss', ['default', 'dss2']]] as const) {
+    vi.resetModules()
+    const json = JSON.stringify({ state: { skyLook: look, thumbSource: source }, version: 1 })
+    const storage = { getItem: () => json, setItem: vi.fn() }
+    vi.stubGlobal('localStorage', storage)
+    vi.stubGlobal('window', { localStorage: storage })
+    const { useStore } = await import('./store')
+    await Promise.resolve()
+    expect([useStore.getState().skyLook, useStore.getState().thumbSource]).toEqual(expected)
+  }
+})

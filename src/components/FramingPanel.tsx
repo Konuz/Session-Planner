@@ -25,11 +25,14 @@ const HANDLE_MIN_R = 6
 // Stały identyfikator filtra (useId daje znaki psujące url(#…)); okno kadrowania jest jedno.
 const STRETCH_FILTER_ID = 'framing-stretch'
 
-type Layer = 'red' | 'color' | 'ps1'
-const LAYERS: Record<Layer, Required<Pick<SkyImageOptions, 'survey' | 'mode'>>> = {
-  red: { survey: 'dss2', mode: 'red' },
-  color: { survey: 'dss2', mode: 'color' },
-  ps1: { survey: 'ps1', mode: 'color' },
+type Layer = 'red' | 'color' | 'ps1' | 'nsns' | 'nsnsRgb'
+// `label`: pozycja listy, `caption`: podpis na zdjęciu (przed źródłem).
+const LAYERS: Record<Layer, Required<Pick<SkyImageOptions, 'survey' | 'mode'>> & { label: string; caption: string }> = {
+  red: { survey: 'dss2', mode: 'red', label: 'DSS2 czarno-biała', caption: 'DSS2 czerwony' },
+  color: { survey: 'dss2', mode: 'color', label: 'DSS2 kolor', caption: 'DSS2 kolor' },
+  ps1: { survey: 'ps1', mode: 'color', label: 'PanSTARRS', caption: 'PanSTARRS' },
+  nsns: { survey: 'nsns', mode: 'color', label: 'NSNS true-color (DR0.1)', caption: 'NSNS true-color' },
+  nsnsRgb: { survey: 'nsnsRgb', mode: 'color', label: 'NSNS bez Hα (DR0.2)', caption: 'NSNS bez Hα' },
 }
 
 export function FramingPanel() {
@@ -98,11 +101,12 @@ export function FramingPanel() {
     setCoordinateError(null)
   }, [center?.raDeg, center?.decDeg])
 
-  const ps1Covered = imageDec !== null && imageDec >= SURVEYS.ps1.minDecDeg
+  const covered = (l: Layer) => imageDec !== null && imageDec >= SURVEYS[LAYERS[l].survey].minDecDeg
+  const layerCovered = covered(layer)
 
   useEffect(() => {
-    if (layer === 'ps1' && !ps1Covered) setLayer('color')
-  }, [layer, ps1Covered])
+    if (!layerCovered) setLayer('color')
+  }, [layerCovered])
 
   useEffect(() => {
     if (!o || imageRa === null || imageDec === null) return
@@ -217,7 +221,7 @@ export function FramingPanel() {
         {/* Kwadrat wpisany w kolumnę: krótszy z wymiarów, żeby szeroki kadr nie chował się za panelem ustawień. */}
         <div style={{ position: 'relative', width: 'min(100cqw, 100cqh)', aspectRatio: '1' }}>
           {shown && imageUrl ? (
-            <img ref={imgRef} src={imageUrl} alt={`${o.id}, ${SURVEYS[LAYERS[layer].survey].label}`} draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', animation: 'fade-in .5s', transform: shiftX || shiftY ? `translate(${(shiftX / SIZE) * 100}%, ${(shiftY / SIZE) * 100}%)` : undefined, filter: stretched ? `url(#${STRETCH_FILTER_ID})` : undefined }} onError={() => {
+            <img ref={imgRef} src={imageUrl} alt={`${o.id}, ${LAYERS[layer].caption}`} draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', animation: 'fade-in .5s', transform: shiftX || shiftY ? `translate(${(shiftX / SIZE) * 100}%, ${(shiftY / SIZE) * 100}%)` : undefined, filter: stretched ? `url(#${STRETCH_FILTER_ID})` : undefined }} onError={() => {
               setImg(null)
               setErr(IMAGE_ERROR)
             }} />
@@ -304,8 +308,7 @@ export function FramingPanel() {
             <text x="18" y="34" fill="#fff" fontSize="22" fontFamily="var(--mono)">N ↑</text>
             <text x="18" y="62" fill="#fff" fontSize="22" fontFamily="var(--mono)">← E</text>
             <text x={SIZE - 18} y={SIZE - 20} fill="rgba(255,255,255,0.6)" fontSize="13" textAnchor="end" fontFamily="var(--mono)">
-              pole zdjęcia {fmtNum(imageFov, 2)}° · {SURVEYS[LAYERS[layer].survey].label}
-              {layer === 'red' ? ' czerwony' : layer === 'color' ? ' kolor' : ''} · {SURVEYS[LAYERS[layer].survey].credit}
+              pole zdjęcia {fmtNum(imageFov, 2)}° · {LAYERS[layer].caption} · {SURVEYS[LAYERS[layer].survey].credit}
               {img?.key === imageKey ? (img.sharp ? '' : ' · podgląd') : shown ? ' · wczytywanie' : ''}
               {ownId && img?.key === imageKey ? ' · moje zdjęcie' : ''}
               {stretched ? ' · rozciągnięte' : ''}
@@ -403,11 +406,16 @@ export function FramingPanel() {
         </div>
         <div className="field">
           <span className="label">Warstwa</span>
-          <div className="framing-button-row">
-            <button className={`toggle-chip${layer === 'red' ? ' on' : ''}`} onClick={() => setLayer('red')}>Czarno-biała</button>
-            <button className={`toggle-chip${layer === 'color' ? ' on' : ''}`} onClick={() => setLayer('color')}>Kolor</button>
-            <button className={`toggle-chip${layer === 'ps1' ? ' on' : ''}`} onClick={() => setLayer('ps1')} disabled={!ps1Covered} title={ps1Covered ? undefined : 'PanSTARRS obejmuje niebo na północ od −30°'}>PanSTARRS</button>
-          </div>
+          <select className="control" style={{ width: '100%' }} aria-label="Warstwa zdjęcia" value={layer} onChange={(e) => setLayer(e.target.value as Layer)}>
+            {(Object.keys(LAYERS) as Layer[]).map((l) => {
+              const survey = SURVEYS[LAYERS[l].survey]
+              return (
+                <option key={l} value={l} disabled={!covered(l)}>
+                  {LAYERS[l].label}{covered(l) ? '' : ` — tylko na północ od ${String(survey.minDecDeg).replace('-', '−')}°`}
+                </option>
+              )
+            })}
+          </select>
         </div>
         <div className="field">
           <span className="label">Powiększenie zdjęcia</span>

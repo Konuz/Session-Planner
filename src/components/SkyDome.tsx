@@ -22,6 +22,8 @@ import {
 import { catalogOf, DEFAULT_ANNOTATION_COLORS, displayName, skyGroupOf, TYPE_INFO, type DSO, type ObjectType } from '../lib/catalog'
 import { fmtTime } from '../lib/format'
 import { frameCorners, gnomonicInverse } from '../lib/framing'
+import { SURVEYS } from '../lib/hips'
+import { NSNS_EDGE_DEC, skyLookSurvey } from '../lib/hipsSky'
 import { horizonAltitude, type HorizonPoint } from '../lib/horizon'
 import { altitudeTrack, nightGrid } from '../lib/night'
 import { loadOutlines, pointInOutline, polygonArea, type Outline } from '../lib/outlines'
@@ -32,6 +34,7 @@ import { measureSince, perfNow } from '../lib/perf'
 import { useStore } from '../state/store'
 import { MoonDisc } from './MoonDisc'
 import { Range } from './Range'
+import { useHipsSkyLayer } from './useHipsSkyLayer'
 import { useSkyPhotoLayer } from './useSkyPhotoLayer'
 
 /** Stos warstw (cztery romby): kontur = mniej adnotacji, wypełnienie = więcej. */
@@ -67,6 +70,7 @@ uniform vec2 u_res;
 uniform float u_magLimit;
 uniform float u_dpr;
 uniform float u_bright;
+uniform float u_hideZ;
 out vec3 v_color;
 out float v_alpha;
 vec3 bvColor(float bv) {
@@ -77,7 +81,8 @@ void main() {
   vec3 v = u_m * a_dir;
   float alt = dot(u_zen, a_dir);
   float d = 1.0 + v.z;
-  if (d < 0.02 || a_magbv.x > u_magLimit) { gl_Position = vec4(2.0, 2.0, 0.0, 1.0); gl_PointSize = 0.0; return; }
+  // u_hideZ: gwiazdy na północ od tej wartości sin δ są już w obrazie nieba NSNS.
+  if (d < 0.02 || a_magbv.x > u_magLimit || a_dir.z > u_hideZ) { gl_Position = vec4(2.0, 2.0, 0.0, 1.0); gl_PointSize = 0.0; return; }
   vec2 p = u_center + 2.0 * u_scale * v.xy / d;
   vec2 clip = vec2(p.x / u_res.x * 2.0 - 1.0, p.y / u_res.y * 2.0 - 1.0);
   gl_Position = vec4(clip, 0.0, 1.0);
@@ -104,7 +109,8 @@ void main() {
 }`
 
 interface StarGL {
-  draw(m: Mat3, zen: Vec3, p: Projector, width: number, height: number, dpr: number, magLimit: number, bright: number): void
+  /** `hideAboveZ`: sin δ, na północ od którego gwiazd nie rysować (2: wszystkie). */
+  draw(m: Mat3, zen: Vec3, p: Projector, width: number, height: number, dpr: number, magLimit: number, bright: number, hideAboveZ: number): void
   dispose(): void
 }
 
@@ -156,9 +162,9 @@ function createStarGL(canvas: HTMLCanvasElement, sky: SkyData): StarGL | null {
   const dirsBuf = buf(dirs, 'a_dir', 3)
   const magbvBuf = buf(magbv, 'a_magbv', 2)
   const u = (name: string) => gl.getUniformLocation(prog, name)
-  const uM = u('u_m'), uZen = u('u_zen'), uScale = u('u_scale'), uCenter = u('u_center'), uRes = u('u_res'), uMag = u('u_magLimit'), uDpr = u('u_dpr'), uBright = u('u_bright')
+  const uM = u('u_m'), uZen = u('u_zen'), uScale = u('u_scale'), uCenter = u('u_center'), uRes = u('u_res'), uMag = u('u_magLimit'), uDpr = u('u_dpr'), uBright = u('u_bright'), uHideZ = u('u_hideZ')
   return {
-    draw(m, zen, p, width, height, dpr, magLimit, bright) {
+    draw(m, zen, p, width, height, dpr, magLimit, bright, hideAboveZ) {
       gl.viewport(0, 0, canvas.width, canvas.height)
       gl.clearColor(0, 0, 0, 0)
       gl.clear(gl.COLOR_BUFFER_BIT)
@@ -175,6 +181,7 @@ function createStarGL(canvas: HTMLCanvasElement, sky: SkyData): StarGL | null {
       gl.uniform1f(uMag, magLimit)
       gl.uniform1f(uDpr, Math.min(dpr, 1.5))
       gl.uniform1f(uBright, bright)
+      gl.uniform1f(uHideZ, hideAboveZ)
       gl.drawArrays(gl.POINTS, 0, n)
     },
     dispose() {
@@ -378,12 +385,12 @@ let mwCacheRef: MilkyWay | null = null
 
 /** Smuga Drogi Mlecznej: dla każdej próbki ekranu kierunek J2000 → jasność z siatki RA/Dec (dwuliniowo), potem
  *  powiększenie z wygładzaniem i rysowanie w trybie „screen”. Ziemia rysowana później zakrywa część pod horyzontem. */
-function drawMilkyWay(ctx: CanvasRenderingContext2D, proj: Projector, mw: MilkyWay, horizon: readonly HorizonPoint[], w: number, h: number, alpha: number, step = MW_STEP) {
+function drawMilkyWay(ctx: CanvasRenderingContext2D, proj: Projector, mw: MilkyWay, horizon: readonly HorizonPoint[], w: number, h: number, alpha: number, step = MW_STEP, maxDecDeg = 90) {
   // Piksel ma najwyżej 255 · alpha: poniżej pół jednostki warstwa jest niewidoczna (w dzień), więc bez liczenia.
   if (!mwCanvas || alpha * 255 < 0.5) return
   const cw = Math.ceil(w / step)
   const ch = Math.ceil(h / step)
-  const mKey = `${cw}x${ch}|${alpha}|${proj.cx},${proj.cy},${proj.scale}|${proj.eqToView.join(',')}|${proj.horToView.join(',')}`
+  const mKey = `${cw}x${ch}|${alpha}|${maxDecDeg}|${proj.cx},${proj.cy},${proj.scale}|${proj.eqToView.join(',')}|${proj.horToView.join(',')}`
   if (mKey === mwCacheKey && horizon === mwCacheHorizon && mw === mwCacheRef && mwCanvas.width === cw && mwCanvas.height === ch) {
     ctx.save()
     ctx.globalCompositeOperation = 'screen'
@@ -427,6 +434,8 @@ function drawMilkyWay(ctx: CanvasRenderingContext2D, proj: Projector, mw: MilkyW
       let ra = Math.atan2(ey, ex) / DEG
       if (ra < 0) ra += 360
       const dec = Math.asin(Math.max(-1, Math.min(1, ez))) / DEG
+      // Na północ od `maxDecDeg` niebo pokazuje obraz NSNS.
+      if (dec > maxDecDeg) continue
       const fx = (ra / 360) * gw - 0.5
       const fy = ((90 - dec) / 180) * gh - 0.5
       const x0 = Math.floor(fx)
@@ -524,6 +533,10 @@ export function SkyDome({ playing = false }: Props) {
   // Rośnie przy każdym utworzeniu i utracie kontekstu gwiazd: warstwa moich zdjęć tworzy się w nim od nowa.
   const [glEpoch, setGlEpoch] = useState(0)
   const photoLayer = useSkyPhotoLayer(glRef, glEpoch, () => setFrame((f) => f + 1))
+  const hipsRef = useRef<HTMLCanvasElement>(null)
+  const skyLook = useStore((s) => s.skyLook)
+  const skySurvey = skyLookSurvey(skyLook)
+  const hipsLayer = useHipsSkyLayer(hipsRef, skySurvey, () => setFrame((f) => f + 1))
   const anim = useRef<{ from: View; to: View; start: number; dur: number } | null>(null)
   const lockStart = useRef(0)
   const artCache = useRef(new Map<string, HTMLImageElement>())
@@ -704,9 +717,10 @@ export function SkyDome({ playing = false }: Props) {
     const overlay = overlayRef.current
     const glCanvas = glRef.current
     const under = underRef.current
-    if (!overlay || !glCanvas || !under) return
+    const hipsCanvas = hipsRef.current
+    if (!overlay || !glCanvas || !under || !hipsCanvas) return
     const drawStart = perfNow()
-    for (const c of [overlay, glCanvas, under]) {
+    for (const c of [overlay, glCanvas, under, hipsCanvas]) {
       const w = Math.round(size.w * dpr)
       const h = Math.round(size.h * dpr)
       if (c.width !== w || c.height !== h) {
@@ -727,7 +741,11 @@ export function SkyDome({ playing = false }: Props) {
     const sunAlt = sun.altDeg
     const bright = sunAlt > 0 ? 0.08 : sunAlt > -6 ? 0.25 : sunAlt > -12 ? 0.6 : sunAlt > -18 ? 0.85 : 1
     const magLimit = Math.min(6.6, 4.6 + (184 - view.fovDeg) / 50)
-    starGL.current?.draw(proj.eqToView, zen, proj, size.w, size.h, dpr, magLimit, bright)
+    // Niebo NSNS na najniższym płótnie; gdy podkład już jest, gwiazdy katalogu i Droga Mleczna zostają tylko na południe od granicy pokrycia.
+    const nsnsSky = skySurvey ? hipsLayer.current : null
+    nsnsSky?.draw({ eqToView: proj.eqToView, zen, scale: proj.scale, cx: proj.cx, cy: proj.cy, width: size.w, height: size.h, dpr, bright, allowDecode: !playing })
+    const nsnsShown = !!nsnsSky?.ready()
+    starGL.current?.draw(proj.eqToView, zen, proj, size.w, size.h, dpr, magLimit, bright, nsnsShown ? Math.sin(NSNS_EDGE_DEC * DEG) : 2)
     // Moje zdjęcia nad gwiazdami, pod całą nakładką (kontury na wierzchu); jasność niezależna od pory dnia.
     if (starGL.current && showOwnPhotos) {
       photoLayer.current?.draw({ proj, horMatrix, horizon, width: size.w, height: size.h, dpr, opacity: ownPhotosOpacity, selectedId: selected?.id ?? null, allowDecode: !playing })
@@ -741,7 +759,7 @@ export function SkyDome({ playing = false }: Props) {
     }
 
     // Smuga Drogi Mlecznej pod siatką i liniami (wszystko na spodzie, pod gwiazdami); w dzień i zmierzchu słabsza razem z gwiazdami.
-    if (milkyWay) drawMilkyWay(uctx, proj, milkyWay, horizon, size.w, size.h, 0.3 * bright * bright, interacting || playing ? MW_STEP * 2 : MW_STEP)
+    if (milkyWay) drawMilkyWay(uctx, proj, milkyWay, horizon, size.w, size.h, 0.3 * bright * bright, interacting || playing ? MW_STEP * 2 : MW_STEP, nsnsShown ? NSNS_EDGE_DEC : 90)
 
     const toScreenHor = (alt: number, az: number) => proj.hor(horizontalToVec({ altDeg: alt, azDeg: az }))
 
@@ -1479,6 +1497,7 @@ export function SkyDome({ playing = false }: Props) {
 
   return (
     <div ref={stageRef} className="sky-stage">
+      <canvas ref={hipsRef} style={canvasStyle} aria-hidden />
       <canvas ref={underRef} style={canvasStyle} aria-hidden />
       <canvas ref={glRef} style={canvasStyle} aria-hidden />
       <canvas
@@ -1567,6 +1586,11 @@ export function SkyDome({ playing = false }: Props) {
       <div className="sky-hud tr">
         {selected ? `${selected.id} ${displayName(selected) ? '· ' + displayName(selected) : ''}` : 'Wybierz obiekt'}
       </div>
+      {skySurvey && (
+        <div className="sky-hud bl">
+          {hipsLayer.current?.failed() ? 'NSNS: nie udało się pobrać nieba z /api/hips/ · ponawiam co 20 s' : `${SURVEYS[skySurvey].label} · ${SURVEYS[skySurvey].credit}`}
+        </div>
+      )}
       <div className="sky-hud br hud-stack">
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         {view !== FULL_DOME && (

@@ -1,6 +1,6 @@
 // HEALPix NESTED (Górski i in. 2005): ściana bazowa i współrzędne piksela na rzędzie `order` (nside = 2^order).
 // Algorytm loc2pix z HEALPix C++; czapki polarne liczone przez cos δ, dokładne także tuż przy biegunie.
-import { DEG } from './astro'
+import { DEG, type Vec3 } from './astro'
 
 export function healpixFaceXY(order: number, raDeg: number, decDeg: number): [number, number, number] {
   const nside = 2 ** order
@@ -38,4 +38,48 @@ export function nestIndex(order: number, face: number, ix: number, iy: number): 
   const mid = (CTAB[(ix >> 8) & 0xff] | (CTAB[(iy >> 8) & 0xff] << 1)) * 0x10000
   const hi = (ix | iy) > 0xffff ? (CTAB[(ix >> 16) & 0xff] | (CTAB[(iy >> 16) & 0xff] << 1)) * 0x100000000 : 0
   return face * 4 ** order + hi + mid + lo
+}
+
+/** Ściana i współrzędne (ix, iy) piksela o indeksie NESTED na rzędzie `order` ≤ 15 (odwrotność `nestIndex`). */
+export function nestToFaceXY(order: number, npix: number): [number, number, number] {
+  const n = 4 ** order
+  const face = Math.floor(npix / n)
+  let p = npix - face * n
+  let ix = 0
+  let iy = 0
+  for (let b = 0; b < order; b++) {
+    ix |= (p & 1) << b
+    iy |= ((p >> 1) & 1) << b
+    p >>= 2
+  }
+  return [face, ix, iy]
+}
+
+const JRLL = [2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4]
+const JPLL = [1, 3, 5, 7, 0, 2, 4, 6, 1, 3, 5, 7]
+
+/**
+ * Wektor jednostkowy J2000 punktu ściany `face` o współrzędnych ułamkowych x = ix/nside, y = iy/nside z [0, 1]
+ * (te same osie co `healpixFaceXY`); xyf2loc z HEALPix C++.
+ */
+export function faceXYToVec(face: number, x: number, y: number): Vec3 {
+  const jr = JRLL[face] - x - y
+  let nr: number
+  let z: number
+  let sth: number
+  if (jr < 1 || jr > 3) {
+    nr = jr < 1 ? jr : 4 - jr
+    const t = (nr * nr) / 3
+    z = jr < 1 ? 1 - t : t - 1
+    sth = Math.sqrt(t * (2 - t))
+  } else {
+    nr = 1
+    z = ((2 - jr) * 2) / 3
+    sth = Math.sqrt(1 - z * z)
+  }
+  let t = JPLL[face] * nr + x - y
+  if (t < 0) t += 8
+  if (t >= 8) t -= 8
+  const phi = nr < 1e-15 ? 0 : ((Math.PI / 4) * t) / nr
+  return [sth * Math.cos(phi), sth * Math.sin(phi), z]
 }

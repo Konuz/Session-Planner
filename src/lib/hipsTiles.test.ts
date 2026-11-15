@@ -68,6 +68,20 @@ describe('kafelki z luster', () => {
     expect(f).toHaveBeenCalledTimes(1)
   })
 
+  it('przegląd z własnym limitem (pośrednik NSNS) czeka na nagłówki dłużej niż 3 s', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const { fetchTile } = await import('./hipsTiles')
+    let answer!: (r: Response) => void
+    vi.stubGlobal('fetch', vi.fn((_url: string, init?: RequestInit) => new Promise<Response>((resolve, reject) => {
+      answer = resolve
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+    })))
+    const tile = fetchTile(SURVEYS.nsns, 5, 1000)
+    await vi.advanceTimersByTimeAsync(10000)
+    answer(image())
+    await expect(tile).resolves.toBeInstanceOf(Blob)
+  })
+
   it('404 przechodzi do kolejnego lustra bez degradacji', async () => {
     const { fetchTile } = await import('./hipsTiles')
     const f = stubFetch((m) => (m === 0 ? () => new Response('', { status: 404 }) : image))

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { arcsecPerPixel, layoutTan, paintTan, SURVEYS, tileOrderFor, tileUrl } from './hips'
+import { arcsecPerPixel, layoutTan, paintSizeFor, paintTan, SURVEYS, tileOrderFor, tilePixelArcsec, tileUrl } from './hips'
 
 describe('HiPS', () => {
   it('adres kafelka', () => {
@@ -47,5 +47,17 @@ describe('HiPS', () => {
     const color = paintTan(l, new Map([[5, tile]]), 'color')!
     expect([...color.slice(4, 8)]).toEqual([200, 50, 10, 255])
     expect(paintTan(l, new Map([[5, null]]), 'color')).toBeNull()
+  })
+  it('NSNS: rząd 5 (12,9″), malowanie w rozdzielczości kafelka tylko na najwyższym rzędzie', () => {
+    expect(tilePixelArcsec(5)).toBeCloseTo(12.88, 2)
+    // Kadr 800 px na 1° (4,5″/px): NSNS kończy się na rzędzie 5, obraz malowany na 280 px i powiększany.
+    const scale = arcsecPerPixel(1, 800)
+    expect(tileOrderFor(scale, SURVEYS.nsns.maxOrder)).toBe(5)
+    expect(paintSizeFor(scale, 5, SURVEYS.nsns, 800)).toBe(280)
+    // DSS2 ma drobniejsze kafelki (rząd 7): bez zmian. Piksel kafelka nie większy niż obrazu: bez zmian.
+    expect(paintSizeFor(scale, tileOrderFor(scale, 9), SURVEYS.dss2, 800)).toBe(800)
+    expect(paintSizeFor(arcsecPerPixel(4, 800), 5, SURVEYS.nsns, 800)).toBe(800)
+    expect(SURVEYS.nsns.mirrors).toEqual(['/api/hips/nsns-tc8'])
+    expect(SURVEYS.nsnsRgb.mirrors).toEqual(['/api/hips/nsns-rgb8'])
   })
 })

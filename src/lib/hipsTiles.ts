@@ -25,9 +25,9 @@ function demote(survey: Survey, mirror: string) {
 }
 
 /** 'ok' z obrazem, 'missing' przy 404 (bez degradacji), 'failed' przy limicie czasu, błędzie sieci, 5xx albo nie-obrazie. */
-async function tryMirror(url: string): Promise<Blob | 'missing' | 'failed'> {
+async function tryMirror(url: string, timeoutMs: number): Promise<Blob | 'missing' | 'failed'> {
   const ctrl = new AbortController()
-  let timer = setTimeout(() => ctrl.abort(), TILE_TIMEOUT_MS)
+  let timer = setTimeout(() => ctrl.abort(), timeoutMs)
   try {
     const res = await fetch(url, { signal: ctrl.signal })
     clearTimeout(timer)
@@ -47,7 +47,7 @@ async function load(survey: Survey, order: number, npix: number, key: string): P
   const hit = await cache.get(key)
   if (hit) return hit
   for (const mirror of mirrorOrder(survey)) {
-    const result = await tryMirror(tileUrl(mirror, order, npix))
+    const result = await tryMirror(tileUrl(mirror, order, npix), survey.timeoutMs ?? TILE_TIMEOUT_MS)
     if (result === 'missing') continue
     if (result === 'failed') {
       demote(survey, mirror)

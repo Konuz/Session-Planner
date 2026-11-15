@@ -1091,3 +1091,9 @@ input[type='checkbox']:checked::after {
   .obs-window.space-window.is-scale.is-editing { grid-template-columns: minmax(0, 1fr); }
   .space-window > .photo-editor { grid-column: 1; grid-row: 4; }
 }
+/* Lista „Wygląd nieba” w Warstwach i podpis licencji NSNS na miniaturach. */
+.layers-choice { display: flex; flex-wrap: wrap; gap: 4px; }
+.layers-choice .label { flex-basis: 100%; color: var(--text-2); font: 11px var(--mono); letter-spacing: 0.02em; text-transform: none; }
+.layers-note { flex-basis: 100%; font: 10px var(--mono); color: var(--text-dim); }
+.layers-choice select.control { flex-basis: 100%; min-height: 28px; height: 28px; font: 11px var(--mono); }
+.thumb-credit { position: absolute; left: 8px; bottom: 8px; z-index: 2; padding: 3px 6px; background: rgba(0, 0, 0, 0.6); color: var(--text-dim); font: 9px var(--mono); letter-spacing: 0.04em; pointer-events: none; }

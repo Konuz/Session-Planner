@@ -5,6 +5,8 @@ import { EMPTY_FILTER, type CatalogFilter, type ObjectType, SKY_GROUPS, type Sky
 import type { Mosaic } from '../lib/framing'
 import type { HorizonPoint } from '../lib/horizon'
 import { nightDateOf } from '../lib/night'
+import { isSkyLook, type SkyLook } from '../lib/hipsSky'
+import { isThumbSource, type ThumbSource } from '../lib/thumbs'
 import { planExposures, type Exposure } from '../lib/exposures'
 import { DEFAULT_WEATHER_PROVIDER, normalizeWeatherProvider, type WeatherProviderId } from '../lib/services'
 import type { Levels } from '../lib/stretch'
@@ -151,6 +153,10 @@ interface State {
   /** Podpisy obiektów tła w widoku 3D (domyślnie wyłączone). */
   show3DAnnotations: boolean
   annotationColors: Partial<Record<ObjectType, string>>
+  /** Wygląd nieba na kopule widoku Niebo: domyślny albo NSNS. */
+  skyLook: SkyLook
+  /** Źródło miniatur obiektów; NSNS tylko dla dużych pól w pokryciu (`thumbImageOptions`). */
+  thumbSource: ThumbSource
   /** Licznik „znajdź obiekt”: zmiana uruchamia animację na kopule. */
   findPulse: number
 
@@ -192,6 +198,8 @@ interface State {
   resetAnnotationColors(): void
   setOwnPhotosOpacity(value: number): void
   setOutlinesOpacity(value: number): void
+  setSkyLook(look: SkyLook): void
+  setThumbSource(source: ThumbSource): void
   toggle(key: 'showLines' | 'showTracks' | 'showArt' | 'showOutlines' | 'showOwnPhotos' | 'showEllipses' | 'showLabels' | 'showAnnotations' | 'show3DAnnotations' | 'onlyVisible'): void
 }
 
@@ -261,6 +269,8 @@ export const useStore = create<State>()(
       showAnnotations: true,
       show3DAnnotations: false,
       annotationColors: {},
+      skyLook: 'default',
+      thumbSource: 'dss2',
       findPulse: 0,
 
       setTab: (tab, catalogPlanMode) => set({ tab, catalogPlanMode: tab === 'catalog' ? catalogPlanMode ?? null : null }),
@@ -401,6 +411,8 @@ export const useStore = create<State>()(
       resetAnnotationColors: () => set({ annotationColors: {} }),
       setOwnPhotosOpacity: (value) => set({ ownPhotosOpacity: Math.max(0.1, Math.min(1, value)) }),
       setOutlinesOpacity: (value) => set({ outlinesOpacity: Math.max(0.1, Math.min(1, value)) }),
+      setSkyLook: (skyLook) => set({ skyLook }),
+      setThumbSource: (thumbSource) => set({ thumbSource }),
       toggle: (key) => set((s) => ({ [key]: !s[key] }) as Partial<State>),
     }),
     {
@@ -439,6 +451,8 @@ export const useStore = create<State>()(
         showAnnotations: s.showAnnotations,
         show3DAnnotations: s.show3DAnnotations,
         annotationColors: s.annotationColors,
+        skyLook: s.skyLook,
+        thumbSource: s.thumbSource,
       }),
       // Grupy katalogów dopisane po zapisie stanu startują włączone; stan sprzed poziomów kadru dostaje pusty obiekt.
       merge: (persisted, current) => {
@@ -449,6 +463,8 @@ export const useStore = create<State>()(
           ...current, ...p, skyGroups: { ...current.skyGroups, ...p?.skyGroups }, framingStretch: { ...p?.framingStretch }, ownPhotos: { ...p?.ownPhotos },
           weatherProvider: normalizeWeatherProvider(p?.weatherProvider),
           ownPhotosOpacity: opacity(p?.ownPhotosOpacity), outlinesOpacity: opacity(p?.outlinesOpacity),
+          skyLook: isSkyLook(p?.skyLook) ? p.skyLook : current.skyLook,
+          thumbSource: isThumbSource(p?.thumbSource) ? p.thumbSource : current.thumbSource,
         }
       },
       // Noc zawsze startuje od bieżącej daty w strefie zapisanej lokalizacji.

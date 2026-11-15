@@ -4,12 +4,13 @@ import { readFile, realpath, stat } from 'node:fs/promises'
 import { extname, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { astrobinPhoto, type AstroBinEnv } from './astrobin.ts'
+import { createHipsProxy, type HipsProxyEnv } from './hipsProxy.ts'
 import { photoApi, type PhotoEnv } from './photo.ts'
 
 const types: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.woff2': 'font/woff2', '.webmanifest': 'application/manifest+json' }
 
 /** `ALLOWED_HOSTS`: nazwy (po przecinku), pod którymi serwer jest publikowany, np. za reverse proxy. */
-export type ServerEnv = AstroBinEnv & PhotoEnv & { ALLOWED_HOSTS?: string }
+export type ServerEnv = AstroBinEnv & PhotoEnv & HipsProxyEnv & { ALLOWED_HOSTS?: string }
 
 /**
  * Ochrona przed DNS rebinding: obca strona, której domena wskazuje na 127.0.0.1, wysyła własną nazwę w Host.
@@ -39,6 +40,7 @@ async function compressedVariant(file: string, mtimeMs: number, acceptEncoding: 
 
 export function createAppServer({ distDir = fileURLToPath(new URL('../dist/', import.meta.url)), env = process.env, fetchImpl = fetch }: { distDir?: string; env?: ServerEnv; fetchImpl?: typeof fetch } = {}) {
   const root = resolve(distDir)
+  const hipsApi = createHipsProxy(env, fetchImpl)
   return createServer(async (req, res) => {
     let apiRequest = false
     try {
@@ -48,6 +50,7 @@ export function createAppServer({ distDir = fileURLToPath(new URL('../dist/', im
       apiRequest = url.pathname.startsWith('/api/')
       if (url.pathname.startsWith('/api/photo/')) return await photoApi(req, res, env, fetchImpl)
       if (url.pathname === '/api/astrobin-photo') return await astrobinPhoto(req, res, env, fetchImpl)
+      if (url.pathname.startsWith('/api/hips/')) return await hipsApi(req, res)
       if (url.pathname.startsWith('/api/')) { res.writeHead(404).end(); return }
       if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405, { Allow: 'GET, HEAD' }).end(); return }
       let path: string

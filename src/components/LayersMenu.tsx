@@ -3,6 +3,8 @@ import { ChevronDown } from 'lucide-react'
 import { Fragment, useCallback, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import type { SkyGroup } from '../lib/catalog'
+import { SURVEYS } from '../lib/hips'
+import { SKY_LOOKS, skyLookSurvey, type SkyLook } from '../lib/hipsSky'
 import { useStore } from '../state/store'
 import { Range } from './Range'
 import { LayersIcon } from './SkyDome'
@@ -87,6 +89,8 @@ export function LayersMenu({ threeD = false }: { threeD?: boolean }) {
   const groups = useStore((s) => s.skyGroups)
   const toggle = useStore((s) => s.toggle)
   const toggleGroup = useStore((s) => s.toggleSkyGroup)
+  const skyLook = useStore((s) => s.skyLook)
+  const setSkyLook = useStore((s) => s.setSkyLook)
   // Warstwy z suwakiem krycia pod przełącznikiem (widocznym, gdy warstwa jest włączona).
   const outlinesOpacity = useStore((s) => s.outlinesOpacity)
   const ownPhotosOpacity = useStore((s) => s.ownPhotosOpacity)
@@ -103,6 +107,15 @@ export function LayersMenu({ threeD = false }: { threeD?: boolean }) {
       </button>
       {open && (
         <div className="popover layers-popover" role="group" aria-label={threeD ? 'Warstwy 3D' : 'Warstwy kopuły'}>
+          {!threeD && (
+            <div className="layers-choice">
+              <span className="label">Wygląd nieba</span>
+              <select className="control" value={skyLook} onChange={(e) => setSkyLook(e.target.value as SkyLook)} aria-label="Wygląd nieba">
+                {SKY_LOOKS.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
+              </select>
+              {skyLookSurvey(skyLook) && <span className="layers-note">{SURVEYS[skyLookSurvey(skyLook)!].credit}. Na południe od −16° gwiazdy katalogu.</span>}
+            </div>
+          )}
           <Section title="Warstwy" on={layers.filter(Boolean).length} total={visibleLayers.length} open={sections.layers} onToggle={() => setSections({ ...sections, layers: !sections.layers })}>
             {visibleLayers.map(({ key, label }, i) => (
               <Fragment key={key}>

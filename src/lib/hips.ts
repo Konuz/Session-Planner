@@ -4,7 +4,7 @@
 import { DEG, normDeg } from './astro'
 import { healpixFaceXY, nestIndex } from './healpix'
 
-export type SurveyId = 'dss2' | 'ps1'
+export type SurveyId = 'dss2' | 'ps1' | 'nsns' | 'nsnsRgb'
 export type ImageMode = 'color' | 'red'
 
 export interface Survey {
@@ -14,6 +14,8 @@ export interface Survey {
   maxOrder: number
   minDecDeg: number
   mirrors: string[]
+  /** Limit czasu na nagłówki kafelka [ms]; domyślnie `TILE_TIMEOUT_MS` (szybkie przejście do następnego lustra). */
+  timeoutMs?: number
 }
 
 export const SURVEYS: Record<SurveyId, Survey> = {
@@ -39,6 +41,29 @@ export const SURVEYS: Record<SurveyId, Survey> = {
     minDecDeg: -30,
     mirrors: ['https://stpubdata.s3.us-east-1.amazonaws.com/mast/skybackgrounds/PanSTARRS', 'https://alasky.cds.unistra.fr/Pan-STARRS/DR1/color-i-r-g'],
   },
+  // Northern Sky Narrowband Survey (S. Ziegenbalg, CC BY-NC-SA 4.0): przez pośrednika serwera aplikacji
+  // (`server/hipsProxy.ts`, JPEG zamiast PNG). Piksel rzędu 5 to 12,9″; pokrycie do δ ≈ −16°.
+  nsns: {
+    id: 'nsns',
+    label: 'NSNS true-color',
+    credit: 'DR0.1 · S. Ziegenbalg · CC BY-NC-SA 4.0',
+    maxOrder: 5,
+    minDecDeg: -16,
+    mirrors: ['/api/hips/nsns-tc8'],
+    // Jedno lustro: pośrednik odpowiada dopiero po pobraniu i przekodowaniu kafelka, a przy serii zimnych kafelków
+    // czeka w kolejce 4 pobrań ze źródła; nie ma dokąd przejść po 3 s.
+    timeoutMs: 20000,
+  },
+  // Kontinuum RGB bez Hα z częściowo odjętymi gwiazdami: odpowiednik obrazu DR0.1 „(Almost) true-color without Hα”.
+  nsnsRgb: {
+    id: 'nsnsRgb',
+    label: 'NSNS bez Hα',
+    credit: 'DR0.2 · S. Ziegenbalg · CC BY-NC-SA 4.0',
+    maxOrder: 5,
+    minDecDeg: -16,
+    mirrors: ['/api/hips/nsns-rgb8'],
+    timeoutMs: 20000,
+  },
 }
 
 export type HipsRequest = { id: number; raDeg: number; decDeg: number; fovDeg: number; sizePx: number; survey: SurveyId; mode: ImageMode; coarser: number }
@@ -57,10 +82,25 @@ export function arcsecPerPixel(fovDeg: number, sizePx: number): number {
 // Bok piksela HEALPix przy nside = 1 (√(π/3) rad) w sekundach łuku; piksel kafelka rzędu k: 211076 / 2^(k+9).
 const HPX_ARCSEC = 211076
 
+/** Bok piksela kafelka rzędu `order` w sekundach łuku. */
+export function tilePixelArcsec(order: number): number {
+  return HPX_ARCSEC / 2 ** (order + 9)
+}
+
 /** Najmniejszy rząd, w którym piksel kafelka nie jest większy niż piksel obrazu; `coarser` zgrubia o tyle rzędów. */
 export function tileOrderFor(arcsecPerPx: number, maxOrder: number, coarser = 0): number {
   const k = Math.ceil(Math.log2(HPX_ARCSEC / (512 * arcsecPerPx))) - coarser
   return Math.min(maxOrder, Math.max(0, k))
+}
+
+/**
+ * Bok malowanego obrazu [px]. Gdy przegląd nie ma drobniejszych kafelków (rząd = `maxOrder`), a piksel kafelka jest
+ * większy niż piksel obrazu, obraz maluje się w rozdzielczości kafelka i powiększa z wygładzaniem: najbliższy sąsiad
+ * dałby romby pikseli HEALPix.
+ */
+export function paintSizeFor(arcsecPerPx: number, order: number, survey: Pick<Survey, 'maxOrder'>, sizePx: number): number {
+  const tilePx = tilePixelArcsec(order)
+  return order === survey.maxOrder && tilePx > arcsecPerPx ? Math.max(1, Math.ceil((sizePx * arcsecPerPx) / tilePx)) : sizePx
 }
 
 export interface TanRequest {

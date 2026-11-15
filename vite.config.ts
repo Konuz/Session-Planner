@@ -3,6 +3,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 import { loadEnv } from 'vite'
 import { defineConfig } from 'vitest/config'
 import { astrobinPhoto } from './server/astrobin.ts'
+import { createHipsProxy } from './server/hipsProxy.ts'
 import { photoApi } from './server/photo.ts'
 import type { ServerResponse } from 'node:http'
 
@@ -28,6 +29,10 @@ export default defineConfig(({ mode }) => {
           })
           server.middlewares.use('/api/astrobin-photo', (req, res) => {
             astrobinPhoto(req, res, env).catch((error) => apiError(error, res))
+          })
+          const hipsApi = createHipsProxy(env)
+          server.middlewares.use('/api/hips', (req, res) => {
+            hipsApi(req, res).catch((error) => apiError(error, res))
           })
         },
       },
@@ -58,6 +63,11 @@ export default defineConfig(({ mode }) => {
       }),
     ],
     build: { target: 'es2022', chunkSizeWarningLimit: 700 },
+    // Katalogi spoza źródeł aplikacji (ok. 150 tys. plików: bufory skryptów z kopią NSNS, regresor, wyniki analiz,
+    // worktree sesji) blokowały serwer dev przez kilka minut po starcie, gdy obserwator je przeglądał.
+    server: { watch: { ignored: ['**/scripts/.cache/**', '**/output/**', '**/astro-regressor-main/**', '**/research/**', '**/.claude/**', '**/dist/**', '**/dev-dist/**'] } },
+    // Bez tego skaner zależności szuka plików HTML w całym projekcie, także w buforach skryptów.
+    optimizeDeps: { entries: ['index.html'] },
     worker: { format: 'es' },
     test: { environment: 'node', include: ['src/**/*.test.ts'] },
   }

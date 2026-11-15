@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { healpixFaceXY, nestIndex } from './healpix'
+import { DEG } from './astro'
+import { faceXYToVec, healpixFaceXY, nestIndex, nestToFaceXY } from './healpix'
 
 // [rząd, RA, Dec, ściana, ix, iy] z astropy_healpix (punkty z dala od granic pikseli)
 const REF: [number, number, number, number, number, number][] = [
@@ -39,5 +40,23 @@ describe('HEALPix', () => {
     expect(nestIndex(7, 3, 15, 58)).toBe(51933)
     expect(nestIndex(15, 0, 0, 1 << 14)).toBe(2 ** 29)
     expect(nestIndex(16, 0, 0, 1 << 15)).toBe(2 ** 31)
+  })
+  it('nestToFaceXY odwraca nestIndex', () => {
+    for (const [order, face, ix, iy] of [[0, 7, 0, 0], [3, 5, 6, 1], [5, 11, 31, 0], [5, 2, 17, 29], [15, 0, 0, 1 << 14]]) {
+      expect(nestToFaceXY(order, nestIndex(order, face, ix, iy))).toEqual([face, ix, iy])
+    }
+  })
+  it('faceXYToVec: środek piksela wraca do tego samego piksela na całej sferze', () => {
+    const order = 12
+    const nside = 2 ** order
+    for (let face = 0; face < 12; face++) {
+      for (const [ix, iy] of [[0, 0], [nside - 1, nside - 1], [0, nside - 1], [nside - 1, 0], [1234, 3001], [2048, 2047], [5, 4090]]) {
+        const [x, y, z] = faceXYToVec(face, (ix + 0.5) / nside, (iy + 0.5) / nside)
+        expect(Math.hypot(x, y, z)).toBeCloseTo(1, 12)
+        const ra = ((Math.atan2(y, x) / DEG) + 360) % 360
+        const dec = Math.asin(z) / DEG
+        expect(healpixFaceXY(order, ra, dec), `${face} ${ix} ${iy}`).toEqual([face, ix, iy])
+      }
+    }
   })
 })
