@@ -12,21 +12,30 @@ export interface Hr23Entry {
   /** Promień obejmujący połowę członków i promień pływowy [°]. */
   r50Deg: number
   rtDeg: number
+  /** Spełnia próg klasy CMD (gromady klasyczne wchodzą też bez niego, dopisywane na końcu katalogu). */
+  cmdOk: boolean
 }
 
 const num = (text: string | undefined) => text && Number.isFinite(Number(text)) ? Number(text) : null
 
-/** Próg jakości autorów: CST ≥ 5 (wiarygodne wykrycie) i mediana klasy CMD > 0,5 (wykres barwa–jasność jak gromady). */
+/**
+ * Próg jakości autorów: CST ≥ 5 (wiarygodne wykrycie) i mediana klasy CMD > 0,5 (wykres barwa–jasność jak gromady).
+ * Gromady z katalogów klasycznych są zwolnione z progu CMD: ich istnienie potwierdzają obserwacje sprzed Gai, a niską
+ * klasę dają nierówny pył, młody wiek i mała liczba członków (Berkeley 59 w Sh2-171: 0,09; Melotte 66: 0,498).
+ */
 export function parseHr23Catalog(text: string): Hr23Entry[] {
   return parseVizierTsv(text).flatMap((row) => {
     const [ra, dec, r50, rt, cst, cmd] = ['RA_ICRS', 'DE_ICRS', 'r50', 'rt', 'CST', 'CMDCl50'].map((k) => num(row[k]))
-    if ((row.Type !== 'o' && row.Type !== 'g') || cst === null || cst < 5 || cmd === null || cmd <= 0.5 || ra === null || dec === null || r50 === null) return []
-    return [{ names: [...new Set([row.Name, ...row.AllNames.split(',')].filter(Boolean))], type: row.Type === 'g' ? 'g' as const : 'o' as const, raDeg: ra, decDeg: dec, r50Deg: r50, rtDeg: rt ?? 0 }]
+    if ((row.Type !== 'o' && row.Type !== 'g') || cst === null || cst < 5 || ra === null || dec === null || r50 === null) return []
+    const names = [...new Set([row.Name, ...row.AllNames.split(',')].filter(Boolean))]
+    const cmdOk = cmd !== null && cmd > 0.5
+    if (!cmdOk && !names.some(isClassic)) return []
+    return [{ names, cmdOk, type: row.Type === 'g' ? 'g' as const : 'o' as const, raDeg: ra, decDeg: dec, r50Deg: r50, rtDeg: rt ?? 0 }]
   })
 }
 
 /** Prefiks HR23 → nazwa wyświetlana (domyślnie sam prefiks) i skrót do wyszukiwania. */
-const CATALOGS: Record<string, { display?: string; short?: string }> = {
+const CLASSIC: Record<string, { display?: string; short?: string }> = {
   // Katalogi optyczne sprzed Gai. Bez skrótów „Do” i „BH”: „DO 5” to w SIMBAD gwiazda, „BH 5” inny obiekt. Bez ESO:
   // HR23 pisze „ESO 360-12” bez „SC”, a w SIMBAD to oznaczenie galaktyki.
   Collinder: { short: 'Cr' }, Trumpler: { short: 'Tr' }, Berkeley: { short: 'Be' }, Ruprecht: { short: 'Ru' }, Czernik: { short: 'Cz' },
@@ -35,10 +44,17 @@ const CATALOGS: Record<string, { display?: string; short?: string }> = {
   Loden: {}, Roslund: {}, Harvard: {}, Terzan: {}, Tombaugh: {}, Waterloo: {}, Antalova: {}, Markarian: {}, Westerlund: {}, Feinstein: {},
   Stephenson: {}, Blanco: {}, Biurakan: {}, Barkhatova: {}, Moffat: {}, 'Havlen-Moffat': {}, Mayer: {}, Muzzio: {}, Danks: {},
   'Aveni-Hunter': {}, Auner: {}, 'Andrews-Lindsay': {}, Turner: {}, Pfleiderer: {}, Sher: {}, Negueruela: {},
-  // Odkrycia amatorów (przeglądy DSS i obserwacje wizualne).
+}
+// Odkrycia amatorów (przeglądy DSS i obserwacje wizualne): z progiem CMD.
+const AMATEUR: Record<string, { display?: string; short?: string }> = {
   Teutsch: {}, Alessi: {}, 'Alessi-Teutsch': {}, Juchert: {}, 'Juchert-Saloran': {}, Saloranta: {}, Kronberger: {}, Casado: {},
   'Casado-Alessi': {}, Skiff: {}, Patchick: {}, Ferrero: {}, Riddle: {}, Streicher: {}, Renou: {}, Pozzo: {}, 'Can-Battlo': {}, Archinal: {}, Steine: {},
 }
+const CATALOGS = { ...CLASSIC, ...AMATEUR }
+
+const prefixOf = (raw: string) => /^_?([A-Za-z]+(?:-[A-Za-z]+)*)_/.exec(raw.trim())?.[1] ?? ''
+/** Nazwa HR23 z katalogu klasycznego („Berkeley_59”). */
+export const isClassic = (raw: string) => Object.hasOwn(CLASSIC, prefixOf(raw))
 
 /** Nazwa HR23 („Collinder_135”, „_ESO_390-6”) w zapisie aplikacji; null dla katalogów spoza listy. */
 export function clusterName(raw: string): { display: string; short: string | null } | null {
@@ -91,7 +107,7 @@ const r1 = (v: number) => Math.round(v * 10) / 10
  * to przypadek do rozstrzygnięcia: `same` zwraca true (ten sam obiekt: aliasy), false (inny: nowa gromada) albo null
  * (nie wiadomo: pomijamy, żeby nie zdublować obiektu). Średnica nowej gromady to 2·r50 (połowa członków w środku).
  */
-export function planClusters(clusters: Hr23Entry[], known: KnownObject[], same: (cluster: NewCluster, known: number) => boolean | null = () => null): ClusterPlan {
+export function planClusters(clusters: Hr23Entry[], known: KnownObject[], same: (cluster: NewCluster, known: number) => boolean | null = () => null, owners: Hr23Entry[] = clusters): ClusterPlan {
   const byKey = new Map<string, number[]>()
   known.forEach((k, i) => { for (const d of k.designations) byKey.set(nameKey(d), [...(byKey.get(nameKey(d)) ?? []), i]) })
   const taken = new Set(known.flatMap((k) => k.designations.map(exactKey)))
@@ -104,7 +120,7 @@ export function planClusters(clusters: Hr23Entry[], known: KnownObject[], same: 
   }
   // Nazwa należy do gromady, w której HR23 podaje ją jako główną; w AllNames innej gromady (podgrupa, sąsiad) jej nie bierzemy.
   const owner = new Map<string, Hr23Entry>()
-  for (const c of clusters) { const n = clusterName(c.names[0]); if (n && !owner.has(n.display)) owner.set(n.display, c) }
+  for (const c of owners) { const n = clusterName(c.names[0]); if (n && !owner.has(n.display)) owner.set(n.display, c) }
   for (const c of clusters) {
     const names = [...new Set(c.names.flatMap((raw) => {
       const n = clusterName(raw)

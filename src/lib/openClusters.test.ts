@@ -16,15 +16,16 @@ const TSV = [...HEAD,
   row('HSC_1', 'HSC_1', 'o', 8, 10, 10, 0.1, 0.3, 0.8),
   row('Berkeley_3', 'Berkeley_3', 'o', 4.9, 20, 60, 0.05, 0.2, 0.9),
   row('Berkeley_4', 'Berkeley_4', 'o', 6, 21, 61, 0.05, 0.2, 0.3),
+  row('Teutsch_9', 'Teutsch_9', 'o', 6, 22, 62, 0.05, 0.2, 0.3),
   row('Mamajek_1', 'Mamajek_1', 'm', 20, 130, -79, 1, 3, 0.9),
   row('UBC_7', 'UBC_7,BH_99', 'o', 25, 159.5, -59.2, 0.3, 1, 0.95),
   row('Harvard_21', 'Harvard_21', 'o', 9, 40, 40, 0.05, 0.2, 0.9),
   row('Pal_5', 'Pal_5,Palomar_5', 'g', 15, 229.0, -0.1, 0.05, 0.3, 0.8),
 ].join('\n')
 
-it('czyta HR23: gromady otwarte i kuliste z CST ≥ 5 i klasą CMD > 0,5', () => {
+it('czyta HR23: CST ≥ 5, klasa CMD > 0,5 poza katalogami klasycznymi', () => {
   const rows = parseHr23Catalog(TSV)
-  expect(rows.map((c) => c.names[0])).toEqual(['Collinder_135', 'Stock_2', 'Theia_990', 'Melotte_25', 'HSC_1', 'UBC_7', 'Harvard_21', 'Pal_5'])
+  expect(rows.map((c) => c.names[0])).toEqual(['Collinder_135', 'Stock_2', 'Theia_990', 'Melotte_25', 'HSC_1', 'Berkeley_4', 'UBC_7', 'Harvard_21', 'Pal_5'])
   expect(rows[0]).toMatchObject({ type: 'o', raDeg: 109.3, decDeg: -36.8, r50Deg: 0.8, rtDeg: 3 })
   expect(rows[0].names).toEqual(['Collinder_135', 'Theia_19'])
 })
@@ -57,6 +58,7 @@ it('dopisuje nowe gromady, a znanym obiektom tylko aliasy', () => {
   const plan = planClusters(parseHr23Catalog(TSV), known)
   expect(plan.added.map((c) => [c.primary, c.aliases, c.type])).toEqual([
     ['Stock 2', [], 'OC'],
+    ['Berkeley 4', ['Be 4'], 'OC'],
     ['vdBH 99', [], 'OC'],
     ['Harvard 21', [], 'OC'],
     ['Palomar 5', ['Pal 5'], 'GC'],
@@ -71,7 +73,7 @@ it('dopisuje nowe gromady, a znanym obiektom tylko aliasy', () => {
   ])
   // Rozstrzygnięcie z SIMBAD: Hiady to ten sam obiekt (aliasy), Collinder 135 inny (nowa gromada w kolejności HR23).
   const resolved = planClusters(parseHr23Catalog(TSV), known, (cluster) => cluster.primary === 'Mel 25')
-  expect(resolved.added.map((c) => c.primary)).toEqual(['Collinder 135', 'Stock 2', 'vdBH 99', 'Harvard 21', 'Palomar 5'])
+  expect(resolved.added.map((c) => c.primary)).toEqual(['Collinder 135', 'Stock 2', 'Berkeley 4', 'vdBH 99', 'Harvard 21', 'Palomar 5'])
   expect(resolved.aliases.get(1)).toEqual(['Mel 25', 'Melotte 25', 'Collinder 50', 'Cr 50'])
 })
 

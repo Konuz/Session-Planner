@@ -24,7 +24,7 @@ import { cachedBytes, cachedText } from './download.ts'
 import { hiiChoice, parseFosterBrunt, parseRusseil, parseWise, type HiiSources } from './hiiDistances.ts'
 import { MANUAL_OBJECTS } from './manualObjects.ts'
 import { newPlanetaryNebulae, parseLeDu, parseV84, planLeDu, type PlanetaryNebula } from './planetaryNebulae.ts'
-import { displayOf, parseHr23Catalog, planClusters } from './openClusters.ts'
+import { displayOf, parseHr23Catalog, planClusters, type Hr23Entry } from './openClusters.ts'
 
 const ROOT = join(import.meta.dirname, '..')
 const CACHE = join(ROOT, 'scripts', '.cache')
@@ -172,46 +172,53 @@ async function buildCatalog() {
   // planetarnych. Obiekty katalogu dostają tylko aliasy; gromada na pozycji gromady katalogu bez wspólnej nazwy jest
   // tym samym obiektem albo nową gromadą według głównych identyfikatorów SIMBAD (bez nich ją pomijamy).
   const hr23Catalog = parseHr23Catalog(await vizier('hr23-catalog', '-source=J/A%2BA/673/A114/clusters&-out=Name,AllNames,Type,CST,N,RA_ICRS,DE_ICRS,r50,rc,rt,CMDCl50,dist50'))
-  const knownObjects = old.map((o) => ({ designations: o.designations.map((d) => designation(d.catalog, d.id)), type: TYPE_CODE[o.type] ?? 'X', raDeg: o.raDeg, decDeg: o.decDeg, majArcmin: o.sizeMajorArcmin ?? 0 }))
-  // Nazwy obiektu katalogu dla SIMBAD: oznaczenia i nazwy zwyczajowe („NAME Hyades” dla C 41).
-  const hostNames = (i: number) => [...knownObjects[i].designations, ...old[i].commonNames.map((n) => `NAME ${n}`)]
-  const probe = planClusters(hr23Catalog, knownObjects)
-  const clusterSimbad = await simbadObjects([
-    ...probe.nearby.flatMap((n) => [n.cluster.primary, ...n.cluster.aliases, ...hostNames(n.known)]),
-    ...[...probe.aliases].flatMap(([i, aliases]) => [...aliases, ...hostNames(i)]),
-    ...probe.added.flatMap((c) => [c.primary, ...c.aliases]),
-  ])
-  const hit = (d: string) => { const id = simbadId(d); return id ? clusterSimbad.get(simbadKey(id)) : undefined }
-  const mainId = (names: string[]) => names.map(hit).find((h) => h !== undefined)?.mainId ?? null
-  const verdicts: string[] = []
-  const clusterPlan = planClusters(hr23Catalog, knownObjects, (cluster, i) => {
-    const a = mainId([cluster.primary, ...cluster.aliases]), b = mainId(hostNames(i))
-    const verdict = a === null || b === null ? null : a === b
-    verdicts.push(`${cluster.primary} ↔ ${knownObjects[i].designations[0]}: ${verdict === null ? 'pominięta (brak w SIMBAD)' : verdict ? 'aliasy' : 'nowa'}`)
-    return verdict
-  })
-  // AllNames łączy czasem sąsiednie gromady (Czernik 43 przy M 52): alias, który SIMBAD stawia jako inny obiekt poza
-  // granicą tożsamości gospodarza, odrzucamy razem ze skrótem („Cz 43” idzie za „Czernik 43”).
-  const dropped: string[] = []
-  const ownAliases = (aliases: string[], host: string[], raDeg: number, decDeg: number, type: string, majArcmin: number) => aliases.filter((alias) => {
-    const h = hit(displayOf(alias))
-    const own = !h || h.mainId === mainId(host) || separationDeg(raDeg, decDeg, h.raDeg, h.decDeg) <= identityLimitDeg(type, majArcmin)
-    if (!own) dropped.push(`${host[0]}: ${alias} (SIMBAD ${h.mainId})`)
-    return own
-  })
-  for (const [i, aliases] of clusterPlan.aliases) {
-    const k = knownObjects[i]
-    old[i].designations.push(...ownAliases(aliases, hostNames(i), k.raDeg, k.decDeg, k.type, k.majArcmin).map((id) => ({ catalog: 'Other', id })))
-  }
-  for (const c of clusterPlan.added) c.aliases = ownAliases(c.aliases, [c.primary], c.raDeg, c.decDeg, c.type, c.diamArcmin)
-  for (const c of clusterPlan.added) {
-    old.push({
-      primary: { catalog: 'Other', id: c.primary }, designations: [c.primary, ...c.aliases].map((id) => ({ catalog: 'Other', id })), commonNames: [],
-      type: c.type === 'GC' ? 'globular_cluster' : 'open_cluster', raDeg: c.raDeg, decDeg: c.decDeg, sizeMajorArcmin: c.diamArcmin || null, sizeMinorArcmin: null,
-      positionAngleDeg: null, magV: null, surfaceBrightness: null, constellation: Astronomy.Constellation(c.raDeg / 15, c.decDeg).symbol,
+  // Gromady dopisujemy w dwóch blokach: spełniające próg CMD w dotychczasowym miejscu, klasyczne bez progu na końcu
+  // katalogu, żeby nie przesuwać indeksów obiektów dopisanych wcześniej.
+  const appendClusters = async (list: Hr23Entry[], owners: Hr23Entry[], label: string) => {
+    const knownObjects = old.map((o) => ({ designations: o.designations.map((d) => designation(d.catalog, d.id)), type: TYPE_CODE[o.type] ?? 'X', raDeg: o.raDeg, decDeg: o.decDeg, majArcmin: o.sizeMajorArcmin ?? 0 }))
+    // Nazwy obiektu katalogu dla SIMBAD: oznaczenia i nazwy zwyczajowe („NAME Hyades” dla C 41).
+    const hostNames = (i: number) => [...knownObjects[i].designations, ...old[i].commonNames.map((n) => `NAME ${n}`)]
+    const probe = planClusters(list, knownObjects, undefined, owners)
+    const clusterSimbad = await simbadObjects([
+      ...probe.nearby.flatMap((n) => [n.cluster.primary, ...n.cluster.aliases, ...hostNames(n.known)]),
+      ...[...probe.aliases].flatMap(([i, aliases]) => [...aliases, ...hostNames(i)]),
+      ...probe.added.flatMap((c) => [c.primary, ...c.aliases]),
+    ])
+    const hit = (d: string) => { const id = simbadId(d); return id ? clusterSimbad.get(simbadKey(id)) : undefined }
+    const mainId = (names: string[]) => names.map(hit).find((h) => h !== undefined)?.mainId ?? null
+    const verdicts: string[] = []
+    const clusterPlan = planClusters(list, knownObjects, (cluster, i) => {
+      const a = mainId([cluster.primary, ...cluster.aliases]), b = mainId(hostNames(i))
+      const verdict = a === null || b === null ? null : a === b
+      verdicts.push(`${cluster.primary} ↔ ${knownObjects[i].designations[0]}: ${verdict === null ? 'pominięta (brak w SIMBAD)' : verdict ? 'aliasy' : 'nowa'}`)
+      return verdict
+    }, owners)
+    // AllNames łączy czasem sąsiednie gromady (Czernik 43 przy M 52): alias, który SIMBAD stawia jako inny obiekt poza
+    // granicą tożsamości gospodarza, odrzucamy razem ze skrótem („Cz 43” idzie za „Czernik 43”).
+    const dropped: string[] = []
+    const ownAliases = (aliases: string[], host: string[], raDeg: number, decDeg: number, type: string, majArcmin: number) => aliases.filter((alias) => {
+      const h = hit(displayOf(alias))
+      const own = !h || h.mainId === mainId(host) || separationDeg(raDeg, decDeg, h.raDeg, h.decDeg) <= identityLimitDeg(type, majArcmin)
+      if (!own) dropped.push(`${host[0]}: ${alias} (SIMBAD ${h.mainId})`)
+      return own
     })
+    for (const [i, aliases] of clusterPlan.aliases) {
+      const k = knownObjects[i]
+      old[i].designations.push(...ownAliases(aliases, hostNames(i), k.raDeg, k.decDeg, k.type, k.majArcmin).map((id) => ({ catalog: 'Other', id })))
+    }
+    for (const c of clusterPlan.added) c.aliases = ownAliases(c.aliases, [c.primary], c.raDeg, c.decDeg, c.type, c.diamArcmin)
+    for (const c of clusterPlan.added) {
+      old.push({
+        primary: { catalog: 'Other', id: c.primary }, designations: [c.primary, ...c.aliases].map((id) => ({ catalog: 'Other', id })), commonNames: [],
+        type: c.type === 'GC' ? 'globular_cluster' : 'open_cluster', raDeg: c.raDeg, decDeg: c.decDeg, sizeMajorArcmin: c.diamArcmin || null, sizeMinorArcmin: null,
+        positionAngleDeg: null, magV: null, surfaceBrightness: null, constellation: Astronomy.Constellation(c.raDeg / 15, c.decDeg).symbol,
+      })
+    }
+    console.log(`gromady HR23 (${label}): ${clusterPlan.added.length} nowych, aliasy dla ${clusterPlan.aliases.size} obiektów; na pozycji gromady katalogu:\n  ${verdicts.join('\n  ')}\n  odrzucone aliasy (${dropped.length}): ${dropped.join('; ')}`)
   }
-  console.log(`gromady HR23: ${clusterPlan.added.length} nowych, aliasy dla ${clusterPlan.aliases.size} obiektów; na pozycji gromady katalogu:\n  ${verdicts.join('\n  ')}\n  odrzucone aliasy (${dropped.length}): ${dropped.join('; ')}`)
+  // Pierwszy blok rozdziela nazwy tylko między gromady z progiem CMD, jak przed dodaniem drugiego bloku.
+  const cmdOk = hr23Catalog.filter((c) => c.cmdOk)
+  await appendClusters(cmdOk, cmdOk, 'próg CMD')
 
   // Mgławice planetarne odkryte przez amatorów (Le Dû i in. 2022) po gromadach, potem lista ręczna (scripts/manualObjects.ts).
   const known = () => old.map((o) => ({ designations: o.designations.map((d) => designation(d.catalog, d.id)), raDeg: o.raDeg, decDeg: o.decDeg, nebula: !['galaxy', 'galaxy_group', 'open_cluster', 'globular_cluster'].includes(o.type) }))
@@ -230,6 +237,7 @@ async function buildCatalog() {
       sizeMinorArcmin: m.minArcmin, positionAngleDeg: m.paDeg, magV: null, surfaceBrightness: null, constellation: Astronomy.Constellation(m.raDeg / 15, m.decDeg).symbol,
     })
   }
+  await appendClusters(hr23Catalog.filter((c) => !c.cmdOk), hr23Catalog, 'klasyczne bez progu CMD')
 
   const distRows = await sparql('wd-dist.csv', `SELECT ?code ?dist ?unit WHERE {
     VALUES ?cat { ${CATALOG_QIDS} }
