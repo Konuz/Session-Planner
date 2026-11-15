@@ -1,5 +1,4 @@
 // Lista rozwijana warstw kopuły i widoku 3D (pasek karty Nieba i pasek narzędzi okna „Pozycja 3D”).
-import { ChevronDown } from 'lucide-react'
 import { Fragment, useCallback, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import type { ObjectType, SkyGroup } from '../lib/catalog'
@@ -77,7 +76,6 @@ function Section({ title, on, total, open, onToggle, sub = false, children }: {
       <button type="button" className={sub ? 'layers-section layers-subsection' : 'layers-section'} aria-expanded={open} onClick={onToggle}>
         <span className="label">{title}</span>
         {on !== undefined && total !== undefined && <span className="dim">{on}/{total}</span>}
-        <ChevronDown size={12} className={open ? 'open' : undefined} />
       </button>
       {open && (sub ? children : <div className="layers-body">{children}</div>)}
     </div>
@@ -128,7 +126,7 @@ export function LayersMenu({ threeD = false, settings, typeCounts = [], defaultO
   return (
     <div className="layers-menu" ref={ref}>
       <button type="button" className={`button small${open ? ' active' : ''}`} aria-expanded={open} aria-haspopup="true" onClick={() => setOpen(!open)}>
-        <LayersIcon filled={false} /> Warstwy <ChevronDown size={12} />
+        Warstwy
       </button>
       {open && (
         <div className="popover layers-popover" role="group" aria-label={threeD ? 'Warstwy 3D' : 'Warstwy kopuły'}>

@@ -14,7 +14,7 @@ const night = { ...nightPhases('2026-10-22', site, 'Europe/Warsaw'), startMs: st
 afterEach(() => vi.unstubAllGlobals())
 
 describe('przedziały widoczności', () => {
-  it.each([60, 63])('nie dodaje próbki końcowej do %i minut, także w workerze', async (minutes) => {
+  it.each([60, 63, 120, 513])('sumuje dokładnie %i minut z widoczną próbką końcową, także w workerze', async (minutes) => {
     const end = start + minutes * minute
     const n = { ...night, endMs: end, astroDawn: end }
     const track: AltSample[] = []
@@ -31,7 +31,7 @@ describe('przedziały widoczności', () => {
     await import('../workers/visibility.worker')
     scope.onmessage({ data: { id: 1, ra: new Float64Array([0]), dec: new Float64Array([89]), site, darkStart: start, darkEnd: end, minAltDeg: 20, horizon: [] } } as MessageEvent)
     await vi.waitFor(() => expect(postMessage).toHaveBeenCalled())
-    expect(postMessage.mock.calls[0][0].hours[0]).toBeCloseTo(minutes / 60, 5)
+    expect(postMessage.mock.calls[0][0].hours[0]).toBe(Math.fround(minutes / 60))
   })
 
   it('worker liczy tylko najnowsze z zadań czekających w kolejce, ze współrzędnymi z pierwszego (audyt C12)', async () => {

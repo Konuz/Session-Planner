@@ -33,7 +33,7 @@ export function ObjectList({ items, selected, onSelect, descending, onSort }: Pr
   useEffect(() => { if (index >= 0) virtualizer.scrollToIndex(index, { align: 'auto' }) }, [index, virtualizer])
 
   return <div className="obs-list">
-    <div className="obs-list-head label"><span>Obiekt</span><button type="button" onClick={onSort} aria-label={`Sortuj według odległości ${descending ? 'rosnąco' : 'malejąco'}`}>Od Ziemi {descending ? '↓' : '↑'}</button></div>
+    <div className="obs-list-head label"><span>Obiekt</span><button type="button" onClick={onSort} aria-label={`Sortuj według odległości ${descending ? 'rosnąco' : 'malejąco'}`}>Od Ziemi · {descending ? 'malejąco' : 'rosnąco'}</button></div>
     <div ref={scrollRef} className="obs-list-scroll" role="listbox" aria-label="Obiekty zdjęcia według odległości" aria-activedescendant={index >= 0 ? `obs-row-${index}` : undefined} tabIndex={0}
       onKeyDown={(e) => {
         if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return

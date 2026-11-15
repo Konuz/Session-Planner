@@ -1,5 +1,5 @@
 // Pasek narzędzi okna „Pozycja 3D”: przełącznik skal, wybór gwiazdozbioru 3D, opis skali i warstwy.
-import { Camera, ChevronDown } from 'lucide-react'
+import { Camera } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { TYPE_INFO, type DSO, type ObjectType } from '../../lib/catalog'
 import { CONSTELLATION_PL } from '../../lib/constellations'
@@ -89,7 +89,7 @@ function ConstellationPicker({ value, options, onChange }: { value: string; opti
   const all = [{ value: 'all', label: 'Wszystkie gwiazdozbiory' }, ...options]
   return <div ref={ref} className="constellation-picker">
     <button type="button" className="control constellation-select" aria-label="Gwiazdozbiór w przestrzeni 3D" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-      <span>{all.find((o) => o.value === value)?.label ?? value}</span><ChevronDown size={12} />
+      <span>{all.find((o) => o.value === value)?.label ?? value}</span>
     </button>
     {open && <div className="popover constellation-list" role="listbox" aria-label="Gwiazdozbiór">
       {all.map((o) => <button key={o.value} type="button" role="option" aria-selected={o.value === value} className={o.value === value ? 'on' : ''} ref={o.value === value ? (el) => el?.scrollIntoView({ block: 'nearest' }) : undefined}

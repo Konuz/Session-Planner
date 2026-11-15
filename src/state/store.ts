@@ -136,6 +136,7 @@ interface State {
   filter: CatalogFilter
   sortBy: 'best' | 'alt' | 'hours' | 'mag' | 'size' | 'name'
   onlyVisible: boolean
+  minVisibleMinutes: number | 'night'
   showLines: boolean
   showTracks: boolean
   showArt: boolean
@@ -185,6 +186,7 @@ interface State {
   addCamera(): void
   removeCamera(): void
   setMinAlt(v: number): void
+  setMinVisibleMinutes(v: number | 'night'): void
   setHorizon(points: HorizonPoint[]): void
   setFraming(patch: Partial<Framing>): void
   /** null przywraca domyślne poziomy warstwy. */
@@ -266,6 +268,7 @@ export const useStore = create<State>()(
       filter: EMPTY_FILTER,
       sortBy: 'best',
       onlyVisible: false,
+      minVisibleMinutes: 60,
       showLines: true,
       showTracks: true,
       showArt: true,
@@ -365,6 +368,7 @@ export const useStore = create<State>()(
         equipment: { ...s.equipment, cameraId: 'custom' },
       })),
       setMinAlt: (minAltDeg) => set({ minAltDeg }),
+      setMinVisibleMinutes: (minVisibleMinutes) => set({ minVisibleMinutes, onlyVisible: true }),
       setHorizon: (horizon) => set({ horizon }),
       setFraming: (patch) => set((s) => ({ framing: { ...s.framing, ...patch } })),
       setFramingStretch: (layer, levels) => set((s) => {
@@ -454,6 +458,7 @@ export const useStore = create<State>()(
         filter: s.filter,
         sortBy: s.sortBy,
         onlyVisible: s.onlyVisible,
+        minVisibleMinutes: s.minVisibleMinutes,
         showLines: s.showLines,
         showTracks: s.showTracks,
         showArt: s.showArt,

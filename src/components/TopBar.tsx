@@ -1,4 +1,4 @@
-import { CalendarDays, ChevronDown, ExternalLink, LocateFixed, MapPin, Search, Trash2 } from 'lucide-react'
+import { ExternalLink, Search, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { addDays } from '../lib/night'
 import { placeForCoords, searchPlaces, type Place } from '../lib/services'
@@ -96,9 +96,7 @@ function LocationPicker() {
   return (
     <div ref={ref} style={{ position: 'relative' }}>
       <button className="picker-button" onClick={() => setOpen((o) => !o)} aria-expanded={open} title="Miejsce obserwacji">
-        <MapPin size={16} />
         <span style={{ maxWidth: 170, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{location.name}</span>
-        <ChevronDown size={14} />
       </button>
       {open && (
         <div className="popover">
@@ -111,7 +109,6 @@ function LocationPicker() {
             <div style={{ marginTop: 6, maxHeight: 220, overflow: 'auto', border: '1px solid var(--border)' }}>
               {results.map((r) => (
                 <button key={`${r.latDeg},${r.lonDeg}`} className="search-results-item" style={rowStyle} onClick={() => choose(r)}>
-                  <MapPin size={14} className="dim" />
                   <span>
                     {r.name}
                     <span className="dim" style={{ display: 'block', fontSize: 11.5 }}>
@@ -124,7 +121,7 @@ function LocationPicker() {
           )}
           <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
             <button className="button small" onClick={geolocate}>
-              <LocateFixed size={14} /> Moje położenie
+              Moje położenie
             </button>
           </div>
           <div className="label" style={{ margin: '14px 0 8px' }}>Współrzędne ręcznie</div>
@@ -202,7 +199,6 @@ function DatePicker() {
       </button>
       <div ref={ref} style={{ position: 'relative', margin: '0 -1px' }}>
         <button className="picker-button" onClick={() => setOpen((o) => !o)} aria-expanded={open} title="Noc obserwacyjna (data wieczoru)">
-          <CalendarDays size={16} />
           <span className="figures">{label}</span>
         </button>
         {open && (

@@ -1,4 +1,3 @@
-import { Trash2 } from 'lucide-react'
 import { useMemo } from 'react'
 import cameras from '../data/cameras.json'
 import reducers from '../data/reducers.json'
@@ -40,10 +39,10 @@ export default function EquipmentView() {
   const showcase = useMemo(() => (catalog ? SHOWCASE.map((id) => catalog.find((o) => o.id === id)).filter((o) => o !== undefined) : []), [catalog])
 
   return (
-    <div className="two-col">
+    <div className="two-col equipment-view">
       <div className="col">
         <section className="card">
-          <h2 className="panel-title">Teleskop <span className="spacer" /><button className="button small" title="Zapisz bieżący teleskop jako własny model" aria-label="Dodaj własny teleskop" onClick={addTelescope}>Dodaj</button><button className="button small ghost" aria-label="Usuń własny teleskop" disabled={!savedTelescope} onClick={() => { if (savedTelescope && confirm(`Usunąć zapisany teleskop „${savedTelescope.name}”?`)) removeTelescope() }}><Trash2 size={14} /> Usuń</button></h2>
+          <h2 className="panel-title">Teleskop <span className="spacer" /><button className="button small" title="Zapisz bieżący teleskop jako własny model" aria-label="Dodaj własny teleskop" onClick={addTelescope}>Dodaj</button><button className="button small ghost" aria-label="Usuń własny teleskop" disabled={!savedTelescope} onClick={() => { if (savedTelescope && confirm(`Usunąć zapisany teleskop „${savedTelescope.name}”?`)) removeTelescope() }}>Usuń</button></h2>
           <div className="form-grid">
             <label className="field" style={{ gridColumn: '1 / -1' }}>
               <span className="label">Model</span>
@@ -81,7 +80,7 @@ export default function EquipmentView() {
         </section>
 
         <section className="card">
-          <h2 className="panel-title">Kamera <span className="spacer" /><button className="button small" title="Zapisz bieżącą kamerę jako własny model" aria-label="Dodaj własną kamerę" onClick={addCamera}>Dodaj</button><button className="button small ghost" aria-label="Usuń własną kamerę" disabled={!savedCamera} onClick={() => { if (savedCamera && confirm(`Usunąć zapisaną kamerę „${savedCamera.name}”?`)) removeCamera() }}><Trash2 size={14} /> Usuń</button></h2>
+          <h2 className="panel-title">Kamera <span className="spacer" /><button className="button small" title="Zapisz bieżącą kamerę jako własny model" aria-label="Dodaj własną kamerę" onClick={addCamera}>Dodaj</button><button className="button small ghost" aria-label="Usuń własną kamerę" disabled={!savedCamera} onClick={() => { if (savedCamera && confirm(`Usunąć zapisaną kamerę „${savedCamera.name}”?`)) removeCamera() }}>Usuń</button></h2>
           <div className="form-grid">
             <label className="field" style={{ gridColumn: '1 / -1' }}>
               <span className="label">Model</span>

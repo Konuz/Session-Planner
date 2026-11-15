@@ -1,4 +1,4 @@
-import { CircleDot, CloudMoon, Droplets, Eye, Gauge, Ruler, Settings, Sparkles, Telescope, Thermometer, Wind, Camera, Check } from 'lucide-react'
+import { CircleDot, CloudMoon, Droplets, Eye, Gauge, Ruler, Settings, Sparkles, Telescope, Thermometer, Wind, Camera } from 'lucide-react'
 import { memo, useMemo, useState } from 'react'
 import { angularDistanceDeg, bodyAltAz, computeOptics, moonInfo, moonJ2000, riseSetMs, sampling } from '../lib/astro'
 import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO } from '../lib/catalog'
@@ -73,7 +73,7 @@ export const ObjectCard = memo(function ObjectCard({ onDetails }: { onDetails: (
               Kadruj
             </button>
             <button className={`button small${inPlan ? ' active' : ''}`} onClick={() => { addToPlan(o.i, o.id); setTab('planner') }} disabled={inPlan}>
-              {inPlan && <Check size={13} />} {inPlan ? 'W planie' : 'Do planu'}
+              {inPlan ? 'W planie' : 'Do planu'}
             </button>
           </div>
         </div>

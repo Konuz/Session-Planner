@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Download, FileText, Trash2, Wand2, Crosshair, AlertTriangle } from 'lucide-react'
+import { ArrowDown, ArrowUp, Trash2, AlertTriangle } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { AltitudeChart } from '../components/AltitudeChart'
@@ -179,7 +179,7 @@ export default function PlannerView() {
                 {rows.map((r, i) => <option value={r.item.key} key={r.item.key}>{i + 1}. {r.o.id}{displayName(r.o) ? ` - ${displayName(r.o)}` : ''}</option>)}
               </select></label>
               <span className="planner-chart-key"><i /> Granice planowanego okna{chartSlot ? ` · ${fmtTime(chartSlot.startMs, tz)}–${fmtTime(chartSlot.endMs, tz)}` : ' · brak okna'}</span>
-              <button className="button small" onClick={() => rows.forEach((r) => updatePlan(r.item.key, { startMs: null, endMs: null }))}><Wand2 size={14} /> Ułóż okna automatycznie</button>
+              <button className="button small" onClick={() => rows.forEach((r) => updatePlan(r.item.key, { startMs: null, endMs: null }))}>Ułóż okna automatycznie</button>
             </div>}
           />
           {rows.map((r, i) => {
@@ -215,9 +215,9 @@ export default function PlannerView() {
                   <div className="planner-budget"><span>{fmtDuration(seconds / 3600)} / {fmtDuration(available / 3600)}</span><span className={seconds > available ? 'planner-warn' : 'dim'}>{available > 0 ? `${Math.round(seconds / available * 100)}% okna` : 'Brak okna'}</span></div>
                   <div className="planner-meter" role="meter" aria-label={`Wykorzystanie okna ${r.o.id}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={available > 0 ? Math.min(100, seconds / available * 100) : 0}><i style={{ width: `${available > 0 ? Math.min(100, seconds / available * 100) : 0}%`, background: seconds > available ? 'var(--warn)' : undefined }} /></div>
                   <p className="planner-help">Czas samego naświetlania. Zostaw zapas na odczyt, zmianę filtrów, ustawianie ostrości i dithering.</p>
-                  <button className="button small ghost" onClick={() => updatePlan(r.item.key, { startMs: null, endMs: null })} disabled={!s?.manual}><Wand2 size={13} /> Przywróć okno automatyczne</button>
+                  <button className="button small ghost" onClick={() => updatePlan(r.item.key, { startMs: null, endMs: null })} disabled={!s?.manual}>Przywróć okno automatyczne</button>
                   <dl className="planner-facts"><div><dt>Maks. wysokość</dt><dd>{fmtDeg(r.vis.maxAlt)}</dd></div><div><dt>Górowanie</dt><dd>{fmtTime(r.vis.transitMs, tz)}</dd></div><div><dt>Od Księżyca</dt><dd className={moonSep !== null && moonSep < 30 ? 'planner-warn' : ''}>{moonSep !== null ? fmtDeg(moonSep) : '-'}</dd></div><div><dt>Kąt kadru</dt><dd>{r.item.framing.paDeg}°</dd></div></dl>
-                  <button className="button small" onClick={() => { select(r.o.i, false); useStore.getState().setFraming(r.item.framing); setMode('framing'); setTab('sky') }}><Crosshair size={13} /> Ustaw kadr</button>
+                  <button className="button small" onClick={() => { select(r.o.i, false); useStore.getState().setFraming(r.item.framing); setMode('framing'); setTab('sky') }}>Ustaw kadr</button>
                 </div>
                 <div className="planner-exposures">
                   <div className="planner-section-head"><h3>Filtry i ekspozycje</h3><button className="button small ghost" disabled={seconds <= 0 || available <= 0 || r.exposures.some((e) => !validExposure(e))} title="Przelicz liczbę klatek proporcjonalnie, wypełniając całe okno bez zapasu na obsługę sprzętu" onClick={() => saveExposures(r, fitExposures(r.exposures, available))}>Dopasuj klatki do okna</button></div>
@@ -243,7 +243,7 @@ export default function PlannerView() {
         <div className="planner-section-head"><h2>Zabierz plan na sesję</h2><span className="label">CSV / TXT</span></div>
         <div className="planner-export-actions"><label className="field"><span className="label">Format CSV</span><select className="control" value={exportFormat} onChange={(e) => setExportFormat(e.target.value)}>
           <option value="nina">NINA - cele i kadry (Telescopius)</option><option value="scheduler">Target Scheduler - cele i kadry</option><option value="exposures">Wykaz ekspozycji - pełne dane</option>
-        </select></label><button className="button primary" disabled={!rows.length || (exportFormat === 'exposures' && (invalidExposures || invalidWindows))} onClick={exportCsv}><Download size={14} /> Pobierz CSV</button><button className="button" disabled={!rows.length || invalidExposures || invalidWindows} onClick={exportText}><FileText size={14} /> Plan nocy TXT</button></div>
+        </select></label><button className="button primary" disabled={!rows.length || (exportFormat === 'exposures' && (invalidExposures || invalidWindows))} onClick={exportCsv}>Pobierz CSV</button><button className="button" disabled={!rows.length || invalidExposures || invalidWindows} onClick={exportText}>Plan nocy TXT</button></div>
         <p className="planner-help">{exportFormat === 'nina' ? 'Importuj cele w prostym sekwencerze NINA (Import targets). Plik zawiera nazwę, RA/Dec J2000 i obrót kadru. Ekspozycje pochodzą z szablonu NINA; do zaawansowanego sekwencera przenieś plan w NINA.' : exportFormat === 'scheduler' ? 'W Target Scheduler wybierz profil → Import Targets. Plik zawiera typ, nazwę, RA/Dec J2000, obrót i ROI 100%. Ekspozycje przypisz przez szablon celu w tej wtyczce.' : 'Jeden wiersz na filtr: klatki, sekundy, integracja, kadr, okno UTC, strefa i notatka. To wykaz do arkusza lub ręcznego przeniesienia ustawień, nie plik importu sekwencji NINA.'}</p>
         <details className="planner-export-help"><summary>Co przenosi się do NINA?</summary><p>Nie istnieje wspólny CSV pełnej sesji dla wszystkich modułów. Importery celów nie odczytują liczby klatek ani czasów ekspozycji z dodatkowych kolumn. Pobierz też wykaz ekspozycji lub TXT, aby zachować te ustawienia. Okna z planera są wskazówką; pliki celów ich nie wymuszają.</p><a href="https://tcpalmer.github.io/nina-scheduler/target-management/targets.html" target="_blank" rel="noreferrer">Dokumentacja Target Scheduler</a><span> · </span><a href="https://github.com/isbeorn/nina/blob/develop/NINA/ViewModel/Sequencer/SimpleSequence/SimpleSequenceVM.cs" target="_blank" rel="noreferrer">Importer NINA</a></details>
       </section>

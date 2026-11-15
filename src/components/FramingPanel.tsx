@@ -1,5 +1,5 @@
 // Kadrowanie: zdjęcie DSS2 wokół obiektu w rzucie TAN i prostokąt matrycy z obrotem (PA od N przez E).
-import { ChartColumn, Eye, EyeOff, RotateCw } from 'lucide-react'
+import { ChartColumn, Eye, EyeOff } from 'lucide-react'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { computeOptics } from '../lib/astro'
 import { parseDecCoordinate, parseRaCoordinate } from '../lib/coordinates'
@@ -388,7 +388,7 @@ export function FramingPanel() {
         </div>
         <div className="framing-button-row">
           <button className="button small" onClick={() => { setPhotoCenter({ objectIndex: o.i, raDeg: o.raDeg, decDeg: o.decDeg }); setFraming({ raDeg: null, decDeg: null }) }}>Wyśrodkuj</button>
-          <button className="button small" onClick={() => setFraming({ paDeg: (framing.paDeg - 90 + 360) % 360 })}><RotateCw size={13} /> +90°</button>
+          <button className="button small" onClick={() => setFraming({ paDeg: (framing.paDeg - 90 + 360) % 360 })}>+90°</button>
         </div>
         <div className="field">
           <span className="label">Mozaika (kolumny × wiersze)</span>

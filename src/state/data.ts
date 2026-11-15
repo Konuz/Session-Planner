@@ -92,6 +92,7 @@ let sentCatalog: DSO[] | null = null
 let requestId = 0
 
 export interface CatalogVisibility {
+  nightDurationMs: number
   maxAlt: Float32Array
   hours: Float32Array
   best: Float64Array
@@ -139,7 +140,7 @@ export function useCatalogVisibility(): CatalogVisibility | null {
     const onMessage = (e: MessageEvent<VisibilityResult>) => {
       if (e.data.id !== id) return
       measureSince('visibility:roundtrip', sent)
-      const value = { maxAlt: e.data.maxAlt, hours: e.data.hours, best: e.data.best }
+      const value = { nightDurationMs: darkEnd - darkStart, maxAlt: e.data.maxAlt, hours: e.data.hours, best: e.data.best }
       lastVisibility = { key, value }
       setResult(value)
     }

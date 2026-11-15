@@ -1,5 +1,5 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { CalendarCheck, ChevronDown, Heart, Palette, RotateCcw, Search, Trash2 } from 'lucide-react'
+import { CalendarCheck, Palette, RotateCcw, Search, Trash2 } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ObjectDetails } from '../components/ObjectDetails'
 import { Range } from '../components/Range'
@@ -80,7 +80,7 @@ function ExtraCatalogFilter({ selected, counts, onChange }: { selected: string[]
   return (
     <span className="annotation-color-settings" style={{ margin: 0 }}>
       <button className={`toggle-chip${chosen.length ? ' on' : ''}`} title="Katalogi spoza głównej listy" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
-        Inne <span className="faint">{chosen.length && !all ? `${chosen.length}/${EXTRA_IDS.length}` : counts[EXTRA_TOTAL] ?? 0}</span> <ChevronDown size={11} />
+        Inne <span className="faint">{chosen.length && !all ? `${chosen.length}/${EXTRA_IDS.length}` : counts[EXTRA_TOTAL] ?? 0}</span>
       </button>
       {open && (
         <div className="popover type-filter" style={{ left: 0, right: 'auto' }} role="group" aria-label="Inne katalogi">
@@ -111,6 +111,8 @@ export default function CatalogView() {
   const thumbSource = useStore((s) => s.thumbSource)
   const setThumbSource = useStore((s) => s.setThumbSource)
   const onlyVisible = useStore((s) => s.onlyVisible)
+  const minVisibleMinutes = useStore((s) => s.minVisibleMinutes)
+  const setMinVisibleMinutes = useStore((s) => s.setMinVisibleMinutes)
   const toggle = useStore((s) => s.toggle)
   const minAlt = useStore((s) => s.minAltDeg)
   const setMinAlt = useStore((s) => s.setMinAlt)
@@ -127,6 +129,14 @@ export default function CatalogView() {
   const tz = useStore((s) => s.location.timeZone)
   const [details, setDetails] = useState(false)
   const [query, setQuery] = useState(filter.query)
+
+  const nightDurationMs = vis?.nightDurationMs ?? 0
+  const sliderMax = Math.max(60, Math.ceil(nightDurationMs / 60_000))
+  const sliderValue = minVisibleMinutes === 'night' ? sliderMax : Math.min(minVisibleMinutes, sliderMax)
+  const wholeNight = sliderMax > 60 && sliderValue === sliderMax
+  // Wynik workera jest zapisany w Float32Array, więc próg zaokrąglamy tak samo.
+  const minVisibleHours = onlyVisible ? Math.fround(wholeNight ? nightDurationMs / 3_600_000 : sliderValue / 60) : 0
+  const visibleDurationLabel = wholeNight ? 'Cała noc' : sliderValue === 60 ? '1 h' : fmtDuration(sliderValue / 60)
 
   useEffect(() => {
     const id = setTimeout(() => setFilter({ query }), 180)
@@ -164,7 +174,7 @@ export default function CatalogView() {
     for (const o of catalog) {
       if (activeFavoriteSet && !activeFavoriteSet.has(o.id)) continue
       if (!matchesFilter(o, filter)) continue
-      if (onlyVisible && vis && vis.hours[o.i] < 1) continue
+      if (vis && vis.hours[o.i] < minVisibleHours) continue
       out.push(o)
     }
     const h = vis?.hours
@@ -188,7 +198,7 @@ export default function CatalogView() {
       case 'size': return out.sort((x, y) => y.majArcmin - x.majArcmin)
       case 'name': return out.sort((x, y) => designationKey(x.id).localeCompare(designationKey(y.id)))
     }
-  }, [catalog, filter, sortBy, onlyVisible, vis, activeFavoriteSet])
+  }, [catalog, filter, sortBy, minVisibleHours, vis, activeFavoriteSet])
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(1000)
@@ -209,7 +219,7 @@ export default function CatalogView() {
   }, [rowH, virt])
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0 })
-  }, [filter, sortBy, onlyVisible, onlyFavorites])
+  }, [filter, sortBy, minVisibleHours, onlyFavorites])
 
   const toggleIn = <T,>(arr: T[], v: T) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v])
   const constellations = useMemo(() => Object.entries(CONSTELLATION_PL).sort((a, b) => a[1].localeCompare(b[1], 'pl')), [])
@@ -267,9 +277,15 @@ export default function CatalogView() {
           <span className="label">Limit wysokości {minAlt}°</span>
           <Range min={0} max={60} step={5} value={minAlt} onChange={(e) => setMinAlt(Number(e.target.value))} style={{ width: '100%' }} />
         </div>
-        <label className={`switch${onlyVisible ? ' on' : ''}`} onClick={() => toggle('onlyVisible')}>
-          <span className="track" /> <span>Widoczne tej nocy ≥ 1 h</span>
-        </label>
+        <div className="filter-group">
+          <label className="label" htmlFor="catalog-visibility">Widoczność tej nocy · {visibleDurationLabel}</label>
+          <Range id="catalog-visibility" min={60} max={sliderMax} step={1} value={sliderValue} disabled={sliderMax === 60}
+            aria-valuetext={wholeNight ? visibleDurationLabel : `Co najmniej ${visibleDurationLabel}`}
+            onChange={(e) => setMinVisibleMinutes(e.target.valueAsNumber === sliderMax ? 'night' : e.target.valueAsNumber)} style={{ width: '100%' }} />
+          <label className="switch">
+            <input type="checkbox" checked={onlyVisible} onChange={() => toggle('onlyVisible')} /> Filtruj według widoczności
+          </label>
+        </div>
       </aside>
 
       <section>
@@ -286,7 +302,7 @@ export default function CatalogView() {
           <span style={{ flex: 1 }} />
           {onlyFavorites && <button className="button ghost icon-button" style={{ color: 'var(--bad)' }} title="Wyczyść ulubione" aria-label="Wyczyść ulubione" disabled={favoriteIds.length === 0} onClick={() => clearDialogRef.current?.showModal()}><Trash2 size={17} aria-hidden="true" /></button>}
           <button className={`button small${onlyFavorites ? ' active' : ''}`} aria-pressed={onlyFavorites} onClick={() => setOnlyFavorites((value) => !value)}>
-            <Heart size={14} fill={onlyFavorites ? 'currentColor' : 'none'} /> Ulubione ({favoriteIds.length})
+            Ulubione ({favoriteIds.length})
           </button>
           <select className="control catalog-sort" value={thumbSource} onChange={(e) => setThumbSource(e.target.value as typeof thumbSource)} aria-label="Źródło miniatur"
             title={thumbSource !== 'dss2' ? `${SURVEYS[thumbSource].label} · ${SURVEYS[thumbSource].credit}. Małe obiekty i niebo na południe od −16°: DSS2.` : 'Miniatury z DSS2 (ESA/MAST)'}>

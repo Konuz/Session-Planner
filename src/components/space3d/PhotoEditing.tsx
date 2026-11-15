@@ -1,7 +1,6 @@
 // Wspólna część zdjęcia w oknie „Pozycja 3D” (obie skale): wczytanie, komunikaty, płaski widok edycji okręgów
 // i panel wycinków ze źródłami odległości. Rozkładanie zdjęcia robi Obserwatorium, do którego z obu skal
 // prowadzi nurkowanie.
-import { Box, Eye, ImagePlus, Settings2, X } from 'lucide-react'
 import { useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO } from '../../lib/catalog'
 import { hasDistance, MAX_RELATIVE_UNCERTAINTY, NO_DISTANCE, REGRESSOR_TYPES, SCOPE_LABELS, type DistanceScope } from '../../lib/distance'
@@ -19,8 +18,8 @@ export function PhotoImport({ session, inputRef, showButton, onActivate }: { ses
   const { project, busy, ready } = session
   return <div className="photo-import">
     <input ref={inputRef} type="file" hidden accept={ACCEPT} onChange={(e) => { const file = e.target.files?.[0]; if (file) session.upload(file); e.target.value = '' }} />
-    {(showButton || busy) && <button className="button small" onClick={() => inputRef.current?.click()} disabled={busy}><ImagePlus size={14} />{busy ? 'Rozwiązywanie zdjęcia…' : 'Rozłóż zdjęcie'}</button>}
-    {showButton && !busy && project && onActivate && <button type="button" className="button small photo-restore" title={`Pokaż zdjęcie: ${project.name}`} onClick={onActivate}><Eye size={14} /><span>Pokaż zdjęcie: {project.name}</span></button>}
+    {(showButton || busy) && <button className="button small" onClick={() => inputRef.current?.click()} disabled={busy}>{busy ? 'Rozwiązywanie zdjęcia…' : 'Rozłóż zdjęcie'}</button>}
+    {showButton && !busy && project && onActivate && <button type="button" className="button small photo-restore" title={`Pokaż zdjęcie: ${project.name}`} onClick={onActivate}><span>Pokaż zdjęcie: {project.name}</span></button>}
     {busy && <button className="button small" onClick={session.cancelUpload}>Anuluj</button>}
     {!project && ready === false && <span className="photo-notice">Astrometria wymaga lokalnego Skyshota.</span>}
   </div>
@@ -182,10 +181,10 @@ export function GalaxyPhotoBar({ session, stars, onUnfold, onPick, onRetryStars 
       </span>
     </div>
     <div className="photo-timeline photo-actions">
-      <button type="button" className="button small" title="Przejście do Obserwatorium: gwiazdy Gaia i obiekty w swoich odległościach" onClick={() => { setEditing(false); onUnfold() }}><Box size={14} />Rozłóż zdjęcie 3D</button>
-      <button type="button" className={`button small${editing ? ' active' : ''}`} aria-expanded={editing} onClick={() => setEditing(!editing)}><Settings2 size={14} />Edytuj wycinki</button>
-      <button type="button" className="button small" onClick={onPick} disabled={session.busy}><ImagePlus size={14} />Zmień zdjęcie</button>
-      <button type="button" className="button small" onClick={() => { setEditing(false); session.change(null) }}><X size={14} />Usuń</button>
+      <button type="button" className="button small" title="Przejście do Obserwatorium: gwiazdy Gaia i obiekty w swoich odległościach" onClick={() => { setEditing(false); onUnfold() }}>Rozłóż zdjęcie 3D</button>
+      <button type="button" className={`button small${editing ? ' active' : ''}`} aria-expanded={editing} onClick={() => setEditing(!editing)}>Edytuj wycinki</button>
+      <button type="button" className="button small" onClick={onPick} disabled={session.busy}>Zmień zdjęcie</button>
+      <button type="button" className="button small" onClick={() => { setEditing(false); session.change(null) }}>Usuń</button>
     </div>
   </div>
 }

@@ -70,12 +70,13 @@ function compute({ id, site, darkStart, darkEnd, minAltDeg, horizon }: Visibilit
   const uz = cachedUz
   const n = ux.length
   const maxZ = new Float64Array(n).fill(-1)
+  const visibleMs = new Float64Array(n)
   const hours = new Float32Array(n)
   const best = new Float64Array(n)
   const sinMin = Math.sin(minAltDeg * DEG)
   const customHorizon = horizon.length > 0
   for (let t = darkStart; ; t = Math.min(t + STEP_MS, darkEnd)) {
-    const stepH = Math.max(0, Math.min(STEP_MS, darkEnd - t)) / 3_600_000
+    const stepMs = Math.min(STEP_MS, darkEnd - t)
     const m = horizontalMatrix(t, site)
     const m0 = m[0], m1 = m[1], m2 = m[2], m3 = m[3], m4 = m[4], m5 = m[5], m6 = m[6], m7 = m[7], m8 = m[8]
     for (let i = 0; i < n; i++) {
@@ -92,12 +93,15 @@ function compute({ id, site, darkStart, darkEnd, minAltDeg, horizon }: Visibilit
         const alt = Math.asin(Math.max(-1, Math.min(1, z))) / DEG
         if (alt < horizonAltitude(horizon, az)) continue
       }
-      hours[i] += stepH
+      visibleMs[i] += stepMs
     }
     if (t >= darkEnd) break
   }
   const maxAlt = new Float32Array(n)
-  for (let i = 0; i < n; i++) maxAlt[i] = Math.asin(Math.max(-1, Math.min(1, maxZ[i]))) / DEG
+  for (let i = 0; i < n; i++) {
+    maxAlt[i] = Math.asin(Math.max(-1, Math.min(1, maxZ[i]))) / DEG
+    hours[i] = visibleMs[i] / 3_600_000
+  }
   const result: VisibilityResult = { id, maxAlt, hours, best }
   // Forma z tablicą transfer działa w każdej przeglądarce; typy DOM widzą tu Window, stąd rzutowanie.
   ;(self as unknown as Worker).postMessage(result, [maxAlt.buffer, hours.buffer, best.buffer])

@@ -1,0 +1,533 @@
+<style>
+  .vc-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .vc-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+  .vc-btn {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .vc-btn:hover { border-color: var(--accent); }
+  .vc-btn.active {
+    background: var(--selected-bg);
+    border-color: var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .vc-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+  @media (max-width: 900px) {
+    .vc-grid { grid-template-columns: 1fr; }
+  }
+  .vc-card {
+    background: var(--bg-secondary);
+    border: 2px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .vc-card.selectable { cursor: pointer; }
+  .vc-card.selectable:hover { border-color: var(--accent); }
+  .vc-card.selected {
+    border-color: var(--selected-border);
+    box-shadow: 0 0 0 1px var(--selected-border);
+  }
+  .vc-viewport {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    background: radial-gradient(circle at 50% 42%, #071022, #000 76%);
+    cursor: grab;
+    user-select: none;
+    touch-action: none;
+  }
+  .vc-viewport:active { cursor: grabbing; }
+  .vc-viewport canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .vc-badge {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    background: rgba(11, 13, 23, 0.82);
+    border: 1px solid rgba(0, 224, 255, 0.35);
+    color: #e6edf7;
+    pointer-events: none;
+  }
+  .vc-badge.ref {
+    border-color: rgba(153, 161, 175, 0.45);
+    color: #c8cfdc;
+  }
+  .vc-badge.rec {
+    border-color: #00e0ff;
+    color: #00e0ff;
+  }
+  .vc-hint {
+    position: absolute;
+    bottom: 8px;
+    right: 10px;
+    font-size: 10px;
+    color: rgba(200, 207, 220, 0.65);
+    pointer-events: none;
+  }
+  .vc-body {
+    padding: 14px 16px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .vc-letter {
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 13px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .vc-card.selected .vc-letter {
+    background: var(--accent);
+    color: #fff;
+  }
+  .vc-body h3 {
+    font-size: 15px;
+    margin-bottom: 4px;
+  }
+  .vc-body p {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0;
+  }
+  .vc-note {
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+</style>
+
+<h2>Który kierunek szklanego wyglądu kopuł pasuje najlepiej?</h2>
+<p class="subtitle">
+  Wszystkie 4 podglądy są połączone — przeciągnij myszą na dowolnym z nich, aby obejrzeć 4 koncentryczne kopuły
+  (<code>1 mln</code> – <code>1 mld lś</code>) pod tym samym kątem, a następnie kliknij opis wariantu A, B lub C.
+</p>
+
+<div class="vc-top">
+  <div class="vc-controls" id="angle-controls">
+    <button type="button" class="vc-btn active" data-yaw="0.65" data-pitch="0.46" data-dist="1650">Widok ukośny (domyślny)</button>
+    <button type="button" class="vc-btn" data-yaw="1.15" data-pitch="0.14" data-dist="1720">Niski znad płaszczyzny</button>
+    <button type="button" class="vc-btn" data-yaw="0.4" data-pitch="1.22" data-dist="1850">Wysoki z góry</button>
+    <button type="button" class="vc-btn" data-yaw="-0.75" data-pitch="0.42" data-dist="1100">Zbliżenie na środek</button>
+  </div>
+  <div class="vc-controls">
+    <button type="button" class="vc-btn active" id="toggle-galaxies">Galaktyki w środku: Wł.</button>
+  </div>
+</div>
+
+<div class="vc-grid cards">
+  <!-- Punkt odniesienia (nie do wyboru) -->
+  <div class="vc-card">
+    <div class="vc-viewport" data-mode="current">
+      <span class="vc-badge ref">Obecny w aplikacji (odniesienie)</span>
+      <span class="vc-hint">Przeciągnij aby obrócić 3D</span>
+    </div>
+    <div class="vc-body">
+      <div class="vc-letter">0</div>
+      <div>
+        <h3>Stan obecny</h3>
+        <p>Bardzo słaba poświata Fresnela bez refleksów światła i bez rozróżnienia przedniej oraz tylnej ścianki kopuły.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Wariant A -->
+  <div class="vc-card card selectable" data-choice="a" onclick="toggleSelect(this)">
+    <div class="vc-viewport" data-mode="crystal" onclick="event.stopPropagation()">
+      <span class="vc-badge rec">Rekomendowany · Czyste szkło</span>
+      <span class="vc-hint">Przeciągnij aby obrócić 3D</span>
+    </div>
+    <div class="vc-body">
+      <div class="vc-letter">A</div>
+      <div>
+        <h3>Kryształowe szkło (refleksy + Fresnel)</h3>
+        <p>Ostry refleks brzegowy Fresnela, dwa miękkie/zwierciadlane bliki światła wędrujące przy obrocie, wyraźna przednia ścianka i subtelny rant przy pierścieniu. Maksymalna czytelność galaktyk w środku.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Wariant B -->
+  <div class="vc-card card selectable" data-choice="b" onclick="toggleSelect(this)">
+    <div class="vc-viewport" data-mode="observatory" onclick="event.stopPropagation()">
+      <span class="vc-badge">Architektoniczne</span>
+      <span class="vc-hint">Przeciągnij aby obrócić 3D</span>
+    </div>
+    <div class="vc-body">
+      <div class="vc-letter">B</div>
+      <div>
+        <h3>Szkło obserwatorium (z delikatnym rysunkiem krzywizny)</h3>
+        <p>Refleksy jak w A oraz bardzo subtelne grawerowane południki i równoleżniki wygasające ku zenitowi plus wyraźniejszy brzeg podstawy — wypukłość kopuł widać też z góry.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Wariant C -->
+  <div class="vc-card card selectable" data-choice="c" onclick="toggleSelect(this)">
+    <div class="vc-viewport" data-mode="prismatic" onclick="event.stopPropagation()">
+      <span class="vc-badge">Optyczne / powlekane</span>
+      <span class="vc-hint">Przeciągnij aby obrócić 3D</span>
+    </div>
+    <div class="vc-body">
+      <div class="vc-letter">C</div>
+      <div>
+        <h3>Szkło soczewkowe / pryzmatyczne</h3>
+        <p>Głębszy szafirowy ton powłoki w głębi kopuły, wyraźniejszy połysk zwierciadlany oraz delikatne rozszczepienie barw na krawędziach (błękit → cyjan → chłodny lód/fiolet).</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="vc-note">
+  Wskazówka: obróć podglądy kółkiem lub myszką, szczególnie w ujęciu „Wysoki z góry” i „Zbliżenie na środek”, żeby ocenić
+  przejrzystość 4 warstw szkła przed wyborem. Kliknij opis karty A, B lub C (poza obszarem 3D), żeby zaznaczyć wybór.
+</p>
+
+<script type="module">
+  import * as THREE from '/files/three.module.js'
+
+  const LOG_UNIT = 22 / 0.12
+  const RADII = [1e6, 1e7, 1e8, 1e9].map((ly) => Math.log10(ly / 1e4) * LOG_UNIT)
+
+  function createDomeMaterial(mode, radius) {
+    if (mode === 'current') {
+      return new THREE.ShaderMaterial({
+        uniforms: { color: { value: new THREE.Color(0x00e0ff) }, opacity: { value: 1 } },
+        vertexShader: `
+          varying vec3 vNormal;
+          varying vec3 vView;
+          void main() {
+            vec4 mv = modelViewMatrix * vec4(position, 1.0);
+            vNormal = normalize(normalMatrix * normal);
+            vView = normalize(-mv.xyz);
+            gl_Position = projectionMatrix * mv;
+          }`,
+        fragmentShader: `
+          uniform vec3 color;
+          uniform float opacity;
+          varying vec3 vNormal;
+          varying vec3 vView;
+          void main() {
+            float f = pow(1.0 - abs(dot(normalize(vNormal), normalize(vView))), 3.0);
+            gl_FragColor = vec4(color, (0.0015 + f * 0.018) * opacity);
+          }`,
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending,
+      })
+    }
+
+    const modeId = mode === 'crystal' ? 0 : mode === 'observatory' ? 1 : 2
+    return new THREE.ShaderMaterial({
+      uniforms: {
+        uColor: { value: new THREE.Color(0x00e0ff) },
+        uDeepColor: { value: new THREE.Color(0x155dfc) },
+        uSpecularColor: { value: new THREE.Color(0xd8f8ff) },
+        uRadius: { value: radius },
+        uMode: { value: modeId },
+        uOpacity: { value: 1 },
+      },
+      vertexShader: `
+        varying vec3 vWorldNormal;
+        varying vec3 vWorldView;
+        varying vec3 vLocalPos;
+        void main() {
+          vLocalPos = position;
+          vec4 worldPos = modelMatrix * vec4(position, 1.0);
+          vWorldNormal = normalize(mat3(modelMatrix) * normal);
+          vWorldView = normalize(cameraPosition - worldPos.xyz);
+          gl_Position = projectionMatrix * viewMatrix * worldPos;
+        }`,
+      fragmentShader: `
+        uniform vec3 uColor;
+        uniform vec3 uDeepColor;
+        uniform vec3 uSpecularColor;
+        uniform float uRadius;
+        uniform float uMode;
+        uniform float uOpacity;
+        varying vec3 vWorldNormal;
+        varying vec3 vWorldView;
+        varying vec3 vLocalPos;
+
+        void main() {
+          vec3 N = normalize(vWorldNormal);
+          if (!gl_FrontFacing) N = -N;
+          vec3 V = normalize(vWorldView);
+          float ndotv = clamp(dot(N, V), 0.0, 1.0);
+          float front = gl_FrontFacing ? 1.0 : 0.32;
+
+          // Schlick-like sharp Fresnel rim + gentler curvature sheen
+          float rimSharp = pow(1.0 - ndotv, 4.2);
+          float rimSoft = pow(1.0 - ndotv, 2.0);
+
+          // World-space light lobes so reflections glide across the curved glass while orbiting
+          vec3 L1 = normalize(vec3(-0.55, 0.78, 0.38));
+          vec3 H1 = normalize(L1 + V);
+          float specSharp = pow(max(dot(N, H1), 0.0), 120.0);
+          float specBroad = pow(max(dot(N, H1), 0.0), 20.0);
+
+          vec3 L2 = normalize(vec3(0.68, 0.32, -0.66));
+          vec3 H2 = normalize(L2 + V);
+          float specRim = pow(max(dot(N, H2), 0.0), 38.0);
+
+          // Soft horizon / base meniscus catch-light near y = 0
+          float elev = clamp(vLocalPos.y / max(uRadius, 1.0), 0.0, 1.0);
+          float baseLip = pow(1.0 - smoothstep(0.0, 0.14, elev), 2.0);
+
+          vec3 col = mix(uDeepColor, uColor, 0.45 + 0.55 * rimSoft);
+          float alpha = 0.0;
+
+          if (uMode < 0.5) {
+            // A: Kryształowe czyste szkło
+            col = mix(col, uSpecularColor, clamp(specSharp * 0.92 + rimSharp * 0.35, 0.0, 1.0));
+            alpha = (0.008 + rimSoft * 0.032 + rimSharp * 0.16 + baseLip * 0.06 + specBroad * 0.048 + specSharp * 0.30 + specRim * 0.065) * front;
+          } else if (uMode < 1.5) {
+            // B: Szkło obserwatorium z delikatnymi liniami krzywizny
+            float lon = atan(vLocalPos.z, vLocalPos.x);
+            float lat = asin(clamp(elev, 0.0, 1.0));
+            float mer = pow(abs(cos(lon * 6.0)), 360.0);
+            float par = pow(abs(cos(lat * 8.0)), 280.0);
+            float ribs = max(mer * 0.65, par * 0.8) * (1.0 - smoothstep(0.55, 0.96, elev));
+            col = mix(col, uSpecularColor, clamp(specSharp * 0.88 + ribs * 0.45 + rimSharp * 0.3, 0.0, 1.0));
+            alpha = (0.009 + rimSoft * 0.035 + rimSharp * 0.16 + baseLip * 0.095 + ribs * 0.09 + specBroad * 0.045 + specSharp * 0.28 + specRim * 0.065) * front;
+          } else {
+            // C: Szkło soczewkowe / pryzmatyczne
+            vec3 prism = mix(vec3(0.08, 0.36, 0.98), vec3(0.0, 0.90, 1.0), smoothstep(0.15, 0.65, 1.0 - ndotv));
+            prism = mix(prism, vec3(0.76, 0.84, 1.0), smoothstep(0.72, 0.98, 1.0 - ndotv));
+            col = mix(prism, vec3(0.95, 0.98, 1.0), clamp(specSharp * 0.95, 0.0, 1.0));
+            alpha = (0.016 + rimSoft * 0.055 + rimSharp * 0.20 + baseLip * 0.08 + specBroad * 0.075 + specSharp * 0.34 + specRim * 0.09) * front;
+          }
+
+          gl_FragColor = vec4(col, clamp(alpha, 0.0, 0.70) * uOpacity);
+        }`,
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+    })
+  }
+
+  function makeStarTexture() {
+    const c = document.createElement('canvas')
+    c.width = c.height = 32
+    const ctx = c.getContext('2d')
+    const g = ctx.createRadialGradient(16, 16, 0, 16, 16, 16)
+    g.addColorStop(0, 'rgba(255,255,255,1)')
+    g.addColorStop(0.25, 'rgba(255,255,255,0.65)')
+    g.addColorStop(0.6, 'rgba(255,255,255,0.1)')
+    g.addColorStop(1, 'rgba(255,255,255,0)')
+    ctx.fillStyle = g
+    ctx.fillRect(0, 0, 32, 32)
+    return new THREE.CanvasTexture(c)
+  }
+
+  function makeSampleSpaceContent(tex) {
+    const group = new THREE.Group()
+    let seed = 42
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
+
+    // Mini Milky Way disk at origin
+    const mwCount = 2200
+    const mwPos = new Float32Array(mwCount * 3)
+    const mwCol = new Float32Array(mwCount * 3)
+    for (let i = 0; i < mwCount; i++) {
+      const arm = i % 4
+      const r = Math.pow(rnd(), 0.85) * 48
+      const theta = Math.log(1 + r / 4) / Math.tan((14 * Math.PI) / 180) + (arm * Math.PI) / 2 + (rnd() - 0.5) * 0.4
+      mwPos[i * 3] = Math.cos(theta) * r
+      mwPos[i * 3 + 1] = (rnd() - 0.5) * 2.5
+      mwPos[i * 3 + 2] = Math.sin(theta) * r
+      const warm = r < 10
+      mwCol[i * 3] = warm ? 1.0 : 0.68
+      mwCol[i * 3 + 1] = warm ? 0.85 : 0.80
+      mwCol[i * 3 + 2] = warm ? 0.62 : 1.0
+    }
+    const mwGeo = new THREE.BufferGeometry()
+    mwGeo.setAttribute('position', new THREE.BufferAttribute(mwPos, 3))
+    mwGeo.setAttribute('color', new THREE.BufferAttribute(mwCol, 3))
+    group.add(new THREE.Points(mwGeo, new THREE.PointsMaterial({
+      size: 2.5, sizeAttenuation: false, map: tex, vertexColors: true,
+      transparent: true, opacity: 0.45, depthWrite: false, blending: THREE.AdditiveBlending
+    })))
+
+    // Sample galaxies distributed through 1e6..1e9 ly (both above and near plane)
+    const galCount = 550
+    const gPos = new Float32Array(galCount * 3)
+    const gCol = new Float32Array(galCount * 3)
+    for (let i = 0; i < galCount; i++) {
+      const logLy = 5.6 + rnd() * 3.5
+      const r = Math.max(0, logLy - 4) * LOG_UNIT
+      const phi = rnd() * Math.PI * 2
+      const sinB = (rnd() * 2 - 1)
+      const cosB = Math.sqrt(Math.max(0, 1 - sinB * sinB))
+      gPos[i * 3] = Math.cos(phi) * cosB * r
+      gPos[i * 3 + 1] = sinB * r
+      gPos[i * 3 + 2] = Math.sin(phi) * cosB * r
+      const tint = rnd()
+      gCol[i * 3] = tint > 0.7 ? 0.95 : 0.55
+      gCol[i * 3 + 1] = tint > 0.7 ? 0.65 : 0.82
+      gCol[i * 3 + 2] = 1.0
+    }
+    const gGeo = new THREE.BufferGeometry()
+    gGeo.setAttribute('position', new THREE.BufferAttribute(gPos, 3))
+    gGeo.setAttribute('color', new THREE.BufferAttribute(gCol, 3))
+    group.add(new THREE.Points(gGeo, new THREE.PointsMaterial({
+      size: 3.2, sizeAttenuation: false, map: tex, vertexColors: true,
+      transparent: true, opacity: 0.82, depthWrite: false
+    })))
+
+    return group
+  }
+
+  const sharedCamera = { yaw: 0.65, pitch: 0.46, dist: 1650 }
+  let showGalaxies = true
+  const scenes = []
+
+  const starTex = makeStarTexture()
+  const u = 1 / 0.12
+
+  document.querySelectorAll('.vc-viewport').forEach((el) => {
+    const mode = el.dataset.mode
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
+    el.insertBefore(renderer.domElement, el.firstChild)
+
+    const scene = new THREE.Scene()
+    const camera = new THREE.PerspectiveCamera(50, 16 / 10, 1, 15000)
+
+    const galaxyContent = makeSampleSpaceContent(starTex)
+    scene.add(galaxyContent)
+
+    for (const r of RADII) {
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0x00e0ff,
+        transparent: true,
+        opacity: mode === 'current' ? 0.18 : 0.24,
+        side: THREE.DoubleSide,
+      })
+      const ring = new THREE.Mesh(new THREE.RingGeometry(r - 0.08 * u, r + 0.08 * u, 128), ringMat)
+      ring.rotation.x = -Math.PI / 2
+      scene.add(ring)
+
+      const domeMat = createDomeMaterial(mode, r)
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(r, 64, 28, 0, Math.PI * 2, 0, Math.PI / 2), domeMat)
+      scene.add(dome)
+    }
+
+    let dragging = false
+    let lastX = 0
+    let lastY = 0
+    el.addEventListener('pointerdown', (e) => {
+      dragging = true
+      lastX = e.clientX
+      lastY = e.clientY
+      el.setPointerCapture(e.pointerId)
+    })
+    el.addEventListener('pointermove', (e) => {
+      if (!dragging) return
+      const dx = e.clientX - lastX
+      const dy = e.clientY - lastY
+      lastX = e.clientX
+      lastY = e.clientY
+      sharedCamera.yaw -= dx * 0.007
+      sharedCamera.pitch = Math.max(0.03, Math.min(1.48, sharedCamera.pitch + dy * 0.007))
+      renderAll()
+    })
+    const stopDrag = () => { dragging = false }
+    el.addEventListener('pointerup', stopDrag)
+    el.addEventListener('pointercancel', stopDrag)
+    el.addEventListener('wheel', (e) => {
+      e.preventDefault()
+      sharedCamera.dist = Math.max(450, Math.min(3400, sharedCamera.dist * (1 + e.deltaY * 0.001)))
+      renderAll()
+    }, { passive: false })
+
+    scenes.push({ el, renderer, scene, camera, galaxyContent })
+  })
+
+  function renderAll() {
+    const cp = Math.cos(sharedCamera.pitch)
+    const sp = Math.sin(sharedCamera.pitch)
+    const x = Math.cos(sharedCamera.yaw) * cp * sharedCamera.dist
+    const y = sp * sharedCamera.dist
+    const z = Math.sin(sharedCamera.yaw) * cp * sharedCamera.dist
+    for (const s of scenes) {
+      const w = s.el.clientWidth || 400
+      const h = s.el.clientHeight || 250
+      if (s.renderer.domElement.width !== Math.round(w * s.renderer.getPixelRatio()) ||
+          s.renderer.domElement.height !== Math.round(h * s.renderer.getPixelRatio())) {
+        s.renderer.setSize(w, h, false)
+        s.camera.aspect = w / h
+        s.camera.updateProjectionMatrix()
+      }
+      s.galaxyContent.visible = showGalaxies
+      s.camera.position.set(x, y, z)
+      s.camera.lookAt(0, 80, 0)
+      s.renderer.render(s.scene, s.camera)
+    }
+  }
+
+  document.querySelectorAll('#angle-controls .vc-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#angle-controls .vc-btn').forEach((b) => b.classList.remove('active'))
+      btn.classList.add('active')
+      sharedCamera.yaw = Number(btn.dataset.yaw)
+      sharedCamera.pitch = Number(btn.dataset.pitch)
+      sharedCamera.dist = Number(btn.dataset.dist)
+      renderAll()
+    })
+  })
+
+  const toggleBtn = document.getElementById('toggle-galaxies')
+  toggleBtn.addEventListener('click', () => {
+    showGalaxies = !showGalaxies
+    toggleBtn.textContent = `Galaktyki w środku: ${showGalaxies ? 'Wł.' : 'Wył.'}`
+    toggleBtn.classList.toggle('active', showGalaxies)
+    renderAll()
+  })
+
+  window.addEventListener('resize', renderAll)
+  renderAll()
+  requestAnimationFrame(renderAll)
+</script>
