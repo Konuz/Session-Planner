@@ -562,7 +562,9 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
     showObjectRef.current = (object, scale, force = false) => {
       if (scale !== tab) {
         // Start pierwszej klatki przenikania ustawia applyFades (czas rAF).
-        if (!reduced) fadeBlend = { ...startFadeBlend(fades, camera.position.length(), tab, 0, SWITCH_MS), start: null }
+        fadeBlend = !reduced && !override.camera
+          ? { ...startFadeBlend(fades, camera.position.length(), tab, 0, SWITCH_MS), start: null }
+          : null
         tab = scale
         applyScale()
         showObject(object, SWITCH_MS, true)

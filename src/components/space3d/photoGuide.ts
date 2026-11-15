@@ -12,7 +12,7 @@ import { fmtDistance } from '../../lib/format'
 import { AXIS_DASH, AXIS_LENGTH, EARTH_Z } from '../../lib/observatory'
 import { cutsInThreeD, photoAnchorKind, type PhotoProject } from '../../lib/photo'
 import { scenePoint, toScene, UNIVERSE_GALAXY_SCALE, UNIVERSE_MIN_SPAN, type SpaceScale } from '../../lib/space3d'
-import { framePose, sideView, SPACE_FOV } from '../../lib/spaceCamera'
+import { framePose, sideView, SPACE_FOV, type CameraPose } from '../../lib/spaceCamera'
 import { diveScale } from '../../lib/spaceDive'
 import { milkyWayCone, universeCone } from '../../lib/spacePhoto'
 import { useStore } from '../../state/store'
@@ -40,6 +40,7 @@ export interface PhotoGuide {
   basis: NonNullable<ReturnType<typeof frameBasis>>
   /** Długość linii widzenia w jednostkach sceny (tys. lś). */
   length: number
+  getFramePose(): CameraPose
   /** Przelot kamery na Ziemię, stożek i znaczniki, z boku linii widzenia. Kadr obejmuje sam stożek (bez stałego
    *  oddalenia na dysk Galaktyki), żeby obiekty zdjęcia nie zbijały się w jeden punkt. zoom: przelot zakładek (zmiana skali). */
   frameCamera(options?: { zoom?: boolean }): void
@@ -338,11 +339,13 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, s
   // Wszechświat lokalny: kamera co najmniej tak daleko jak w kadrze obiektu, więc zakładka zawsze oddala do skali Grupy
   // Lokalnej, także przy zdjęciu samej Drogi Mlecznej (krótki stożek).
   const minDistance = scale === 'universe' ? Math.max(UNIVERSE_MIN_SPAN * 1.08, span * 0.6) : Math.max(unit, span * 0.6)
+  const getFramePose = () => framePose(framed, sideView(dir.toArray() as Vec3, [middle.x, 0, middle.z]),
+    { fovDeg: SPACE_FOV, aspect: camera.aspect, room: [0.5, 0.42], minDistance })
 
   return {
-    group, cone, fieldTan, basis, length, labels: layer.root,
+    group, cone, fieldTan, basis, length, labels: layer.root, getFramePose,
     frameCamera(options) {
-      handle.flyTo(framePose(framed, sideView(dir.toArray() as Vec3, [middle.x, 0, middle.z]), { fovDeg: 50, aspect: camera.aspect, room: [0.5, 0.42], minDistance }), undefined, options?.zoom ?? false)
+      handle.flyTo(getFramePose(), undefined, options?.zoom ?? false)
     },
     setOpacity(opacity, cone, faces, axis) {
       sight.setOpacity(opacity, cone, faces, axis)
@@ -389,12 +392,14 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, s
 
 /** Stożek i znaczniki zdjęcia według zakładki: odbudowa przy zmianie wycinków, sceny lub zakładki; kadr przy nowym zdjęciu,
  *  scenie i zakładce (sama zmiana zakładki to przelot ze zmianą skali, jak bez zdjęcia). */
-export function usePhotoGuide(handle: Space3DHandle | null, project: PhotoProject | null, scale: SpaceScale, visible: boolean, selected: string | null, onPick: (id: string) => void): RefObject<PhotoGuide | null> {
+export function usePhotoGuide(handle: Space3DHandle | null, project: PhotoProject | null, scale: SpaceScale, visible: boolean, selected: string | null, onPick: (id: string) => void, frameOnChange: boolean): RefObject<PhotoGuide | null> {
   const colors = useStore((s) => s.annotationColors)
   const guideRef = useRef<PhotoGuide | null>(null)
   const framed = useRef<{ handle: Space3DHandle | null; id: string; scale: SpaceScale | null }>({ handle: null, id: '', scale: null })
   const visibleRef = useRef(visible)
   visibleRef.current = visible
+  const frameOnChangeRef = useRef(frameOnChange)
+  frameOnChangeRef.current = frameOnChange
   const projectRef = useRef(project)
   projectRef.current = project
   const pickRef = useRef(onPick)
@@ -421,7 +426,7 @@ export function usePhotoGuide(handle: Space3DHandle | null, project: PhotoProjec
     const previous = framed.current
     if (previous.handle !== handle || previous.id !== project.id || previous.scale !== scale) {
       framed.current = { handle, id: project.id, scale }
-      guide.frameCamera({ zoom: previous.handle === handle && previous.id === project.id })
+      if (frameOnChangeRef.current) guide.frameCamera({ zoom: previous.handle === handle && previous.id === project.id })
     }
     return () => { guide.dispose(); guideRef.current = null }
     // Gwiazdy Gaia zmieniają projekt, ale nie znaczniki: przebudowa tylko przy zmianie zdjęcia lub wycinków.

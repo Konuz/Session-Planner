@@ -163,16 +163,17 @@ it('po dezaktywacji wczytanego zdjęcia pokazuje w lewym górnym rogu „Rozłó
   expect(deactivated).not.toContain('Zmień zdjęcie')
 })
 
-it('kliknięcie skali podczas nurkowania lub w stanie zdjęcia wraca do skali, a druga zakładka przełącza się dopiero po powrocie', () => {
-  // Bieżąca skala: zawrócenie nurkowania w głąb albo powrót ze stanu zdjęcia.
+it('z rozłożonego zdjęcia nurkuje bezpośrednio do wybranej skali', () => {
+  expect(scaleChoiceAction('photo', 'universe', 'galaxy')).toEqual({ type: 'dive-out', scale: 'galaxy' })
+  expect(scaleChoiceAction('photo', 'galaxy', 'universe')).toEqual({ type: 'dive-out', scale: 'universe' })
+  expect(scaleChoiceAction('photo', 'galaxy', 'galaxy')).toEqual({ type: 'dive-out', scale: 'galaxy' })
+})
+
+it('kliknięcie skali podczas trwającego nurkowania zachowuje płynne zawrócenie lub dokończenie powrotu', () => {
   expect(scaleChoiceAction('in', 'galaxy', 'galaxy')).toEqual({ type: 'reverse-or-cancel', then: null })
   expect(scaleChoiceAction('in', 'universe', 'universe')).toEqual({ type: 'reverse-or-cancel', then: null })
-  expect(scaleChoiceAction('photo', 'galaxy', 'galaxy')).toEqual({ type: 'dive-out', then: null })
-  // Druga skala: najpierw ten sam powrót, potem przelot zakładek (bez cięcia).
   expect(scaleChoiceAction('in', 'galaxy', 'universe')).toEqual({ type: 'reverse-or-cancel', then: 'universe' })
   expect(scaleChoiceAction('in', 'universe', 'galaxy')).toEqual({ type: 'reverse-or-cancel', then: 'galaxy' })
-  expect(scaleChoiceAction('photo', 'galaxy', 'universe')).toEqual({ type: 'dive-out', then: 'universe' })
-  // W trakcie powrotu: druga skala czeka na jego koniec, bieżąca odwołuje oczekującą zmianę.
   expect(scaleChoiceAction('out', 'galaxy', 'universe')).toEqual({ type: 'after-return', then: 'universe' })
   expect(scaleChoiceAction('out', 'galaxy', 'galaxy')).toEqual({ type: 'after-return', then: null })
   expect(scaleChoiceAction('scale', 'galaxy', 'universe')).toEqual({ type: 'set-scale', scale: 'universe' })

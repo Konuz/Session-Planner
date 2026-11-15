@@ -63,7 +63,7 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
   // Układ stanu zdjęcia (panele Obserwatorium); w nurkowaniu zmienia się na początku fazy wejścia.
   const [panels, setPanels] = useState(false)
   const diveRef = useRef<SpaceDive | null>(null)
-  const entryPose = useRef<SpaceDive['spacePose'] | null>(null)
+  const entry = useRef<{ scale: SpaceScale; pose: SpaceDive['spacePose'] } | null>(null)
   const obsScene = useRef<ObservatoryScene | null>(null)
   const [stage, setStage] = useState<HTMLDivElement | null>(null)
   const [toolbarSlot, setToolbarSlot] = useState<HTMLDivElement | null>(null)
@@ -103,12 +103,13 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
   // Edycja wycinków to osobny widok okna: płaskie zdjęcie na scenie, panel edytora z prawej, scena 3D wstrzymana.
   const editing = mode === 'scale' && !!activePhoto && session.editing
   // Stożek pola i znaczniki zdjęcia w obu skalach (we Wszechświecie lokalnym jak w Drodze Mlecznej).
-  const guideRef = usePhotoGuide(handle, activePhoto, settings.scale, mode !== 'photo' && !editing, session.activeId, session.setActiveId)
+  const guideRef = usePhotoGuide(handle, activePhoto, settings.scale, mode !== 'photo' && !editing,
+    session.activeId, session.setActiveId, mode !== 'photo')
   /** Przewodnik nurkowania sceny bieżącej skali. */
   const sceneGuide = useCallback(() => guideRef.current, [guideRef])
 
   /** Stan końcowy bez animacji: ograniczony ruch, kliknięcie w trakcie przebudowy sceny, zmiana skali. */
-  const settle = useCallback((target: 'scale' | 'photo') => {
+  const settle = useCallback((target: 'scale' | 'photo', pose = diveRef.current?.spacePose ?? entry.current?.pose ?? null) => {
     diveRef.current?.cancel()
     diveRef.current = null
     const obs = obsScene.current
@@ -120,7 +121,7 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
       obs.setView('structure', false)
     }
     if (target === 'scale') {
-      if (handle) restoreSpace(handle, sceneGuide(), entryPose.current)
+      if (handle) restoreSpace(handle, sceneGuide(), pose)
       // Ukryte Obserwatorium stoi bez własnej pętli do następnego nurkowania (jak po powrocie nurkowaniem).
       obs?.setExternal(true)
     }
@@ -128,20 +129,33 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
     setPanels(target === 'photo')
   }, [handle, sceneGuide])
 
-  function startDive(direction: DiveDirection) {
+  const startDive = useCallback((direction: DiveDirection) => {
     if (direction === 'in') setObsVisible(false)
     const guide = sceneGuide()
+    let spacePose = entry.current?.pose ?? null
+    if (direction === 'out' && entry.current?.scale !== settings.scale) {
+      const frame = guide?.getFramePose()
+      spacePose = frame ? { ...frame, up: [0, 1, 0] } : null
+    }
     if (!activePhoto || !handle || !guide || reducedMotion()) {
       // Bez nurkowania: od razu stan zdjęcia (rozłożony, jak dawne Obserwatorium) albo skala.
       if (handle && direction === 'in' && activePhoto) {
         handle.stopIntro()
-        entryPose.current = { position: handle.camera.position.toArray() as Pose['position'], target: handle.controls.target.toArray() as Pose['target'], up: handle.camera.up.toArray() as Pose['up'], fov: handle.camera.fov, near: handle.camera.near }
+        const { camera, controls } = handle
+        entry.current = {
+          scale: settings.scale,
+          pose: {
+            position: camera.position.toArray() as Pose['position'],
+            target: controls.target.toArray() as Pose['target'],
+            up: camera.up.toArray() as Pose['up'],
+            fov: camera.fov, near: camera.near,
+          },
+        }
         handle.setExternal(true)
         setObsProject(activePhoto)
         setObsAlive(true)
       }
-      if (handle && direction === 'out') restoreSpace(handle, guide, entryPose.current)
-      settle(direction === 'in' ? 'photo' : 'scale')
+      settle(direction === 'in' ? 'photo' : 'scale', spacePose)
       return
     }
     setObsProject(activePhoto)
@@ -158,22 +172,22 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
       markerTargets,
       seamProgress,
       imageAspect: activePhoto.height / activePhoto.width,
-      spacePose: direction === 'out' ? entryPose.current ?? undefined : undefined,
+      spacePose: direction === 'out' ? spacePose ?? undefined : undefined,
       onPhase: (phase, dir) => { if (phase === 'enter') setPanels(dir === 'in') },
       onObservatoryFrame: () => setObsVisible(true),
       onDone: (dir) => { diveRef.current = null; setMode(dir === 'in' ? 'photo' : 'scale') },
     })
-    if (direction === 'in') entryPose.current = dive.spacePose
+    if (direction === 'in') entry.current = { scale: settings.scale, pose: dive.spacePose }
     diveRef.current = dive
     setMode(direction)
-  }
+  }, [activePhoto, handle, sceneGuide, settings.scale, settle])
 
   function unfold() {
     session.setEditing(false)
     startDive('in')
   }
-  // Zakładka wybrana w trakcie nurkowania albo w stanie zdjęcia: przelot do niej dopiero po powrocie do skali
-  // (wcześniej cięcie do skali). Pasek pokazuje ją od razu jako wybraną.
+  // Przed powrotem ze zdjęcia czekamy na przewodnik wybranej skali. Przy przerwaniu trwającego nurkowania
+  // oczekująca zakładka przełącza się po zakończeniu ruchu.
   const [pendingScale, setPendingScale] = useState<SpaceScale | null>(null)
   // Scena 3D montowana po pierwszym malowaniu okna (rAF, potem zadanie po klatce): budowa sceny (punkty, kontekst WebGL,
   // shadery) nie opóźnia pojawienia się okna, a przelot startowy rusza z jej pierwszą klatką.
@@ -185,17 +199,29 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
   }, [])
   const { setScale } = settings
   useEffect(() => {
-    if (mode !== 'scale' || !pendingScale) return
-    setPendingScale(null)
-    setScale(pendingScale)
-  }, [mode, pendingScale, setScale])
+    if (!pendingScale) return
+    if (mode === 'photo' && settings.scale === pendingScale) {
+      setPendingScale(null)
+      startDive('out')
+    } else if (mode === 'scale') {
+      setPendingScale(null)
+      setScale(pendingScale)
+    }
+  }, [mode, pendingScale, settings.scale, setScale, startDive])
   function chooseScale(scale: SpaceScale) {
     // W stanie zdjęcia kliknięcie skali wraca nurkowaniem; w trakcie wejścia zawraca płynnie (albo anuluje przed startem).
     const action = scaleChoiceAction(mode, settings.scale, scale)
     if (action.type === 'set-scale') { setScale(action.scale); return }
+    if (action.type === 'dive-out') {
+      if (action.scale === settings.scale) startDive('out')
+      else {
+        setScale(action.scale)
+        setPendingScale(action.scale)
+      }
+      return
+    }
     setPendingScale(action.then)
-    if (action.type === 'dive-out') startDive('out')
-    else if (action.type === 'reverse-or-cancel') {
+    if (action.type === 'reverse-or-cancel') {
       if (diveRef.current?.reverse()) { setMode('out'); setPanels(false) }
       else settle('scale')
     }
@@ -275,19 +301,18 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
 }
 
 
-/** then: zakładka do przełączenia przelotem po powrocie do skali (null: zostaje bieżąca, oczekująca zmiana odwołana). */
+/** then: zakładka do przełączenia po przerwanym lub trwającym nurkowaniu. */
 export type ScaleChoiceAction =
-  | { type: 'dive-out'; then: SpaceScale | null }
+  | { type: 'dive-out'; scale: SpaceScale }
   | { type: 'reverse-or-cancel'; then: SpaceScale | null }
   | { type: 'after-return'; then: SpaceScale | null }
   | { type: 'set-scale'; scale: SpaceScale }
 
-/** Reakcja na wybór skali (Droga Mleczna / Wszechświat lokalny) zależnie od stanu nurkowania: poza skalą zawsze
- *  najpierw powrót (nurkowanie wstecz), a druga zakładka dopiero po nim, bez cięcia. */
+/** Wybór skali z rozłożonego zdjęcia od razu nadaje cel nurkowaniu powrotnemu. */
 export function scaleChoiceAction(mode: Mode, currentScale: SpaceScale, nextScale: SpaceScale): ScaleChoiceAction {
   if (mode === 'scale') return { type: 'set-scale', scale: nextScale }
+  if (mode === 'photo') return { type: 'dive-out', scale: nextScale }
   const then = nextScale === currentScale ? null : nextScale
-  if (mode === 'photo') return { type: 'dive-out', then }
   if (mode === 'in') return { type: 'reverse-or-cancel', then }
   return { type: 'after-return', then }
 }
