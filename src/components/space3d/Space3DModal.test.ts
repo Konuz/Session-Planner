@@ -44,8 +44,8 @@ vi.mock('./photoSession', () => ({
   useRegressor: () => new Map(),
 }))
 
-import Space3DModal from './Space3DModal'
-import { PhotoCutEditor, PhotoFlatView } from './PhotoEditing'
+import Space3DModal, { scaleChoiceAction, shouldSkipDive } from './Space3DModal'
+import { PhotoCutEditor, PhotoFlatView, PhotoImport } from './PhotoEditing'
 
 it('nie pokazuje okna z tymczasową skalą, dopóki sesja nie odczyta zapisanego zdjęcia', () => {
   sessionState.restoring = true
@@ -136,4 +136,54 @@ it('na zdjęciu w edycji zaznacza wszystkie obiekty rozwiązania, także bez odl
     expect(markup).not.toMatch(/photo-draggable|photo-resize/)
     expect(markup.match(/class="photo-circle"/g)).toHaveLength(4)
   }
+})
+
+it('po dezaktywacji wczytanego zdjęcia pokazuje w lewym górnym rogu „Rozłóż zdjęcie” i przycisk powrotu do zdjęcia', () => {
+  const project: PhotoProject = {
+    version: 3, id: 'ngc2174', name: 'NGC2174_3.png', image: 'ngc2174.png', width: 1000, height: 1000, createdAt: 0, stars: null,
+    cuts: [], astrometry: { raDeg: 92.4, decDeg: 20.5, rmsPx: 1, matches: 20, edgeMatches: 5, edgeRmsPx: 1, totalMs: 1, wcs: null },
+  }
+  const hidden = renderToString(createElement(PhotoImport, {
+    session: { project, busy: false, ready: true } as PhotoSession,
+    inputRef: { current: null },
+    showButton: false,
+    onActivate: vi.fn(),
+  }))
+  expect(hidden).not.toContain('Rozłóż zdjęcie')
+  expect(hidden).not.toContain('Pokaż zdjęcie:')
+
+  const deactivated = renderToString(createElement(PhotoImport, {
+    session: { project, busy: false, ready: true } as PhotoSession,
+    inputRef: { current: null },
+    showButton: true,
+    onActivate: vi.fn(),
+  })).replace(/<!-- -->/g, '')
+  expect(deactivated).toContain('Rozłóż zdjęcie')
+  expect(deactivated).toContain('Pokaż zdjęcie: NGC2174_3.png')
+  expect(deactivated).not.toContain('Zmień zdjęcie')
+})
+
+it('kliknięcie skali podczas nurkowania lub w stanie zdjęcia wraca do skali, a druga zakładka przełącza się dopiero po powrocie', () => {
+  // Bieżąca skala: zawrócenie nurkowania w głąb albo powrót ze stanu zdjęcia.
+  expect(scaleChoiceAction('in', 'galaxy', 'galaxy')).toEqual({ type: 'reverse-or-cancel', then: null })
+  expect(scaleChoiceAction('in', 'universe', 'universe')).toEqual({ type: 'reverse-or-cancel', then: null })
+  expect(scaleChoiceAction('photo', 'galaxy', 'galaxy')).toEqual({ type: 'dive-out', then: null })
+  // Druga skala: najpierw ten sam powrót, potem przelot zakładek (bez cięcia).
+  expect(scaleChoiceAction('in', 'galaxy', 'universe')).toEqual({ type: 'reverse-or-cancel', then: 'universe' })
+  expect(scaleChoiceAction('in', 'universe', 'galaxy')).toEqual({ type: 'reverse-or-cancel', then: 'galaxy' })
+  expect(scaleChoiceAction('photo', 'galaxy', 'universe')).toEqual({ type: 'dive-out', then: 'universe' })
+  // W trakcie powrotu: druga skala czeka na jego koniec, bieżąca odwołuje oczekującą zmianę.
+  expect(scaleChoiceAction('out', 'galaxy', 'universe')).toEqual({ type: 'after-return', then: 'universe' })
+  expect(scaleChoiceAction('out', 'galaxy', 'galaxy')).toEqual({ type: 'after-return', then: null })
+  expect(scaleChoiceAction('scale', 'galaxy', 'universe')).toEqual({ type: 'set-scale', scale: 'universe' })
+})
+
+it('przerwanie przejścia (skip) ignoruje kliknięcia w pasek narzędzi, nagłówek, przyciski oraz klawisz Esc', () => {
+  const closest = (matched: string) => ({ closest: (sel: string) => sel.includes(matched) ? {} : null })
+  expect(shouldSkipDive({ key: 'Escape' })).toBe(false)
+  expect(shouldSkipDive({ key: ' ' })).toBe(true)
+  expect(shouldSkipDive({ target: closest('.obs-toolbar') })).toBe(false)
+  expect(shouldSkipDive({ target: closest('.obs-header') })).toBe(false)
+  expect(shouldSkipDive({ target: closest('button') })).toBe(false)
+  expect(shouldSkipDive({ target: { closest: () => null } })).toBe(true)
 })

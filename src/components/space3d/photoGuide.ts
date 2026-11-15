@@ -162,8 +162,7 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, s
   if (!basis) return null
   const { sunPos, camera, controls, mount } = handle
   const dir = new THREE.Vector3(...basis.center)
-  // Znacznik leży na promieniu od Ziemi w kierunku obiektu, w odległości punktu sceny od Ziemi. We Wszechświecie lokalnym
-  // skala log. liczy się od centrum Galaktyki, więc scenePosition mijałoby wąski stożek pola o kilka jednostek.
+  // Znacznik leży na promieniu od Ziemi w kierunku obiektu, w odległości punktu sceny od Ziemi.
   const cuts = cutsInThreeD(project.cuts).map((cut) => {
     const toward = new THREE.Vector3(...toScene(galacticVector(cut)))
     const reach = new THREE.Vector3(...scenePoint(toward.toArray() as Vec3, cut.distLy!)).distanceTo(sunPos)
@@ -193,14 +192,22 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, s
   // Znaczniki: symbol atlasowy typu w kolorze adnotacji, każdy wycinek osobno (w nurkowaniu leci do swojej karty).
   let selected: string | null = null, hovered: string | null = null
   const layer = createLabelLayer(handle, 'space-photo-labels', { onPick, onHover: (id) => setHover(id) })
-  const marks: { id: string; position: Vec3; sprite: THREE.Sprite; label: SceneLabel; grouped: boolean }[] = []
+  const marks: { id: string; text: string; color: string; position: Vec3; sprite: THREE.Sprite; label: SceneLabel; grouped: boolean }[] = []
   const textures = new Map<string, THREE.CanvasTexture>()
   const colorOf = (type: ObjectType) => colors[type] ?? DEFAULT_ANNOTATION_COLORS[type]
   let markerScale = 1
+  // Podpis wskazanego znacznika, gdy jego własny podpis jest schowany w plakietce grupy.
+  const hoverEl = document.createElement('div')
+  hoverEl.className = 'obs-label space-photo-label hovered'
+  hoverEl.style.display = 'none'
+  layer.root.appendChild(hoverEl)
+  let hoverSize: [number, number] = [0, 0]
+  let lastHoverId: string | null = null
   const refresh = (mark: (typeof marks)[number]) => {
     const active = mark.id === selected || mark.id === hovered
     mark.label.pinned = mark.id === selected
     mark.label.el.classList.toggle('selected', mark.id === selected)
+    mark.label.el.classList.toggle('hovered', mark.id === hovered)
     mark.sprite.scale.setScalar(markerScale * (active ? MARK_ACTIVE : mark.grouped ? MARK_GROUPED : MARK))
     mark.sprite.renderOrder = active ? 6 : 5
   }
@@ -218,9 +225,11 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, s
     materials.push(sprite.material)
     handle.anchors.add(sprite.position)
     // Każdy wycinek ma swój podpis; bliskie na ekranie łączy warstwa podpisów (plakietka grupy i wachlarz).
-    const mark = { id: cut.id, position: world.toArray() as Vec3, sprite, label: null as unknown as SceneLabel, grouped: false }
-    mark.label = layer.add(sprite.position, [cut.id, `≈ ${fmtDistance(cut.distLy)}`], {
-      color: colorOf(cut.type), id: cut.id, distLy: cut.distLy!,
+    const lines = [cut.id, `≈ ${fmtDistance(cut.distLy)}`]
+    const color = colorOf(cut.type)
+    const mark = { id: cut.id, text: lines.join('\n'), color, position: world.toArray() as Vec3, sprite, label: null as unknown as SceneLabel, grouped: false }
+    mark.label = layer.add(sprite.position, lines, {
+      color, id: cut.id, distLy: cut.distLy!,
       cutout: { image: project.image, width: project.width, height: project.height, x: cut.x, y: cut.y, radius: cut.radius },
       onGroup: (grouped) => { mark.grouped = grouped; refresh(mark); handle.invalidate() },
     })
@@ -258,6 +267,30 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, s
       beyondSprite?.scale.setScalar(markerScale * MARK_BEYOND)
     }
     layer.update(now)
+    const mark = hovered ? byId.get(hovered) : undefined
+    if (!mark || !visible || !group.visible || (!mark.grouped && !mark.label.hidden) || layer.root.classList.contains('fan-open')) {
+      hoverEl.style.display = 'none'
+      return
+    }
+    projected.copy(mark.sprite.position).project(camera)
+    if (projected.z >= 1 || Math.abs(projected.x) >= 1.1 || Math.abs(projected.y) >= 1.1) {
+      hoverEl.style.display = 'none'
+      return
+    }
+    if (lastHoverId !== mark.id) {
+      lastHoverId = mark.id
+      hoverEl.textContent = mark.text
+      hoverEl.style.borderLeftColor = mark.color
+      const lines = mark.text.split('\n')
+      hoverSize = [Math.max(...lines.map((l) => l.length)) * 6.1 + 17, lines.length * 13.5 + 8]
+    }
+    const w = mount.clientWidth, h = mount.clientHeight
+    const x = (projected.x + 1) / 2 * w, y = (1 - projected.y) / 2 * h
+    const [lw, lh] = hoverSize
+    const lx = Math.round(x + 13 + lw <= w - 2 ? x + 13 : Math.max(2, x - 13 - lw))
+    const ly = Math.round(Math.max(2, Math.min(h - lh - 2, y - 9)))
+    hoverEl.style.display = ''
+    hoverEl.style.transform = `translate(${lx}px, ${ly}px)`
   }
   handle.layout.add(updateLayout)
 
@@ -375,7 +408,10 @@ export function usePhotoGuide(handle: Space3DHandle | null, project: PhotoProjec
   if (visible) builtKey.current = cutsKey
   useEffect(() => {
     const project = projectRef.current
-    if (!handle || !project) return
+    if (!handle || !project) {
+      framed.current = { handle: null, id: '', scale: null }
+      return
+    }
     const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#00e0ff'
     const guide = createPhotoGuide(handle, project, scale, colors, accent, (id) => pickRef.current(id))
     if (!guide) return

@@ -122,6 +122,10 @@ export class ObservatoryScene {
   private layoutDirty = true
   private sizedWidth = 0
   private sizedHeight = 0
+  /** Rozmiar bufora rysowania (setSize) i liczba kolejnych klatek bez zmiany rozmiaru płótna. */
+  private bufferWidth = 0
+  private bufferHeight = 0
+  private steadyFrames = 0
   private disposables: { dispose(): void }[] = []
   /** Obiekty i zasoby danych zdjęcia: podmieniane przy setData bez nowego kontekstu WebGL (utrata kontekstu
    *  w trakcie pracy okna daje na D3D11 białą klatkę wszystkich płócien WebGL strony). */
@@ -148,6 +152,8 @@ export class ObservatoryScene {
   /** Klatki z zewnątrz (nurkowanie): własna pętla stoi, pozę i krycia ustawia sterujący. */
   private external = false
   private stars: THREE.Points | null = null
+  /** Stan, z którego policzono bufory gwiazd (null: do przeliczenia). */
+  private starState: { progress: number; photo: number; visible: Set<string> } | null = null
   private starIndex: number[] = []
   private cards = new Map<string, THREE.Sprite>()
   private anchors = new Map<string, THREE.Sprite>()
@@ -164,7 +170,8 @@ export class ObservatoryScene {
   private fan: LabelFan | null = null
   private hovered: string | null = null
   private earthLabel: HTMLDivElement
-  private flight: { offset: [THREE.Vector3Tuple, THREE.Vector3Tuple]; target: [THREE.Vector3, THREE.Vector3]; t0: number; resolve?: () => void } | null = null
+  /** t0: czas pierwszej klatki lotu z requestAnimationFrame (nie performance.now() z chwili kliknięcia, wcześniejszej lub późniejszej). */
+  private flight: { offset: [THREE.Vector3Tuple, THREE.Vector3Tuple]; target: [THREE.Vector3, THREE.Vector3]; t0: number | null; resolve?: () => void } | null = null
   private keys = new Set<string>()
   private lastTick = performance.now()
   private resizeObserver: ResizeObserver
@@ -175,6 +182,8 @@ export class ObservatoryScene {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
     this.renderer.domElement.tabIndex = 0
+    this.renderer.domElement.style.width = '100%'
+    this.renderer.domElement.style.height = '100%'
     this.renderer.domElement.setAttribute('aria-label', 'Scena 3D obserwatorium: przeciągnij, aby obrócić; klawisze WASD przesuwają kamerę')
     host.appendChild(this.renderer.domElement)
     this.labels.className = 'obs-labels'
@@ -228,7 +237,8 @@ export class ObservatoryScene {
     this.renderer.domElement.addEventListener('keyup', this.onKeyUp)
     this.renderer.domElement.addEventListener('blur', () => this.keys.clear())
     // Po rAF obserwator nie czyści ponownie już dopasowanego bufora. Zmiana po rAF nadal dostaje klatkę przed odmalowaniem.
-    this.resizeObserver = new ResizeObserver(() => { if (this.resize()) this.render() })
+    // Klatki z zewnątrz (nurkowanie) same dopasowują rozmiar w step(): obserwator rysowałby drugą klatkę w tej samej.
+    this.resizeObserver = new ResizeObserver(() => { if (!this.external && this.resize()) this.render() })
     this.resizeObserver.observe(host)
     this.resize()
     this.external = options.external ?? false
@@ -243,19 +253,39 @@ export class ObservatoryScene {
     return el
   }
 
-  private resize() {
+  /**
+   * Dopasowanie do rozmiaru płótna. W przejściu (defer) panele okna zmieniają go co klatkę: wtedy tylko proporcje kamery
+   * (CSS zmniejsza bieżący bufor), a dokładny bufor rysowania dopiero po dwóch klatkach bez zmiany. Rosnące płótno
+   * (zwijanie paneli w powrocie) dostaje bufor z zapasem 25 %, żeby nie było rozmyte do końca przejścia. setSize
+   * co klatkę przydzielał bufor od nowa przez całe wsuwanie paneli.
+   */
+  private resize(defer = false) {
     const width = Math.max(1, this.host.clientWidth), height = Math.max(1, this.host.clientHeight)
-    if (width === this.sizedWidth && height === this.sizedHeight) return false
-    this.sizedWidth = width
-    this.sizedHeight = height
-    this.renderer.setSize(width, height, false)
-    this.renderer.domElement.style.width = '100%'
-    this.renderer.domElement.style.height = '100%'
-    this.camera.aspect = width / height
-    this.camera.updateProjectionMatrix()
-    this.closeFan()
-    this.dirty = true
-    return true
+    const changed = width !== this.sizedWidth || height !== this.sizedHeight
+    this.steadyFrames = changed ? 0 : this.steadyFrames + 1
+    if (changed) {
+      this.sizedWidth = width
+      this.sizedHeight = height
+      this.camera.aspect = width / height
+      this.camera.updateProjectionMatrix()
+      this.closeFan()
+      this.dirty = true
+    }
+    if ((width !== this.bufferWidth || height !== this.bufferHeight) && (!defer || this.steadyFrames >= 2)) {
+      this.bufferWidth = width
+      this.bufferHeight = height
+      this.renderer.setSize(width, height, false)
+      this.dirty = true
+      return true
+    }
+    if (defer && (width > this.bufferWidth || height > this.bufferHeight)) {
+      if (width > this.bufferWidth) this.bufferWidth = Math.ceil(width * 1.25)
+      if (height > this.bufferHeight) this.bufferHeight = Math.ceil(height * 1.25)
+      this.renderer.setSize(this.bufferWidth, this.bufferHeight, false)
+      this.dirty = true
+      return true
+    }
+    return changed
   }
 
   /** Zdjęcie jako płaszczyzna oraz karty wycinków i punkty gwiazd. */
@@ -390,6 +420,7 @@ export class ObservatoryScene {
     this.anchors.clear()
     this.visible.clear()
     this.stars = null
+    this.starState = null
     this.starIndex = []
     this.photo = this.frame = this.earth = this.pyramid = this.axisLine = null
     this.tickMaterial = null
@@ -435,16 +466,21 @@ export class ObservatoryScene {
     if (this.pyramid) { this.pyramid.material.opacity = 0.35 * f.pyramid; this.pyramid.visible = f.pyramid > 0 }
     if (this.axisLine) this.axisLine.material.opacity = 0.7 * f.axis
     if (this.tickMaterial) this.tickMaterial.opacity = 0.6 * f.axis
-    if (this.stars) {
+    // Krycia nurkowania zmieniają się co klatkę przy stałym postępie: pozycje gwiazd tylko po zmianie postępu.
+    const stars = this.starState
+    const moved = stars?.progress !== this.progress
+    if (this.stars && (moved || stars?.photo !== f.photo || stars?.visible !== this.visible)) {
       const position = this.stars.geometry.getAttribute('position') as THREE.BufferAttribute
       const alpha = this.stars.geometry.getAttribute('alpha') as THREE.BufferAttribute
       this.starIndex.forEach((itemIndex, i) => {
         const item = this.items[itemIndex]
-        position.setXYZ(i, ...observatoryPosition(item, this.image, item.distLy, this.domain, this.progress))
+        if (moved) position.setXYZ(i, ...observatoryPosition(item, this.image, item.distLy, this.domain, this.progress))
         // Na płaszczyźnie gwiazdy są już na zdjęciu; jasny punkt pojawia się wraz z rozkładaniem.
         alpha.setX(i, this.visible.has(item.id) ? (0.25 + 0.75 * e) * f.photo : 0)
       })
-      position.needsUpdate = alpha.needsUpdate = true
+      position.needsUpdate ||= moved
+      alpha.needsUpdate = true
+      this.starState = { progress: this.progress, photo: f.photo, visible: this.visible }
     }
     const pixelScale = PLANE_WIDTH / this.image.width
     const anchorOpacity = (1 - arrival) * f.photo
@@ -647,10 +683,18 @@ export class ObservatoryScene {
       return Promise.resolve()
     }
     this.closeFan()
+    // Bezwładność obrotu sprzed lotu zerowana bez ruchu kamery: inaczej tłumienie dokładałoby ją do toru lotu.
+    const from = this.camera.position.clone(), fromTarget = this.controls.target.clone()
+    const damping = this.controls.enableDamping
+    this.controls.enableDamping = false
+    this.controls.update()
+    this.controls.enableDamping = damping
+    this.camera.position.copy(from)
+    this.controls.target.copy(fromTarget)
     return new Promise((resolve) => {
       this.flight?.resolve?.()
       const offset = (p: THREE.Vector3, t: THREE.Vector3) => p.clone().sub(t).toArray([0, 0, 0])
-      this.flight = { offset: [offset(this.camera.position, this.controls.target), offset(position, target)], target: [this.controls.target.clone(), target], t0: performance.now(), resolve }
+      this.flight = { offset: [offset(from, fromTarget), offset(position, target)], target: [fromTarget, target], t0: null, resolve }
     })
   }
 
@@ -669,15 +713,16 @@ export class ObservatoryScene {
   }
 
   step(now: number) {
-    this.resize()
+    this.resize(this.external)
     if (this.external) {
       if (this.dirty) this.render()
       return
     }
-    const delta = Math.min((now - this.lastTick) / 1000, 0.05)
+    const delta = Math.min(Math.max(0, now - this.lastTick) / 1000, 0.05)
     this.lastTick = now
     if (this.flight) {
-      const k = Math.min(1, (now - this.flight.t0) / FLY_MS)
+      this.flight.t0 ??= now
+      const k = Math.min(1, Math.max(0, now - this.flight.t0) / FLY_MS)
       const e = 1 - (1 - k) ** 3
       // Kamera po sferze wokół przesuwanego celu: obrót i zmiana wysokości kończą się razem.
       this.controls.target.lerpVectors(this.flight.target[0], this.flight.target[1], e)

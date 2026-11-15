@@ -32,29 +32,21 @@ export function sunPosition(): Vec3 {
   return toScene([-SUN_TO_GC_KLY, 0, 0])
 }
 
-/** Promień części logarytmicznej (od centrum Galaktyki) dla odległości distLy. */
+/** Promień części logarytmicznej (od Ziemi) dla odległości distLy. */
 const logRadius = (distLy: number) => Math.max(0, Math.log10(distLy / 1e4)) * LOG_UNIT
 
-/** Położenie w scenie punktu w kierunku `dir` (wektor jednostkowy sceny) i odległości distLy; reguły jak scenePosition. */
+/** Położenie w scenie punktu w kierunku `dir` (wektor jednostkowy sceny) i odległości distLy od Ziemi; reguły jak scenePosition. */
 export function scenePoint(dir: Vec3, distLy: number): Vec3 {
-  if (distLy < GALACTIC_LIMIT_LY) {
-    const d = distLy / 1000
-    const sun = sunPosition()
-    return [sun[0] + dir[0] * d, sun[1] + dir[1] * d, sun[2] + dir[2] * d]
-  }
-  const r = logRadius(distLy)
-  return [dir[0] * r, dir[1] * r, dir[2] * r]
+  const r = distLy < GALACTIC_LIMIT_LY ? distLy / 1000 : logRadius(distLy)
+  const sun = sunPosition()
+  return [sun[0] + dir[0] * r, sun[1] + dir[1] * r, sun[2] + dir[2] * r]
 }
 
-/** Położenie w scenie: obiekty Drogi Mlecznej liniowo od Słońca (1 j. = 1000 lś); dalsze w skali log. od centrum Galaktyki. */
+/** Położenie w scenie od Ziemi: obiekty Drogi Mlecznej liniowo (1 j. = 1000 lś), dalsze w skali log. */
 export function scenePosition(o: { raDeg: number; decDeg: number }, distLy: number): Vec3 {
   const v = galacticVector(o)
-  if (distLy < GALACTIC_LIMIT_LY) {
-    const d = distLy / 1000
-    return toScene([v[0] * d - SUN_TO_GC_KLY, v[1] * d, v[2] * d])
-  }
-  const r = logRadius(distLy)
-  return toScene([v[0] * r, v[1] * r, v[2] * r])
+  const r = distLy < GALACTIC_LIMIT_LY ? distLy / 1000 : logRadius(distLy)
+  return toScene([v[0] * r - SUN_TO_GC_KLY, v[1] * r, v[2] * r])
 }
 
 export type LayerFades = { galactic: number; extragalactic: number }
@@ -77,3 +69,49 @@ export function mixFades(a: LayerFades, b: LayerFades, t: number): LayerFades {
   // Postać a·(1 − t) + b·t daje dokładnie b na końcu przelotu.
   return { galactic: a.galactic * (1 - t) + b.galactic * t, extragalactic: a.extragalactic * (1 - t) + b.extragalactic * t }
 }
+
+/** Skala pinezki wybranego obiektu względem odległości kamery: większa z bliska, mniejsza z daleka. */
+export function pinScale(distance: number, scale: SpaceScale): number {
+  if (!Number.isFinite(distance)) return 1
+  const ref = scale === 'galaxy' ? 20 : 750
+  const s = Math.sqrt(ref / Math.max(distance, 0.01))
+  return Math.min(1.6, Math.max(0.45, s))
+}
+
+/**
+ * Przenikanie kryć po zmianie zakładki: od kryć zakładki wyjściowej (liczonych z odległości kamery w każdej klatce,
+ * jak bez przerwań) przesuniętych o `offset` do kryć ostatniej klatki przed zmianą, przez `ms` od pierwszej klatki.
+ */
+export interface FadeBlend { fromScale: SpaceScale; offset: LayerFades; start: number; ms: number }
+
+/** Przenikanie od kryć `current` bieżącej klatki (kamera w odległości `distance`) przy wyjściu z zakładki `fromScale`. */
+export function startFadeBlend(current: LayerFades, distance: number, fromScale: SpaceScale, start: number, ms: number): FadeBlend {
+  const from = layerFades(distance, fromScale)
+  return { fromScale, offset: { galactic: current.galactic - from.galactic, extragalactic: current.extragalactic - from.extragalactic }, start, ms }
+}
+
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
+
+/**
+ * Krycia w chwili `now` przenikania do zakładki `scale`. Bez przerwań przesunięcie jest zerowe i wynik to dawne
+ * mixFades obu zakładek. Przenikanie ma własny zegar, więc przerwany przelot kamery (przeciągnięcie, inny obiekt)
+ * go nie urywa, a kolejna zmiana zakładki zaczyna dokładnie od kryć bieżącej klatki.
+ */
+export function blendFades(blend: FadeBlend, distance: number, scale: SpaceScale, now: number, easing: (t: number) => number): { fades: LayerFades; done: boolean } {
+  const t = Math.min(1, Math.max(0, (now - blend.start) / blend.ms))
+  const base = layerFades(distance, blend.fromScale)
+  const from = { galactic: clamp01(base.galactic + blend.offset.galactic), extragalactic: clamp01(base.extragalactic + blend.offset.extragalactic) }
+  return { fades: mixFades(from, layerFades(distance, scale), easing(t)), done: t >= 1 }
+}
+
+/** Wygląd kopuł odległości Wszechświata lokalnego (lista „Warstwy” okna „Pozycja 3D”). */
+export type DomeStyle = 'plain' | 'glint' | 'reflection' | 'thick'
+
+export const DOME_STYLES: { id: DomeStyle; label: string; title: string }[] = [
+  { id: 'plain', label: 'Mgiełka', title: 'Prawie przezroczysta kopuła, jaśniejsza przy krawędziach' },
+  { id: 'glint', label: 'Bańka', title: 'Szklana bańka z obwódką i odbiciem światła' },
+  { id: 'reflection', label: 'Odbicie', title: 'Szkło odbijające pas Drogi Mlecznej' },
+  { id: 'thick', label: 'Grube szkło', title: 'Grube szkło: barwna obwódka, wewnętrzna ścianka i krawędź u podstawy' },
+]
+
+export const isDomeStyle = (v: unknown): v is DomeStyle => DOME_STYLES.some((s) => s.id === v)

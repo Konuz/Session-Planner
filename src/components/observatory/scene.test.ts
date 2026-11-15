@@ -93,6 +93,12 @@ it('łączy zmiany postępu, krycia i zaznaczenia w jedną aktualizację buforó
   scene.step(116)
   expect(positions.version).toBe(1)
   expect(rendered).toHaveLength(1)
+  // Krycia nurkowania co klatkę przy stałym postępie: tylko bufor krycia gwiazd, bez przeliczania pozycji.
+  scene.setFade({ photo: 0.35 }, 0.3)
+  scene.step(132)
+  expect(positions.version).toBe(1)
+  expect(alphas.version).toBe(2)
+  expect(alphas.getX(0)).toBeCloseTo(0.21875)
 })
 
 it('wybór kursorem uwzględnia aktualną widoczność i pozycję przed następną klatką', () => {
@@ -118,20 +124,48 @@ it('wcześniej zwiększa krycie wycinka Drogi Mlecznej podczas rozkładania zdj�
   expect(card.material.opacity).toBeCloseTo(0.26)
 })
 
-it('dopasowuje bufor i kamerę przed klatką, bez ponownego czyszczenia tego samego rozmiaru', () => {
+it('w przejściu zmienia co klatkę tylko proporcje kamery, a bufor rysowania po ustaniu zmian rozmiaru', () => {
   const { scene, host, sizes, camera, rendered } = fixture()
+  // Stan po konstruktorze: bufor dopasowany do płótna.
+  Object.assign(scene, { sizedWidth: 600, sizedHeight: 600, bufferWidth: 600, bufferHeight: 600, steadyFrames: 0 })
   scene.setProgress(0.5)
   scene.step(100)
-  expect(sizes).toEqual([[600, 600]])
+  expect(rendered).toHaveLength(1)
+  // Panele wsuwają się: płótno zwęża się w kolejnych klatkach, kamera nadąża bez nowego bufora.
   host.clientWidth = 420
   scene.step(116)
-  expect(sizes).toEqual([[600, 600], [420, 600]])
   expect(camera.aspect).toBe(0.7)
-  expect(rendered).toHaveLength(2)
-  // ResizeObserver przychodzi po rAF; bufor ma już właściwy rozmiar i nie wymaga nowego rysowania.
-  const resize = Reflect.get(scene, 'resize') as () => boolean
-  expect(resize.call(scene)).toBe(false)
+  host.clientWidth = 400
   scene.step(132)
+  expect(camera.aspect).toBeCloseTo(400 / 600, 12)
+  expect(sizes).toEqual([])
+  expect(rendered).toHaveLength(3)
+  // Dwie klatki bez zmiany: jeden nowy bufor i klatka w nim.
+  scene.step(148)
+  expect(sizes).toEqual([])
+  scene.step(164)
+  expect(sizes).toEqual([[400, 600]])
+  expect(rendered).toHaveLength(4)
+  scene.step(180)
+  expect(sizes).toHaveLength(1)
+  expect(rendered).toHaveLength(4)
+  // Panele zwijają się (powrót): rosnące płótno dostaje od razu bufor z zapasem, potem jeden dokładny.
+  host.clientWidth = 480
+  scene.step(196)
+  expect(sizes).toEqual([[400, 600], [600, 600]])
+  host.clientWidth = 560
+  scene.step(212)
   expect(sizes).toHaveLength(2)
-  expect(rendered).toHaveLength(2)
+  host.clientWidth = 640
+  scene.step(228)
+  expect(sizes).toEqual([[400, 600], [600, 600], [800, 600]])
+  scene.step(244)
+  scene.step(260)
+  expect(sizes).toEqual([[400, 600], [600, 600], [800, 600], [640, 600]])
+  // Poza przejściem (ResizeObserver, własna pętla) bufor nadąża od razu; ten sam rozmiar nie wymaga nowego rysowania.
+  const resize = Reflect.get(scene, 'resize') as (defer?: boolean) => boolean
+  expect(resize.call(scene)).toBe(false)
+  host.clientWidth = 500
+  expect(resize.call(scene)).toBe(true)
+  expect(sizes.at(-1)).toEqual([500, 600])
 })

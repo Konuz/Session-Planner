@@ -1,5 +1,5 @@
 import { Pause, Play, RotateCcw } from 'lucide-react'
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ComponentType } from 'react'
 import { AltitudeChart } from '../components/AltitudeChart'
 import { ErrorBoundary } from '../components/ErrorBoundary'
 import { FramingPanel } from '../components/FramingPanel'
@@ -11,7 +11,14 @@ import { fmtTime } from '../lib/format'
 import { useCatalog, useNight, useTime } from '../state/data'
 import { useStore, type CenterMode } from '../state/store'
 
-const Space3DModal = lazy(() => import('../components/space3d/Space3DModal'))
+// Okno „Pozycja 3D” ładowane leniwie, ale bez Suspense: React 19 odsłania treść po pokazanym fallbacku najwcześniej
+// 300 ms po nim, więc okno czekało tyle mimo pobranego modułu. Moduł zaczyna się ładować już przy wskazaniu przycisku.
+let Space3DModal: ComponentType | null = null
+let space3DLoading: Promise<void> | null = null
+const loadSpace3D = () => space3DLoading ??= import('../components/space3d/Space3DModal').then((m) => { Space3DModal = m.default }, (error: unknown) => {
+  // Jak odrzucony lazy(): okno rzuca błąd przy renderze, a pokazuje go ErrorBoundary.
+  Space3DModal = () => { throw error }
+})
 
 const MODES: { id: CenterMode; label: string }[] = [
   { id: 'dome', label: 'Niebo' },
@@ -68,6 +75,13 @@ export function SkyView() {
 
   // Okno „Pozycja 3D” zasłania kopułę: odtwarzanie nocy nie powinno jej przerysowywać w tle.
   useEffect(() => { if (space3DOpen) setPlaying(false) }, [space3DOpen])
+  const [space3DReady, setSpace3DReady] = useState(() => Space3DModal !== null)
+  useEffect(() => {
+    if (!space3DOpen || space3DReady) return
+    let live = true
+    void loadSpace3D().then(() => { if (live) setSpace3DReady(true) })
+    return () => { live = false }
+  }, [space3DOpen, space3DReady])
 
   // Pierwsze uruchomienie: M 51 jak w prototypie.
   useEffect(() => {
@@ -93,7 +107,7 @@ export function SkyView() {
                 {label}
               </button>
             ))}
-            <button className={`button small${space3DOpen ? ' active' : ''}`} data-space3d-opener onClick={() => setSpace3DOpen(true)}>Pozycja 3D</button>
+            <button className={`button small${space3DOpen ? ' active' : ''}`} data-space3d-opener onPointerEnter={() => void loadSpace3D()} onFocus={() => void loadSpace3D()} onClick={() => setSpace3DOpen(true)}>Pozycja 3D</button>
             <PlaybackControls visible={mode === 'dome'} playing={playing} setPlaying={setPlaying} />
           </div>
         </section>
@@ -113,7 +127,7 @@ export function SkyView() {
             </div>
           </div>
         )}>
-          <Suspense fallback={null}><Space3DModal /></Suspense>
+          {space3DReady && Space3DModal && <Space3DModal />}
         </ErrorBoundary>
       )}
     </>

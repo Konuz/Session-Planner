@@ -322,7 +322,7 @@ export function FramingPanel() {
             data-keeps-stretch
             onClick={() => setFrameVisible((v) => !v)}
           >
-            {frameVisible ? <Eye size={15} aria-hidden="true" /> : <EyeOff size={15} aria-hidden="true" />}
+            {frameVisible ? <Eye size={20} aria-hidden="true" /> : <EyeOff size={20} aria-hidden="true" />}
           </button>
           <button
             ref={stretchButtonRef}
@@ -332,7 +332,7 @@ export function FramingPanel() {
             aria-haspopup="dialog"
             onClick={() => setStretchOpen((v) => !v)}
           >
-            <ChartColumn size={15} aria-hidden="true" />
+            <ChartColumn size={20} aria-hidden="true" />
           </button>
         </div>
       </div>

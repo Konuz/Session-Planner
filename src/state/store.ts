@@ -5,6 +5,7 @@ import { EMPTY_FILTER, type CatalogFilter, type ObjectType, SKY_GROUPS, type Sky
 import type { Mosaic } from '../lib/framing'
 import type { HorizonPoint } from '../lib/horizon'
 import { nightDateOf } from '../lib/night'
+import { isDomeStyle, type DomeStyle } from '../lib/space3d'
 import { isSkyLook, type SkyLook } from '../lib/hipsSky'
 import { isThumbSource, type ThumbSource } from '../lib/thumbs'
 import { planExposures, type Exposure } from '../lib/exposures'
@@ -152,11 +153,15 @@ interface State {
   showAnnotations: boolean
   /** Podpisy obiektów tła w widoku 3D (domyślnie wyłączone). */
   show3DAnnotations: boolean
-  annotationColors: Partial<Record<ObjectType, string>>
-  /** Wygląd nieba na kopule widoku Niebo: domyślny albo NSNS. */
+  /** Wygląd kopuł odległości Wszechświata lokalnego w oknie „Pozycja 3D”. */
+  domeStyle: DomeStyle
+  /** Krycie kopuł odległości (0,1–1), mnożone przez wygaszanie warstw. */
+  domeOpacity: number
+  /** Wygląd nieba na kopule widoku Niebo: domyślny albo NSNS true-color. */
   skyLook: SkyLook
   /** Źródło miniatur obiektów; NSNS tylko dla dużych pól w pokryciu (`thumbImageOptions`). */
   thumbSource: ThumbSource
+  annotationColors: Partial<Record<ObjectType, string>>
   /** Licznik „znajdź obiekt”: zmiana uruchamia animację na kopule. */
   findPulse: number
 
@@ -198,6 +203,8 @@ interface State {
   resetAnnotationColors(): void
   setOwnPhotosOpacity(value: number): void
   setOutlinesOpacity(value: number): void
+  setDomeStyle(style: DomeStyle): void
+  setDomeOpacity(value: number): void
   setSkyLook(look: SkyLook): void
   setThumbSource(source: ThumbSource): void
   toggle(key: 'showLines' | 'showTracks' | 'showArt' | 'showOutlines' | 'showOwnPhotos' | 'showEllipses' | 'showLabels' | 'showAnnotations' | 'show3DAnnotations' | 'onlyVisible'): void
@@ -268,9 +275,11 @@ export const useStore = create<State>()(
       showLabels: true,
       showAnnotations: true,
       show3DAnnotations: false,
-      annotationColors: {},
+      domeStyle: 'plain',
+      domeOpacity: 1,
       skyLook: 'default',
       thumbSource: 'dss2',
+      annotationColors: {},
       findPulse: 0,
 
       setTab: (tab, catalogPlanMode) => set({ tab, catalogPlanMode: tab === 'catalog' ? catalogPlanMode ?? null : null }),
@@ -411,6 +420,8 @@ export const useStore = create<State>()(
       resetAnnotationColors: () => set({ annotationColors: {} }),
       setOwnPhotosOpacity: (value) => set({ ownPhotosOpacity: Math.max(0.1, Math.min(1, value)) }),
       setOutlinesOpacity: (value) => set({ outlinesOpacity: Math.max(0.1, Math.min(1, value)) }),
+      setDomeStyle: (domeStyle) => set({ domeStyle }),
+      setDomeOpacity: (value) => set({ domeOpacity: Math.max(0.1, Math.min(1, value)) }),
       setSkyLook: (skyLook) => set({ skyLook }),
       setThumbSource: (thumbSource) => set({ thumbSource }),
       toggle: (key) => set((s) => ({ [key]: !s[key] }) as Partial<State>),
@@ -450,9 +461,11 @@ export const useStore = create<State>()(
         showLabels: s.showLabels,
         showAnnotations: s.showAnnotations,
         show3DAnnotations: s.show3DAnnotations,
-        annotationColors: s.annotationColors,
+        domeStyle: s.domeStyle,
+        domeOpacity: s.domeOpacity,
         skyLook: s.skyLook,
         thumbSource: s.thumbSource,
+        annotationColors: s.annotationColors,
       }),
       // Grupy katalogów dopisane po zapisie stanu startują włączone; stan sprzed poziomów kadru dostaje pusty obiekt.
       merge: (persisted, current) => {
@@ -463,6 +476,8 @@ export const useStore = create<State>()(
           ...current, ...p, skyGroups: { ...current.skyGroups, ...p?.skyGroups }, framingStretch: { ...p?.framingStretch }, ownPhotos: { ...p?.ownPhotos },
           weatherProvider: normalizeWeatherProvider(p?.weatherProvider),
           ownPhotosOpacity: opacity(p?.ownPhotosOpacity), outlinesOpacity: opacity(p?.outlinesOpacity),
+          domeStyle: isDomeStyle(p?.domeStyle) ? p.domeStyle : current.domeStyle,
+          domeOpacity: opacity(p?.domeOpacity),
           skyLook: isSkyLook(p?.skyLook) ? p.skyLook : current.skyLook,
           thumbSource: isThumbSource(p?.thumbSource) ? p.thumbSource : current.thumbSource,
         }

@@ -14,19 +14,22 @@ import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO, type DSO, type ObjectType } from 
 import { useCatalog, useSelected } from '../state/data'
 import { useStore } from '../state/store'
 import type { PhotoProject } from '../lib/photo'
-import { GALACTIC_LIMIT_LY, LOG_UNIT, UNIVERSE_GALAXY_SCALE, UNIVERSE_MIN_SPAN, layerFades, mixFades, sunPosition, type SpaceScale } from '../lib/space3d'
+import { GALACTIC_LIMIT_LY, LOG_UNIT, UNIVERSE_GALAXY_SCALE, UNIVERSE_MIN_SPAN, blendFades, layerFades, pinScale, startFadeBlend, sunPosition, type FadeBlend, type SpaceScale } from '../lib/space3d'
 import { constellationView, framePose, sideView, SPACE_FAR, SPACE_FOV, type CameraPose } from '../lib/spaceCamera'
 import { ease, lerpPose, zoomPose, type Pose } from '../lib/spaceDive'
 import {
-  LOCAL_GROUP_SHAPES, MILKY_WAY_DIAMETER_LY, addStarNameLabels, domeMaterial, dotTexture, fixedSizeTextSprite,
+  LOCAL_GROUP_SHAPES, MILKY_WAY_DIAMETER_LY, addStarNameLabels, dotTexture, fixedSizeTextSprite,
   galaxyTexture, localGroupGalaxy, milkyWay, position, textSprite, toThree, type StarNameLayout,
 } from './space3d/galaxyModels'
 import { GALAXY_LEVELS, type ConstellationStar, type SpaceSettings } from './space3d/spaceSettings'
+import { createDomeMaterial } from './space3d/domeMaterials'
 import { createEarthAssets, createEarthMesh } from './space3d/earthModel'
 
 interface Props {
   settings: SpaceSettings
   photo: PhotoProject | null
+  /** Wywoływane przy kliknięciu obiektu katalogu w scenie 3D (dezaktywuje aktywne zdjęcie). */
+  onSelectObject?(): void
   /** Dostęp do sceny dla znaczników zdjęcia i nurkowania (null przy przebudowie i odmontowaniu). */
   onHandle?(handle: Space3DHandle | null): void
 }
@@ -54,6 +57,9 @@ export interface Space3DHandle {
   invalidate(): void
   /** Koniec przelotu kamery i obrotu poglądowego. */
   stopIntro(): void
+  /** Wywołanie, gdy kamera stoi (bez przelotu, powrotu soczewki i przenikania kryć): cięższa praca modułów okna
+   *  (np. tworzenie sceny Obserwatorium) nie trafia w ruch kamery. Zwraca anulowanie. */
+  afterFlight(callback: () => void): () => void
   /** Płynny przelot kamery z bieżącej pozy (cięcie przy ograniczonym ruchu). */
   flyTo(pose: CameraPose, ms?: number, zoom?: boolean): void
   viewConstellation(abbr: string): void
@@ -98,17 +104,23 @@ const INTRO_MS = 2200
 const FLY_MS = 900
 /** Przelot przy zmianie zakładki (zbliżenie albo oddalenie ok. 8 razy). */
 const SWITCH_MS = 1600
+/** Powrót pola widzenia i gwiazdozbioru z widoku nieba do 3D, gdy użytkownik przejmie kamerę. */
+const LENS_MS = 600
+/** Obrót Ziemi (2°/s) widać dopiero przy takim promieniu na ekranie (ok. 1 px/s); mniejszy znacznik nie wymaga klatek. */
+const EARTH_SPIN_PX = 30
 /** Krycie modelu Drogi Mlecznej z daleka: 52 tys. punktów sumuje się jak dawne 12 tys. we Wszechświecie lokalnym. */
 const MW_FAR_OPACITY = 0.14
 const easeOut = (t: number) => 1 - (1 - t) ** 3
 
-export default function Space3D({ settings, photo, onHandle }: Props) {
+export default function Space3D({ settings, photo, onSelectObject, onHandle }: Props) {
   const { scale, galaxyLevel, hiddenTypes, showConstellations, showStarNames, constellationChoice, constellations } = settings
-  // Zakładka nie przebudowuje sceny: przy budowie wyznacza kadr startowy, potem zmienia ją efekt [o, scale].
+  // Zakładka nie przebudowuje sceny: przy budowie wyznacza kadr startowy, potem zmienia ją efekt [o, scale, hasPhoto].
   const scaleRef = useRef(scale)
   scaleRef.current = scale
   const photoRef = useRef(photo)
   photoRef.current = photo
+  const onSelectObjectRef = useRef(onSelectObject)
+  onSelectObjectRef.current = onSelectObject
   const onHandleRef = useRef(onHandle)
   onHandleRef.current = onHandle
   const mountRef = useRef<HTMLDivElement>(null)
@@ -139,6 +151,14 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
   /** Zmiana sceny poza pętlą (warstwy, filtry): następna klatka musi zostać wyrenderowana. */
   const sceneDirty = useRef(true)
   const showAnnotations = useStore((s) => s.show3DAnnotations)
+  const domeStyle = useStore((s) => s.domeStyle)
+  const domeStyleRef = useRef(domeStyle)
+  domeStyleRef.current = domeStyle
+  const domeOpacity = useStore((s) => s.domeOpacity)
+  const domeOpacityRef = useRef(domeOpacity)
+  domeOpacityRef.current = domeOpacity
+  /** Kopuły odległości: styl zmienia materiał bez przebudowy sceny; userData.fade to ostatnie krycie z wygaszania. */
+  const domesRef = useRef<THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial>[]>([])
   const annotationsRef = useRef(showAnnotations)
   annotationsRef.current = showAnnotations
   const annotationColors = useStore((s) => s.annotationColors)
@@ -149,8 +169,9 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
   const objectRef = useRef(o)
   objectRef.current = o
   const hasObject = !!o
-  /** Zmiana wybranego obiektu lub zakładki w istniejącej scenie (bez nowego renderera), jednym przelotem. */
-  const showObjectRef = useRef<((object: DSO, scale: SpaceScale) => void) | null>(null)
+  /** Zmiana wybranego obiektu, zakładki lub aktywności zdjęcia w istniejącej scenie (bez nowego renderera). */
+  const showObjectRef = useRef<((object: DSO, scale: SpaceScale, force?: boolean) => void) | null>(null)
+  const syncPhotoRef = useRef<(() => void) | null>(null)
   const constellationChoiceRef = useRef(constellationChoice)
   constellationChoiceRef.current = constellationChoice
   const { catalog } = useCatalog()
@@ -325,26 +346,35 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
     {
       // Pierścienie odległości (skala logarytmiczna) z kopułami; wymiary dawnej sceny Wszechświata × 1/0,12.
       const u = 1 / UNIVERSE_GALAXY_SCALE
+      const domes: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial>[] = []
+      domesRef.current = domes
+      // Materiały kopuł zmieniają się ze stylem: sprzątane są te bieżące.
+      disposables.push({ dispose: () => domes.forEach((d) => d.material.dispose()) })
       for (const [ly, text] of [[1e6, '1 mln lś'], [1e7, '10 mln lś'], [1e8, '100 mln lś'], [1e9, '1 mld lś']] as const) {
         const r = Math.log10(ly / 1e4) * LOG_UNIT
         const ringMaterial = new THREE.MeshBasicMaterial({ color: 0x00e0ff, transparent: true, opacity: 0.18, side: THREE.DoubleSide })
         const ring = new THREE.Mesh(new THREE.RingGeometry(r - 0.08 * u, r + 0.08 * u, 128), ringMaterial)
+        ring.position.copy(sunPos)
         ring.rotation.x = -Math.PI / 2
         scene.add(ring)
         disposables.push(ring.geometry, ringMaterial)
         // Półprzezroczysta kopuła nad pierścieniem: odległość czytelna także dla wysokości nad płaszczyzną.
-        const domeShader = domeMaterial()
-        const dome = new THREE.Mesh(new THREE.SphereGeometry(r, 64, 24, 0, Math.PI * 2, 0, Math.PI / 2), domeShader)
+        // Siatka 128 × 48: odblaski szklanych stylów nie łamią się na ściankach.
+        const dome = new THREE.Mesh(new THREE.SphereGeometry(r, 128, 48, 0, Math.PI * 2, 0, Math.PI / 2), createDomeMaterial(domeStyleRef.current))
+        dome.position.copy(sunPos)
+        dome.userData.fade = 1
+        domes.push(dome)
         scene.add(dome)
-        disposables.push(dome.geometry, domeShader)
+        disposables.push(dome.geometry)
         const t = label(text, '#6fdcf0')
-        t.position.set(r + 2 * u, u, 0)
+        t.position.set(sunPos.x + r + 2 * u, sunPos.y + u, sunPos.z)
         scene.add(t)
         extragalacticFaders.push((fade, labelFade) => {
           ring.visible = dome.visible = fade > 0
           t.visible = labelFade > 0
           ringMaterial.opacity = 0.18 * fade
-          domeShader.uniforms.opacity.value = fade
+          dome.userData.fade = fade
+          dome.material.uniforms.opacity.value = fade * domeOpacityRef.current
           t.material.opacity = labelFade
         })
       }
@@ -361,7 +391,8 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
     let earth: THREE.Mesh
     let earthClouds: THREE.Mesh
     {
-      const assets = createEarthAssets(import.meta.env.BASE_URL, renderer.capabilities.getMaxAnisotropy())
+      // Wczytana tekstura od razu w klatce (renderowanie na żądanie nie ma już klatek obrotu małej Ziemi co 100 ms).
+      const assets = createEarthAssets(import.meta.env.BASE_URL, renderer.capabilities.getMaxAnisotropy(), () => { sceneDirty.current = true })
       // Kula jednostkowa: promień w scenie ustawia skala (znacznik do 7 px, nie więcej niż earthCap).
       const rig = createEarthMesh(1, assets)
       earth = rig.mesh
@@ -392,13 +423,19 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       textLayoutDirty.current = sceneDirty.current = true
     }
     applyScale()
-    // Krycia warstw: zakładka ma swoje warstwy w pełni, druga skala zależy od odległości kamery od początku układu, a w przelocie
-    // zakładek krycia obu zakładek się przenikają. Nurkowanie mnoży je przez swoje wygaszanie (podpisy gasną szybciej).
-    const applyFades = () => {
+    // Krycia warstw: zakładka ma swoje warstwy w pełni, druga skala zależy od odległości kamery od początku układu, a po zmianie
+    // zakładki krycia obu zakładek się przenikają, od kryć ostatniej klatki (własny zegar: przerwany przelot nie daje skoku).
+    // Nurkowanie mnoży je przez swoje wygaszanie (podpisy gasną szybciej).
+    let fadeBlend: (Omit<FadeBlend, 'start'> & { start: number | null }) | null = null
+    const applyFades = (now: number) => {
       const distance = camera.position.length()
-      fades = flight?.fromScale && flight.fromScale !== tab
-        ? mixFades(layerFades(distance, flight.fromScale), layerFades(distance, tab), flight.progress)
-        : layerFades(distance, tab)
+      fades = layerFades(distance, tab)
+      if (fadeBlend) {
+        fadeBlend.start ??= now
+        const blended = blendFades(fadeBlend as FadeBlend, distance, tab, now, ease)
+        fades = blended.fades
+        if (blended.done) fadeBlend = null
+      }
       const layer = override.layerFade, labels = override.labelFade
       galacticPoints.material.opacity = 0.8 * fades.galactic * layer
       galacticPoints.material.visible = fades.galactic * layer > 0
@@ -411,9 +448,9 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
 
     // Przelot kamery: jedna interpolacja pozy (cel liniowo, kamera po sferze wokół celu), startowa znad Galaktyki.
     camera.position.set(0, tab === 'galaxy' ? 120 : 200 / UNIVERSE_GALAXY_SCALE, 0.01)
-    // Zakładka sprzed ostatniej zmiany: przelot zakładek przenika krycia warstw od niej do bieżącej (fromScale, progress).
-    let previousTab: SpaceScale = tab
-    let flight: { from: Pose; to: Pose; start: number | null; ms: number; easing(t: number): number; zoom: boolean; fromScale: SpaceScale | null; progress: number; fromFov: number; toFov: number; fromNear: number; toNear: number; fromSky: number; toSky: number } | null = null
+    let flight: { from: Pose; to: Pose; start: number | null; ms: number; easing(t: number): number; zoom: boolean; fromFov: number; toFov: number; fromNear: number; toNear: number; fromSky: number; toSky: number } | null = null
+    /** Powrót do zwykłego pola widzenia i gwiazdozbioru 3D po przejęciu kamery w widoku nieba (kamera zostaje u użytkownika). */
+    let lens: { start: number | null; fov: number; sky: number } | null = null
     const setProjection = (fov: number, near: number) => {
       if (fov === camera.fov && near === camera.near) return
       camera.fov = fov
@@ -433,6 +470,8 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       controls.target.set(...target)
       camera.lookAt(controls.target)
       sceneDirty.current = true
+      // Nowy przelot prowadzi pole widzenia i gwiazdozbiór od ich bieżących wartości.
+      lens = null
       if (reduced) {
         flight = null
         camera.position.set(...pose.position)
@@ -442,7 +481,12 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
         else skyView?.update(toSky)
         return
       }
-      flight = { from: { position, target, up: UP }, to: { ...pose, up: UP }, start: null, ms, easing, zoom, fromScale: zoom ? previousTab : null, progress: 0, fromFov: camera.fov, toFov: fov, fromNear: camera.near, toNear: near, fromSky: skyView?.amount ?? 0, toSky }
+      flight = { from: { position, target, up: UP }, to: { ...pose, up: UP }, start: null, ms, easing, zoom, fromFov: camera.fov, toFov: fov, fromNear: camera.near, toNear: near, fromSky: skyView?.amount ?? 0, toSky }
+    }
+    /** Użytkownik przejął kamerę w widoku nieba lub w drodze do niego: pole widzenia i gwiazdozbiór wracają płynnie. */
+    const settleLens = () => {
+      if (lens || (camera.fov === SPACE_FOV && !skyView)) return
+      lens = { start: null, fov: camera.fov, sky: skyView?.amount ?? 0 }
     }
 
     // Wybrany obiekt: linia od Ziemi, pion do płaszczyzny Galaktyki i podpis. Zmiana obiektu przebudowuje tylko
@@ -455,8 +499,8 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
     // Największy promień znacznika Ziemi: nie zasłania bliskiego obiektu.
     let earthCap = 0.35
     const showObject = (object: DSO, ms: number, zoom = false) => {
+      // Widok nieba gwiazdozbioru nie znika od razu: przelot (albo bez niego powrót soczewki) prowadzi go z powrotem do 3D.
       constellationReturn = null
-      clearSkyView()
       for (const child of [...objectGuide.children]) {
         objectGuide.remove(child)
         if (child instanceof THREE.Sprite) {
@@ -494,10 +538,10 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       } else {
         // Tylko kierunek ze Słońca. Ta sama informacja w obu skalach: obiekt Galaktyki leży w Drodze Mlecznej
         // (promień kończy się na jej krawędzi), galaktyka poza nią (promień wychodzi poza Drogę Mleczną).
-        // Przecięcie promienia ze sferą wokół centrum Galaktyki: krawędź dysku albo granica danej skali.
+        // Przecięcie promienia ze sferą wokół centrum Galaktyki (krawędź dysku albo granica Drogi Mlecznej) lub Ziemi (1 mld lś).
         const radius = insideMilkyWay ? MILKY_WAY_DIAMETER_LY / 2000 : tab === 'galaxy' ? GALACTIC_LIMIT_LY / 1000 : Math.log10(1e9 / 1e4) * LOG_UNIT
         const b = sunPos.dot(dir)
-        const length = -b + Math.sqrt(b * b - sunPos.lengthSq() + radius * radius)
+        const length = !insideMilkyWay && tab === 'universe' ? radius : -b + Math.sqrt(b * b - sunPos.lengthSq() + radius * radius)
         const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([sunPos, sunPos.clone().addScaledVector(dir, length)]), new THREE.LineDashedMaterial({ color: 0x00e0ff, ...dashes }))
         line.computeLineDistances()
         objectGuide.add(line)
@@ -506,7 +550,7 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       sceneDirty.current = true
       lastLabelW = 0
       // Kadr zdjęcia ustawiają jego moduły (linia widzenia w Drodze Mlecznej, okno we Wszechświecie lokalnym).
-      if (photoRef.current) return
+      if (photoRef.current) { settleLens(); return }
       // Kamera z boku linii Ziemia–obiekt; w Drodze Mlecznej po zewnętrznej stronie, żeby dysk Galaktyki był tłem.
       const reach = placed ? target : sunPos.clone().addScaledVector(dir, minSpan * 0.4)
       const middle = sunPos.clone().lerp(reach, 0.5)
@@ -515,17 +559,24 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
         { fovDeg: SPACE_FOV, aspect: camera.aspect, room: [0.42, 0.42], minDistance: minSpan * 1.08 }), ms, SPACE_FOV, 0.1, 0, zoom ? ease : easeOut, zoom)
     }
     // Zmiana zakładki (także razem z obiektem) to jeden przelot ze zmianą skali; sama zmiana obiektu – zwykły przelot.
-    showObjectRef.current = (object, scale) => {
+    showObjectRef.current = (object, scale, force = false) => {
       if (scale !== tab) {
-        previousTab = tab
+        // Start pierwszej klatki przenikania ustawia applyFades (czas rAF).
+        if (!reduced) fadeBlend = { ...startFadeBlend(fades, camera.position.length(), tab, 0, SWITCH_MS), start: null }
         tab = scale
         applyScale()
         showObject(object, SWITCH_MS, true)
-      } else if (object !== current) showObject(object, FLY_MS)
+      } else if (object !== current || force) showObject(object, FLY_MS)
+    }
+    syncPhotoRef.current = () => {
+      lastLabelW = 0
+      textLayoutDirty.current = true
+      sceneDirty.current = true
     }
     const t0 = performance.now()
     let raf = 0
     let lastTick = performance.now()
+    let animNow = 0
     const pressedKeys = new Set<string>()
     let rightLook: { pointerId: number; x: number; y: number; distance: number; yaw: number; pitch: number; position: THREE.Vector3 } | null = null
     const moveKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight'])
@@ -540,7 +591,12 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       for (const anchor of anchors) d = Math.min(d, camera.position.distanceTo(anchor))
       return Math.max(d, 0.02)
     }
-    const stopFly = () => { flight = null }
+    /** Przejęcie kamery (przeciąganie, klawisze, rozglądanie, przesuwanie): przelot staje w bieżącej pozie, a jego
+     *  zmiana pola widzenia i gwiazdozbioru nie zostaje w połowie, tylko wraca płynnie do zwykłego widoku 3D. */
+    const stopFly = () => {
+      if (flight && (flight.toSky > 0 || flight.toFov !== SPACE_FOV || skyView)) settleLens()
+      flight = null
+    }
     const onKeyDown = (e: KeyboardEvent) => {
       const active = document.activeElement
       if ((active !== renderer.domElement && !active?.classList.contains('constellation-select')) || !moveKeys.has(e.code) || e.altKey || e.ctrlKey || e.metaKey) return
@@ -579,7 +635,7 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
     const textProjMatrix = new THREE.Matrix4()
     let lastTextWidth = 0, lastTextHeight = 0, lastTextGuideVisible = false
     let lastLabelW = 0, lastLabelH = 0, lastLabelAnnotations: boolean | null = null, lastLabelLevel = -1
-    let lastLabelHidden: readonly ObjectType[] | null = null, lastLabelScale: SpaceScale | null = null
+    let lastLabelHidden: readonly ObjectType[] | null = null, lastLabelScale: SpaceScale | null = null, lastLabelPhoto = false
     // Renderowanie na żądanie: bez ruchu kamery i zmian sceny nie rysujemy co klatkę (GPU, bateria).
     const renderedCamera = new THREE.Matrix4()
     const renderedProjection = new THREE.Matrix4()
@@ -588,6 +644,9 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
     const hooks = new Set<(now: number) => void>()
     const claims: Space3DHandle['claims'] = new Set()
     const layout: Space3DHandle['layout'] = new Set()
+    /** Oczekujący na koniec ruchu kamery (afterFlight) i poza kamery z poprzedniej klatki. */
+    const calm = new Set<() => void>()
+    const calmCamera = new THREE.Matrix4()
     const override: Space3DHandle['override'] = { camera: false, layerFade: 1, labelFade: 1, earthRadius: null, earthBlend: 0 }
     let external = false
     let sizedW = mount.clientWidth, sizedH = mount.clientHeight
@@ -603,8 +662,12 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
     const step = (now: number) => {
       fitSize()
       for (const hook of hooks) hook(now)
-      const delta = Math.min((now - lastTick) / 1000, 0.05)
+      // Pierwsza klatka bywa liczona z performance.now() (tick() wprost), następne z wcześniejszego czasu rAF: bez cofania.
+      const delta = Math.min(Math.max(0, now - lastTick) / 1000, 0.05)
       lastTick = now
+      // Zegar przelotów, powrotu soczewki i przenikania kryć: suma kroków klatek, każdy najwyżej 50 ms. Długa klatka
+      // (kompilacja shaderów przy pierwszym rysowaniu, wysyłka tekstur) wstrzymuje ruch zamiast przeskoczyć część przelotu.
+      animNow += delta * 1000
       // Powolny obrót poglądowy: jeden obrót na trzy minuty, niezależnie od liczby klatek; chmury dryfują nieco szybciej.
       if (!reduced) {
         const spin = ((performance.now() - t0) / 180_000) * Math.PI * 2
@@ -612,10 +675,9 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
         earthClouds.rotation.y = spin * 0.25
       }
       if (flight && !override.camera) {
-        flight.start ??= now
-        const t = Math.min(1, (now - flight.start) / flight.ms)
+        flight.start ??= animNow
+        const t = Math.min(1, (animNow - flight.start) / flight.ms)
         const eased = flight.easing(t)
-        flight.progress = eased
         const pose = (flight.zoom ? zoomPose : lerpPose)(flight.from, flight.to, eased)
         skyView?.update(THREE.MathUtils.lerp(flight.fromSky, flight.toSky, eased))
         setProjection(THREE.MathUtils.lerp(flight.fromFov, flight.toFov, eased), THREE.MathUtils.lerp(flight.fromNear, flight.toNear, eased))
@@ -624,6 +686,17 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
         if (t >= 1) {
           if (flight.toSky === 0) clearSkyView()
           flight = null
+        }
+      }
+      if (lens && !flight && !override.camera) {
+        lens.start ??= animNow
+        const t = Math.min(1, (animNow - lens.start) / LENS_MS)
+        const eased = ease(t)
+        setProjection(THREE.MathUtils.lerp(lens.fov, SPACE_FOV, eased), camera.near)
+        skyView?.update(lens.sky * (1 - eased))
+        if (t >= 1) {
+          lens = null
+          clearSkyView()
         }
       }
       if (!flight && !override.camera && pressedKeys.size) {
@@ -646,11 +719,15 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
         }
       }
       if (!rightLook && !override.camera) controls.update()
+      let earthPx = 0
       if (photoRef.current) controls.autoRotate = false
       camera.updateMatrixWorld()
-      applyFades()
-      if (skyView && (tab !== 'galaxy' || !showConstellationsRef.current || constellationChoiceRef.current !== skyView.group.name ||
-        (!flight && !override.camera && camera.getWorldDirection(constellationDirection).dot(skyView.forward) < 0.999999))) clearSkyView()
+      applyFades(animNow)
+      // Ukryty gwiazdozbiór znika od razu; obrót kamery poza kierunek widoku nieba rozkłada go płynnie z powrotem do 3D.
+      if (skyView && (tab !== 'galaxy' || !showConstellationsRef.current || constellationChoiceRef.current !== skyView.group.name)) {
+        lens = null
+        clearSkyView()
+      } else if (skyView && !flight && !override.camera && camera.getWorldDirection(constellationDirection).dot(skyView.forward) < 0.999999) settleLens()
       for (const hook of layout) hook(now)
       {
         textCameraPosition.copy(sunPos).applyMatrix4(camera.matrixWorldInverse)
@@ -680,6 +757,7 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
         const earthScale = override.earthRadius === null ? marker : marker + (override.earthRadius - marker) * override.earthBlend
         earth.scale.setScalar(earthScale)
         if (!override.camera) earth.visible = earthScale > 1e-6
+        earthPx = earth.visible && depth > 0 ? earthScale / unitsPerPixel : 0
       }
       {
         // Przy zbliżeniu gwiazdy pozostają widoczne, a z daleka nie zlewają się w jasną plamę.
@@ -694,14 +772,17 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
         const close = 1 - THREE.MathUtils.smoothstep(distance, 2, 10)
         const material = model.material as THREE.PointsMaterial
         material.size = 2.4 + close * 0.8
-        material.opacity = (0.1 + close * 0.18) * fades.extragalactic
-        material.visible = fades.extragalactic > 0
+        const galaxyFade = fades.extragalactic * override.layerFade
+        material.opacity = (0.1 + close * 0.18) * galaxyFade
+        material.visible = galaxyFade > 0
       }
       objectGuide.visible = !photoRef.current
       const textViewportHeight = renderer.domElement.clientHeight
       const textViewportWidth = renderer.domElement.clientWidth
       starNamesOverlay.style.opacity = String(override.layerFade)
-      if (textViewportHeight > 0 && screenTextSpritesRef.current.length && (
+      // Zgaszone w nurkowaniu napisy (krycie 0) nie potrzebują układu; wraca, gdy znów są widoczne.
+      if (override.layerFade === 0) textLayoutDirty.current = true
+      else if (textViewportHeight > 0 && screenTextSpritesRef.current.length && (
         textLayoutDirty.current || textViewportWidth !== lastTextWidth || textViewportHeight !== lastTextHeight
         || objectGuide.visible !== lastTextGuideVisible || !sameMatrix(textCameraMatrix, camera.matrixWorld)
         || !sameMatrix(textProjMatrix, camera.projectionMatrix)
@@ -763,11 +844,12 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
           layout.connectors.needsUpdate = true
         }
       }
-      // Ziemia obraca się raz na 3 min (2°/s), więc dla niej wystarcza 10 klatek/s; co sekundę klatka kontrolna.
+      // Ziemia obraca się raz na 3 min (2°/s): 10 klatek/s tylko dla dużej Ziemi, znacznik o promieniu kilku pikseli
+      // (zwykły widok) obraca się niezauważalnie. Co sekundę klatka kontrolna.
       const canvas = renderer.domElement
       if (sceneDirty.current || !sameMatrix(renderedCamera, camera.matrixWorld) || !sameMatrix(renderedProjection, camera.projectionMatrix)
         || canvas.width !== renderedWidth || canvas.height !== renderedHeight || objectGuide.visible !== renderedGuide
-        || (earth && !reduced && now - lastRender >= 100) || now - lastRender >= 1000) {
+        || (earthPx >= EARTH_SPIN_PX && !reduced && now - lastRender >= 100) || now - lastRender >= 1000) {
         renderer.render(scene, camera)
         if (sceneStart !== null) {
           measureSince('space3d:scene→first-frame', sceneStart)
@@ -782,12 +864,24 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
         lastRender = now
       }
       drawLabels()
-      // Pinezka obiektu (HTML nad sceną) przypięta do rzutu jego położenia.
+      // Pinezka obiektu (HTML nad sceną) przypięta do rzutu jego położenia ze skalowaniem od odległości.
       const pin = pinRef.current
       if (pin) {
         const v = pinProjected.copy(target).project(camera)
-        pin.style.display = !photoRef.current && placed && v.z < 1 ? '' : 'none'
-        pin.style.transform = `translate(${((v.x + 1) / 2) * mount.clientWidth}px, ${((1 - v.y) / 2) * mount.clientHeight}px)`
+        const show = !photoRef.current && placed && v.z < 1
+        pin.style.display = show ? '' : 'none'
+        if (show) {
+          const s = pinScale(camera.position.distanceTo(target), tab)
+          pin.style.transform = `translate(${((v.x + 1) / 2) * mount.clientWidth}px, ${((1 - v.y) / 2) * mount.clientHeight}px) scale(${s.toFixed(3)})`
+        }
+      }
+      // Kamera stoi także po ruchu od użytkownika (przeciąganie, bezwładność): ta sama poza co w poprzedniej klatce.
+      const still = sameMatrix(calmCamera, camera.matrixWorld)
+      calmCamera.copy(camera.matrixWorld)
+      if (calm.size && still && !flight && !lens && !fadeBlend) {
+        const waiting = [...calm]
+        calm.clear()
+        for (const callback of waiting) callback()
       }
     }
     const tick = (now = performance.now()) => {
@@ -815,6 +909,16 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
     function drawLabels() {
       const w = mount!.clientWidth
       const h = mount!.clientHeight
+      const hasPhoto = !!photoRef.current
+      // Nurkowanie zgasiło warstwy tła: podpisy i kliknięcia zdjęte raz, bez rzutowania wszystkich obiektów w każdej klatce.
+      if (override.layerFade === 0) {
+        if (lastLabelW !== 0) {
+          labelCtx.clearRect(0, 0, w, h)
+          hits = []
+          lastLabelW = 0
+        }
+        return
+      }
       if (
         w === lastLabelW &&
         h === lastLabelH &&
@@ -822,6 +926,7 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
         galaxyLevelRef.current === lastLabelLevel &&
         hiddenTypesRef.current === lastLabelHidden &&
         tab === lastLabelScale &&
+        hasPhoto === lastLabelPhoto &&
         sameMatrix(labelCameraMatrix, camera.matrixWorld) &&
         sameMatrix(labelProjMatrix, camera.projectionMatrix)
       ) {
@@ -833,6 +938,7 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       lastLabelLevel = galaxyLevelRef.current
       lastLabelHidden = hiddenTypesRef.current
       lastLabelScale = tab
+      lastLabelPhoto = hasPhoto
       labelCameraMatrix.copy(camera.matrixWorld)
       labelProjMatrix.copy(camera.projectionMatrix)
       labelCtx.clearRect(0, 0, w, h)
@@ -848,14 +954,14 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       const candidates: { c: DSO; x: number; y: number; d: number; localGroup: boolean }[] = []
       for (let i = 0; i < limit; i++) {
         const c = list[i]
-        if (c.i === current.i || (galaxy && hidden.includes(c.type))) continue
+        if ((!hasPhoto && c.i === current.i) || (galaxy && hidden.includes(c.type))) continue
         projected.copy(listPos[i]).project(camera)
         if (projected.z > 1 || Math.abs(projected.x) > 1 || Math.abs(projected.y) > 1) continue
         candidates.push({ c, x: ((projected.x + 1) / 2) * w, y: ((1 - projected.y) / 2) * h, d: camera.position.distanceToSquared(listPos[i]), localGroup: false })
       }
       for (let i = 0; i < localGroup.length && !galaxy && fade > 0; i++) {
         const c = localGroup[i]
-        if (c.i === current.i) continue
+        if (!hasPhoto && c.i === current.i) continue
         const p = localGroupPos[i]
         projected.copy(p).project(camera)
         if (projected.z > 1 || Math.abs(projected.x) > 1 || Math.abs(projected.y) > 1) continue
@@ -928,7 +1034,10 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
     const onUp = (e: PointerEvent) => {
       if (down && Math.hypot(e.clientX - down[0], e.clientY - down[1]) < 5 && !claimed(e, true)) {
         const c = hitAt(e)
-        if (c) select(c.i, false)
+        if (c) {
+          if (photoRef.current) onSelectObjectRef.current?.()
+          select(c.i, false)
+        }
       }
       down = null
     }
@@ -1001,7 +1110,11 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
     renderer.domElement.addEventListener('pointerup', onUp)
     renderer.domElement.addEventListener('pointermove', onMove)
     showObject(current, INTRO_MS)
-    tick()
+    // Shadery kompilowane równolegle (KHR_parallel_shader_compile) przed pierwszą klatką: kompilacja przy pierwszym
+    // rysowaniu wstrzymywała otwarcie okna (ok. 150–220 ms). Do tego czasu scena jest pusta, a przelot czeka na zegar klatek.
+    let disposed = false
+    const start = () => { if (!disposed && !raf && !external && !document.hidden) tick() }
+    void renderer.compileAsync(scene, camera).then(start, start)
     // Wstrzymana scena (klatki z zewnątrz) dopasowuje rozmiar dopiero w step(): panele okna zmieniają go co klatkę.
     const ro = new ResizeObserver(() => { if (!external) fitSize() })
     ro.observe(mount)
@@ -1025,7 +1138,12 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
     onHandleRef.current?.({
       scene, camera, controls, renderer, mount, overlay: labels, sunPos, earth, hooks, claims, layout, anchors, override, step,
       invalidate: () => { sceneDirty.current = true },
-      stopIntro: () => { flight = null; controls.autoRotate = false },
+      // Nurkowanie przejmuje kamerę: niedokończony powrót soczewki nie może dokończyć się skokiem po powrocie.
+      stopIntro: () => { flight = null; lens = null; controls.autoRotate = false },
+      afterFlight: (callback) => {
+        calm.add(callback)
+        return () => { calm.delete(callback) }
+      },
       flyTo: (pose, ms, zoom = false) => {
         constellationReturn = null
         controls.autoRotate = false
@@ -1102,6 +1220,7 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       },
     })
     return () => {
+      disposed = true
       clearSkyView()
       addConstellationsRef.current = null
       onHandleRef.current?.(null)
@@ -1150,7 +1269,14 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
     }
   }, [hasObject, withDistance, select, typeRGB])
 
-  useEffect(() => { if (o) showObjectRef.current?.(o, scale) }, [o, scale])
+  const hasPhoto = !!photo
+  const hadPhotoRef = useRef(hasPhoto)
+  useEffect(() => {
+    const hadPhoto = hadPhotoRef.current
+    hadPhotoRef.current = hasPhoto
+    if (hadPhoto !== hasPhoto) syncPhotoRef.current?.()
+    if (o) showObjectRef.current?.(o, scale, hadPhoto && !hasPhoto)
+  }, [o, scale, hasPhoto])
 
   useEffect(() => { addConstellationsRef.current?.() }, [constellations])
 
@@ -1189,6 +1315,21 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
   }, [galaxyLevel])
 
   useEffect(() => {
+    for (const dome of domesRef.current) {
+      const old = dome.material
+      dome.material = createDomeMaterial(domeStyle)
+      dome.material.uniforms.opacity.value = dome.userData.fade * domeOpacityRef.current
+      old.dispose()
+    }
+    sceneDirty.current = true
+  }, [domeStyle])
+
+  useEffect(() => {
+    for (const dome of domesRef.current) dome.material.uniforms.opacity.value = dome.userData.fade * domeOpacity
+    sceneDirty.current = true
+  }, [domeOpacity])
+
+  useEffect(() => {
     if (galacticRef.current) showTypes(galacticRef.current, hiddenTypes)
     sceneDirty.current = true
   }, [hiddenTypes])
@@ -1201,9 +1342,9 @@ export default function Space3D({ settings, photo, onHandle }: Props) {
       </div>
       <div className="obs-hint space-hint faint" aria-hidden>LPM: obrót · PPM: rozglądanie · ŚPM: przesuwanie · kółko: zbliżenie do kursora · WASD + Q/E: lot · Shift: szybciej</div>
       <div ref={pinRef} className="pin" style={{ display: 'none' }} aria-hidden>
-        {scale === 'universe' && LOCAL_GROUP_SHAPES[o.id] ? (
-          <span style={{ width: 28, height: 28, border: '1px dashed var(--accent)', background: 'transparent' }} />
-        ) : <span className="pin-reticle" />}
+        <span className="pin-ring" />
+        <span className="pin-ring pin-ring-delay" />
+        <span className="pin-dot" />
       </div>
     </div>
   )

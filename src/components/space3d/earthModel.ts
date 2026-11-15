@@ -51,25 +51,21 @@ function fbm3D(x: number, y: number, z: number): number {
   return sum
 }
 
-/** Proceduralna, bezszwowa na długości geograficznej warstwa chmur (szum fBm na sferze jednostkowej). */
-function createCloudTexture(anisotropy: number): THREE.Texture {
-  if (typeof document === 'undefined') return new THREE.Texture()
-  const width = 384
-  const height = 192
-  const canvas = document.createElement('canvas')
-  canvas.width = width
-  canvas.height = height
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return new THREE.Texture()
-  const img = ctx.createImageData(width, height)
-  const data = img.data
-  for (let y = 0; y < height; y++) {
-    const phi = ((y + 0.5) / height - 0.5) * Math.PI
+const CLOUD_WIDTH = 384
+const CLOUD_HEIGHT = 192
+
+/**
+ * Wiersze chmur od `y` do bufora RGBA, dopóki `timeLeft()` > 1 ms (co najmniej jeden wiersz); zwraca następny wiersz.
+ * Szum fBm na sferze jednostkowej (bezszwowy na długości geograficznej), ok. 0,5–0,9 ms na wiersz.
+ */
+export function cloudRowsUntil(data: Uint8ClampedArray, y: number, timeLeft: () => number): number {
+  do {
+    const phi = ((y + 0.5) / CLOUD_HEIGHT - 0.5) * Math.PI
     const cosPhi = Math.cos(phi)
     const sinPhi = Math.sin(phi)
     const polarFade = Math.max(0, 1 - Math.pow(Math.abs(sinPhi), 3.5))
-    for (let x = 0; x < width; x++) {
-      const theta = ((x + 0.5) / width) * Math.PI * 2
+    for (let x = 0; x < CLOUD_WIDTH; x++) {
+      const theta = ((x + 0.5) / CLOUD_WIDTH) * Math.PI * 2
       const sx = Math.cos(theta) * cosPhi
       const sy = sinPhi
       const sz = Math.sin(theta) * cosPhi
@@ -77,18 +73,67 @@ function createCloudTexture(anisotropy: number): THREE.Texture {
       const warp = fbm3D(sx * 2.1 + 3.1, sy * 2.1, sz * 2.1 - 1.7) * 0.65
       const density = fbm3D(sx * 3.8 + warp, sy * 4.6 + 1.3, sz * 3.8 - warp)
       const alpha = Math.max(0, Math.min(1, (density - 0.48) / 0.28)) * polarFade
-      const idx = (y * width + x) * 4
+      const idx = (y * CLOUD_WIDTH + x) * 4
       data[idx] = 240
       data[idx + 1] = 248
       data[idx + 2] = 255
       data[idx + 3] = Math.round(alpha * 255)
     }
+    y++
+  } while (y < CLOUD_HEIGHT && timeLeft() > 1)
+  return y
+}
+
+/**
+ * Chmury i mapy pochodne zdjęcia Ziemi liczone raz na stronę: każda scena (Pozycja 3D, Obserwatorium, ponowne otwarcie
+ * okna) tworzyła je od nowa w zadaniu budowy sceny, a sam szum chmur to ok. 80–170 ms przed pierwszym malowaniem okna.
+ * Chmury liczą się w czasie bezczynności, wierszami; do tego czasu tekstury pokazują puste (przezroczyste) płótno.
+ * Przy otwarciu Ziemia jest znacznikiem kilku pikseli, więc chmur i tak nie widać.
+ */
+type CloudLayer = { canvas: HTMLCanvasElement; done: boolean; waiting: Set<{ texture: THREE.Texture; onReady?: () => void }> }
+let clouds: CloudLayer | null = null
+const derivedMaps = new Map<string, { bump: HTMLCanvasElement; spec: HTMLCanvasElement }>()
+
+function cloudLayer(): CloudLayer | null {
+  if (clouds) return clouds
+  const canvas = document.createElement('canvas')
+  canvas.width = CLOUD_WIDTH
+  canvas.height = CLOUD_HEIGHT
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return null
+  const layer: CloudLayer = { canvas, done: false, waiting: new Set() }
+  clouds = layer
+  const img = ctx.createImageData(CLOUD_WIDTH, CLOUD_HEIGHT)
+  const idle = (work: (deadline: IdleDeadline) => void) => window.requestIdleCallback
+    ? window.requestIdleCallback(work)
+    : window.setTimeout(() => work({ didTimeout: false, timeRemaining: () => 8 }), 16)
+  let y = 0
+  const work = (deadline: IdleDeadline) => {
+    y = cloudRowsUntil(img.data, y, () => deadline.timeRemaining())
+    if (y < CLOUD_HEIGHT) { idle(work); return }
+    ctx.putImageData(img, 0, 0)
+    layer.done = true
+    for (const { texture, onReady } of layer.waiting) { texture.needsUpdate = true; onReady?.() }
+    layer.waiting.clear()
   }
-  ctx.putImageData(img, 0, 0)
-  const texture = new THREE.CanvasTexture(canvas)
+  idle(work)
+  return layer
+}
+
+/** Proceduralna warstwa chmur (wspólne płótno; tekstura odświeża się, gdy chmury będą policzone). */
+function createCloudTexture(anisotropy: number, onReady?: () => void): THREE.Texture {
+  if (typeof document === 'undefined') return new THREE.Texture()
+  const layer = cloudLayer()
+  if (!layer) return new THREE.Texture()
+  const texture = new THREE.CanvasTexture(layer.canvas)
   texture.colorSpace = THREE.SRGBColorSpace
   texture.wrapS = THREE.RepeatWrapping
   texture.anisotropy = anisotropy
+  if (!layer.done) {
+    const entry = { texture, onReady }
+    layer.waiting.add(entry)
+    texture.addEventListener('dispose', () => layer.waiting.delete(entry))
+  }
   return texture
 }
 
@@ -98,6 +143,14 @@ function buildDerivedSurfaceMaps(
   specularMap: THREE.Texture,
 ) {
   if (typeof document === 'undefined') return
+  const known = derivedMaps.get(source.src)
+  if (known) {
+    bumpMap.image = known.bump
+    bumpMap.needsUpdate = true
+    specularMap.image = known.spec
+    specularMap.needsUpdate = true
+    return
+  }
   const srcWidth = source.naturalWidth || source.width
   const srcHeight = source.naturalHeight || source.height
   const width = Math.min(1024, Math.max(1, srcWidth || 512))
@@ -105,7 +158,8 @@ function buildDerivedSurfaceMaps(
   const srcCanvas = document.createElement('canvas')
   srcCanvas.width = width
   srcCanvas.height = height
-  const srcCtx = srcCanvas.getContext('2d')
+  // Odczyt pikseli z płótna w pamięci CPU, bez kopii z GPU.
+  const srcCtx = srcCanvas.getContext('2d', { willReadFrequently: true })
   if (!srcCtx) return
   srcCtx.drawImage(source, 0, 0, width, height)
   const pixels = srcCtx.getImageData(0, 0, width, height).data
@@ -146,6 +200,7 @@ function buildDerivedSurfaceMaps(
 
   bumpCtx.putImageData(bumpData, 0, 0)
   specCtx.putImageData(specData, 0, 0)
+  if (source.src) derivedMaps.set(source.src, { bump: bumpCanvas, spec: specCanvas })
   bumpMap.image = bumpCanvas
   bumpMap.needsUpdate = true
   specularMap.image = specCanvas
@@ -169,7 +224,7 @@ export function createEarthAssets(baseUrl: string, maxAnisotropy = 4, onLoad?: (
   map.colorSpace = THREE.SRGBColorSpace
   map.anisotropy = anisotropy
 
-  const cloudMap = createCloudTexture(anisotropy)
+  const cloudMap = createCloudTexture(anisotropy, onLoad)
   return {
     map,
     bumpMap,

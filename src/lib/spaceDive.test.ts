@@ -2,7 +2,7 @@ import { expect, it } from 'vitest'
 import { EARTH_Z, PLANE_WIDTH, distanceDomain, observatoryPosition } from './observatory'
 import type { Vec3 } from './astro'
 import { SPACE_FAR } from './spaceCamera'
-import { ALIGN_K, DIVE_PHASE_MS, bridgePoint, bridgePose, bridgeVector, coneLength, coneTan, diveFades, diveFrame, diveGridScale, diveMarkerPosition, divePose, diveScale, diveTotalMs, ease, guideAlignment, lerpPose, makeBridge, nearFar, startScale, turnWeight, unbridgePoint, unbridgeVector, uprightRoll, zoomPose, type DiveDirection, type Pose } from './spaceDive'
+import { ALIGN_K, DIVE_PHASE_MS, bridgePoint, bridgePose, bridgeVector, coneLength, coneTan, diveFades, diveFrame, diveGridScale, diveMarkerPosition, divePose, diveScale, diveTotalMs, ease, guideAlignment, lerpPose, makeBridge, nearFar, reverseElapsedMs, startScale, turnWeight, unbridgePoint, unbridgeVector, uprightRoll, zoomPose, type DiveDirection, type Pose } from './spaceDive'
 
 // Baza kadru: dowolny obrót (osie ortonormalne, x × y = −center).
 const center: Vec3 = [0.6, 0.48, 0.64]
@@ -312,4 +312,19 @@ it('przelot zakładek: promień kamery zmienia się geometrycznie, kierunek i ce
   expect(Math.hypot(...offset)).toBeCloseTo(100, 9)
   close(half.target, linear.target)
   close(offset.map((v) => v / 100) as Vec3, linearOffset.map((v) => v / Math.hypot(...linearOffset)) as Vec3)
+})
+
+it('reverseElapsedMs zachowuje bieżącą fazę, postęp k i photoProgress przy zawróceniu w trakcie wejścia', () => {
+  const { dive, enter } = DIVE_PHASE_MS.in
+  for (const ms of [0, dive * 0.25, dive * 0.85, dive, dive + enter * 0.5, dive + enter]) {
+    const forward = diveFrame(ms, 'in')
+    const backMs = reverseElapsedMs(ms, 'in', 'out')
+    const reversed = diveFrame(backMs, 'out')
+    expect(reversed.e).toBeCloseTo(forward.e, 9)
+    expect(reversed.photoProgress).toBeCloseTo(forward.photoProgress, 9)
+    if (ms > 0 && ms !== dive) {
+      expect(reversed.phase).toBe(forward.phase)
+      expect(reversed.k).toBeCloseTo(forward.k, 9)
+    }
+  }
 })

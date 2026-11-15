@@ -49,6 +49,27 @@ export function diveFrame(elapsedMs: number, direction: DiveDirection): DiveFram
   return { s, phase: 'enter', k, e: 1, photoProgress: k, done: t >= 1 }
 }
 
+/**
+ * Pominięcie przejścia (klik w scenę albo klawisz w trakcie nurkowania): o ile ms osi przejścia przesunąć je w tej
+ * klatce zamiast zwykłego kroku. remainingMs: czas do końca przejścia (> 0), stepMs: krok tej klatki (0–33 ms).
+ * Zwrócenie remainingMs kończy przejście w tej klatce (cięcie do stanu końcowego); mniejsza wartość przewija je.
+ */
+export function skipStepMs(remainingMs: number, stepMs: number): number {
+  // TODO: decyzja projektowa – cięcie od razu albo szybkie przewinięcie (np. reszta w ≤ 400 ms).
+  void stepMs
+  return remainingMs
+}
+
+/** Czas przejścia w przeciwnym kierunku dla tego samego miejsca na osi (ta sama faza i postęp k). */
+export function reverseElapsedMs(elapsedMs: number, from: DiveDirection, to: DiveDirection): number {
+  if (from === to) return Math.max(0, Math.min(diveTotalMs(to), elapsedMs))
+  const f = diveFrame(elapsedMs, from)
+  const target = DIVE_PHASE_MS[to]
+  const ms = f.phase === 'dive' ? f.k * target.dive : target.dive + f.k * target.enter
+  const total = target.dive + target.enter
+  return to === 'out' ? total - ms : ms
+}
+
 /** Tysiące lś na jednostkę Obserwatorium: logarytmicznie od u0 (e = 0) do u1 (e = 1), jak w „potęgach dziesięciu”. */
 export function diveScale(e: number, u0: number, u1: number): number {
   return u0 ** (1 - e) * u1 ** e

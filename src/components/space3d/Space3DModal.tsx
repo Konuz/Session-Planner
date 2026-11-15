@@ -39,7 +39,23 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
   const close = useCallback(() => setOpen(false), [setOpen])
   const o = useSelected()
   const project = session.project
-  const settings = useSpaceSettings(o, project)
+  const [photoActive, setPhotoActive] = useState(true)
+  const [photoProjectId, setPhotoProjectId] = useState(project?.id)
+  const projectChanged = photoProjectId !== project?.id
+  // Nowo wczytane lub zmienione zdjęcie od razu staje się aktywne w scenie 3D.
+  if (projectChanged) {
+    setPhotoProjectId(project?.id)
+    setPhotoActive(true)
+  }
+  const active = projectChanged || photoActive
+  const activePhoto = active ? project : null
+  const { setEditing } = session
+  const activatePhoto = useCallback(() => setPhotoActive(true), [])
+  const deactivatePhoto = useCallback(() => {
+    setPhotoActive(false)
+    setEditing(false)
+  }, [setEditing])
+  const settings = useSpaceSettings(o, project, active)
   useCutDistances(session)
   const inputRef = useRef<HTMLInputElement>(null)
   const [handle, setHandle] = useState<Space3DHandle | null>(null)
@@ -58,10 +74,12 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
   // ponowne tworzenie i niszczenie kontekstu WebGL dawało białą klatkę na końcu powrotu.
   const [obsAlive, setObsAlive] = useState(false)
   const [obsVisible, setObsVisible] = useState(false)
-  const { stars, retry } = useGaiaStars(session, galaxy || session.editing || obsAlive || mode !== 'scale')
+  const { stars, retry } = useGaiaStars(session, !!activePhoto && (galaxy || session.editing || obsAlive || mode !== 'scale'))
   const regressorJobs = useRegressor(session, stars.status === 'error')
   const regressing = [...regressorJobs.values()].filter((job) => job.status === 'queued' || job.status === 'running').length
-  useEffect(() => { setObsAlive(false); setObsVisible(false) }, [project?.id, galaxy])
+  // Scena Obserwatorium zależy tylko od zdjęcia: zmiana zakładki (jedna scena 3D dla obu) jej nie przebudowuje,
+  // więc odtworzenie kontekstu WebGL nie wypada w trakcie przelotu zakładek.
+  useEffect(() => { setObsAlive(false); setObsVisible(false) }, [project?.id])
   // Dane Obserwatorium: w stanie zdjęcia na bieżąco, poza nim dopiero przy nurkowaniu (edycja wycinków nie przebudowuje
   // ukrytej sceny); gwiazdy Gaia, które przyjdą w trakcie przejścia, trafiają do niego po nim.
   const [obsProject, setObsProject] = useState(project)
@@ -69,15 +87,23 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
   useEffect(() => { if (mode === 'photo' || (mode === 'scale' && !session.editing)) setObsProject(project) }, [project, mode, session.editing])
   // Scena Obserwatorium powstaje z wyprzedzeniem, w bezczynności po pokazaniu zdjęcia: dekodowanie,
   // wysyłka tekstur i kompilacja shaderów nie przypadają na start nurkowania.
+  // Dopiero gdy kamera sceny 3D stoi: w bezczynności między klatkami przelotu startowego dekodowanie zdjęcia, wycinki,
+  // kontekst WebGL i shadery dawały w nim klatki 50–170 ms.
   useEffect(() => {
-    if (!project || obsAlive || mode !== 'scale' || session.editing || reducedMotion()) return
-    const idle = window.requestIdleCallback?.(() => setObsAlive(true), { timeout: 3000 }) ?? window.setTimeout(() => setObsAlive(true), 1000)
-    return () => { if (window.cancelIdleCallback) window.cancelIdleCallback(idle); else window.clearTimeout(idle) }
-  }, [project, obsAlive, mode, session.editing])
+    if (!activePhoto || obsAlive || mode !== 'scale' || session.editing || reducedMotion() || !handle) return
+    let idle = 0
+    const cancel = handle.afterFlight(() => {
+      idle = window.requestIdleCallback?.(() => setObsAlive(true), { timeout: 3000 }) ?? window.setTimeout(() => setObsAlive(true), 1000)
+    })
+    return () => {
+      cancel()
+      if (window.cancelIdleCallback) window.cancelIdleCallback(idle); else window.clearTimeout(idle)
+    }
+  }, [activePhoto, obsAlive, mode, session.editing, handle])
   // Edycja wycinków to osobny widok okna: płaskie zdjęcie na scenie, panel edytora z prawej, scena 3D wstrzymana.
-  const editing = mode === 'scale' && !!project && session.editing
+  const editing = mode === 'scale' && !!activePhoto && session.editing
   // Stożek pola i znaczniki zdjęcia w obu skalach (we Wszechświecie lokalnym jak w Drodze Mlecznej).
-  const guideRef = usePhotoGuide(handle, project, settings.scale, mode !== 'photo' && !editing, session.activeId, session.setActiveId)
+  const guideRef = usePhotoGuide(handle, activePhoto, settings.scale, mode !== 'photo' && !editing, session.activeId, session.setActiveId)
   /** Przewodnik nurkowania sceny bieżącej skali. */
   const sceneGuide = useCallback(() => guideRef.current, [guideRef])
 
@@ -93,7 +119,11 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
       obs.setExternal(false)
       obs.setView('structure', false)
     }
-    if (target === 'scale' && handle) restoreSpace(handle, sceneGuide(), entryPose.current)
+    if (target === 'scale') {
+      if (handle) restoreSpace(handle, sceneGuide(), entryPose.current)
+      // Ukryte Obserwatorium stoi bez własnej pętli do następnego nurkowania (jak po powrocie nurkowaniem).
+      obs?.setExternal(true)
+    }
     setMode(target)
     setPanels(target === 'photo')
   }, [handle, sceneGuide])
@@ -101,37 +131,37 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
   function startDive(direction: DiveDirection) {
     if (direction === 'in') setObsVisible(false)
     const guide = sceneGuide()
-    if (!project || !handle || !guide || reducedMotion()) {
+    if (!activePhoto || !handle || !guide || reducedMotion()) {
       // Bez nurkowania: od razu stan zdjęcia (rozłożony, jak dawne Obserwatorium) albo skala.
-      if (handle && direction === 'in') {
+      if (handle && direction === 'in' && activePhoto) {
         handle.stopIntro()
         entryPose.current = { position: handle.camera.position.toArray() as Pose['position'], target: handle.controls.target.toArray() as Pose['target'], up: handle.camera.up.toArray() as Pose['up'], fov: handle.camera.fov, near: handle.camera.near }
         handle.setExternal(true)
-        setObsProject(project)
+        setObsProject(activePhoto)
         setObsAlive(true)
       }
       if (handle && direction === 'out') restoreSpace(handle, guide, entryPose.current)
       settle(direction === 'in' ? 'photo' : 'scale')
       return
     }
-    setObsProject(project)
+    setObsProject(activePhoto)
     setObsAlive(true)
-    const items = observatoryItems(project)
+    const items = observatoryItems(activePhoto)
     const domain = distanceDomain(items.map((item) => item.distLy))
     const seamProgress = direction === 'out' ? obsScene.current?.getProgress() ?? 1 : 1
     const markerTargets = new Map(items.filter((item) => item.kind === 'object' && item.distLy !== null)
-      .map((item) => [item.id, observatoryPosition(item, project, item.distLy, domain, 0)]))
+      .map((item) => [item.id, observatoryPosition(item, activePhoto, item.distLy, domain, 0)]))
     const dive = new SpaceDive({
       direction, space: handle, guide,
       observatory: () => obsScene.current,
-      seam: structureViewPose(items, project, domain),
+      seam: structureViewPose(items, activePhoto, domain),
       markerTargets,
       seamProgress,
-      imageAspect: project.height / project.width,
+      imageAspect: activePhoto.height / activePhoto.width,
       spacePose: direction === 'out' ? entryPose.current ?? undefined : undefined,
-      onPhase: (phase) => { if (phase === 'enter') setPanels(direction === 'in') },
+      onPhase: (phase, dir) => { if (phase === 'enter') setPanels(dir === 'in') },
       onObservatoryFrame: () => setObsVisible(true),
-      onDone: () => { diveRef.current = null; setMode(direction === 'in' ? 'photo' : 'scale') },
+      onDone: (dir) => { diveRef.current = null; setMode(dir === 'in' ? 'photo' : 'scale') },
     })
     if (direction === 'in') entryPose.current = dive.spacePose
     diveRef.current = dive
@@ -142,14 +172,34 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
     session.setEditing(false)
     startDive('in')
   }
+  // Zakładka wybrana w trakcie nurkowania albo w stanie zdjęcia: przelot do niej dopiero po powrocie do skali
+  // (wcześniej cięcie do skali). Pasek pokazuje ją od razu jako wybraną.
+  const [pendingScale, setPendingScale] = useState<SpaceScale | null>(null)
+  // Scena 3D montowana po pierwszym malowaniu okna (rAF, potem zadanie po klatce): budowa sceny (punkty, kontekst WebGL,
+  // shadery) nie opóźnia pojawienia się okna, a przelot startowy rusza z jej pierwszą klatką.
+  const [sceneMounted, setSceneMounted] = useState(false)
+  useEffect(() => {
+    let timer = 0
+    const frame = requestAnimationFrame(() => { timer = window.setTimeout(() => setSceneMounted(true)) })
+    return () => { cancelAnimationFrame(frame); window.clearTimeout(timer) }
+  }, [])
+  const { setScale } = settings
+  useEffect(() => {
+    if (mode !== 'scale' || !pendingScale) return
+    setPendingScale(null)
+    setScale(pendingScale)
+  }, [mode, pendingScale, setScale])
   function chooseScale(scale: SpaceScale) {
-    // Bieżąca skala w stanie zdjęcia wraca nurkowaniem; w trakcie przejścia nic nie zmienia.
-    if (scale === settings.scale && mode !== 'scale') {
-      if (mode === 'photo') startDive('out')
-      return
+    // W stanie zdjęcia kliknięcie skali wraca nurkowaniem; w trakcie wejścia zawraca płynnie (albo anuluje przed startem).
+    const action = scaleChoiceAction(mode, settings.scale, scale)
+    if (action.type === 'set-scale') { setScale(action.scale); return }
+    setPendingScale(action.then)
+    if (action.type === 'dive-out') startDive('out')
+    else if (action.type === 'reverse-or-cancel') {
+      if (diveRef.current?.reverse()) { setMode('out'); setPanels(false) }
+      else settle('scale')
     }
-    if (diving || mode === 'photo') settle('scale')
-    settings.setScale(scale)
+    // after-return: powrót już trwa, zmiana zakładki czeka na jego koniec.
   }
 
   useEffect(() => {
@@ -165,7 +215,7 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
     if (!import.meta.env.DEV) return
     ;(window as unknown as { __spaceFrames?: () => { space: number | null; observatory: number | null } }).__spaceFrames = () => ({ space: handle?.renderer.info.render.frame ?? null, observatory: obsScene.current?.frames ?? null })
   }, [handle])
-  useEffect(() => { if (!project && mode !== 'scale') settle('scale') }, [project, mode, settle])
+  useEffect(() => { if (!activePhoto && mode !== 'scale') settle('scale') }, [activePhoto, mode, settle])
   useEffect(() => {
     if (!handle || !editing) return
     handle.setExternal(true)
@@ -173,30 +223,32 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
     return () => { if (!diveRef.current) handle.setExternal(false) }
   }, [handle, editing])
 
-  // Klik albo klawisz (poza Esc, który zamyka okno) w trakcie przejścia: od razu stan końcowy.
+  // Klik w scenę albo klawisz (poza Esc, przyciskami i paskami narzędzi/nagłówka) w trakcie przejścia: od razu stan końcowy.
   useEffect(() => {
     if (!diving) return
-    const skip = (e: Event) => { if (!(e instanceof KeyboardEvent && e.key === 'Escape')) diveRef.current?.skip() }
-    window.addEventListener('pointerdown', skip, true)
+    const skip = (e: Event) => {
+      if (shouldSkipDive(e as { key?: string; target?: unknown })) diveRef.current?.skip()
+    }
+    window.addEventListener('click', skip, true)
     window.addEventListener('keydown', skip, true)
-    return () => { window.removeEventListener('pointerdown', skip, true); window.removeEventListener('keydown', skip, true) }
+    return () => { window.removeEventListener('click', skip, true); window.removeEventListener('keydown', skip, true) }
   }, [diving])
 
-  const showPhoto = panels && !!project
+  const showPhoto = panels && !!activePhoto
   const dist = o?.distLy ?? null
   return <SpaceWindow
     label={showPhoto ? 'Obserwatorium 3D zdjęcia' : 'Pozycja 3D'}
     kicker={showPhoto ? 'KONUZASTRO / Obserwatorium 3D' : 'KONUZASTRO / Pozycja 3D'}
-    title={project ? project.name : o ? `${o.id}${o.namePl ? ` · ${o.namePl}` : ''}` : 'Wybierz obiekt'}
+    title={activePhoto ? activePhoto.name : o ? `${o.id}${o.namePl ? ` · ${o.namePl}` : ''}` : 'Wybierz obiekt'}
     subtitle={showPhoto ? 'Obiekty zdjęcia wzdłuż linii widzenia' : SUBTITLE[settings.scale]}
     summaryRef={setSummary}
-    summary={!showPhoto && !project && o ? <strong>{dist !== null ? `Odległość ≈ ${fmtDistance(dist)}` : 'Odległość nieznana'}</strong> : null}
+    summary={!showPhoto && !activePhoto && o ? <strong>{dist !== null ? `Odległość ≈ ${fmtDistance(dist)}` : 'Odległość nieznana'}</strong> : null}
     className={`space-window ${panels ? 'is-photo' : 'is-scale'}${diving ? ' is-diving' : ''}${editing ? ' is-editing' : ''}`}
     // Panele wsuwają się i zwijają przez całą fazę wejścia danego kierunku (naprzód dłużej niż wstecz).
     style={diving ? { '--dive-enter': `${DIVE_PHASE_MS[mode].enter}ms` } as CSSProperties : undefined}
     onClose={close}
   >
-    <SpaceToolbar o={o} settings={settings} onScale={chooseScale} crumb={showPhoto ? project.name : undefined}
+    <SpaceToolbar o={o} settings={pendingScale ? { ...settings, scale: pendingScale } : settings} onScale={chooseScale} crumb={showPhoto ? activePhoto.name : undefined}
       onConstellationView={handle && mode === 'scale' && !editing ? handle.viewConstellation : undefined}>
       {showPhoto && <div ref={setToolbarSlot} className="space-toolbar-slot" />}
       {regressing > 0 && <div className="photo-regressor-progress">
@@ -206,13 +258,13 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
     </SpaceToolbar>
     <div ref={setStage} className="obs-stage space-stage">
       <div className={`space-scene${mode === 'photo' || editing ? ' is-hidden' : ''}`}>
-        <Space3D settings={settings} photo={project} onHandle={setHandle} />
+        {sceneMounted && <Space3D settings={settings} photo={activePhoto} onSelectObject={deactivatePhoto} onHandle={setHandle} />}
       </div>
-      {project && <PhotoUnfold key={project.id} session={session} scale={settings.scale} visible={mode === 'scale'} guideRef={guideRef} />}
+      {activePhoto && <PhotoUnfold key={activePhoto.id} session={session} scale={settings.scale} visible={mode === 'scale'} guideRef={guideRef} />}
       {mode === 'scale' && <>
-        <PhotoImport session={session} inputRef={inputRef} showButton={!project} />
+        <PhotoImport session={session} inputRef={inputRef} showButton={!activePhoto} onActivate={activatePhoto} />
         <PhotoMessages session={session} />
-        {project && <GalaxyPhotoBar session={session} stars={stars} onUnfold={unfold} onPick={() => inputRef.current?.click()} onRetryStars={retry} />}
+        {activePhoto && <GalaxyPhotoBar session={session} stars={stars} onUnfold={unfold} onPick={() => inputRef.current?.click()} onRetryStars={retry} />}
         {editing && <PhotoFlatView session={session} />}
       </>}
     </div>
@@ -220,4 +272,33 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
     {(obsAlive || mode !== 'scale') && obsProject && stage && summary && <Observatory project={obsProject} slots={{ stage, toolbar: showPhoto ? toolbarSlot : null, summary: showPhoto ? summary : null }}
       stars={stars} onRetryStars={retry} diving={diving} hidden={mode === 'scale' || (mode === 'in' && !obsVisible)} onScene={(scene) => { obsScene.current = scene }} />}
   </SpaceWindow>
+}
+
+
+/** then: zakładka do przełączenia przelotem po powrocie do skali (null: zostaje bieżąca, oczekująca zmiana odwołana). */
+export type ScaleChoiceAction =
+  | { type: 'dive-out'; then: SpaceScale | null }
+  | { type: 'reverse-or-cancel'; then: SpaceScale | null }
+  | { type: 'after-return'; then: SpaceScale | null }
+  | { type: 'set-scale'; scale: SpaceScale }
+
+/** Reakcja na wybór skali (Droga Mleczna / Wszechświat lokalny) zależnie od stanu nurkowania: poza skalą zawsze
+ *  najpierw powrót (nurkowanie wstecz), a druga zakładka dopiero po nim, bez cięcia. */
+export function scaleChoiceAction(mode: Mode, currentScale: SpaceScale, nextScale: SpaceScale): ScaleChoiceAction {
+  if (mode === 'scale') return { type: 'set-scale', scale: nextScale }
+  const then = nextScale === currentScale ? null : nextScale
+  if (mode === 'photo') return { type: 'dive-out', then }
+  if (mode === 'in') return { type: 'reverse-or-cancel', then }
+  return { type: 'after-return', then }
+}
+
+/** Czy klik lub klawisz w trakcie animacji ma przeskoczyć do jej końca (pomija kontrolki UI i Esc). */
+export function shouldSkipDive(e: { key?: string; target?: unknown }): boolean {
+  if (e.key === 'Escape') return false
+  const target = e.target as { closest?: (selector: string) => unknown; parentElement?: { closest?: (selector: string) => unknown } | null } | null | undefined
+  const element = target && typeof target.closest === 'function' ? target : target?.parentElement
+  if (element && typeof element.closest === 'function' && element.closest('button, a, input, select, textarea, [role="button"], .obs-toolbar, .obs-header')) {
+    return false
+  }
+  return true
 }

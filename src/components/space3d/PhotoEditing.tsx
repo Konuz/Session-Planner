@@ -1,7 +1,7 @@
 // Wspólna część zdjęcia w oknie „Pozycja 3D” (obie skale): wczytanie, komunikaty, płaski widok edycji okręgów
 // i panel wycinków ze źródłami odległości. Rozkładanie zdjęcia robi Obserwatorium, do którego z obu skal
 // prowadzi nurkowanie.
-import { Box, ImagePlus, Settings2, X } from 'lucide-react'
+import { Box, Eye, ImagePlus, Settings2, X } from 'lucide-react'
 import { useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO } from '../../lib/catalog'
 import { hasDistance, MAX_RELATIVE_UNCERTAINTY, NO_DISTANCE, REGRESSOR_TYPES, SCOPE_LABELS, type DistanceScope } from '../../lib/distance'
@@ -15,11 +15,12 @@ import type { PhotoSession, RegressorJob, StarsStatus } from './photoSession'
 const ACCEPT = '.jpg,.jpeg,.png,.webp,.tif,.tiff,.fit,.fits,.fts'
 
 /** Ukryte pole pliku (zawsze w oknie) i przycisk wczytania w lewym górnym rogu sceny. */
-export function PhotoImport({ session, inputRef, showButton }: { session: PhotoSession; inputRef: RefObject<HTMLInputElement | null>; showButton: boolean }) {
+export function PhotoImport({ session, inputRef, showButton, onActivate }: { session: PhotoSession; inputRef: RefObject<HTMLInputElement | null>; showButton: boolean; onActivate?(): void }) {
   const { project, busy, ready } = session
   return <div className="photo-import">
     <input ref={inputRef} type="file" hidden accept={ACCEPT} onChange={(e) => { const file = e.target.files?.[0]; if (file) session.upload(file); e.target.value = '' }} />
-    {(showButton || busy) && <button className="button small" onClick={() => inputRef.current?.click()} disabled={busy}><ImagePlus size={14} />{busy ? 'Rozwiązywanie zdjęcia…' : project ? 'Zmień zdjęcie' : 'Rozłóż zdjęcie'}</button>}
+    {(showButton || busy) && <button className="button small" onClick={() => inputRef.current?.click()} disabled={busy}><ImagePlus size={14} />{busy ? 'Rozwiązywanie zdjęcia…' : 'Rozłóż zdjęcie'}</button>}
+    {showButton && !busy && project && onActivate && <button type="button" className="button small photo-restore" title={`Pokaż zdjęcie: ${project.name}`} onClick={onActivate}><Eye size={14} /><span>Pokaż zdjęcie: {project.name}</span></button>}
     {busy && <button className="button small" onClick={session.cancelUpload}>Anuluj</button>}
     {!project && ready === false && <span className="photo-notice">Astrometria wymaga lokalnego Skyshota.</span>}
   </div>

@@ -1,6 +1,24 @@
 import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
-import { createEarthMesh, setEarthOpacity, type EarthAssets } from './earthModel'
+import { cloudRowsUntil, createEarthMesh, setEarthOpacity, type EarthAssets } from './earthModel'
+
+it('chmury liczone kawałkami w czasie bezczynności dają ten sam obraz co w jednym przebiegu', () => {
+  const whole = new Uint8ClampedArray(384 * 192 * 4)
+  expect(cloudRowsUntil(whole, 0, () => 100)).toBe(192)
+  // Bez czasu bezczynności każdy kawałek liczy jeden wiersz; trzy wiersze na kawałek przy czterech wywołaniach timeLeft.
+  const sliced = new Uint8ClampedArray(384 * 192 * 4)
+  expect(cloudRowsUntil(sliced, 0, () => 0)).toBe(1)
+  let calls = 0
+  expect(cloudRowsUntil(sliced, 1, () => (++calls < 3 ? 5 : 0))).toBe(4)
+  let y = 4
+  while (y < 192) y = cloudRowsUntil(sliced, y, () => 0)
+  expect(y).toBe(192)
+  expect(sliced).toEqual(whole)
+  // Chmury są, ale nie pokrywają całej kuli.
+  const alpha = whole.filter((_, i) => i % 4 === 3)
+  expect(alpha.some((a) => a > 0)).toBe(true)
+  expect(alpha.some((a) => a === 0)).toBe(true)
+})
 
 function stubAssets(): EarthAssets {
   return {

@@ -50,19 +50,43 @@ export interface SpaceSettingsState extends SpaceSettings {
   setGalaxyLevel(level: number): void
 }
 
-/** Stan paska narzędzi okna: skala wynika z odległości obiektu, a po wczytaniu zdjęcia z odległości jego wycinków. */
-export function useSpaceSettings(o: DSO | null, photo: PhotoProject | null): SpaceSettingsState {
+/** Źródło widoku skali: wybrany obiekt katalogowy, wczytane zdjęcie i czy zdjęcie jest aktywne w scenie 3D. */
+export type SpaceScaleSource = { object: number | undefined; photo: string | undefined; active: boolean }
+
+/** Automatyczna skala z odległości obiektu lub aktywnego zdjęcia. */
+export function autoSpaceScale(o: DSO | null, photo: PhotoProject | null, photoActive = true): SpaceScale {
+  const activePhoto = photoActive ? photo : null
   const dist = o?.distLy ?? null
-  const distances = photo?.cuts.map((c) => c.distLy).filter((d): d is number => d !== null) ?? []
-  const auto: SpaceScale = photo
+  const distances = activePhoto?.cuts.map((c) => c.distLy).filter((d): d is number => d !== null) ?? []
+  return activePhoto
     ? distances.length && distances.every((d) => d >= GALACTIC_LIMIT_LY) ? 'universe' : 'galaxy'
     : dist !== null && dist > GALACTIC_LIMIT_LY ? 'universe' : 'galaxy'
+}
+
+/** Wybór skali po zmianie obiektu, zdjęcia lub jego aktywności: „Pokaż zdjęcie” utrzymuje bieżącą skalę. */
+export function nextScaleChoice(
+  prev: SpaceScaleSource,
+  next: SpaceScaleSource,
+  scaleChoice: SpaceScale | null,
+  o: DSO | null,
+): SpaceScale | null {
+  // Reaktywacja wczytanego zdjęcia nie przełącza między Drogą Mleczną a Wszechświatem lokalnym.
+  if (prev.object === next.object && prev.photo === next.photo && !prev.active && next.active) {
+    return scaleChoice ?? autoSpaceScale(o, null, false)
+  }
+  return null
+}
+
+/** Stan paska narzędzi okna: skala wynika z odległości obiektu, a po wczytaniu aktywnego zdjęcia z odległości jego wycinków. */
+export function useSpaceSettings(o: DSO | null, photo: PhotoProject | null, photoActive = true): SpaceSettingsState {
+  const auto = autoSpaceScale(o, photo, photoActive)
   const [scaleChoice, setScale] = useState<SpaceScale | null>(null)
-  const [source, setSource] = useState({ object: o?.i, photo: photo?.id })
+  const [source, setSource] = useState<SpaceScaleSource>({ object: o?.i, photo: photo?.id, active: photoActive })
+  const nextSource: SpaceScaleSource = { object: o?.i, photo: photo?.id, active: photoActive }
   // Reset przed zatwierdzeniem widoku, żeby zmiana źródła nie tworzyła sceny w poprzedniej skali.
-  if (source.object !== o?.i || source.photo !== photo?.id) {
-    setSource({ object: o?.i, photo: photo?.id })
-    setScale(null)
+  if (source.object !== nextSource.object || source.photo !== nextSource.photo || source.active !== nextSource.active) {
+    setSource(nextSource)
+    setScale(nextScaleChoice(source, nextSource, scaleChoice, o))
   }
   const [showConstellations, setShowConstellations] = useState(false)
   const [constellationChoice, setConstellationChoice] = useState(o?.con ?? 'Ori')

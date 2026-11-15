@@ -136,6 +136,39 @@ Pomiary Playwrightem (Chromium, swiftshader, 1600 × 900) na M 42, M 31 i zdjęc
 - Po recenzji: obiekt bez odległości (NGC 1432) we Wszechświecie pokazuje galaktyki i Grupę Lokalną, gromada 136 tys. lś (NGC 4147) w Drodze Mlecznej nie ma pierścieni ani galaktyk, w nurkowaniu (k = 0,15 i 0,4) podpisy i pierścienie gasną z tłem, a zmiana zakładki ze zdjęciem M 51 to ten sam przelot co bez zdjęcia.
 - Szew nurkowania z obu zakładek (M 51, IC 434): środek Ziemi, kierunek linii widzenia i promień Ziemi w obu scenach zgodne do 1e-8 px. Cztery kolejne nurkowania tam i z powrotem, także po zmianie zakładki, wracają do sceny.
 
+## Przejścia i przerwania animacji 3D (14.11.2026)
+
+Pomiar w Chromium z SwiftShaderem (M 51, okno 1400 × 900); krycia z każdej klatki Space3D (`handle.layout`), bufory i rendery z liczników `canvas.width` i `gl.clear`.
+
+| Pomiar | Przed | Po |
+|---|---|---|
+| Przełączenie zakładki przerwane powrotem albo przeciągnięciem | skok krycia o 0,42–0,50 w jednej klatce | najwyżej 1,4 krycia/s (bez skoku), przenikanie kończy się po 1,6 s |
+| Widok gwiazdozbioru przerwany przeciągnięciem | pole widzenia zostaje 39,9°, gwiazdozbiór wraca skokowo do 3D | w 0,6 s do 50°, gwiazdozbiór rozkłada się płynnie |
+| Linie gwiazdozbiorów po nurkowaniu tam i z powrotem | krycie 1,0 zamiast 0,9 | 0,9, także po zawróceniu w połowie i po drugiej zakładce w połowie |
+| Nowe bufory płótna Obserwatorium (wejście / powrót) | 20 / — | 1 / 3 |
+| Rendery sceny 3D bez ruchu (1,5 s) | 17 (obrót 7-pikselowej Ziemi co 100 ms) | 1 (klatka kontrolna) |
+| Pierwsza klatka lotu widoku Obserwatorium | czas z `performance.now()`, możliwe cofnięcie | 0 (start z czasu rAF), bezwładność wyzerowana |
+
+- Przenikanie kryć po zmianie zakładki ma własny zegar (`blendFades`, `startFadeBlend` w `src/lib/space3d.ts`); bez przerwań daje te same krycia co dawne `mixFades` (test), po przerwaniu startuje od kryć ostatniej klatki.
+- Nurkowanie zbiera materiały warstw raz na scenę zamiast przechodzić scenę w każdej klatce; podpisy obiektów tła i nazwy gwiazd nie są liczone, gdy warstwy są zgaszone.
+- Obserwatorium nie odtwarza się przy zmianie zakładki i stoi bez własnej pętli, gdy jest ukryte.
+- Druga zakładka w trakcie nurkowania w głąb (M 51, w połowie wygaszania tła) i w stanie zdjęcia: pasek od razu zaznacza wybraną zakładkę, nurkowanie zawraca albo wraca ze zdjęcia (6,3 s i 12,0 s pod SwiftShaderem zamiast cięcia w 47 ms), potem przelot zakładek (odległość kamery 1570 → 36 j. i z powrotem); krycia warstw 1, linii gwiazdozbiorów 0,9.
+
+### Otwieranie okna „Pozycja 3D” (15.11.2026)
+
+Pomiar w Chromium z GPU (RTX 5070, ANGLE D3D11), M 42, okno 1600 × 950; długie zadania z PerformanceObserver, profil CPU z CDP.
+
+| Pomiar | Przed (build / dev) | Po (build / dev) |
+|---|---|---|
+| Okno namalowane po kliknięciu | ok. 0,9 s / 1,7 s | ok. 0,1–0,2 s / 0,27 s |
+| Długie zadanie przy otwarciu | 518–549 ms / 1214 ms | 203–223 ms / 304 ms, po pokazaniu okna |
+| Pierwsza klatka sceny | ok. 0,9 s / 1,6 s | ok. 0,45–0,56 s / 0,7 s |
+| Przelot startowy w pierwszej widocznej klatce | ok. 56 % drogi (zegar ruszył przed klatką z kompilacją shaderów) | od początku |
+
+- Przyczyny: React 19 odsłania treść po pokazanym fallbacku `Suspense` najwcześniej 300 ms po nim (ok. 300 ms bezczynności przed oknem); budowa sceny i pierwsza klatka w zadaniu commitu okna (szum chmur Ziemi 80–170 ms, punkty galaktyk ok. 65–160 ms, kompilacja shaderów ok. 150–220 ms); w dev StrictMode buduje scenę dwa razy.
+- Okno ładuje moduł bez `Suspense` (od wskazania przycisku), scena montuje się po pierwszym malowaniu okna, shadery kompilują się asynchronicznie (`compileAsync`), chmury liczą się wierszami w czasie bezczynności (test `earthModel`), bufory galaktyk i mapy pochodne Ziemi są liczone raz na stronę, a przeloty, powrót soczewki i przenikanie kryć mają zegar z krokiem ≤ 50 ms (długa klatka wstrzymuje ruch zamiast przeskoku).
+- Rwanie przelotu przy aktywnym zdjęciu (M 51, ślad Chromium z próbkami V8): wcześniejsze tworzenie sceny Obserwatorium z `requestIdleCallback` trafiało w środek przelotu. W ruchu kamery były klatki 50, 100, 117 i 167–200 ms: dekodowanie i skalowanie zdjęcia, `cutTexture` 36–63 ms, shadery w `setData` 64–98 ms, nowy kontekst WebGL. Teraz Obserwatorium powstaje dopiero, gdy kamera stoi (`handle.afterFlight`). W dwóch przebiegach żadna klatka > 25 ms nie wypada w ruchu kamery (do 1567 i 1616 ms); długie klatki tworzenia sceny przypadają na nieruchomy kadr. Bez zdjęcia (M 42, M 31; także 1920 × 1080 przy skali 1,5) przelot nie ma klatek > 25 ms.
+
 ## Niebo NSNS: kopuła, kadrowanie, miniatury (15.11.2026)
 
 - Źródło: Northern Sky Narrowband Survey, S. Ziegenbalg, CC BY-NC-SA 4.0. Kopuła i miniatury: DR0.1 „(Almost) true color” bez odejmowania gwiazd i Hα (HiPS `tc8`); kadrowanie dodatkowo DR0.2 `rgb8` (kontinuum RGB bez Hα, gwiazdy częściowo odjęte), bo DR0.1 nie ma kolorowego HiPS dla wersji bez Hα. Rząd 5 (12,9″/px), pokrycie 65 % nieba do δ ≈ −16° (na −16° kafelki mają 1–2 % pustych pikseli, na −18° ich nie ma).

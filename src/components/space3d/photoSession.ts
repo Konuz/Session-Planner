@@ -1,7 +1,7 @@
 // Sesja zdjęcia okna „Pozycja 3D”: odczyt i zapis w IndexedDB, astrometria nowego zdjęcia, edycja wycinków
 // i gwiazdy Gaia. Wspólna dla Drogi Mlecznej, Wszechświata lokalnego i Obserwatorium.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { cutDistance, refreshCutDistances, regressorDistance, regressorEligible, type RegressorResult } from '../../lib/distance'
+import { cutDistance, refreshCutDistances, regressorDistance, regressorEligible, regressorPollDelay, type RegressorPollState, type RegressorResult } from '../../lib/distance'
 import { fieldOfView } from '../../lib/observatory'
 import type { PhotoCut, PhotoProject, PhotoStars } from '../../lib/photo'
 import { hasUnsavedPhoto, photoImageUrl, readPhoto, writePhoto } from '../../lib/photoStorage'
@@ -172,14 +172,14 @@ export function useCutDistances(session: PhotoSession) {
 
 export type RegressorJob = { key: string; status: 'queued' | 'running' | 'done' | 'error' | 'unknown'; result?: RegressorResult }
 const NO_REGRESSOR_JOBS: ReadonlyMap<string, RegressorJob> = new Map()
-const REGRESSOR_POLL_MS = 15_000
-const REGRESSOR_POLL_MAX_MS = 120_000
 /** Limit wycinków w jednym zapytaniu serwera (`MAX_TARGETS` w server/regressor.ts). */
 const REGRESSOR_BATCH = 40
+const pollState = (jobs: ReadonlyMap<string, RegressorJob>): RegressorPollState =>
+  [...jobs.values()].some((job) => job.status === 'running') ? 'running' : 'queued'
 
 /**
  * Regresor (astro-regressor na serwerze) dla wycinków bez żadnej odległości: zgłoszenie w tle po astrometrii i odpytywanie
- * co 15 s. Sensowną wartość wpisuje jako niezweryfikowaną (origin „regressor”); odmowy i awarie zostawiają brak odległości.
+ * w odstępach z `regressorPollDelay`. Sensowną wartość wpisuje jako niezweryfikowaną (origin „regressor”); odmowy i awarie zostawiają brak odległości.
  * Zwraca aktualny stan i wynik ostatniej próby dla każdego zgłoszonego wycinka.
  */
 export function useRegressor(session: PhotoSession, starsFailed: boolean): ReadonlyMap<string, RegressorJob> {
@@ -246,12 +246,16 @@ export function useRegressor(session: PhotoSession, starsFailed: boolean): Reado
       update(jobs)
       return [...jobs.values()].some((job) => job.status === 'queued' || job.status === 'running')
     }
-    // Odpytywanie co 15 s; po błędzie odstęp rośnie dwukrotnie do 2 min, a w ukrytej karcie czeka na jej pokazanie (C08).
-    let delay = REGRESSOR_POLL_MS
-    const poll = (jobs: ReadonlyMap<string, RegressorJob>) => {
+    // Odstęp z regressorPollDelay według stanu zadań na serwerze; w ukrytej karcie odpytywanie czeka na jej pokazanie (C08).
+    let delay: number | null = null
+    const poll = (jobs: ReadonlyMap<string, RegressorJob>, state: RegressorPollState) => {
+      delay = regressorPollDelay(delay, state)
+      wait(jobs, delay)
+    }
+    const wait = (jobs: ReadonlyMap<string, RegressorJob>, ms: number) => {
       timer = setTimeout(() => {
         if (document.hidden) {
-          const resume = () => { document.removeEventListener('visibilitychange', resume); if (!abort.signal.aborted) poll(jobs) }
+          const resume = () => { document.removeEventListener('visibilitychange', resume); if (!abort.signal.aborted) wait(jobs, ms) }
           document.addEventListener('visibilitychange', resume)
           abort.signal.addEventListener('abort', () => document.removeEventListener('visibilitychange', resume))
           return
@@ -262,18 +266,16 @@ export function useRegressor(session: PhotoSession, starsFailed: boolean): Reado
         Promise.all(chunks.map((chunk) => fetch(`/api/photo/regressor?${new URLSearchParams({ keys: chunk.join(',') })}`, { signal: abort.signal })
           .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() as Promise<{ jobs: RegressorJob[] }> })))
           .then((parts) => {
-            delay = REGRESSOR_POLL_MS
             const polled = parts.flatMap((part) => part.jobs)
             const next = new Map(jobs)
             running.forEach(([id], i) => next.set(id, polled[i]))
-            if (apply(next)) poll(next)
+            if (apply(next)) poll(next, pollState(next))
           })
           .catch(() => {
             if (abort.signal.aborted) return
-            delay = Math.min(REGRESSOR_POLL_MAX_MS, delay * 2)
-            poll(jobs)
+            poll(jobs, 'error')
           })
-      }, delay)
+      }, ms)
     }
     const all = pending.map((cut) => ({ raDeg: cut.raDeg, decDeg: cut.decDeg, radiusDeg: Math.min(2, Math.max(0.001, cut.radius * degPerPx)), type: cut.type }))
     const batches = Array.from({ length: Math.ceil(all.length / REGRESSOR_BATCH) }, (_, i) => all.slice(i * REGRESSOR_BATCH, (i + 1) * REGRESSOR_BATCH))
@@ -287,7 +289,7 @@ export function useRegressor(session: PhotoSession, starsFailed: boolean): Reado
       }))))
       .then((parts) => {
         const jobs = new Map(parts.flatMap((part) => part.jobs).map((job, i) => [ids[i], job]))
-        if (apply(jobs)) poll(jobs)
+        if (apply(jobs)) poll(jobs, pollState(jobs))
       })
     return () => { abort.abort(); clearTimeout(timer) }
     // Zmiana pozostałych pól projektu (np. zapis gwiazd) nie zgłasza wycinków ponownie.

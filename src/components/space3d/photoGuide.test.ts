@@ -3,7 +3,7 @@ import { Line, LineDashedMaterial, LineSegments, PerspectiveCamera, Scene, Sprit
 import { NO_DISTANCE } from '../../lib/distance'
 import { frameBasis, halfFieldTan } from '../../lib/frameBasis'
 import type { PhotoCut, PhotoProject } from '../../lib/photo'
-import { UNIVERSE_MIN_SPAN, sunPosition, type SpaceScale } from '../../lib/space3d'
+import { UNIVERSE_MIN_SPAN, scenePosition, sunPosition, type SpaceScale } from '../../lib/space3d'
 import type { CameraPose } from '../../lib/spaceCamera'
 import type { Space3DHandle } from '../Space3D'
 import { createPhotoGuide } from './photoGuide'
@@ -54,7 +54,7 @@ function fixture(scale: SpaceScale, project = comaProject()) {
 }
 
 beforeEach(() => {
-  const element = () => ({ className: '', textContent: '', style: {} as Record<string, string>, classList: { toggle: vi.fn(), add: vi.fn(), remove: vi.fn() }, appendChild: vi.fn(), remove: vi.fn(), addEventListener: vi.fn() })
+  const element = () => ({ className: '', textContent: '', style: {} as Record<string, string>, classList: { toggle: vi.fn(), add: vi.fn(), remove: vi.fn(), contains: () => false }, appendChild: vi.fn(), remove: vi.fn(), addEventListener: vi.fn() })
   vi.stubGlobal('document', { createElement: element })
 })
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
@@ -79,6 +79,19 @@ it('we Wszechświecie lokalnym każdy znacznik leży w stożku pola, a stożek s
   }
   expect(f.guide.length).toBeGreaterThan(farthest)
   expect(f.guide.length).toBeLessThan(farthest * 1.2)
+})
+
+it('znacznik M 33 i jego pozycja w scenie (scenePosition) pokrywają się dokładnie w stożku pola', () => {
+  const m33Astrometry = {
+    raDeg: 23.462, decDeg: 30.6602, rmsPx: 1, matches: 20, edgeMatches: 5, edgeRmsPx: 1, totalMs: 1,
+    wcs: { cd: [[-1.5 / WIDTH, 0], [0, -1.5 / WIDTH]], crpix: [WIDTH / 2, HEIGHT / 2] },
+  }
+  const m33Cut: PhotoCut = { ...NO_DISTANCE, id: 'M 33', type: 'G', raDeg: 23.462, decDeg: 30.6602, x: WIDTH / 2, y: HEIGHT / 2, radius: 40, enabled: true, distLy: 2_781_156, distanceOrigin: 'user' }
+  const project: PhotoProject = { version: 3, id: 'm33', name: 'M 33', image: 'm33.jpg', width: WIDTH, height: HEIGHT, createdAt: 0, stars: null, cuts: [m33Cut], astrometry: m33Astrometry }
+  const f = fixture('universe', project)
+  expect(f.sprites).toHaveLength(1)
+  const expected = scenePosition(m33Cut, m33Cut.distLy!)
+  f.sprites[0].position.toArray().forEach((v, i) => expect(v).toBeCloseTo(expected[i], 6))
 })
 
 it('w Drodze Mlecznej nie ma pionów do płaszczyzny Galaktyki: jedyne odcinki to stożek', () => {
@@ -174,4 +187,30 @@ it('zdjęcie samej Drogi Mlecznej (np. Sh2-181): zakładka Wszechświat oddala k
   // Ta sama najmniejsza odległość co kadr obiektu we Wszechświecie (Space3D: 70 j. dawnej skali × 1,08).
   expect(distance(universe)).toBeGreaterThanOrEqual(UNIVERSE_MIN_SPAN * 1.08 - 1e-6)
   expect(distance(universe) / distance(galaxy)).toBeGreaterThan(20)
+})
+
+it('hover nad znacznikiem w grupie pokazuje nazwę obiektu i chowa ją po zejściu kursora', () => {
+  const created: { className: string; textContent: string; style: Record<string, string> }[] = []
+  const element = () => {
+    const el = { className: '', textContent: '', style: {} as Record<string, string>, classList: { toggle: vi.fn(), add: vi.fn(), remove: vi.fn(), contains: () => false }, appendChild: vi.fn(), remove: vi.fn(), addEventListener: vi.fn() }
+    created.push(el)
+    return el
+  }
+  vi.stubGlobal('document', { createElement: element })
+  const f = fixture('universe')
+  f.guide.frameCamera()
+  f.camera.updateProjectionMatrix()
+  const [layout] = f.handle.layout
+  layout(0)
+  const hoverEl = created.find((el) => el.className.includes('hovered'))!
+  expect(hoverEl).toBeDefined()
+  expect(hoverEl.style.display).toBe('none')
+  // W gromadzie Abell 1656 sąsiednie galaktyki PGC są zgrupowane w plakietkę.
+  f.guide.setHover('PGC 0')
+  layout(16)
+  expect(hoverEl.style.display).toBe('')
+  expect(hoverEl.textContent).toContain('PGC 0')
+  f.guide.setHover(null)
+  layout(32)
+  expect(hoverEl.style.display).toBe('none')
 })

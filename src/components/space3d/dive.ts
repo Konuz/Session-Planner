@@ -6,7 +6,7 @@ import type { Vec3 } from '../../lib/astro'
 import { EARTH_Z, PLANE_WIDTH } from '../../lib/observatory'
 import { SPACE_FAR, SPACE_FOV } from '../../lib/spaceCamera'
 import {
-  ALIGN_K, coneLength, coneTan, diveFades, diveFrame, diveGridScale, diveMarkerPosition, diveScale, divePose, diveTotalMs, ease, guideAlignment, guideRollWeight, lerpPose, makeBridge, nearFar, startScale, turnWeight, unbridgePoint, unbridgeVector, uprightRoll,
+  ALIGN_K, coneLength, coneTan, diveFades, diveFrame, diveGridScale, diveMarkerPosition, diveScale, divePose, diveTotalMs, ease, guideAlignment, guideRollWeight, lerpPose, makeBridge, nearFar, reverseElapsedMs, skipStepMs, startScale, turnWeight, unbridgePoint, unbridgeVector, uprightRoll,
   type Bridge, type DiveDirection, type DiveFrame, type DivePhase, type Pose,
 } from '../../lib/spaceDive'
 import type { ObservatoryScene } from '../observatory/scene'
@@ -38,10 +38,10 @@ export interface DiveOptions {
   imageAspect: number
   /** Powrót: poza sceny 3D sprzed wejścia. */
   spacePose?: SpacePose
-  onPhase(phase: DivePhase): void
+  onPhase(phase: DivePhase, direction: DiveDirection): void
   /** Pierwsza gotowa klatka Obserwatorium ma już pozę i krycia przejścia; można odsłonić płótno. */
   onObservatoryFrame(): void
-  onDone(): void
+  onDone(direction: DiveDirection): void
 }
 
 export interface DiveDev {
@@ -81,6 +81,7 @@ export class SpaceDive {
     this.roll = guide ? uprightRoll(guide.basis, this.spacePose.up) : 0
     this.bridge = guide ? makeBridge(space.sunPos.toArray() as Vec3, guide.basis, [0, 0, EARTH_Z], this.roll) : null
     guide?.setVisible(true)
+    collectLayers(space, guide, true)
     space.stopIntro()
     space.setExternal(true)
     space.override.camera = true
@@ -91,6 +92,20 @@ export class SpaceDive {
 
   /** Klik lub klawisz w trakcie przejścia: od razu stan końcowy. */
   skip() { this.skipping = true }
+
+  /** Powrót w trakcie nurkowania naprzód z bieżącego miejsca (false, jeśli Obserwatorium jeszcze ładuje i można od razu anulować). */
+  reverse(): boolean {
+    if (this.finished || this.o.direction !== 'in') return false
+    const obs = this.o.observatory()
+    if (!obs?.ready || this.elapsed <= 0) return false
+    this.elapsed = reverseElapsedMs(this.elapsed, 'in', 'out')
+    this.o.direction = 'out'
+    this.skipping = false
+    this.frozen = null
+    this.last = null
+    if (this.phase === 'enter') this.obsEnd = obs.getPose()
+    return true
+  }
 
   /** Esc (zamknięcie okna) albo przebudowa sceny: przerwanie bez przywracania (sceny i tak znikają lub wracają). */
   cancel() {
@@ -130,21 +145,26 @@ export class SpaceDive {
     const obs = this.o.observatory()
     const step = Math.min(MAX_STEP_MS, Math.max(0, now - (this.last ?? now)))
     this.last = now
-    // Scena Obserwatorium musi stać przed nurkowaniem: do tego czasu kamera sceny 3D stoi.
-    if (this.o.direction === 'in' && !obs?.ready) this.elapsed = 0
-    else this.elapsed += step
+    // Scena Obserwatorium musi stać przed nurkowaniem: do tego czasu kamera sceny 3D stoi i nie można jej pominąć.
+    const waiting = this.o.direction === 'in' && !obs?.ready
     const total = diveTotalMs(this.o.direction)
-    const elapsed = this.skipping ? total : this.frozen !== null ? this.frozen * total : this.elapsed
+    if (waiting) this.elapsed = 0
+    else this.elapsed = Math.min(total, this.elapsed + (this.skipping ? skipStepMs(Math.max(0, total - this.elapsed), step) : step))
+    const elapsed = waiting ? 0 : this.frozen !== null && !this.skipping ? this.frozen * total : this.elapsed
     const f = diveFrame(elapsed, this.o.direction)
     const seam: Pose = { ...this.o.seam, up: UP }
     if (f.phase !== this.phase) {
       this.phase = f.phase
       // Naprzód kamera Obserwatorium zostaje w widoku Struktura (wsuwają się tylko panele); wstecz wraca do niego z bieżącej pozy.
       if (f.phase === 'enter' && obs) this.obsEnd = this.o.direction === 'in' ? seam : obs.getPose()
-      // W fazie wejścia scena 3D nie rysuje klatek: zostaje w stanie końca nurkowania (wszystko wygaszone),
-      // także po przeskoku lub zgubionych klatkach.
-      if (f.phase === 'enter') this.fadeSpace(1)
-      this.o.onPhase(f.phase)
+      // W fazie wejścia scena 3D zostaje w stanie końca nurkowania: wygaszona i przerysowana, żeby przy powrocie
+      // nie prześwitywała stara klatka spod przezroczystego płótna Obserwatorium.
+      if (f.phase === 'enter') {
+        this.fadeSpace(1)
+        this.o.space?.invalidate()
+        this.o.space?.step?.(now)
+      }
+      this.o.onPhase(f.phase, this.o.direction)
     }
     const spaceView = f.phase === 'dive' ? this.applySpace(f, seam, now) : null
     if (obs?.ready) {
@@ -258,26 +278,46 @@ export class SpaceDive {
     } else {
       restoreSpace(space, guide, this.spacePose)
     }
-    this.o.onDone()
+    this.o.onDone(this.o.direction)
   }
 }
 
-/** Krycie warstw tła sceny 3D (bez znaczników/wycinków zdjęcia i Ziemi) i osobno napisów; bazowe krycie zapamiętane w materiale. */
-function fadeLayers(space: Space3DHandle, guide: PhotoGuide | null, fade: number, labels = fade) {
+type LayerMaterial = { material: THREE.Material; uniform: boolean; base: number; label: boolean }
+/**
+ * Materiały warstw tła z kryciem sprzed nurkowania: zebrane raz na scenę (nie przechodzeniem całej sceny w każdej
+ * klatce), wspólne dla wejścia i powrotu (powrót startuje z wygaszonej sceny), usuwane po przywróceniu.
+ */
+const layerMaterials = new WeakMap<Space3DHandle, { list: LayerMaterial[]; seen: Set<THREE.Material> }>()
+
+/** extend: raz na start sterownika dołącza materiały powstałe od wejścia (np. nazwy gwiazd włączone w stanie zdjęcia);
+ *  nie były wygaszane, więc ich bieżące krycie jest bazowe. */
+export function collectLayers(space: Space3DHandle, guide: PhotoGuide | null, extend = false): LayerMaterial[] {
+  const known = layerMaterials.get(space)
+  if (known && !extend) return known.list
+  const { list, seen } = known ?? { list: [], seen: new Set<THREE.Material>() }
   space.scene.traverse((object) => {
     if ((space.earth && (object === space.earth || isInside(object, space.earth))) || (guide && (object === guide.group || isInside(object, guide.group)))) return
     const material = (object as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined
-    const f = object instanceof THREE.Sprite ? Math.min(fade, labels) : fade
     for (const m of Array.isArray(material) ? material : material ? [material] : []) {
-      if (m instanceof THREE.ShaderMaterial && m.uniforms.opacity) {
-        m.uniforms.opacity.value = f
-        continue
-      }
-      if (!m.transparent) continue
-      m.userData.layerBase ??= m.opacity
-      m.opacity = (m.userData.layerBase as number) * f
+      if (seen.has(m)) continue
+      // Shadery z własnym kryciem (linie gwiazdozbiorów, kopuły) mają je w uniformie, nie w polu opacity.
+      const uniform = m instanceof THREE.ShaderMaterial && !!m.uniforms.opacity
+      if (!uniform && !m.transparent) continue
+      seen.add(m)
+      list.push({ material: m, uniform, base: uniform ? (m as THREE.ShaderMaterial).uniforms.opacity.value as number : m.opacity, label: object instanceof THREE.Sprite })
     }
   })
+  layerMaterials.set(space, { list, seen })
+  return list
+}
+
+/** Krycie warstw tła sceny 3D (bez znaczników/wycinków zdjęcia i Ziemi) i osobno napisów, względem krycia sprzed nurkowania. */
+function fadeLayers(space: Space3DHandle, guide: PhotoGuide | null, fade: number, labels = fade) {
+  for (const { material, uniform, base, label } of collectLayers(space, guide)) {
+    const value = base * (label ? Math.min(fade, labels) : fade)
+    if (uniform) (material as THREE.ShaderMaterial).uniforms.opacity.value = value
+    else material.opacity = value
+  }
   space.overlay.style.opacity = String(fade)
 }
 
@@ -295,6 +335,7 @@ export function restoreSpace(space: Space3DHandle, guide: PhotoGuide | null, pos
   space.override.layerFade = 1
   space.override.labelFade = 1
   fadeLayers(space, guide, 1)
+  layerMaterials.delete(space)
   if (guide) {
     guide.setOpacity(1, 1, 1)
     guide.cone.scale.set(guide.fieldTan[0], guide.fieldTan[1], 1)

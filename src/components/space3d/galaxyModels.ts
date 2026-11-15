@@ -49,7 +49,28 @@ export function position(o: Pick<DSO, 'raDeg' | 'decDeg'>, distLy: number): THRE
   return new THREE.Vector3(...scenePosition(o, distLy))
 }
 
+/**
+ * Punkty modeli galaktyk są deterministyczne (stałe ziarno): bufory liczone raz na stronę (52 tys. punktów Drogi
+ * Mlecznej i modele Grupy Lokalnej to ok. 65–160 ms), a kolejne sceny (ponowne otwarcie okna) tworzą z nich tylko
+ * geometrię. Bufory nie są potem zmieniane.
+ */
+const modelBuffers = new Map<string, { pos: Float32Array; col: Float32Array }>()
+function cachedBuffers(key: string, build: () => { pos: Float32Array; col: Float32Array }) {
+  let buffers = modelBuffers.get(key)
+  if (!buffers) modelBuffers.set(key, buffers = build())
+  return buffers
+}
+
 export function milkyWay(count: number, texture: THREE.Texture): THREE.Points {
+  const { pos, col } = cachedBuffers(`mw:${count}`, () => milkyWayBuffers(count))
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3))
+  const m = galaxyMaterial(texture)
+  return new THREE.Points(g, m)
+}
+
+function milkyWayBuffers(count: number) {
   const pos = new Float32Array(count * 3)
   const col = new Float32Array(count * 3)
   const rnd = (() => {
@@ -92,11 +113,7 @@ export function milkyWay(count: number, texture: THREE.Texture): THREE.Points {
     pos.set([p.x, p.y, p.z], i * 3)
     col.set(c, i * 3)
   }
-  const g = new THREE.BufferGeometry()
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
-  g.setAttribute('color', new THREE.BufferAttribute(col, 3))
-  const m = galaxyMaterial(texture)
-  return new THREE.Points(g, m)
+  return { pos, col }
 }
 
 export function galaxyMaterial(texture: THREE.Texture): THREE.PointsMaterial {
@@ -109,6 +126,34 @@ export function localGroupGalaxy(o: DSO, profile: GalaxyProfile, texture: THREE.
   const spiral = profile.kind === 'spiral' || profile.kind === 'flocculent'
   // Minimum próbek zachowuje czytelność karłów przy zbliżeniu; M33 ma rozległy, rozproszony dysk.
   const count = o.id === 'M 31' ? 36000 : o.id === 'M 33' ? 8800 : Math.max(600, Math.round(18000 * (diameterLy / MILKY_WAY_DIAMETER_LY) ** 1.8))
+  const { pos, col } = cachedBuffers(`lg:${o.id}:${count}:${o.paDeg}:${JSON.stringify(profile)}`, () => localGroupBuffers(o, profile, count))
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+  geometry.setAttribute('color', new THREE.BufferAttribute(col, 3))
+  const material = galaxyMaterial(texture)
+  const points = new THREE.Points(geometry, material)
+  points.scale.setScalar(diameterLy / MILKY_WAY_DIAMETER_LY)
+  // PA jest mierzone na niebie od północy ku wschodowi, nie względem osi sceny.
+  const sight = toThree(galacticVector(o)).normalize()
+  const north = toThree(galacticVector({ raDeg: o.raDeg, decDeg: o.decDeg + 0.01 }))
+  north.addScaledVector(sight, -north.dot(sight)).normalize()
+  const east = north.clone().cross(sight).normalize()
+  const pa = (o.paDeg ?? 0) * Math.PI / 180
+  const major = north.clone().multiplyScalar(Math.cos(pa)).addScaledVector(east, Math.sin(pa))
+  const minor = sight.clone().cross(major).normalize()
+  points.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(major, minor, sight))
+  if (spiral) {
+    // Orientacja dysków z badań, nie z elipsy całej galaktyki obejmującej zgrubienie.
+    // M31: https://academic.oup.com/mnras/article/366/3/996/994137
+    // M33: https://www.aanda.org/articles/aa/pdf/2025/08/aa55408-25.pdf
+    const inclination = (profile.kind === 'flocculent' ? 54 : 77) * Math.PI / 180
+    points.rotateX(inclination)
+  }
+  return points
+}
+
+function localGroupBuffers(o: DSO, profile: GalaxyProfile, count: number) {
+  const spiral = profile.kind === 'spiral' || profile.kind === 'flocculent'
   const pos = new Float32Array(count * 3)
   const col = new Float32Array(count * 3)
   let seed = [...o.id].reduce((n, c) => n * 31 + c.charCodeAt(0), 7) >>> 0
@@ -219,29 +264,7 @@ export function localGroupGalaxy(o: DSO, profile: GalaxyProfile, texture: THREE.
     pos.set([x, y, z], i * 3)
     col.set(color, i * 3)
   }
-  const geometry = new THREE.BufferGeometry()
-  geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3))
-  geometry.setAttribute('color', new THREE.BufferAttribute(col, 3))
-  const material = galaxyMaterial(texture)
-  const points = new THREE.Points(geometry, material)
-  points.scale.setScalar(diameterLy / MILKY_WAY_DIAMETER_LY)
-  // PA jest mierzone na niebie od północy ku wschodowi, nie względem osi sceny.
-  const sight = toThree(galacticVector(o)).normalize()
-  const north = toThree(galacticVector({ raDeg: o.raDeg, decDeg: o.decDeg + 0.01 }))
-  north.addScaledVector(sight, -north.dot(sight)).normalize()
-  const east = north.clone().cross(sight).normalize()
-  const pa = (o.paDeg ?? 0) * Math.PI / 180
-  const major = north.clone().multiplyScalar(Math.cos(pa)).addScaledVector(east, Math.sin(pa))
-  const minor = sight.clone().cross(major).normalize()
-  points.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(major, minor, sight))
-  if (spiral) {
-    // Orientacja dysków z badań, nie z elipsy całej galaktyki obejmującej zgrubienie.
-    // M31: https://academic.oup.com/mnras/article/366/3/996/994137
-    // M33: https://www.aanda.org/articles/aa/pdf/2025/08/aa55408-25.pdf
-    const inclination = (flocculent ? 54 : 77) * Math.PI / 180
-    points.rotateX(inclination)
-  }
-  return points
+  return { pos, col }
 }
 
 export function galaxyTexture(): THREE.CanvasTexture {

@@ -186,6 +186,19 @@ it('wybrany dostawca pogody trafia do zapisu, a nieprawidłowy z zapisu wraca do
   expect(second.useStore.getState().weatherProvider).toBe('ecmwf')
 })
 
+it('styl kopuł 3D wraca z zapisu, a nieznana wartość daje domyślny', async () => {
+  for (const [saved, expected] of [['thick', 'thick'], ['tęcza', 'plain']]) {
+    vi.resetModules()
+    const json = JSON.stringify({ state: { domeStyle: saved }, version: 1 })
+    const storage = { getItem: () => json, setItem: vi.fn() }
+    vi.stubGlobal('localStorage', storage)
+    vi.stubGlobal('window', { localStorage: storage })
+    const { useStore } = await import('./store')
+    await Promise.resolve()
+    expect(useStore.getState().domeStyle).toBe(expected)
+  }
+})
+
 it('wygląd nieba i źródło miniatur wracają z zapisu, a nieznane wartości dają domyślne', async () => {
   for (const [look, source, expected] of [['nsns', 'nsns', ['nsns', 'nsns']], ['mgła', 'sdss', ['default', 'dss2']]] as const) {
     vi.resetModules()
@@ -197,4 +210,12 @@ it('wygląd nieba i źródło miniatur wracają z zapisu, a nieznane wartości d
     await Promise.resolve()
     expect([useStore.getState().skyLook, useStore.getState().thumbSource]).toEqual(expected)
   }
+})
+
+it('krycie kopuł 3D przycięte do 10–100 %', async () => {
+  const { useStore } = await import('./store')
+  useStore.getState().setDomeOpacity(0.02)
+  expect(useStore.getState().domeOpacity).toBe(0.1)
+  useStore.getState().setDomeOpacity(0.55)
+  expect(useStore.getState().domeOpacity).toBe(0.55)
 })
