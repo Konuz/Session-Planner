@@ -1,8 +1,9 @@
-import { ExternalLink, Search, Trash2 } from 'lucide-react'
+import { ExternalLink, RotateCcw, Search, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { addDays } from '../lib/night'
+import { addDays, nightDateOf } from '../lib/night'
 import { placeForCoords, searchPlaces, type Place } from '../lib/services'
 import { useStore, type Location, type Tab } from '../state/store'
+import { Select } from './Select'
 
 // Ikony zakładek: srebrna (nieaktywna) i świecąca (aktywna), z public/icons (scripts/build-assets.ts).
 const TABS: { id: Tab; label: string }[] = [
@@ -185,12 +186,18 @@ const daysInMonth = (y: number, m: number) => new Date(Date.UTC(y, m, 0)).getUTC
 function DatePicker() {
   const date = useStore((s) => s.nightDate)
   const setDate = useStore((s) => s.setNightDate)
+  const setTime = useStore((s) => s.setTime)
+  const tz = useStore((s) => s.location.timeZone)
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   useOutside(ref, () => setOpen(false), open)
   const [y, m, d] = date.split('-').map(Number)
   const pick = (year: number, month: number, day: number) =>
     setDate(`${year}-${String(month).padStart(2, '0')}-${String(Math.min(day, daysInMonth(year, month))).padStart(2, '0')}`)
+  const resetToNow = () => {
+    setDate(nightDateOf(Date.now(), tz))
+    setTime(null)
+  }
   const label = DATE_LABEL_FMT.format(Date.UTC(y, m - 1, d))
   return (
     <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -203,23 +210,40 @@ function DatePicker() {
         </button>
         {open && (
           <div className="popover" style={{ width: 'auto' }}>
-            <div className="label" style={{ marginBottom: 8 }}>Noc obserwacyjna</div>
+            <div className="date-popover-head">
+              <span className="label">Noc obserwacyjna</span>
+              <button
+                type="button"
+                className="button ghost icon-button"
+                title="Wróć do aktualnego czasu"
+                aria-label="Wróć do aktualnego czasu"
+                onClick={resetToNow}
+              >
+                <RotateCcw size={13} />
+              </button>
+            </div>
             <div style={{ display: 'flex', gap: 6 }}>
-              <select className="control figures" aria-label="Dzień" value={d} onChange={(e) => pick(y, m, Number(e.target.value))}>
-                {Array.from({ length: daysInMonth(y, m) }, (_, i) => (
-                  <option key={i + 1} value={i + 1}>{i + 1}</option>
-                ))}
-              </select>
-              <select className="control" aria-label="Miesiąc" value={m} onChange={(e) => pick(y, Number(e.target.value), d)}>
-                {MONTHS.map((name, i) => (
-                  <option key={name} value={i + 1}>{name}</option>
-                ))}
-              </select>
-              <select className="control figures" aria-label="Rok" value={y} onChange={(e) => pick(Number(e.target.value), m, d)}>
-                {Array.from({ length: 21 }, (_, i) => y - 10 + i).map((year) => (
-                  <option key={year} value={year}>{year}</option>
-                ))}
-              </select>
+              <Select
+                className="control figures"
+                ariaLabel="Dzień"
+                value={String(d)}
+                options={Array.from({ length: daysInMonth(y, m) }, (_, i) => ({ value: String(i + 1), label: String(i + 1) }))}
+                onChange={(v) => pick(y, m, Number(v))}
+              />
+              <Select
+                className="control"
+                ariaLabel="Miesiąc"
+                value={String(m)}
+                options={MONTHS.map((name, i) => ({ value: String(i + 1), label: name }))}
+                onChange={(v) => pick(y, Number(v), d)}
+              />
+              <Select
+                className="control figures"
+                ariaLabel="Rok"
+                value={String(y)}
+                options={Array.from({ length: 21 }, (_, i) => ({ value: String(y - 10 + i), label: String(y - 10 + i) }))}
+                onChange={(v) => pick(Number(v), m, d)}
+              />
             </div>
           </div>
         )}

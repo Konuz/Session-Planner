@@ -1,5 +1,5 @@
 import { CircleDot, CloudMoon, Droplets, Eye, Gauge, Ruler, Settings, Sparkles, Telescope, Thermometer, Wind, Camera } from 'lucide-react'
-import { memo, useMemo, useState } from 'react'
+import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { angularDistanceDeg, bodyAltAz, computeOptics, moonInfo, moonJ2000, riseSetMs, sampling } from '../lib/astro'
 import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO } from '../lib/catalog'
 import { fmtDate, fmtDeg, fmtDistance, fmtNum, fmtSize, fmtTime } from '../lib/format'
@@ -13,6 +13,7 @@ import { ScrambleText } from './ScrambleText'
 import { Thumb } from './Thumb'
 import { FavoriteButton } from './FavoriteButton'
 import { OwnPhotoButton } from './OwnPhotoButton'
+import { Select } from './Select'
 import { CONSTELLATION_PL } from '../lib/constellations'
 
 export const ObjectCard = memo(function ObjectCard({ onDetails }: { onDetails: () => void }) {
@@ -45,7 +46,7 @@ export const ObjectCard = memo(function ObjectCard({ onDetails }: { onDetails: (
               <button className="picker-button icon-button" title="Następny obiekt" aria-label="Następny obiekt" disabled={!canForward} onClick={() => stepHistory(1)}>›</button>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <div className="object-tags">
             <span className="chip" style={{ color: annotationColors[o.type] ?? DEFAULT_ANNOTATION_COLORS[o.type] }}>
               {TYPE_INFO[o.type].label}
             </span>
@@ -55,7 +56,7 @@ export const ObjectCard = memo(function ObjectCard({ onDetails }: { onDetails: (
               </span>
             ))}
           </div>
-          <dl className="facts">
+          <dl className="facts object-facts">
             <dt>Gwiazdozbiór</dt>
             <dd>{CONSTELLATION_PL[o.con] ?? o.con}</dd>
             <dt>Jasność</dt>
@@ -174,6 +175,50 @@ function seeingTooltip(seeing: WeatherSeeingResult | null, jetKmh: number | null
   return parts.join(' · ')
 }
 
+function CloudBars({ hours, time, tz }: { hours: { t: number; cloud: number }[]; time: number; tz: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [layout, setLayout] = useState<{ bar: number; gap: number; pad: number } | null>(null)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const measure = () => {
+      const dpr = window.devicePixelRatio || 1
+      const wDev = Math.floor(el.clientWidth * dpr)
+      const n = hours.length
+      if (wDev <= 0 || n <= 0) return
+      const gapDev = Math.max(2, Math.round(2 * dpr))
+      const barDev = Math.max(1, Math.floor((wDev - (n - 1) * gapDev) / n))
+      const totalDev = n * barDev + (n - 1) * gapDev
+      const padDev = Math.max(0, Math.floor((wDev - totalDev) / 2))
+      const rectLeftDev = el.getBoundingClientRect().left * dpr
+      const fracDev = rectLeftDev - Math.floor(rectLeftDev)
+      setLayout({ bar: barDev / dpr, gap: gapDev / dpr, pad: Math.max(0, padDev - fracDev) / dpr })
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    window.addEventListener('resize', measure)
+    return () => { ro.disconnect(); window.removeEventListener('resize', measure) }
+  }, [hours.length])
+
+  return (
+    <div ref={ref} className="cloud-bars" style={layout ? { gap: layout.gap, paddingLeft: layout.pad } : undefined} title="Zachmurzenie w kolejnych godzinach nocy">
+      {hours.map((x) => (
+        <div
+          key={x.t}
+          style={{
+            flex: layout ? `0 0 ${layout.bar}px` : 1,
+            height: `${Math.max(3, x.cloud)}%`,
+            opacity: Math.abs(x.t - time) < 1_800_000 ? 1 : 0.45,
+            background: x.cloud > 60 ? 'var(--text-dim)' : 'var(--accent)',
+          }}
+          title={`${fmtTime(x.t, tz)}: ${Math.round(x.cloud)}%`}
+        />
+      ))}
+    </div>
+  )
+}
+
 export function WeatherCard() {
   const [weekView, setWeekView] = useState(false)
   const time = useTime()
@@ -224,17 +269,14 @@ export function WeatherCard() {
         <span className="weather-title-label">{weekView ? 'Warunki na 7 nocy' : 'Warunki tej nocy'}</span>
         <span className="sub weather-time" aria-hidden={weekView} style={{ visibility: weekView ? 'hidden' : 'visible' }}>{fmtTime(time, tz)}</span>
         <button className={`switch weather-period${weekView ? ' on' : ''}`} onClick={() => setWeekView(!weekView)} role="switch" aria-checked={weekView} aria-label={weekView ? 'Pokaż warunki tej nocy' : 'Pokaż prognozę na 7 nocy'} style={{ background: 'none', border: 0, padding: 0 }}><span className="track" /><span>{weekView ? '7 nocy' : '1 noc'}</span></button>
-        <select
+        <Select
           id="weather-provider"
           className="control weather-select"
           value={provider}
-          aria-label="Dostawca prognozy pogody"
-          onChange={(e) => setWeatherProvider(e.target.value as WeatherProviderId)}
-        >
-          {WEATHER_PROVIDERS.map((p) => (
-            <option key={p.id} value={p.id}>{p.label}</option>
-          ))}
-        </select>
+          ariaLabel="Dostawca prognozy pogody"
+          options={WEATHER_PROVIDERS.map((p) => ({ value: p.id, label: p.label }))}
+          onChange={(v) => setWeatherProvider(v as WeatherProviderId)}
+        />
       </h2>
       {weekView ? (
         <div className="wx-week">
@@ -269,11 +311,7 @@ export function WeatherCard() {
           </div>
           {nightHours.length > 0 && (
             <>
-              <div className="cloud-bars" title="Zachmurzenie w kolejnych godzinach nocy">
-                {nightHours.map((x) => (
-                  <div key={x.t} style={{ height: `${Math.max(3, x.cloud)}%`, opacity: Math.abs(x.t - time) < 1_800_000 ? 1 : 0.45, background: x.cloud > 60 ? 'var(--text-dim)' : 'var(--accent)' }} title={`${fmtTime(x.t, tz)}: ${Math.round(x.cloud)}%`} />
-                ))}
-              </div>
+              <CloudBars hours={nightHours} time={time} tz={tz} />
               <div className="dim figures" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, marginTop: 4 }}>
                 <span>{fmtTime(nightHours[0].t, tz)}</span>
                 <span>zachmurzenie godzinowe · {providerInfo.shortLabel}</span>

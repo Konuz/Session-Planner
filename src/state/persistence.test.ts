@@ -55,6 +55,38 @@ it('zapis ze starszej wersji persist nie przepada (B17)', async () => {
   expect(useStore.getState().minAltDeg).toBe(33)
 })
 
+it('przenosi poprzedni sprzęt do Zestawu 1 i odtwarza oba zestawy po zmianach', async () => {
+  vi.resetModules()
+  let saved = JSON.stringify({
+    state: { equipment: { focalLengthMm: 750, reducer: 0.8, widthPx: 4144, pixelUm: 4.2 } },
+    version: 1,
+  })
+  const storage = { getItem: () => saved, setItem: (_: string, value: string) => { saved = value } }
+  vi.stubGlobal('localStorage', storage)
+  const { useStore } = await import('./store')
+  await Promise.resolve()
+  const firstId = useStore.getState().activeEquipmentSetId
+  expect(useStore.getState().equipmentSets[0]).toMatchObject({ id: firstId, name: 'Zestaw 1' })
+  expect(useStore.getState().equipment).toMatchObject({ focalLengthMm: 750, widthPx: 4144 })
+
+  useStore.getState().addEquipmentSet()
+  const secondId = useStore.getState().activeEquipmentSetId
+  expect(secondId).not.toBe(firstId)
+  expect(useStore.getState().equipmentSets[1].name).toBe('Zestaw 2')
+  expect(useStore.getState().equipment).toMatchObject({ focalLengthMm: 750, widthPx: 4144 })
+  useStore.getState().renameEquipmentSet('  Szerokie pole  ')
+  useStore.getState().setEquipment({ focalLengthMm: 300, widthPx: 3008 })
+
+  vi.resetModules()
+  const { useStore: reloaded } = await import('./store')
+  await Promise.resolve()
+  expect(reloaded.getState().equipmentSets.map((item) => item.name)).toEqual(['Zestaw 1', 'Szerokie pole'])
+  expect(reloaded.getState().activeEquipmentSetId).toBe(secondId)
+  expect(reloaded.getState().equipment).toMatchObject({ focalLengthMm: 300, widthPx: 3008, reducer: 0.8, pixelUm: 4.2 })
+  reloaded.getState().selectEquipmentSet(firstId)
+  expect(reloaded.getState().equipment).toMatchObject({ focalLengthMm: 750, widthPx: 4144 })
+})
+
 it('stary zapis bez ownPhotos daje pusty indeks', async () => {
   vi.resetModules()
   const saved = JSON.stringify({ state: { favoriteIds: ['M 31'] }, version: 1 })
@@ -165,6 +197,26 @@ it('krycie warstw z uszkodzonego zapisu wraca do zakresu 10–100%', async () =>
   await Promise.resolve()
   expect(useStore.getState().ownPhotosOpacity).toBe(1)
   expect(useStore.getState().outlinesOpacity).toBe(1)
+})
+
+it('zagęszczenie obiektów domyślnie wynosi 100%, zapisuje się i mieści w zakresie 0–100%', async () => {
+  vi.resetModules()
+  let saved: string | null = JSON.stringify({ state: {}, version: 1 })
+  const storage = { getItem: () => saved, setItem: (_: string, value: string) => { saved = value } }
+  vi.stubGlobal('localStorage', storage)
+  const first = await import('./store')
+  await Promise.resolve()
+  expect(first.useStore.getState().skyObjectDensity).toBe(100)
+  first.useStore.getState().setSkyObjectDensity(35)
+
+  vi.resetModules()
+  const second = await import('./store')
+  await Promise.resolve()
+  expect(second.useStore.getState().skyObjectDensity).toBe(35)
+  second.useStore.getState().setSkyObjectDensity(-10)
+  expect(second.useStore.getState().skyObjectDensity).toBe(0)
+  second.useStore.getState().setSkyObjectDensity(110)
+  expect(second.useStore.getState().skyObjectDensity).toBe(100)
 })
 
 it('wybrany dostawca pogody trafia do zapisu, a nieprawidłowy z zapisu wraca do Open-Meteo', async () => {

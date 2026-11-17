@@ -1,8 +1,10 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { CalendarCheck, Palette, RotateCcw, Search, Trash2 } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ConstellationPicker } from '../components/ConstellationPicker'
 import { ObjectDetails } from '../components/ObjectDetails'
 import { Range } from '../components/Range'
+import { Select } from '../components/Select'
 import { ScrambleText } from '../components/ScrambleText'
 import { Thumb } from '../components/Thumb'
 import { FavoriteButton } from '../components/FavoriteButton'
@@ -110,10 +112,8 @@ export default function CatalogView() {
   const setSort = useStore((s) => s.setSort)
   const thumbSource = useStore((s) => s.thumbSource)
   const setThumbSource = useStore((s) => s.setThumbSource)
-  const onlyVisible = useStore((s) => s.onlyVisible)
   const minVisibleMinutes = useStore((s) => s.minVisibleMinutes)
   const setMinVisibleMinutes = useStore((s) => s.setMinVisibleMinutes)
-  const toggle = useStore((s) => s.toggle)
   const minAlt = useStore((s) => s.minAltDeg)
   const setMinAlt = useStore((s) => s.setMinAlt)
   const select = useStore((s) => s.select)
@@ -131,12 +131,12 @@ export default function CatalogView() {
   const [query, setQuery] = useState(filter.query)
 
   const nightDurationMs = vis?.nightDurationMs ?? 0
-  const sliderMax = Math.max(60, Math.ceil(nightDurationMs / 60_000))
+  const sliderMax = Math.max(0, Math.ceil(nightDurationMs / 60_000))
   const sliderValue = minVisibleMinutes === 'night' ? sliderMax : Math.min(minVisibleMinutes, sliderMax)
-  const wholeNight = sliderMax > 60 && sliderValue === sliderMax
+  const wholeNight = sliderMax > 0 && sliderValue === sliderMax
   // Wynik workera jest zapisany w Float32Array, więc próg zaokrąglamy tak samo.
-  const minVisibleHours = onlyVisible ? Math.fround(wholeNight ? nightDurationMs / 3_600_000 : sliderValue / 60) : 0
-  const visibleDurationLabel = wholeNight ? 'Cała noc' : sliderValue === 60 ? '1 h' : fmtDuration(sliderValue / 60)
+  const minVisibleHours = sliderValue === 0 ? 0 : Math.fround(wholeNight ? nightDurationMs / 3_600_000 : sliderValue / 60)
+  const visibleDurationLabel = sliderValue === 0 ? 'dowolna' : wholeNight ? 'Cała noc' : fmtDuration(sliderValue / 60)
 
   useEffect(() => {
     const id = setTimeout(() => setFilter({ query }), 180)
@@ -233,6 +233,7 @@ export default function CatalogView() {
             <AnnotationColorSettings />
           </div>
         </h2>
+        <div className="catalog-filters-scroll">
         <div className="filter-group search-box">
           <Search size={15} />
           <input className="control" style={{ width: '100%' }} placeholder="Oznaczenie lub nazwa…" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Szukaj w katalogu" />
@@ -260,10 +261,16 @@ export default function CatalogView() {
         </div>
         <div className="filter-group">
           <span className="label">Gwiazdozbiór</span>
-          <select className="control" style={{ width: '100%' }} value={filter.constellation} onChange={(e) => setFilter({ constellation: e.target.value })}>
-            <option value="">Wszystkie</option>
-            {constellations.map(([abbr, name]) => <option key={abbr} value={abbr}>{name}</option>)}
-          </select>
+          <ConstellationPicker
+            value={filter.constellation}
+            onChange={(constellation) => setFilter({ constellation })}
+            options={constellations.map(([abbr, name]) => ({ value: abbr, label: name }))}
+            allValue=""
+            allLabel="Wszystkie"
+            ariaLabel="Gwiazdozbiór"
+            buttonClassName="control catalog-constellation-select"
+            showArrow
+          />
         </div>
         <div className="filter-group">
           <span className="label">Jasność do {filter.maxMag === null ? 'dowolnej' : `${filter.maxMag} mag`}</span>
@@ -279,12 +286,10 @@ export default function CatalogView() {
         </div>
         <div className="filter-group">
           <label className="label" htmlFor="catalog-visibility">Widoczność tej nocy · {visibleDurationLabel}</label>
-          <Range id="catalog-visibility" min={60} max={sliderMax} step={1} value={sliderValue} disabled={sliderMax === 60}
-            aria-valuetext={wholeNight ? visibleDurationLabel : `Co najmniej ${visibleDurationLabel}`}
-            onChange={(e) => setMinVisibleMinutes(e.target.valueAsNumber === sliderMax ? 'night' : e.target.valueAsNumber)} style={{ width: '100%' }} />
-          <label className="switch">
-            <input type="checkbox" checked={onlyVisible} onChange={() => toggle('onlyVisible')} /> Filtruj według widoczności
-          </label>
+          <Range id="catalog-visibility" min={0} max={sliderMax} step={1} value={sliderValue} disabled={sliderMax === 0}
+            aria-valuetext={sliderValue === 0 ? 'Dowolna' : wholeNight ? visibleDurationLabel : `Co najmniej ${visibleDurationLabel}`}
+            onChange={(e) => setMinVisibleMinutes(sliderMax > 0 && e.target.valueAsNumber === sliderMax ? 'night' : e.target.valueAsNumber)} style={{ width: '100%' }} />
+        </div>
         </div>
       </aside>
 
@@ -304,15 +309,28 @@ export default function CatalogView() {
           <button className={`button small${onlyFavorites ? ' active' : ''}`} aria-pressed={onlyFavorites} onClick={() => setOnlyFavorites((value) => !value)}>
             Ulubione ({favoriteIds.length})
           </button>
-          <select className="control catalog-sort" value={thumbSource} onChange={(e) => setThumbSource(e.target.value as typeof thumbSource)} aria-label="Źródło miniatur"
-            title={thumbSource !== 'dss2' ? `${SURVEYS[thumbSource].label} · ${SURVEYS[thumbSource].credit}. Małe obiekty i niebo na południe od −16°: DSS2.` : 'Miniatury z DSS2 (ESA/MAST)'}>
-            <option value="dss2">Miniatury: DSS2</option>
-            <option value="nsns">Miniatury: NSNS true-color</option>
-            <option value="nsnsRgb">Miniatury: NSNS bez Hα</option>
-          </select>
-          <select className="control catalog-sort" value={sortBy} onChange={(e) => setSort(e.target.value as typeof sortBy)} aria-label="Sortowanie" disabled={!!filter.query}>
-            {SORTS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-          </select>
+          <Select
+            className="control catalog-sort"
+            value={thumbSource}
+            ariaLabel="Źródło miniatur"
+            align="right"
+            title={thumbSource !== 'dss2' ? `${SURVEYS[thumbSource].label} · ${SURVEYS[thumbSource].credit}. Małe obiekty i niebo na południe od −16°: DSS2.` : 'Miniatury z DSS2 (ESA/MAST)'}
+            options={[
+              { value: 'dss2', label: 'Miniatury: DSS2' },
+              { value: 'nsns', label: 'Miniatury: NSNS true-color' },
+              { value: 'nsnsRgb', label: 'Miniatury: NSNS bez Hα' },
+            ]}
+            onChange={(v) => setThumbSource(v as typeof thumbSource)}
+          />
+          <Select
+            className="control catalog-sort"
+            value={sortBy}
+            ariaLabel="Sortowanie"
+            align="right"
+            disabled={!!filter.query}
+            options={SORTS.map((s) => ({ value: s.id, label: s.label }))}
+            onChange={(v) => setSort(v as typeof sortBy)}
+          />
         </div>
         {error && <div className="card empty">Nie udało się wczytać katalogu: {error}</div>}
         <div ref={scrollRef} className="catalog-scroll">

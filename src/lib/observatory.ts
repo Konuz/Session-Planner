@@ -2,7 +2,7 @@
 // Czysta logika bez three.js: pozycje, skala logarytmiczna odległości, histogram i filtry.
 import type { ObjectType } from './catalog'
 import type { DistanceScope } from './distance'
-import { cutsInThreeD, type PhotoProject } from './photo'
+import { cutsInThreeD, type PhotoCatalogKind, type PhotoProject } from './photo'
 
 export type ObservatoryCategory = 'stars' | 'nebulae' | 'galaxies'
 export type CategoryFilter = ObservatoryCategory | 'all'
@@ -15,6 +15,7 @@ export interface ObservatoryItem {
   category: ObservatoryCategory
   /** Typ katalogowy wycinka; null dla gwiazd. */
   type: ObjectType | null
+  catalogKind?: PhotoCatalogKind
   /** Piksel zdjęcia (środek wycinka lub gwiazdy) i promień wycinka w pikselach (0 dla gwiazd). */
   x: number
   y: number
@@ -49,7 +50,7 @@ export function categoryOf(type: ObjectType): ObservatoryCategory {
  *  nie ma w Obserwatorium: ani w scenie, ani na liście. */
 export function observatoryItems(project: PhotoProject): ObservatoryItem[] {
   const cuts = cutsInThreeD(project.cuts).map((cut): ObservatoryItem => ({
-    id: cut.id, kind: 'object', category: categoryOf(cut.type), type: cut.type, x: cut.x, y: cut.y, radius: cut.radius,
+    id: cut.id, kind: 'object', category: categoryOf(cut.type), type: cut.type, catalogKind: cut.catalogMatch?.kind, x: cut.x, y: cut.y, radius: cut.radius,
     distLy: cut.distLy, distLoLy: cut.distLy !== null && cut.uncertaintyLy !== null ? cut.distLy - cut.uncertaintyLy : null,
     distHiLy: cut.distLy !== null && cut.uncertaintyLy !== null ? cut.distLy + cut.uncertaintyLy : null,
     gMag: null, bpRp: null, parallaxOverError: null, raDeg: cut.raDeg, decDeg: cut.decDeg,

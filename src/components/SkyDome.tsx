@@ -1,7 +1,7 @@
 // Kopuła nieba: gwiazdy w WebGL, nakładka 2D z liniami i postaciami
 // gwiazdozbiorów, konturami mgławic, horyzontem, torem obiektu i animacją „znajdź obiekt”. Rysuje tylko przy zmianie stanu.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Compass, RefreshCw, ZoomIn, ZoomOut } from 'lucide-react'
+import { Compass, RefreshCw } from 'lucide-react'
 import {
   bodyAltAz,
   computeOptics,
@@ -33,7 +33,6 @@ import { useCatalog, useNight, useSelected, useSite, useTime } from '../state/da
 import { measureSince, perfNow } from '../lib/perf'
 import { useStore } from '../state/store'
 import { MoonDisc } from './MoonDisc'
-import { Range } from './Range'
 import { useHipsSkyLayer } from './useHipsSkyLayer'
 import { useSkyPhotoLayer } from './useSkyPhotoLayer'
 
@@ -49,10 +48,7 @@ export function LayersIcon({ filled }: { filled: boolean }) {
   )
 }
 
-// Suwak powiększenia w skali logarytmicznej: 0 = cała kopuła (184°), 100 = pole 8°.
 const MIN_FOV = 8
-const sliderToFov = (v: number) => 184 * (MIN_FOV / 184) ** (v / 100)
-const fovToSlider = (fov: number) => (Math.log(fov / 184) / Math.log(MIN_FOV / 184)) * 100
 
 const reducedMotion = () => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
 const easeInOut = (x: number) => (x < 0.5 ? 4 * x * x * x : 1 - (-2 * x + 2) ** 3 / 2)
@@ -71,8 +67,10 @@ uniform float u_magLimit;
 uniform float u_dpr;
 uniform float u_bright;
 uniform float u_hideZ;
+uniform float u_glow;
 out vec3 v_color;
 out float v_alpha;
+out float v_glow;
 vec3 bvColor(float bv) {
   float t = clamp((bv + 0.3) / 2.0, 0.0, 1.0);
   return mix(vec3(0.70, 0.82, 1.0), mix(vec3(1.0, 0.98, 0.94), vec3(1.0, 0.78, 0.55), smoothstep(0.35, 1.0, t)), smoothstep(0.0, 0.35, t));
@@ -87,7 +85,8 @@ void main() {
   vec2 clip = vec2(p.x / u_res.x * 2.0 - 1.0, p.y / u_res.y * 2.0 - 1.0);
   gl_Position = vec4(clip, 0.0, 1.0);
   float m = u_magLimit - a_magbv.x;
-  gl_PointSize = clamp(2.4 + m * 1.45, 2.4, 15.0) * u_dpr;
+  v_glow = u_glow * 0.6 * (1.0 - smoothstep(0.5, 4.5, a_magbv.x));
+  gl_PointSize = clamp(2.4 + m * 1.45, 2.4, 15.0) * u_dpr * (1.0 + v_glow);
   v_color = bvColor(a_magbv.y);
   v_alpha = clamp(0.5 + m * 0.18, 0.45, 1.0) * smoothstep(-0.03, 0.01, alt) * u_bright;
 }`
@@ -96,21 +95,28 @@ const FS = `#version 300 es
 precision mediump float;
 in vec3 v_color;
 in float v_alpha;
+in float v_glow;
 out vec4 outColor;
 void main() {
   vec2 c = gl_PointCoord * 2.0 - 1.0;
   float r = dot(c, c);
   if (r > 1.0) discard;
-  float d = sqrt(r);
+  // Większy punkt mieści poświatę, a jasny rdzeń zachowuje swój rozmiar.
+  float radius = sqrt(r);
+  float scale = 1.0 + v_glow;
+  r *= scale * scale;
+  float d = radius * scale;
   float a = 1.0 - smoothstep(0.0, 1.0, d);
   float halo = (exp(-r * 3.2) - exp(-r * 16.0)) * 0.18;
-  a = (a * a * 0.75 + exp(-r * 18.0) * 0.5 + halo) * v_alpha;
+  float core = (a * a * 0.75 + exp(-r * 18.0) * 0.5 + halo) * step(r, 1.0);
+  float glow = v_glow * 0.25 * (1.0 - smoothstep(0.0, 1.0, radius));
+  a = (core + glow) * v_alpha;
   outColor = vec4(v_color * a, a);
 }`
 
 interface StarGL {
   /** `hideAboveZ`: sin δ, na północ od którego gwiazd nie rysować (2: wszystkie). */
-  draw(m: Mat3, zen: Vec3, p: Projector, width: number, height: number, dpr: number, magLimit: number, bright: number, hideAboveZ: number): void
+  draw(m: Mat3, zen: Vec3, p: Projector, width: number, height: number, dpr: number, magLimit: number, bright: number, hideAboveZ: number, glow: boolean): void
   dispose(): void
 }
 
@@ -163,8 +169,9 @@ function createStarGL(canvas: HTMLCanvasElement, sky: SkyData): StarGL | null {
   const magbvBuf = buf(magbv, 'a_magbv', 2)
   const u = (name: string) => gl.getUniformLocation(prog, name)
   const uM = u('u_m'), uZen = u('u_zen'), uScale = u('u_scale'), uCenter = u('u_center'), uRes = u('u_res'), uMag = u('u_magLimit'), uDpr = u('u_dpr'), uBright = u('u_bright'), uHideZ = u('u_hideZ')
+  const uGlow = u('u_glow')
   return {
-    draw(m, zen, p, width, height, dpr, magLimit, bright, hideAboveZ) {
+    draw(m, zen, p, width, height, dpr, magLimit, bright, hideAboveZ, glow) {
       gl.viewport(0, 0, canvas.width, canvas.height)
       gl.clearColor(0, 0, 0, 0)
       gl.clear(gl.COLOR_BUFFER_BIT)
@@ -182,6 +189,7 @@ function createStarGL(canvas: HTMLCanvasElement, sky: SkyData): StarGL | null {
       gl.uniform1f(uDpr, Math.min(dpr, 1.5))
       gl.uniform1f(uBright, bright)
       gl.uniform1f(uHideZ, hideAboveZ)
+      gl.uniform1f(uGlow, glow ? 1 : 0)
       gl.drawArrays(gl.POINTS, 0, n)
     },
     dispose() {
@@ -485,7 +493,7 @@ export function SkyDome({ playing = false }: Props) {
   const [outlines, setOutlines] = useState<Outline[] | null>(null)
   const [size, setSize] = useState({ w: 800, h: 600 })
   const [view, setView] = useState<View>(FULL_DOME)
-  // Przeciąganie, kółko i suwak zmieniają widok najwyżej raz na klatkę: każda zmiana stanu to pełne przerysowanie
+  // Przeciąganie i kółko zmieniają widok najwyżej raz na klatkę: każda zmiana stanu to pełne przerysowanie
   // (ok. 20 ms), a mysz i trackpad wysyłają więcej zdarzeń niż klatek (audyt C02).
   const pendingView = useRef<View | null>(null)
   const viewFrame = useRef(0)
@@ -557,7 +565,9 @@ export function SkyDome({ playing = false }: Props) {
   const showOwnPhotos = useStore((s) => s.showOwnPhotos)
   const ownPhotosOpacity = useStore((s) => s.ownPhotosOpacity)
   const showEllipses = useStore((s) => s.showEllipses)
+  const showObjectMarkers = useStore((s) => s.showObjectMarkers)
   const skyGroups = useStore((s) => s.skyGroups)
+  const objectDensity = useStore((s) => s.skyObjectDensity)
   const skyExtraHidden = useStore((s) => s.skyExtraHidden)
   const showLabels = useStore((s) => s.showLabels)
   const showAnnotations = useStore((s) => s.showAnnotations)
@@ -625,7 +635,7 @@ export function SkyDome({ playing = false }: Props) {
   const grid = useMemo(() => nightGrid(night, site, 10), [night, site])
   const track = useMemo(() => (selected ? altitudeTrack(selected, grid) : []), [selected, grid])
   const moonTrack = useMemo(() => grid.times.map((t) => ({ t, ...bodyAltAz('moon', t, site) })), [grid, site])
-  const messier = useMemo(() => (catalog && skyGroups.M ? catalog.filter((o) => o.catalogs.includes('M')) : []), [catalog, skyGroups.M])
+  const catalogMessier = useMemo(() => (catalog && skyGroups.M && showObjectMarkers ? catalog.filter((o) => o.catalogs.includes('M')) : []), [catalog, skyGroups.M, showObjectMarkers])
   // Obiekty katalogu po oznaczeniu głównym, potem po aliasach.
   const catalogById = useMemo(() => {
     if (!catalog) return null
@@ -639,6 +649,17 @@ export function SkyDome({ playing = false }: Props) {
     () => (outlines && catalogById ? outlines.map((o) => (o.region ? null : catalogById.get(o.id) ?? null)) : null),
     [outlines, catalogById],
   )
+  // Rozmiar wspólny dla wszystkich poziomów konturu danego obiektu.
+  const outlineRadii = useMemo(() => {
+    const radii = new Map<string, number>()
+    outlines?.forEach((outline, index) => {
+      const key = outlineObjects?.[index]?.id ?? outline.id
+      let radius = radii.get(key) ?? 0
+      for (const ring of outline.rings) radius = Math.max(radius, ring.radiusDeg)
+      radii.set(key, radius)
+    })
+    return radii
+  }, [outlines, outlineObjects])
   // Obiekty z elipsą: z wymiarem, bez Messiera (ma własne znaczniki), z wektorem liczonym raz.
   const depthObjects = useMemo(
     () => (catalog ?? []).filter((o) => o.majArcmin > 0 && !o.catalogs.includes('M')).map((o) => ({ o, v: unitVector(o.raDeg, o.decDeg), group: skyGroupOf(o) })),
@@ -710,6 +731,13 @@ export function SkyDome({ playing = false }: Props) {
   const dpr = Math.min(2, typeof devicePixelRatio === 'number' ? devicePixelRatio : 1)
   const radius = Math.min(size.w, size.h) / 2 - 18
   const proj = useMemo(() => makeProjector(horMatrix, view, size.w / 2, size.h / 2, radius), [horMatrix, view, size, radius])
+  const pxPerDeg = proj.scale * DEG
+  // 100% zachowuje dotychczasowe progi rysowania, 50% podnosi je o 4 px promienia obiektu.
+  const extraRadiusPx = objectDensity === 0 ? Infinity : 4 * (100 / objectDensity - 1)
+  const minMessierRadiusDeg = extraRadiusPx / pxPerDeg
+  const messier = useMemo(() => new Set(minMessierRadiusDeg > 0
+    ? catalogMessier.filter((o) => o.majArcmin / 120 >= minMessierRadiusDeg)
+    : catalogMessier), [catalogMessier, minMessierRadiusDeg])
   const moonPoint = proj.hor(horizontalToVec({ altDeg: moon.altDeg, azDeg: moon.azDeg }))
 
   // ---------- Rysowanie ----------
@@ -746,7 +774,7 @@ export function SkyDome({ playing = false }: Props) {
     const nsnsSky = skySurvey ? hipsLayer.current : null
     nsnsSky?.draw({ eqToView: proj.eqToView, zen, scale: proj.scale, cx: proj.cx, cy: proj.cy, width: size.w, height: size.h, dpr, bright, allowDecode: !playing })
     const nsnsShown = !!nsnsSky?.ready()
-    starGL.current?.draw(proj.eqToView, zen, proj, size.w, size.h, dpr, magLimit, bright, nsnsShown ? Math.sin(NSNS_EDGE_DEC * DEG) : 2)
+    starGL.current?.draw(proj.eqToView, zen, proj, size.w, size.h, dpr, magLimit, bright, nsnsShown ? Math.sin(NSNS_EDGE_DEC * DEG) : 2, !skySurvey)
     // Moje zdjęcia nad gwiazdami, pod całą nakładką (kontury na wierzchu); jasność niezależna od pory dnia.
     if (starGL.current && showOwnPhotos) {
       photoLayer.current?.draw({ proj, horMatrix, horizon, width: size.w, height: size.h, dpr, opacity: ownPhotosOpacity, selectedId: selected?.id ?? null, allowDecode: !playing })
@@ -828,7 +856,6 @@ export function SkyDome({ playing = false }: Props) {
     // wypełnienie (i trafienie kursorem) tylko dla pierścieni widocznych w całości.
     outlineHits.current = []
     depthHits.current = []
-    const pxPerDeg = proj.scale * DEG
     const aboveHorizon = (v: Vec3) => {
       const hv = vecToHorizontal(mulVec(horMatrix, v))
       return hv.altDeg > horizonAltitude(horizon, hv.azDeg)
@@ -844,12 +871,14 @@ export function SkyDome({ playing = false }: Props) {
       const hoverKey = hoverOutline === null ? null : outlineKey(hoverOutline)
       // Największy widoczny pierścień obiektu, z poziomu 2/3 przed poziomem 1.
       const best = new Map<string, { k: number; c: [number, number]; top: [number, number]; r: number; faint: boolean }>()
+      const minOutlineRadiusDeg = (2 + extraRadiusPx) / pxPerDeg
       // Suwak krycia konturów działa na obrysy i wypełnienia; podpisy (rysowane później razem z elipsami) zostają czytelne.
       ctx.globalAlpha = outlinesOpacity
       outlines.forEach((o, k) => {
         if (!skyShown(outlineObjects?.[k] ?? { catalogs: [catalogOf(o.id) ?? ''] }, skyGroups, skyExtraHidden)) return
         const key = outlineKey(k)
         const sel = selIds ? selIds.has(o.id) || o.also.some((a) => selIds.has(a)) : false
+        if (extraRadiusPx > 0 && !sel && (outlineRadii.get(key) ?? 0) < minOutlineRadiusDeg) return
         const hov = key === hoverKey
         // Kontury z OpenNGC (wszystko poza mgławicami ciemnymi) w kolorze dawnego podświetlenia, stopniowanym poziomem
         // (1: słaby zasięg najciemniej, 3: jasne jądro najjaśniej); pod kursorem jaśniejsza czerwień.
@@ -893,7 +922,7 @@ export function SkyDome({ playing = false }: Props) {
       for (const [key, l] of best) {
         const dso = outlineObjects![l.k]!
         // Obiekty Messiera przy polu < 90° mają już własną etykietę przy znaczniku (o ile znaczniki M są włączone).
-        if (view.fovDeg < 90 && skyGroups.M && dso.catalogs.includes('M')) continue
+        if (view.fovDeg < 90 && messier.has(dso)) continue
         const hov = key === hoverKey
         const ol = outlines[l.k]
         const lt = typeColors[dso.type]
@@ -908,9 +937,10 @@ export function SkyDome({ playing = false }: Props) {
     // Elipsy mniejsze niż 1,5 px pomijane, więc przy oddaleniu zostają tylko duże obiekty.
     if (showEllipses) {
       for (const d of depthObjects) {
-        if (!skyShown(d.o, skyGroups, skyExtraHidden) || outlined.has(d.o.id)) continue
         const a0 = (d.o.majArcmin / 120) * pxPerDeg
-        if (a0 < 1.5) continue
+        const sel = selected?.i === d.o.i
+        if (a0 < 1.5 + (sel ? 0 : extraRadiusPx)) continue
+        if (!skyShown(d.o, skyGroups, skyExtraHidden) || outlined.has(d.o.id)) continue
         // Małe obiekty (jak B 33) powiększone do co najmniej 3 px, żeby dało się je zobaczyć i trafić.
         const k = Math.max(1, 3 / a0)
         const a = a0 * k
@@ -929,7 +959,6 @@ export function SkyDome({ playing = false }: Props) {
             rot = Math.atan2(Math.cos(pa) * ny / nl + Math.sin(pa) * ey / el, Math.cos(pa) * nx / nl + Math.sin(pa) * ex / el)
           }
         }
-        const sel = selected?.i === d.o.i
         const hov = hoverDepth?.i === d.o.i
         const color = typeColors[d.o.type]
         const ngc = d.o.catalogs.some((c) => c === 'NGC' || c === 'IC' || c === 'LBN')
@@ -1250,6 +1279,40 @@ export function SkyDome({ playing = false }: Props) {
       }
     }
 
+    // Stopnie wysokości na siatce (nad podkładem i ziemią; w przybliżeniu szukamy widocznego punktu pierścienia).
+    if (!isPolarDome) {
+      ctx.save()
+      ctx.font = '11px ui-monospace, Consolas, monospace'
+      ctx.lineWidth = 2.5
+      ctx.strokeStyle = 'rgba(2, 5, 13, 0.75)'
+      ctx.fillStyle = 'rgba(180, 205, 235, 0.78)'
+      for (const alt of [0, 20, 40, 60, 80]) {
+        let p: [number, number] | null = null
+        if (fullDome) {
+          p = toScreenHor(alt, 315)
+        } else {
+          for (let d = 0; d <= 180; d += 5) {
+            for (const az of d === 0 || d === 180 ? [view.azDeg + d] : [view.azDeg + d, view.azDeg - d]) {
+              const norm = ((az % 360) + 360) % 360
+              if (alt === 0 && (norm % 90 < 6 || norm % 90 > 84)) continue
+              const pt = toScreenHor(alt, norm)
+              if (pt && pt[0] >= 24 && pt[0] <= size.w - 38 && pt[1] >= 18 && pt[1] <= size.h - 28) {
+                p = pt
+                break
+              }
+            }
+            if (p) break
+          }
+        }
+        if (p) {
+          const text = `${alt}°`
+          ctx.strokeText(text, p[0] + 4, p[1] - 4)
+          ctx.fillText(text, p[0] + 4, p[1] - 4)
+        }
+      }
+      ctx.restore()
+    }
+
     // Kierunki świata.
     ctx.font = '600 14px Inter, sans-serif'
     ctx.textAlign = 'center'
@@ -1411,7 +1474,7 @@ export function SkyDome({ playing = false }: Props) {
       const dx = x - drag.current.x
       const dy = y - drag.current.y
       if (Math.abs(dx) + Math.abs(dy) > 3) drag.current.moved = true
-      if (drag.current.moved && view.fovDeg < 180) {
+      if (drag.current.moved) {
         anim.current = null
         const degPerPx = drag.current.view.fovDeg / (radius * 2)
         scheduleView({
@@ -1449,10 +1512,10 @@ export function SkyDome({ playing = false }: Props) {
     }
     const hit = visible ? pick(x, y) : null
     if (hit !== hoverObj) setHoverObj(hit)
-    overlayRef.current!.style.cursor = hit ? 'pointer' : view.fovDeg < 180 ? 'grab' : 'crosshair'
+    overlayRef.current!.style.cursor = hit ? 'pointer' : 'grab'
   }
 
-  // Przybliżanie suwakiem albo rolką nad kopułą.
+  // Przybliżanie kółkiem nad kopułą.
   const setFov = (target: number) => {
     anim.current = null
     const base = pendingView.current ?? viewRef.current
@@ -1592,8 +1655,7 @@ export function SkyDome({ playing = false }: Props) {
           {hipsLayer.current?.failed() ? 'NSNS: nie udało się pobrać nieba z /api/hips/ · ponawiam co 20 s' : `${SURVEYS[skySurvey].label} · ${SURVEYS[skySurvey].credit}`}
         </div>
       )}
-      <div className="sky-hud br hud-stack">
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+      <div className="sky-hud br" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         {view !== FULL_DOME && (
           <button className="hud-icon" onClick={() => { anim.current = null; setViewNow(FULL_DOME) }} title="Cała kopuła" aria-label="Cała kopuła">
             <RefreshCw size={14} />
@@ -1603,19 +1665,6 @@ export function SkyDome({ playing = false }: Props) {
           title="Widok biegunowy" aria-label="Widok biegunowy" aria-pressed={isPolarDome}>
           <Compass size={14} />
         </button>
-        <div className="zoom-slider">
-          <ZoomOut size={14} aria-hidden />
-          <Range
-            min={0}
-            max={100}
-            step={1}
-            value={Math.round(fovToSlider(view.fovDeg))}
-            onChange={(e) => setFov(sliderToFov(Number(e.target.value)))}
-            aria-label="Powiększenie kopuły"
-          />
-          <ZoomIn size={14} aria-hidden />
-        </div>
-        </div>
       </div>
     </div>
   )

@@ -1,10 +1,10 @@
 // Wspólna część zdjęcia w oknie „Pozycja 3D” (obie skale): wczytanie, komunikaty, płaski widok edycji okręgów
 // i panel wycinków ze źródłami odległości. Rozkładanie zdjęcia robi Obserwatorium, do którego z obu skal
 // prowadzi nurkowanie.
-import { useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from 'react'
-import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO } from '../../lib/catalog'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { catalogOf, DEFAULT_ANNOTATION_COLORS, EXTRA_CATALOGS, TYPE_INFO } from '../../lib/catalog'
 import { hasDistance, MAX_RELATIVE_UNCERTAINTY, NO_DISTANCE, REGRESSOR_TYPES, SCOPE_LABELS, type DistanceScope } from '../../lib/distance'
-import { coveredPhotoCircles, cutsInThreeD, distanceSummary, photoFrame, type PhotoCut, type PhotoDistance, type PhotoDistances } from '../../lib/photo'
+import { coveredPhotoCircles, cutsInThreeD, distanceSummary, PHOTO_CATALOG_LABELS, photoFrame, type PhotoCatalogKind, type PhotoCut, type PhotoDistance, type PhotoDistances } from '../../lib/photo'
 import { hasUnsavedPhoto } from '../../lib/photoStorage'
 import { useCatalog } from '../../state/data'
 import { useStore } from '../../state/store'
@@ -103,17 +103,33 @@ function regressorNotice(cut: PhotoCut, job: RegressorJob | undefined): string |
 
 /** Panel wycinków: widoczność, wybór źródła odległości i zakres pomiaru, dokładność astrometrii. */
 export function PhotoCutEditor({ session, regressorJobs }: { session: PhotoSession; regressorJobs?: ReadonlyMap<string, RegressorJob> }) {
-  const { project, updateCut, activeId, setActiveId } = session
+  const { project, updateCut, activeId, setActiveId, catalogSearch, retryCatalogObjects } = session
   const { catalog } = useCatalog()
   const colors = useStore((s) => s.annotationColors)
+  const cuts = project?.cuts
+  const cutsByCatalog = useMemo(() => {
+    const groups = new Map<string, PhotoCut[]>()
+    for (const cut of cuts ?? []) {
+      const id = catalogOf(cut.id) ?? cut.catalogMatch?.kind ?? (/^PGC \d+$/.test(cut.id) ? 'PGC' : 'Inne')
+      const group = groups.get(id)
+      if (group) group.push(cut)
+      else groups.set(id, [cut])
+    }
+    return Array.from(groups)
+  }, [cuts])
   const [distances, setDistances] = useState<{ key: string; data: PhotoDistances } | null>(null)
   const [distanceRetry, setDistanceRetry] = useState(0)
   const active = project?.cuts.find((c) => c.id === activeId)
-  const aliases = active ? catalog?.find((object) => object.id === active.id)?.photoAliases : undefined
-  const activeRegressorNotice = active && regressorNotice(active, regressorJobs?.get(active.id))
+  const local = active ? catalog?.find((object) => object.id === active.id) : undefined
+  const alias = active?.catalogMatch?.id !== active?.id ? active?.catalogMatch?.id : undefined
+  const aliases = [...new Set([...(local?.photoAliases ?? []), ...(alias ? [alias] : [])])]
+  const activeRegressorNotice = active && (local || !active.catalogMatch) ? regressorNotice(active, regressorJobs?.get(active.id)) : undefined
   const distanceKey = project && active ? `${project.id}:${active.id}` : ''
   const distanceData = distances?.key === distanceKey ? distances.data : null
-  const selectedDistance = distanceData?.measurements.findIndex((m) => m.distLy === active?.distLy && m.uncertaintyLy === active?.uncertaintyLy && m.distanceSource === active?.distanceSource && m.distanceMethod === active?.distanceMethod) ?? -1
+  const recorded = active?.catalogMatch?.distance
+  const catalogWarnings = catalogSearch?.warnings ?? project?.catalogObjects?.warnings ?? []
+  const measurements = [...(recorded ? [recorded] : []), ...(distanceData?.measurements ?? [])]
+  const selectedDistance = measurements.findIndex((m) => m.distLy === active?.distLy && m.uncertaintyLy === active?.uncertaintyLy && m.distanceSource === active?.distanceSource && m.distanceMethod === active?.distanceMethod)
   const choose = (m: PhotoDistance) => ({ distLy: m.distLy, uncertaintyLy: m.uncertaintyLy, distanceScope: m.distanceScope, distanceMethod: m.distanceMethod, distanceSource: m.distanceSource, distanceRef: m.distanceRef, distanceOrigin: 'user' as const })
   useEffect(() => {
     if (!distanceKey || !activeId) return
@@ -129,24 +145,36 @@ export function PhotoCutEditor({ session, regressorJobs }: { session: PhotoSessi
   return <div className="photo-editor">
     <div className="photo-editor-heading"><strong>Wycinki zdjęcia</strong><CloseButton label="Zamknij edycję wycinków" onClick={() => session.setEditing(false)} /></div>
     <p className="dim">Obiekty z rozwiązania zdjęcia. Wybierz obiekt z listy albo kliknij obwódkę jego okręgu; zaznacz, które pokazać w 3D. Obiekty bez ustalonej odległości nie trafiają do 3D (na zdjęciu są bledsze).</p>
-    <div className="photo-object-list">{project.cuts.map((c) => <div key={c.id} className={activeId === c.id ? 'active' : ''}>
-      <input type="checkbox" aria-label={`Pokaż ${c.id}`} checked={c.enabled && hasDistance(c)} disabled={!hasDistance(c)} title={hasDistance(c) ? undefined : regressorNotice(c, regressorJobs?.get(c.id)) ?? 'Bez ustalonej odległości: obiekt nie trafia do 3D'} onChange={(e) => updateCut(c.id, { enabled: e.target.checked })} />
-      <button onClick={() => setActiveId(c.id)}><span style={{ color: colors[c.type] ?? DEFAULT_ANNOTATION_COLORS[c.type] }}>{c.id}</span><small>{TYPE_INFO[c.type].short}</small></button>
-    </div>)}</div>
-    {project.cuts.length === 0 && <p>Brak obiektów katalogowych w tym kadrze.</p>}
+    {(catalogSearch?.loading || catalogWarnings.length > 0) && <div aria-live="polite">
+      {catalogSearch?.loading && <p className="dim">Pobieranie galaktyk PGC, kwazarów i gromad ACO…</p>}
+      {catalogWarnings.map((warning) => <p key={warning} className="photo-notice">{warning}</p>)}
+      {catalogSearch?.retryable && <button type="button" className="button small" onClick={retryCatalogObjects}>Ponów pobieranie katalogów</button>}
+    </div>}
+    <div className="photo-object-list">
+      {cutsByCatalog.map(([id, group]) => (
+        <details key={`${project.id}:${id}`} className="photo-object-group" open>
+          <summary>{id === 'M' ? 'Messier' : PHOTO_CATALOG_LABELS[id as PhotoCatalogKind] ?? EXTRA_CATALOGS.find((item) => item.id === id)?.label ?? id} <span className="dim">{group.length}</span></summary>
+          {group.map((c) => <div key={c.id} className={`photo-object-row${activeId === c.id ? ' active' : ''}`}>
+            <input type="checkbox" aria-label={`Pokaż ${c.id}`} checked={c.enabled && hasDistance(c)} disabled={!hasDistance(c)} title={hasDistance(c) ? undefined : regressorNotice(c, regressorJobs?.get(c.id)) ?? 'Bez ustalonej odległości: obiekt nie trafia do 3D'} onChange={(e) => updateCut(c.id, { enabled: e.target.checked })} />
+            <button onClick={() => setActiveId(c.id)}><span style={{ color: colors[c.type] ?? DEFAULT_ANNOTATION_COLORS[c.type] }}>{c.id}</span><small>{c.catalogMatch?.kind === 'QSO' ? 'Kwazar' : c.catalogMatch?.kind === 'ACO' ? 'Gromada gal.' : TYPE_INFO[c.type].short}</small></button>
+          </div>)}
+        </details>
+      ))}
+    </div>
+    {project.cuts.length === 0 && (project.catalogObjects || !project.astrometry.wcs) && <p>Brak obiektów katalogowych w tym kadrze.</p>}
     {active && <div className="photo-fields">
       <strong>{active.id}</strong>
-      {!!aliases?.length && <small className="dim">{aliases.join(', ')}</small>}
+      {!!aliases.length && <small className="dim">{aliases.join(', ')}</small>}
       <label>Źródło odległości<select value={selectedDistance < 0 ? active.distLy ? 'saved' : 'unknown' : selectedDistance} title={distanceSummary(active)} onChange={(e) => {
         if (e.target.value === 'unknown') { updateCut(active.id, { ...NO_DISTANCE, distanceOrigin: 'user' }); return }
-        const measurement = distanceData?.measurements[Number(e.target.value)]
+        const measurement = measurements[Number(e.target.value)]
         if (measurement) updateCut(active.id, choose(measurement))
       }}>
         <option value="unknown">Brak odległości — bez 3D</option>
         {selectedDistance < 0 && active.distLy && <option value="saved">{distanceSummary(active)}</option>}
         {!distanceData && <option disabled>Pobieranie pomiarów…</option>}
-        {(['Katalog', 'SIMBAD', 'NED'] as const).map((source) => distanceData?.measurements.some((m) => m.source === source) && <optgroup key={source} label={source}>
-          {distanceData.measurements.map((m, i) => m.source === source && <option key={i} value={i} title={distanceSummary(m)}>{distanceSummary(m)}</option>)}
+        {(['Katalog', 'SIMBAD', 'NED'] as const).map((source) => measurements.some((m) => m.source === source) && <optgroup key={source} label={source}>
+          {measurements.map((m, i) => m.source === source && <option key={i} value={i} title={distanceSummary(m)}>{distanceSummary(m)}</option>)}
         </optgroup>)}
       </select></label>
       {!hasDistance(active) && <p className="photo-notice">{active.distLy ? `Niepewność powyżej ${MAX_RELATIVE_UNCERTAINTY * 100} %: obiekt nie trafia do 3D.` : 'Bez ustalonej odległości obiekt nie trafia do 3D.'}</p>}
@@ -156,7 +184,7 @@ export function PhotoCutEditor({ session, regressorJobs }: { session: PhotoSessi
         {!distanceData && <p className="dim">Pobieranie pomiarów…</p>}
         {distanceData?.warnings.map((warning) => <p key={warning} className="photo-notice">{warning}</p>)}
         {!!distanceData?.warnings.length && <button className="button small" onClick={() => { setDistances(null); setDistanceRetry((n) => n + 1) }}>Ponów pobieranie</button>}
-        {distanceData && !distanceData.measurements.length && !distanceData.warnings.length && <p className="photo-notice">Brak opublikowanych pomiarów w obsługiwanych źródłach.</p>}
+        {distanceData && !measurements.length && !distanceData.warnings.length && <p className="photo-notice">Brak opublikowanych pomiarów w obsługiwanych źródłach.</p>}
       </div>
       <label>Zakres pomiaru<select value={active.distanceScope} disabled={!active.distLy} onChange={(e) => updateCut(active.id, { distanceScope: e.target.value as DistanceScope, distanceOrigin: 'user' })}>
         {(Object.keys(SCOPE_LABELS) as DistanceScope[]).map((scope) => <option key={scope} value={scope}>{SCOPE_LABELS[scope]}</option>)}

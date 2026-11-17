@@ -1,5 +1,5 @@
 // Kadrowanie: zdjęcie DSS2 wokół obiektu w rzucie TAN i prostokąt matrycy z obrotem (PA od N przez E).
-import { ChartColumn, Eye, EyeOff } from 'lucide-react'
+import { ChartColumn, Eye, EyeOff, Layers2, Trash2 } from 'lucide-react'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { computeOptics } from '../lib/astro'
 import { parseDecCoordinate, parseRaCoordinate } from '../lib/coordinates'
@@ -12,6 +12,7 @@ import { getSkyImage, type SkyImageOptions } from '../lib/thumbs'
 import { useSelected } from '../state/data'
 import { useStore } from '../state/store'
 import { Range } from './Range'
+import { Select } from './Select'
 import { StretchDialog } from './StretchDialog'
 import { useObjectUrl } from './useObjectUrl'
 
@@ -38,6 +39,8 @@ const LAYERS: Record<Layer, Required<Pick<SkyImageOptions, 'survey' | 'mode'>> &
 export function FramingPanel() {
   const o = useSelected()
   const eq = useStore((s) => s.equipment)
+  const equipmentSets = useStore((s) => s.equipmentSets)
+  const activeEquipmentSetId = useStore((s) => s.activeEquipmentSetId)
   const framing = useStore((s) => s.framing)
   const setFraming = useStore((s) => s.setFraming)
   const addToPlan = useStore((s) => s.addToPlan)
@@ -65,20 +68,29 @@ export function FramingPanel() {
   const imgRef = useRef<HTMLImageElement>(null)
   const stretchButtonRef = useRef<HTMLButtonElement>(null)
   const [stretchOpen, setStretchOpen] = useState(false)
+  const [comparisonOpen, setComparisonOpen] = useState(false)
+  const [comparedSetIds, setComparedSetIds] = useState([activeEquipmentSetId])
+  const [candidateId, setCandidateId] = useState('')
   // Ukrycie nakładki kadru (prostokąt, mozaika, uchwyt), żeby lepiej widzieć zdjęcie, np. przy pracy z histogramem.
   const [frameVisible, setFrameVisible] = useState(true)
   const drag = useRef<{ kind: 'move' | 'rotate' | 'pan'; startX: number; startY: number; startCenter: { xi: number; eta: number }; startPa: number } | null>(null)
 
-  const optics = useMemo(
-    () => computeOptics({ apertureMm: eq.apertureMm, focalLengthMm: eq.focalLengthMm, reducer: eq.reducer, widthPx: eq.widthPx, heightPx: eq.heightPx, pixelUm: eq.pixelUm, binning: eq.binning }),
-    [eq],
-  )
+  const optics = useMemo(() => computeOptics(eq), [eq])
+  const comparedSets = useMemo(() => equipmentSets.flatMap((item, index) => comparedSetIds.includes(item.id) ? [{
+    id: item.id,
+    name: item.name,
+    optics: computeOptics(item.equipment),
+    color: `hsl(${(190 + index * 137.5) % 360} 95% 65%)`,
+  }] : []), [equipmentSets, comparedSetIds])
+  const availableSets = equipmentSets.filter((item) => !comparedSetIds.includes(item.id))
+  const candidate = availableSets.find((item) => item.id === candidateId) ?? availableSets[0]
   const mosaic = framing.mosaic ?? DEFAULT_MOSAIC
   // Obrys całej mozaiki: n paneli zachodzących o zakładkę (w płaszczyźnie stycznej).
   const spanDeg = (fovDeg: number, n: number) => (2 * Math.atan(Math.tan((fovDeg / 2) * (Math.PI / 180)) * (1 + (n - 1) * (1 - mosaic.overlapPct / 100))) * 180) / Math.PI
   const mosaicW = spanDeg(optics.fovWdeg, mosaic.cols)
   const mosaicH = spanDeg(optics.fovHdeg, mosaic.rows)
-  const diag = Math.hypot(mosaicW, mosaicH)
+  const comparisonDiag = comparedSets.reduce((max, item) => Math.max(max, Math.hypot(item.optics.fovWdeg, item.optics.fovHdeg)), 0)
+  const diag = comparisonOpen ? comparisonDiag || Math.hypot(optics.fovWdeg, optics.fovHdeg) : Math.hypot(mosaicW, mosaicH)
   const objDeg = o ? o.majArcmin / 60 : 0
   const baseFov = Math.min(30, Math.max(0.3, diag * 1.6, objDeg * 1.4))
   const imageFov = Math.round((baseFov / zoom) * 1000) / 1000
@@ -95,7 +107,7 @@ export function FramingPanel() {
     if (o && center) setPhotoCenter({ objectIndex: o.i, raDeg: center.raDeg, decDeg: center.decDeg })
   }, [o?.i])
 
-  // Kółko myszy nad zdjęciem: powiększenie jak suwakiem (0,5–4×). Nasłuch nie jest pasywny, żeby strona się nie przewijała.
+  // Kółko myszy nad zdjęciem zmienia powiększenie (0,5–4×) bez przewijania strony.
   const hasView = !!(o && center)
   useEffect(() => {
     const el = svgRef.current
@@ -159,6 +171,12 @@ export function FramingPanel() {
   const shiftX = shownAt[0] - SIZE / 2 + (pan?.[0] ?? 0)
   const shiftY = shownAt[1] - SIZE / 2 + (pan?.[1] ?? 0)
   const corners = frameCorners(offset, mosaicW, mosaicH, framing.paDeg).map((c) => tangentToPixel(c, imageFov, SIZE))
+  const fovFrames = comparisonOpen
+    ? comparedSets.map(({ id, name, color, optics }) => ({
+        id, name, color,
+        corners: frameCorners(offset, optics.fovWdeg, optics.fovHdeg, framing.paDeg).map((c) => tangentToPixel(c, imageFov, SIZE)),
+      }))
+    : [{ id: activeEquipmentSetId, name: undefined, color: '#00e0ff', corners }]
   const panelCount = mosaic.cols * mosaic.rows
   const panels = panelCount > 1
     ? mosaicOffsets(offset, optics.fovWdeg, optics.fovHdeg, framing.paDeg, mosaic).map((t) => ({
@@ -173,10 +191,6 @@ export function FramingPanel() {
   const shortSide = (c: [number, number][]) => Math.min(Math.hypot(c[1][0] - c[0][0], c[1][1] - c[0][1]), Math.hypot(c[3][0] - c[0][0], c[3][1] - c[0][1]))
   const handleR = Math.max(HANDLE_MIN_R, shortSide(corners) * HANDLE_R)
   const panelFont = panels.length ? Math.min(28, Math.max(10, shortSide(panels[0].corners) * 0.14)) : 0
-  const ratio = objDeg / Math.max(mosaicW, mosaicH)
-  const coverage = ratio > 1
-    ? `większy niż ${panelCount > 1 ? 'mozaika' : 'kadr'} (potrzeba ok. ×${Math.ceil(objDeg / Math.max(optics.fovWdeg, optics.fovHdeg))})`
-    : `${Math.round(ratio * 100)}% boku`
   const setMosaic = (patch: Partial<Mosaic>) => setFraming({ mosaic: { ...mosaic, ...patch } })
   const planItem = plan.find((p) => p.objectId === o.id)
 
@@ -195,6 +209,11 @@ export function FramingPanel() {
   const toSvg = (e: React.PointerEvent) => {
     const r = svgRef.current!.getBoundingClientRect()
     return [((e.clientX - r.left) / r.width) * SIZE, ((e.clientY - r.top) / r.height) * SIZE] as [number, number]
+  }
+  const startFrameDrag = (e: React.PointerEvent<SVGPolygonElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId)
+    const [x, y] = toSvg(e)
+    drag.current = { kind: 'move', startX: x, startY: y, startCenter: offset, startPa: framing.paDeg }
   }
   const onMove = (e: React.PointerEvent) => {
     const d = drag.current
@@ -229,7 +248,7 @@ export function FramingPanel() {
   }
 
   return (
-    <div className="sky-stage" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 230px', background: '#000' }}>
+    <div className="sky-stage framing-stage" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 230px', background: '#000' }}>
       <div style={{ position: 'relative', display: 'grid', placeItems: 'center', overflow: 'hidden', padding: 12, containerType: 'size' }}>
         {/* Kwadrat wpisany w kolumnę: krótszy z wymiarów, żeby szeroki kadr nie chował się za panelem ustawień. */}
         <div style={{ position: 'relative', width: 'min(100cqw, 100cqh)', aspectRatio: '1' }}>
@@ -278,19 +297,22 @@ export function FramingPanel() {
                 <path d={`M${SIZE / 2 - 10} ${SIZE / 2}h20M${SIZE / 2} ${SIZE / 2 - 10}v20`} />
               </g>
             )}
-            {frameVisible && (<>
-            <polygon
-              points={corners.map((c) => c.join(',')).join(' ')}
-              fill="rgba(0,224,255,0.06)"
-              stroke="#00e0ff"
-              strokeWidth="2.5"
-              style={{ cursor: 'move', filter: 'drop-shadow(0 0 6px rgba(0,224,255,0.6))' }}
-              onPointerDown={(e) => {
-                ;(e.target as Element).setPointerCapture(e.pointerId)
-                const [x, y] = toSvg(e)
-                drag.current = { kind: 'move', startX: x, startY: y, startCenter: offset, startPa: framing.paDeg }
-              }}
-            />
+            {frameVisible && fovFrames.map((item) => (
+              <polygon
+                key={item.id}
+                className="framing-fov-frame"
+                points={item.corners.map((c) => c.join(',')).join(' ')}
+                fill="currentColor"
+                fillOpacity="0.06"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                style={{ color: item.color }}
+                onPointerDown={startFrameDrag}
+              >
+                {item.name && <title>{item.name}</title>}
+              </polygon>
+            ))}
+            {frameVisible && !comparisonOpen && (<>
             {panels.map((p, k) => (
               <g key={k} style={{ pointerEvents: 'none' }}>
                 <polygon points={p.corners.map((c) => c.join(',')).join(' ')} fill="none" stroke="#00e0ff" strokeOpacity="0.7" strokeWidth="1.2" strokeDasharray="6 4" />
@@ -320,13 +342,30 @@ export function FramingPanel() {
             </>)}
             <text x="18" y="34" fill="#fff" fontSize="22" fontFamily="var(--mono)">N ↑</text>
             <text x="18" y="62" fill="#fff" fontSize="22" fontFamily="var(--mono)">← E</text>
-            <text x={SIZE - 18} y={SIZE - 20} fill="rgba(255,255,255,0.6)" fontSize="13" textAnchor="end" fontFamily="var(--mono)">
-              pole zdjęcia {fmtNum(imageFov, 2)}° · {LAYERS[layer].caption} · {SURVEYS[LAYERS[layer].survey].credit}
-              {img?.key === imageKey ? (img.sharp ? '' : ' · podgląd') : shown ? ' · wczytywanie' : ''}
-              {ownId && img?.key === imageKey ? ' · moje zdjęcie' : ''}
-              {stretched ? ' · rozciągnięte' : ''}
-            </text>
+            <g fill="rgba(255,255,255,0.6)" fontSize="11" textAnchor="end" fontFamily="var(--mono)">
+              {!comparisonOpen && (
+                <text x={SIZE - 18} y={SIZE - 35}>pole kadru {fmtNum(optics.fovWdeg, 2)}° × {fmtNum(optics.fovHdeg, 2)}°</text>
+              )}
+              <text x={SIZE - 18} y={SIZE - 20}>
+                pole zdjęcia {fmtNum(imageFov, 2)}° · {LAYERS[layer].caption} · {SURVEYS[LAYERS[layer].survey].credit}
+                {img?.key === imageKey ? (img.sharp ? '' : ' · podgląd') : shown ? ' · wczytywanie' : ''}
+                {ownId && img?.key === imageKey ? ' · moje zdjęcie' : ''}
+                {stretched ? ' · rozciągnięte' : ''}
+              </text>
+            </g>
           </svg>
+          <button
+            className={`button small icon-button framing-comparison-button${comparisonOpen ? ' on' : ''}`}
+            title="Porównaj pola widzenia"
+            aria-label="Porównaj pola widzenia"
+            aria-pressed={comparisonOpen}
+            onClick={() => {
+              if (!comparisonOpen) setFrameVisible(true)
+              setComparisonOpen(!comparisonOpen)
+            }}
+          >
+            <Layers2 size={20} aria-hidden="true" />
+          </button>
           <button
             className={`button small icon-button framing-eye-button${frameVisible ? '' : ' on'}`}
             title={frameVisible ? 'Ukryj pole kadru' : 'Pokaż pole kadru'}
@@ -350,14 +389,52 @@ export function FramingPanel() {
         </div>
       </div>
       <div style={{ borderLeft: '1px solid var(--border)', padding: 14, display: 'flex', flexDirection: 'column', gap: 12, overflow: 'auto' }}>
-        <div className="label">Kadr</div>
-        <div className="stat"><div className="label">Pole widzenia</div><div className="v">{fmtNum(optics.fovWdeg, 2)}° × {fmtNum(optics.fovHdeg, 2)}°</div></div>
-        <div className="stat"><div className="label">Obiekt w kadrze</div><div className="v">{coverage}</div></div>
+        {comparisonOpen ? (
+          <div className="field">
+            <label className="label" htmlFor="framing-comparison-set">Zestaw do porównania</label>
+            <Select
+              id="framing-comparison-set"
+              className="control figures"
+              style={{ fontSize: 11 }}
+              value={candidate?.id ?? ''}
+              disabled={!candidate}
+              ariaLabel="Zestaw do porównania"
+              options={!candidate ? [{ value: '', label: 'Wszystkie dodane' }] : availableSets.map((item) => ({ value: item.id, label: item.name }))}
+              onChange={(v) => setCandidateId(v)}
+            />
+            <button className="button small" disabled={!candidate} onClick={() => {
+              if (!candidate) return
+              setComparedSetIds((ids) => [...ids, candidate.id])
+              setFrameVisible(true)
+            }}>Dodaj do porównania</button>
+            {comparedSets.length > 0 && (
+              <ul className="framing-comparison-list" aria-label="Porównywane zestawy">
+                {comparedSets.map((item) => (
+                  <li key={item.id} style={{ borderColor: item.color }}>
+                    <div>
+                      <div>{item.name}</div>
+                      <div className="dim mono">{fmtNum(item.optics.fovWdeg, 2)}° × {fmtNum(item.optics.fovHdeg, 2)}°</div>
+                    </div>
+                    <button
+                      className="button small icon-button ghost"
+                      title={`Usuń z porównania: ${item.name}`}
+                      aria-label={`Usuń z porównania: ${item.name}`}
+                      onClick={() => setComparedSetIds((ids) => ids.filter((id) => id !== item.id))}
+                    >
+                      <Trash2 size={15} aria-hidden="true" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <button className="button small ghost" disabled={!comparedSets.length} onClick={() => setComparedSetIds([])}>Wyczyść widok</button>
+          </div>
+        ) : <div className="label">Kadr</div>}
         <div className="field">
           <span className="label">Kąt pozycyjny (PA)</span>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             <Range min={0} max={359} value={framing.paDeg} onChange={(e) => setFraming({ paDeg: Number(e.target.value) })} style={{ flex: 1 }} />
-            <input className="control figures" style={{ width: 64 }} type="number" min={0} max={359} value={framing.paDeg} onChange={(e) => setFraming({ paDeg: ((Number(e.target.value) % 360) + 360) % 360 })} />
+            <input className="control figures" aria-label="Kąt pozycyjny" style={{ width: 64 }} type="number" min={0} max={359} value={framing.paDeg} onChange={(e) => setFraming({ paDeg: ((Number(e.target.value) % 360) + 360) % 360 })} />
           </div>
         </div>
         <div className="field">
@@ -390,60 +467,67 @@ export function FramingPanel() {
           <button className="button small" onClick={() => { setPhotoCenter({ objectIndex: o.i, raDeg: o.raDeg, decDeg: o.decDeg }); setFraming({ raDeg: null, decDeg: null }) }}>Wyśrodkuj</button>
           <button className="button small" onClick={() => setFraming({ paDeg: (framing.paDeg - 90 + 360) % 360 })}>+90°</button>
         </div>
-        <div className="field">
-          <span className="label">Mozaika (kolumny × wiersze)</span>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            {(['cols', 'rows'] as const).map((k, i) => (
-              <Fragment key={k}>
-                {i > 0 && <span className="dim">×</span>}
-                <input
-                  className="control figures"
-                  aria-label={k === 'cols' ? 'Kolumny mozaiki' : 'Wiersze mozaiki'}
-                  type="number"
-                  min={1}
-                  max={MAX_PANELS_PER_SIDE}
-                  style={{ width: 56 }}
-                  value={mosaic[k]}
-                  onChange={(e) => setMosaic({ [k]: Math.min(MAX_PANELS_PER_SIDE, Math.max(1, Math.round(Number(e.target.value) || 1))) })}
-                />
-              </Fragment>
-            ))}
-            <span className="dim" style={{ fontSize: 11 }}>{panelCount > 1 ? `${panelCount} paneli` : 'jeden kadr'}</span>
+        {!comparisonOpen && (
+          <div className="field">
+            <span className="label">Mozaika (kolumny × wiersze)</span>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              {(['cols', 'rows'] as const).map((k, i) => (
+                <Fragment key={k}>
+                  {i > 0 && <span className="dim">×</span>}
+                  <input
+                    className="control figures"
+                    aria-label={k === 'cols' ? 'Kolumny mozaiki' : 'Wiersze mozaiki'}
+                    type="number"
+                    min={1}
+                    max={MAX_PANELS_PER_SIDE}
+                    style={{ width: 56 }}
+                    value={mosaic[k]}
+                    onChange={(e) => setMosaic({ [k]: Math.min(MAX_PANELS_PER_SIDE, Math.max(1, Math.round(Number(e.target.value) || 1))) })}
+                  />
+                </Fragment>
+              ))}
+              <span className="dim" style={{ fontSize: 11 }}>{panelCount > 1 ? `${panelCount} paneli` : 'jeden kadr'}</span>
+            </div>
+            {panelCount > 1 && (
+              <>
+                <span className="label">Zakładka {mosaic.overlapPct}%</span>
+                <Range min={0} max={50} step={5} value={mosaic.overlapPct} onChange={(e) => setMosaic({ overlapPct: Number(e.target.value) })} />
+              </>
+            )}
           </div>
-          {panelCount > 1 && (
-            <>
-              <span className="label">Zakładka {mosaic.overlapPct}%</span>
-              <Range min={0} max={50} step={5} value={mosaic.overlapPct} onChange={(e) => setMosaic({ overlapPct: Number(e.target.value) })} />
-            </>
-          )}
-        </div>
+        )}
         <div className="field">
           <span className="label">Warstwa</span>
-          <select className="control" style={{ width: '100%' }} aria-label="Warstwa zdjęcia" value={layer} onChange={(e) => setLayer(e.target.value as Layer)}>
-            {(Object.keys(LAYERS) as Layer[]).map((l) => {
+          <Select
+            className="control figures"
+            style={{ fontSize: 11 }}
+            ariaLabel="Warstwa zdjęcia"
+            value={layer}
+            options={(Object.keys(LAYERS) as Layer[]).map((l) => {
               const survey = SURVEYS[LAYERS[l].survey]
-              return (
-                <option key={l} value={l} disabled={!covered(l)}>
-                  {LAYERS[l].label}{covered(l) ? '' : ` — tylko na północ od ${String(survey.minDecDeg).replace('-', '−')}°`}
-                </option>
-              )
+              return {
+                value: l,
+                disabled: !covered(l),
+                label: `${LAYERS[l].label}${covered(l) ? '' : ` — tylko na północ od ${String(survey.minDecDeg).replace('-', '−')}°`}`,
+              }
             })}
-          </select>
+            onChange={(v) => setLayer(v as Layer)}
+          />
         </div>
-        <div className="field">
-          <span className="label">Powiększenie zdjęcia</span>
-          <Range min={0.5} max={4} step={0.1} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} />
-        </div>
-        <button
-          className="button primary"
-          onClick={() => {
-            if (planItem) updatePlan(planItem.key, { framing })
-            else { addToPlan(o.i, o.id); setTab('planner') }
-          }}
-        >
-          {planItem ? 'Zapisz kadr w planie' : 'Dodaj do planu'}
-        </button>
-        <p className="dim" style={{ fontSize: 11.5, margin: 0 }}>Przeciągnij prostokąt, aby przesunąć kadr, albo zdjęcie, aby przesunąć niebo pod kadrem; uchwyt nad kadrem obraca go. Powiększenie zmienia suwak.</p>
+        {!comparisonOpen && (
+          <>
+            <button
+              className="button primary"
+              onClick={() => {
+                if (planItem) updatePlan(planItem.key, { framing })
+                else { addToPlan(o.i, o.id); setTab('planner') }
+              }}
+            >
+              {planItem ? 'Zapisz kadr w planie' : 'Dodaj do planu'}
+            </button>
+            <p className="dim" style={{ fontSize: 11.5, margin: 0 }}>Przeciągnij prostokąt, aby przesunąć kadr, albo zdjęcie, aby przesunąć niebo pod kadrem. Uchwyt nad kadrem obraca go.</p>
+          </>
+        )}
       </div>
       <StretchDialog
         open={stretchOpen}

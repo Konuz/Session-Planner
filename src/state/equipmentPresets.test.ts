@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { DEFAULT_EQUIPMENT, useStore } from './store'
 
 beforeEach(() => {
-  useStore.setState({ equipment: { ...DEFAULT_EQUIPMENT }, savedTelescopes: [], savedCameras: [] })
+  useStore.setState(useStore.getInitialState())
 })
 
 describe('własne teleskopy i kamery', () => {
@@ -42,5 +42,50 @@ describe('własne teleskopy i kamery', () => {
     useStore.getState().setEquipment({ telescopeId: first.id, telescopeName: 'Pierwszy', focalLengthMm: 750 })
     expect(useStore.getState().equipment.focalLengthMm).toBe(750)
     expect(useStore.getState().savedTelescopes.map((item) => item.name)).toEqual(['Pierwszy', 'Drugi'])
+  })
+
+  it('zachowuje parametry zestawu po zmianie i usunięciu jego modelu w innym zestawie', () => {
+    useStore.getState().addTelescope()
+    const firstId = useStore.getState().activeEquipmentSetId
+    useStore.getState().addEquipmentSet()
+    const secondId = useStore.getState().activeEquipmentSetId
+    useStore.getState().setEquipment({ focalLengthMm: 750 })
+
+    useStore.getState().selectEquipmentSet(firstId)
+    useStore.getState().setEquipment({ seeingArcsec: 3 })
+    expect(useStore.getState().equipment.focalLengthMm).toBe(250)
+    expect(useStore.getState().savedTelescopes[0].focalLengthMm).toBe(750)
+    useStore.getState().removeTelescope()
+
+    useStore.getState().selectEquipmentSet(secondId)
+    expect(useStore.getState().equipment).toMatchObject({ telescopeId: 'custom', focalLengthMm: 750 })
+  })
+})
+
+describe('usuwanie zestawów', () => {
+  it('przełącza sprzęt po usunięciu aktywnego zestawu i zachowuje unikalne ID przy dodawaniu', () => {
+    const firstId = useStore.getState().activeEquipmentSetId
+    useStore.getState().addEquipmentSet()
+    const removedId = useStore.getState().activeEquipmentSetId
+    useStore.getState().setEquipment({ focalLengthMm: 750 })
+    useStore.getState().addEquipmentSet()
+    const thirdId = useStore.getState().activeEquipmentSetId
+
+    useStore.getState().selectEquipmentSet(removedId)
+    useStore.getState().removeEquipmentSet()
+
+    expect(useStore.getState().equipmentSets.map((item) => item.id)).toEqual([firstId, thirdId])
+    expect(useStore.getState().activeEquipmentSetId).toBe(firstId)
+    expect(useStore.getState().equipment.focalLengthMm).toBe(DEFAULT_EQUIPMENT.focalLengthMm)
+    useStore.getState().addEquipmentSet()
+    const ids = useStore.getState().equipmentSets.map((item) => item.id)
+    expect(new Set(ids).size).toBe(3)
+  })
+
+  it('zachowuje ostatni zestaw', () => {
+    const firstId = useStore.getState().activeEquipmentSetId
+    useStore.getState().removeEquipmentSet()
+    expect(useStore.getState().equipmentSets.map((item) => item.id)).toEqual([firstId])
+    expect(useStore.getState().activeEquipmentSetId).toBe(firstId)
   })
 })

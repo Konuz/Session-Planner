@@ -47,6 +47,31 @@ it('dwa równoczesne zapytania o pogodę dla tego samego miejsca dają jedno ż�
   expect(fetchMock).toHaveBeenCalledTimes(1)
 })
 
+it('pobiera pogodę dla nocy rozpoczętej w poprzedniej dobie UTC mimo starego wpisu w pamięci', async () => {
+  const yesterday23 = Date.parse('2026-11-15T23:00:00Z')
+  const today00 = Date.parse('2026-11-16T00:00:00Z')
+  localStorage.setItem('wx4:openmeteo:51.09,17.29', JSON.stringify({
+    at: Date.now(),
+    data: [{ t: today00, cloud: 20, humidity: 60, temp: 5, dew: 1, wind: 7 }],
+  }))
+  vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+    const params = new URL(String(input)).searchParams
+    const times = params.get('past_days') === '1' ? [yesterday23, today00] : [today00]
+    const hourly = {
+      time: times.map((t) => t / 1000),
+      cloud_cover: times.map(() => 30),
+      relative_humidity_2m: times.map(() => 60),
+      temperature_2m: times.map(() => 5),
+      dew_point_2m: times.map(() => 1),
+      wind_speed_10m: times.map(() => 7),
+    }
+    return new Response(JSON.stringify({ hourly }))
+  })
+  const { fetchWeather, weatherAt } = await import('./services')
+  const hours = await fetchWeather(51.09, 17.29)
+  expect(weatherAt(hours, Date.parse('2026-11-15T22:35:00Z'))).toMatchObject({ t: yesterday23, cloud: 30 })
+})
+
 it('przełączanie dostawcy używa osobnych kluczy cache i przekazuje wybrany model do API', async () => {
   const urls: string[] = []
   const hourly = {

@@ -46,6 +46,12 @@ export interface Equipment {
   seeingArcsec: number
 }
 
+interface EquipmentSet {
+  id: string
+  name: string
+  equipment: Equipment
+}
+
 interface SavedTelescope {
   id: string
   name: string
@@ -79,6 +85,8 @@ export const DEFAULT_EQUIPMENT: Equipment = {
   mono: true,
   seeingArcsec: 2.5,
 }
+
+const DEFAULT_EQUIPMENT_SET: EquipmentSet = { id: '1', name: 'Zestaw 1', equipment: DEFAULT_EQUIPMENT }
 
 export interface Framing {
   /** Środek kadru J2000 (null = środek obiektu). */
@@ -121,7 +129,10 @@ interface State {
   /** Historia wybranych obiektów w tej sesji (bez zapisu) i pozycja w niej dla strzałek ‹ ›. */
   history: number[]
   historyPos: number
+  /** Parametry aktywnego zestawu używane przez kadrowanie i planer. */
   equipment: Equipment
+  equipmentSets: EquipmentSet[]
+  activeEquipmentSetId: string
   savedTelescopes: SavedTelescope[]
   savedCameras: SavedCamera[]
   minAltDeg: number
@@ -148,8 +159,10 @@ interface State {
   ownPhotosOpacity: number
   /** Elipsy obiektów katalogu (wymiary i kąt pozycyjny) na kopule. */
   showEllipses: boolean
+  showObjectMarkers: boolean
   /** Grupy katalogów widoczne na kopule (znaczniki, elipsy i kontury). */
   skyGroups: Record<SkyGroup, boolean>
+  skyObjectDensity: number
   /** Rodziny katalogów z grupy „Inne” ukryte na kopule (EXTRA_CATALOGS w lib/catalog). */
   skyExtraHidden: string[]
   showLabels: boolean
@@ -180,6 +193,10 @@ interface State {
   select(index: number | null, find?: boolean): void
   /** Poprzedni (-1) albo następny (+1) obiekt z historii, z animacją „znajdź obiekt”. */
   stepHistory(delta: number): void
+  addEquipmentSet(): void
+  removeEquipmentSet(): void
+  selectEquipmentSet(id: string): void
+  renameEquipmentSet(name: string): void
   setEquipment(patch: Partial<Equipment>): void
   addTelescope(): void
   removeTelescope(): void
@@ -203,6 +220,7 @@ interface State {
   setFilter(patch: Partial<CatalogFilter>): void
   setSort(s: State['sortBy']): void
   toggleSkyGroup(group: SkyGroup): void
+  setSkyObjectDensity(value: number): void
   toggleSkyExtra(id: string): void
   setAnnotationColor(type: ObjectType, color: string): void
   resetAnnotationColors(): void
@@ -212,7 +230,25 @@ interface State {
   setDomeOpacity(value: number): void
   setSkyLook(look: SkyLook): void
   setThumbSource(source: ThumbSource): void
-  toggle(key: 'showLines' | 'showTracks' | 'showArt' | 'showOutlines' | 'showOwnPhotos' | 'showEllipses' | 'showLabels' | 'showAnnotations' | 'show3DAnnotations' | 'onlyVisible'): void
+  toggle(key: 'showLines' | 'showTracks' | 'showArt' | 'showOutlines' | 'showOwnPhotos' | 'showEllipses' | 'showObjectMarkers' | 'showLabels' | 'showAnnotations' | 'show3DAnnotations' | 'onlyVisible'): void
+}
+
+function normalizeSkyObjectDensity(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(100, Math.round(value))) : 100
+}
+
+function updateEquipment(s: State, patch: Partial<Equipment>, removedModel?: 'telescopeId' | 'cameraId') {
+  const equipment = { ...s.equipment, ...patch }
+  return {
+    equipment,
+    equipmentSets: s.equipmentSets.map((item) => {
+      if (item.id === s.activeEquipmentSetId) return { ...item, equipment }
+      if (removedModel && item.equipment[removedModel] === s.equipment[removedModel]) {
+        return { ...item, equipment: { ...item.equipment, ...patch } }
+      }
+      return item
+    }),
+  }
 }
 
 // Porównanie pól przed JSON.stringify: zmiany czasu i kadru nie serializują planu w każdej klatce.
@@ -256,6 +292,8 @@ export const useStore = create<State>()(
       history: [],
       historyPos: -1,
       equipment: DEFAULT_EQUIPMENT,
+      equipmentSets: [DEFAULT_EQUIPMENT_SET],
+      activeEquipmentSetId: DEFAULT_EQUIPMENT_SET.id,
       savedTelescopes: [],
       savedCameras: [],
       minAltDeg: 25,
@@ -268,7 +306,7 @@ export const useStore = create<State>()(
       filter: EMPTY_FILTER,
       sortBy: 'best',
       onlyVisible: false,
-      minVisibleMinutes: 60,
+      minVisibleMinutes: 0,
       showLines: true,
       showTracks: true,
       showArt: true,
@@ -277,7 +315,9 @@ export const useStore = create<State>()(
       showOwnPhotos: true,
       ownPhotosOpacity: 1,
       showEllipses: false,
+      showObjectMarkers: true,
       skyGroups: Object.fromEntries(SKY_GROUPS.map((g) => [g, true])) as Record<SkyGroup, boolean>,
+      skyObjectDensity: 100,
       skyExtraHidden: [],
       showLabels: true,
       showAnnotations: true,
@@ -323,21 +363,46 @@ export const useStore = create<State>()(
             findPulse: s.findPulse + 1,
           }
         }),
-      setEquipment: (patch) => set((s) => {
-        const equipment = { ...s.equipment, ...patch }
+      addEquipmentSet: () => set((s) => {
+        const id = String(Math.max(...s.equipmentSets.map((item) => Number(item.id))) + 1)
+        const names = new Set(s.equipmentSets.map((item) => item.name))
+        let number = s.equipmentSets.length + 1
+        while (names.has(`Zestaw ${number}`)) number++
+        const equipmentSet = { id, name: `Zestaw ${number}`, equipment: s.equipment }
         return {
-          equipment,
-          savedTelescopes: s.savedTelescopes.map((item) => item.id === equipment.telescopeId ? {
-            ...item, name: equipment.telescopeName, apertureMm: equipment.apertureMm,
-            focalLengthMm: equipment.focalLengthMm, reducer: equipment.reducer,
-          } : item),
-          savedCameras: s.savedCameras.map((item) => item.id === equipment.cameraId ? {
-            ...item, name: equipment.cameraName, widthPx: equipment.widthPx,
-            heightPx: equipment.heightPx, pixelUm: equipment.pixelUm,
-            binning: equipment.binning, mono: equipment.mono,
-          } : item),
+          equipmentSets: [...s.equipmentSets, equipmentSet],
+          activeEquipmentSetId: id,
         }
       }),
+      removeEquipmentSet: () => set((s) => {
+        if (s.equipmentSets.length <= 1) return s
+        const equipmentSets = s.equipmentSets.filter((item) => item.id !== s.activeEquipmentSetId)
+        const activeSet = equipmentSets[0]
+        return { equipmentSets, activeEquipmentSetId: activeSet.id, equipment: activeSet.equipment }
+      }),
+      selectEquipmentSet: (id) => set((s) => {
+        const item = s.equipmentSets.find((item) => item.id === id)
+        return item ? { activeEquipmentSetId: item.id, equipment: item.equipment } : s
+      }),
+      renameEquipmentSet: (name) => set((s) => {
+        const trimmed = name.trim()
+        if (!trimmed) return s
+        return {
+          equipmentSets: s.equipmentSets.map((item) => item.id === s.activeEquipmentSetId && item.name !== trimmed ? { ...item, name: trimmed } : item),
+        }
+      }),
+      setEquipment: (patch) => set((s) => ({
+        ...updateEquipment(s, patch),
+        savedTelescopes: s.savedTelescopes.map((item) => item.id === (patch.telescopeId ?? s.equipment.telescopeId) ? {
+          ...item, name: patch.telescopeName ?? item.name, apertureMm: patch.apertureMm ?? item.apertureMm,
+          focalLengthMm: patch.focalLengthMm ?? item.focalLengthMm, reducer: patch.reducer ?? item.reducer,
+        } : item),
+        savedCameras: s.savedCameras.map((item) => item.id === (patch.cameraId ?? s.equipment.cameraId) ? {
+          ...item, name: patch.cameraName ?? item.name, widthPx: patch.widthPx ?? item.widthPx,
+          heightPx: patch.heightPx ?? item.heightPx, pixelUm: patch.pixelUm ?? item.pixelUm,
+          binning: patch.binning ?? item.binning, mono: patch.mono ?? item.mono,
+        } : item),
+      })),
       addTelescope: () => set((s) => {
         const id = crypto.randomUUID()
         return {
@@ -345,12 +410,12 @@ export const useStore = create<State>()(
             id, name: s.equipment.telescopeName || 'Własny teleskop',
             apertureMm: s.equipment.apertureMm, focalLengthMm: s.equipment.focalLengthMm, reducer: s.equipment.reducer,
           }],
-          equipment: { ...s.equipment, telescopeId: id },
+          ...updateEquipment(s, { telescopeId: id }),
         }
       }),
       removeTelescope: () => set((s) => ({
         savedTelescopes: s.savedTelescopes.filter((item) => item.id !== s.equipment.telescopeId),
-        equipment: { ...s.equipment, telescopeId: 'custom' },
+        ...updateEquipment(s, { telescopeId: 'custom' }, 'telescopeId'),
       })),
       addCamera: () => set((s) => {
         const id = crypto.randomUUID()
@@ -360,12 +425,12 @@ export const useStore = create<State>()(
             heightPx: s.equipment.heightPx, pixelUm: s.equipment.pixelUm,
             binning: s.equipment.binning, mono: s.equipment.mono,
           }],
-          equipment: { ...s.equipment, cameraId: id },
+          ...updateEquipment(s, { cameraId: id }),
         }
       }),
       removeCamera: () => set((s) => ({
         savedCameras: s.savedCameras.filter((item) => item.id !== s.equipment.cameraId),
-        equipment: { ...s.equipment, cameraId: 'custom' },
+        ...updateEquipment(s, { cameraId: 'custom' }, 'cameraId'),
       })),
       setMinAlt: (minAltDeg) => set({ minAltDeg }),
       setMinVisibleMinutes: (minVisibleMinutes) => set({ minVisibleMinutes, onlyVisible: true }),
@@ -424,6 +489,7 @@ export const useStore = create<State>()(
       setFilter: (patch) => set((s) => (Object.keys(patch) as (keyof CatalogFilter)[]).every((k) => Object.is(s.filter[k], patch[k])) ? s : { filter: { ...s.filter, ...patch } }),
       setSort: (sortBy) => set({ sortBy }),
       toggleSkyGroup: (group) => set((s) => ({ skyGroups: { ...s.skyGroups, [group]: !s.skyGroups[group] } })),
+      setSkyObjectDensity: (value) => set({ skyObjectDensity: normalizeSkyObjectDensity(value) }),
       toggleSkyExtra: (id) => set((s) => ({ skyExtraHidden: s.skyExtraHidden.includes(id) ? s.skyExtraHidden.filter((value) => value !== id) : [...s.skyExtraHidden, id] })),
       setAnnotationColor: (type, color) => set((s) => ({ annotationColors: { ...s.annotationColors, [type]: color } })),
       resetAnnotationColors: () => set({ annotationColors: {} }),
@@ -446,7 +512,8 @@ export const useStore = create<State>()(
         savedLocations: s.savedLocations,
         weatherProvider: s.weatherProvider,
         selectedIndex: s.selectedIndex,
-        equipment: s.equipment,
+        equipmentSets: s.equipmentSets,
+        activeEquipmentSetId: s.activeEquipmentSetId,
         savedTelescopes: s.savedTelescopes,
         savedCameras: s.savedCameras,
         minAltDeg: s.minAltDeg,
@@ -467,7 +534,9 @@ export const useStore = create<State>()(
         showOwnPhotos: s.showOwnPhotos,
         ownPhotosOpacity: s.ownPhotosOpacity,
         showEllipses: s.showEllipses,
+        showObjectMarkers: s.showObjectMarkers,
         skyGroups: s.skyGroups,
+        skyObjectDensity: s.skyObjectDensity,
         skyExtraHidden: s.skyExtraHidden,
         showLabels: s.showLabels,
         showAnnotations: s.showAnnotations,
@@ -481,11 +550,18 @@ export const useStore = create<State>()(
       // Grupy katalogów dopisane po zapisie stanu startują włączone; stan sprzed poziomów kadru dostaje pusty obiekt.
       merge: (persisted, current) => {
         const p = persisted as Partial<State> | undefined
+        const equipmentSets = p?.equipmentSets?.length ? p.equipmentSets : [{
+          ...DEFAULT_EQUIPMENT_SET,
+          equipment: { ...DEFAULT_EQUIPMENT, ...p?.equipment },
+        }]
+        const activeSet = equipmentSets.find((item) => item.id === p?.activeEquipmentSetId) ?? equipmentSets[0]
         // Krycie warstw z zapisu przycięte do 10–100% (wartość nieliczbowa = 100%).
         const opacity = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0.1, Math.min(1, v)) : 1)
         return {
           ...current, ...p, skyGroups: { ...current.skyGroups, ...p?.skyGroups }, framingStretch: { ...p?.framingStretch }, ownPhotos: { ...p?.ownPhotos },
+          equipmentSets, activeEquipmentSetId: activeSet.id, equipment: activeSet.equipment,
           weatherProvider: normalizeWeatherProvider(p?.weatherProvider),
+          skyObjectDensity: normalizeSkyObjectDensity(p?.skyObjectDensity),
           skyExtraHidden: Array.isArray(p?.skyExtraHidden) ? p.skyExtraHidden.filter((id): id is string => typeof id === 'string') : current.skyExtraHidden,
           ownPhotosOpacity: opacity(p?.ownPhotosOpacity), outlinesOpacity: opacity(p?.outlinesOpacity),
           domeStyle: isDomeStyle(p?.domeStyle) ? p.domeStyle : current.domeStyle,

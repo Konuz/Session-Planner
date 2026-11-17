@@ -1,5 +1,5 @@
 // Lista rozwijana warstw kopuły i widoku 3D (pasek karty Nieba i pasek narzędzi okna „Pozycja 3D”).
-import { Fragment, useCallback, useRef, useState } from 'react'
+import { Fragment, useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import type { ObjectType, SkyGroup } from '../lib/catalog'
 import { DEFAULT_ANNOTATION_COLORS, EXTRA_CATALOGS, TYPE_INFO } from '../lib/catalog'
@@ -8,6 +8,7 @@ import { SKY_LOOKS, skyLookSurvey, type SkyLook } from '../lib/hipsSky'
 import { DOME_STYLES } from '../lib/space3d'
 import { useStore } from '../state/store'
 import { Range } from './Range'
+import { Select } from './Select'
 import { LayersIcon } from './SkyDome'
 import { useOutside } from './TopBar'
 import { glyphCanvas } from './space3d/markerGlyphs'
@@ -24,20 +25,21 @@ function Switch({ on, onClick, label, disabled, title }: { on: boolean; onClick:
   )
 }
 
-type LayerKey = 'showLines' | 'showLabels' | 'showArt' | 'showOutlines' | 'showOwnPhotos' | 'showEllipses' | 'showAnnotations' | 'show3DAnnotations' | 'showTracks'
+type LayerKey = 'showLines' | 'showLabels' | 'showArt' | 'showOutlines' | 'showOwnPhotos' | 'showEllipses' | 'showObjectMarkers' | 'showAnnotations' | 'show3DAnnotations' | 'showTracks'
 
 const THREE_D_LAYERS: { key: LayerKey; label: string }[] = [
-  { key: 'show3DAnnotations', label: 'Opisy' },
+  { key: 'show3DAnnotations', label: 'Nazwy obiektów' },
 ]
 
 const LAYERS: { key: LayerKey; label: string }[] = [
-  { key: 'showLines', label: 'Linie' },
+  { key: 'showLines', label: 'Linie gwiazdozbiorów' },
   { key: 'showLabels', label: 'Nazwy gwiazdozbiorów' },
-  { key: 'showArt', label: 'Postacie' },
-  { key: 'showOutlines', label: 'Kontury' },
+  { key: 'showArt', label: 'Postacie gwiazdozbiorów' },
+  { key: 'showOutlines', label: 'Kontury obiektów' },
   { key: 'showOwnPhotos', label: 'Moje zdjęcia' },
-  { key: 'showEllipses', label: 'Okręgi obiektów' },
-  { key: 'showAnnotations', label: 'Opisy' },
+  { key: 'showEllipses', label: 'Pola astrometryczne obiektów' },
+  { key: 'showObjectMarkers', label: 'Znaczniki obiektów' },
+  { key: 'showAnnotations', label: 'Nazwy obiektów' },
   { key: 'showTracks', label: 'Tory' },
 ]
 
@@ -94,10 +96,44 @@ export function LayersMenu({ threeD = false, settings, typeCounts = [], defaultO
   // Rozwinięte sekcje pamiętane w ramach sesji widoku (listy katalogów i rodzajów obiektów domyślnie zwinięte).
   const [sections, setSections] = useState({ layers: true, objects: false, common: true, galaxy: true, galaxyTypes: false, universe: true })
   const ref = useRef<HTMLDivElement>(null)
+  const popoverRef = useRef<HTMLDivElement>(null)
   const close = useCallback(() => setOpen(false), [])
   useOutside(ref, close)
+  useLayoutEffect(() => {
+    const anchor = ref.current
+    const popover = popoverRef.current
+    if (!open || threeD || !anchor || !popover) return
+    const header = document.querySelector('.topbar')
+    const card = anchor.closest('.sky-center')
+    const place = () => {
+      const { top, bottom } = anchor.getBoundingClientRect()
+      const safeTop = Math.max(0, header?.getBoundingClientRect().bottom ?? 0) + 8
+      const safeBottom = document.documentElement.clientHeight - 8
+      const aboveEdge = Math.min(safeBottom, Math.max(safeTop, top - 6))
+      const belowEdge = Math.min(safeBottom, Math.max(safeTop, bottom + 6))
+      const above = aboveEdge - safeTop
+      const below = safeBottom - belowEdge
+      const opensBelow = above < 200 && below > above
+      popover.style.top = opensBelow ? `${belowEdge - top}px` : 'auto'
+      popover.style.bottom = opensBelow ? 'auto' : `${bottom - aboveEdge}px`
+      popover.style.maxHeight = `${Math.max(0, opensBelow ? below : above)}px`
+    }
+    place()
+    const observer = new ResizeObserver(place)
+    if (header) observer.observe(header)
+    if (card) observer.observe(card)
+    window.addEventListener('resize', place)
+    window.addEventListener('scroll', place, { passive: true })
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', place)
+      window.removeEventListener('scroll', place)
+    }
+  }, [open, threeD])
   const layers = useStore(useShallow((s) => visibleLayers.map(({ key }) => s[key])))
   const groups = useStore((s) => s.skyGroups)
+  const objectDensity = useStore((s) => s.skyObjectDensity)
+  const setObjectDensity = useStore((s) => s.setSkyObjectDensity)
   const annotationColors = useStore((s) => s.annotationColors)
   const toggle = useStore((s) => s.toggle)
   const toggleGroup = useStore((s) => s.toggleSkyGroup)
@@ -129,7 +165,7 @@ export function LayersMenu({ threeD = false, settings, typeCounts = [], defaultO
         Warstwy
       </button>
       {open && (
-        <div className="popover layers-popover" role="group" aria-label={threeD ? 'Warstwy 3D' : 'Warstwy kopuły'}>
+        <div ref={popoverRef} className="popover layers-popover" role="group" aria-label={threeD ? 'Warstwy 3D' : 'Warstwy kopuły'}>
           {threeD ? (
             <>
               <Section title="Wspólne" on={layers.filter(Boolean).length} total={visibleLayers.length} open={sections.common} onToggle={() => setSections({ ...sections, common: !sections.common })}>
@@ -209,12 +245,25 @@ export function LayersMenu({ threeD = false, settings, typeCounts = [], defaultO
             </>
           ) : (
             <>
-              <div className="layers-choice">
+              <div className="layers-choice layers-inline">
                 <span className="label">Wygląd nieba</span>
-                <select className="control" value={skyLook} onChange={(e) => setSkyLook(e.target.value as SkyLook)} aria-label="Wygląd nieba">
-                  {SKY_LOOKS.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
-                </select>
+                <Select
+                  className="control sky-look-select"
+                  value={skyLook}
+                  align="right"
+                  options={SKY_LOOKS.map((l) => ({ value: l.id, label: l.label }))}
+                  onChange={(v) => setSkyLook(v as SkyLook)}
+                  ariaLabel="Wygląd nieba"
+                />
                 {skyLookSurvey(skyLook) && <span className="layers-note">{SURVEYS[skyLookSurvey(skyLook)!].credit}. Na południe od −16° gwiazdy katalogu.</span>}
+              </div>
+              <div className="layers-choice">
+                <label className="label" htmlFor="sky-object-density" style={{ textTransform: 'uppercase' }}>Zagęszczenie obiektów</label>
+                <div className="layers-range">
+                  <Range id="sky-object-density" min={0} max={100} step={5} value={objectDensity} aria-valuetext={`${objectDensity}%`}
+                    onChange={(e) => setObjectDensity(Number(e.target.value))} />
+                  <span>{objectDensity}%</span>
+                </div>
               </div>
               <Section title="Warstwy" on={layers.filter(Boolean).length} total={visibleLayers.length} open={sections.layers} onToggle={() => setSections({ ...sections, layers: !sections.layers })}>
                 {visibleLayers.map(({ key, label }, i) => (

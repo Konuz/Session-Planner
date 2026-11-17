@@ -48,7 +48,7 @@ const CMB_APEX = { raDeg: 167.9419, decDeg: -6.9443, kms: 369.82 }
 export const MIN_CZ_CMB = 3000
 const PECULIAR_KMS = 300
 
-function separationDeg(ra1: number, dec1: number, ra2: number, dec2: number): number {
+export function separationDeg(ra1: number, dec1: number, ra2: number, dec2: number): number {
   const r = Math.PI / 180
   const s = Math.sin((dec2 - dec1) * r / 2) ** 2 + Math.cos(dec1 * r) * Math.cos(dec2 * r) * Math.sin((ra2 - ra1) * r / 2) ** 2
   return 2 * Math.asin(Math.min(1, Math.sqrt(s))) / r
@@ -62,13 +62,18 @@ export function redshiftDistance(z: number, raDeg: number, decDeg: number): { di
   const zCmb = (1 + z) * (1 + CMB_APEX.kms * cos / C_KMS) - 1
   const czCmb = C_KMS * zCmb
   if (czCmb < MIN_CZ_CMB) return null
-  // Całka ∫dz/E(z) metodą Simpsona; przy z < 0,3 64 przedziały wystarczają z zapasem.
-  const e = (x: number) => 1 / Math.sqrt(0.3 * (1 + x) ** 3 + 0.7)
-  const n = 64, h = zCmb / n
-  let sum = e(0) + e(zCmb)
-  for (let i = 1; i < n; i++) sum += e(i * h) * (i % 2 ? 4 : 2)
-  const distLy = C_KMS / 70 * sum * h / 3 * LY_PER_MPC
+  const distLy = comovingDistanceLy(zCmb)
   return { distLy, uncertaintyLy: distLy * PECULIAR_KMS / czCmb, czCmb }
+}
+
+/** Odległość współporuszająca w płaskim ΛCDM (H₀ = 70, Ωm = 0,3) dla z w podanym układzie. */
+export function comovingDistanceLy(z: number): number {
+  const e = (x: number) => 1 / Math.sqrt(0.3 * (1 + x) ** 3 + 0.7)
+  const n = z < 0.3 ? 64 : 256
+  const h = z / n
+  let sum = e(0) + e(z)
+  for (let i = 1; i < n; i++) sum += e(i * h) * (i % 2 ? 4 : 2)
+  return C_KMS / 70 * sum * h / 3 * LY_PER_MPC
 }
 
 /** Mgławice planetarne odkryte przez amatorów (Le Dû i in. 2022, lista ręczna): „StDr 56”, „Ou 4”, „StDr Objet 1”. */

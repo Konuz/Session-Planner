@@ -3,6 +3,12 @@ import { hasDistance, SCOPE_LABELS, type DistanceScope } from './distance'
 import { fmtDistance } from './format'
 
 export type PhotoScale = 'galaxy' | 'universe'
+export type PhotoCatalogKind = 'PGC' | 'QSO' | 'ACO'
+
+export const PHOTO_CATALOG_LABELS: Record<PhotoCatalogKind, string> = {
+  PGC: 'Galaktyki PGC', QSO: 'Kwazary', ACO: 'Gromady galaktyk ACO',
+}
+
 export interface PhotoCut {
   id: string
   type: ObjectType
@@ -26,6 +32,7 @@ export interface PhotoCut {
   /** catalog, stars: ustalone przez aplikację (katalog, gwiazdy Gaia pola) i odświeżane z nowym katalogiem;
    *  regressor: oszacowanie modelu (niezweryfikowane), gdy łańcuch nic nie daje; user: wybór w edycji wycinka. */
   distanceOrigin: 'catalog' | 'stars' | 'regressor' | 'user'
+  catalogMatch?: { kind: PhotoCatalogKind; id: string; distance?: PhotoDistance }
 }
 /** Gwiazda Gaia DR3 w kadrze. Pozycja na epokę 2025,0 (jak katalog solvera), piksel z WCS zdjęcia. */
 export interface PhotoStar {
@@ -54,6 +61,8 @@ export interface PhotoProject {
   height: number
   createdAt: number
   cuts: PhotoCut[]
+  /** Zapisane zdjęcia sprzed rozszerzenia katalogów są uzupełniane po otwarciu. */
+  catalogObjects?: { warnings: string[] }
   astrometry: { raDeg: number; decDeg: number; rmsPx: number; matches: number; edgeMatches: number; edgeRmsPx: number | null; totalMs: number; wcs: unknown }
   /** null: gwiazd jeszcze nie pobrano (także po migracji z wersji 1). */
   stars: PhotoStars | null
@@ -63,6 +72,24 @@ export interface PhotoDistance extends Pick<PhotoCut, 'distLy' | 'uncertaintyLy'
   url: string
 }
 export interface PhotoDistances { measurements: PhotoDistance[]; warnings: string[] }
+export interface PhotoCatalogResult { cuts: PhotoCut[]; warnings: string[]; complete: boolean }
+
+/** Ponowienie pobrania uzupełnia listę, zachowując wybory i geometrię zapisanych wycinków. */
+export function mergePhotoCatalogCuts(cuts: PhotoCut[], candidates: PhotoCut[]): PhotoCut[] {
+  const byId = new Map(cuts.map((cut) => [cut.id, cut]))
+  let changed = false
+  for (const candidate of candidates) {
+    const current = byId.get(candidate.id)
+    if (!current) {
+      byId.set(candidate.id, candidate)
+      changed = true
+    } else if (!current.catalogMatch && candidate.catalogMatch) {
+      byId.set(current.id, { ...current, catalogMatch: candidate.catalogMatch })
+      changed = true
+    }
+  }
+  return changed ? [...byId.values()] : cuts
+}
 
 type StoredCut = Omit<PhotoCut, 'distanceScope' | 'distanceMethod' | 'distanceRef' | 'distanceOrigin'> & { distanceScope: string }
 /** Wycinek wersji 1–2: źródło było jednym tekstem, zakres „obiekt” albo „cały kompleks”. Wartość z katalogu aplikacji

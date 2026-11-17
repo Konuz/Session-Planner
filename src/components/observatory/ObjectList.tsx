@@ -14,7 +14,12 @@ interface Props {
   onSort(): void
 }
 
-export const itemKind = (item: ObservatoryItem) => item.kind === 'star' ? 'Gwiazda' : item.type ? TYPE_INFO[item.type].label : 'Obiekt'
+export const itemKind = (item: ObservatoryItem) => {
+  if (item.kind === 'star') return 'Gwiazda'
+  if (item.catalogKind === 'QSO') return 'Kwazar'
+  if (item.catalogKind === 'ACO') return 'Gromada galaktyk'
+  return item.type ? TYPE_INFO[item.type].label : 'Obiekt'
+}
 
 /** Podpowiedź wiersza: wartość z niepewnością, zakres, metoda i źródło odległości w jednej linii. */
 export function distanceTooltip(item: ObservatoryItem): string {

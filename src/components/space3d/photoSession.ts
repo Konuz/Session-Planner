@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { cutDistance, refreshCutDistances, regressorDistance, regressorEligible, regressorPollDelay, type RegressorPollState, type RegressorResult } from '../../lib/distance'
 import { fieldOfView } from '../../lib/observatory'
-import type { PhotoCut, PhotoProject, PhotoStars } from '../../lib/photo'
+import { mergePhotoCatalogCuts, type PhotoCatalogResult, type PhotoCut, type PhotoProject, type PhotoStars } from '../../lib/photo'
 import { hasUnsavedPhoto, photoImageUrl, readPhoto, writePhoto } from '../../lib/photoStorage'
 import { useCatalog } from '../../state/data'
 
@@ -13,9 +13,12 @@ export type StarsStatus = { status: 'idle' | 'loading' | 'error'; message?: stri
 
 export interface PhotoSession {
   project: PhotoProject | null
+  getCurrentProject(): PhotoProject | null
   restoring: boolean
   change(next: PhotoProject | null): void
   updateCut(id: string, patch: Partial<PhotoCut>): void
+  retryCatalogObjects(): void
+  catalogSearch: { loading: boolean; retryable: boolean; warnings: string[] } | null
   upload(file: File): void
   cancelUpload(): void
   busy: boolean
@@ -34,8 +37,7 @@ export interface PhotoSession {
 export function usePhotoSession(): PhotoSession {
   const [project, setProject] = useState<PhotoProject | null>(null)
   const [restoring, setRestoring] = useState(true)
-  const projectRef = useRef(project)
-  projectRef.current = project
+  const projectRef = useRef<PhotoProject | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const mounted = useRef(false)
@@ -46,6 +48,8 @@ export function usePhotoSession(): PhotoSession {
   const [ready, setReady] = useState<boolean | null>(null)
   const [editing, setEditing] = useState(false)
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [catalogSearch, setCatalogSearch] = useState<PhotoSession['catalogSearch']>(null)
+  const [catalogRetry, setCatalogRetry] = useState(0)
 
   useEffect(() => {
     let live = true
@@ -53,7 +57,10 @@ export function usePhotoSession(): PhotoSession {
     const statusAbort = new AbortController()
     void readPhoto().then((saved) => {
       if (live && restorePending.current) {
-        if (saved || hasUnsavedPhoto()) setProject(saved)
+        if (saved || hasUnsavedPhoto()) {
+          projectRef.current = saved
+          setProject(saved)
+        }
         if (hasUnsavedPhoto()) setSaveError(saveFailure)
         setRestoring(false)
       }
@@ -80,6 +87,7 @@ export function usePhotoSession(): PhotoSession {
     })
   }
   function change(next: PhotoProject | null) {
+    if (projectRef.current?.id !== next?.id) setCatalogSearch(null)
     restorePending.current = false
     setRestoring(false)
     projectRef.current = next
@@ -94,9 +102,42 @@ export function usePhotoSession(): PhotoSession {
     const current = projectRef.current
     if (current) change({ ...current, cuts: current.cuts.map((c) => c.id === id ? { ...c, ...patch } : c) })
   }
+  const { id: projectId, width, height, astrometry } = project ?? {}
+  const catalogObjectsLoaded = !!project?.catalogObjects
+  useEffect(() => {
+    if (!projectId || !astrometry?.wcs || busy || catalogObjectsLoaded) return
+    const abort = new AbortController()
+    const failure = 'Nie udało się pobrać obiektów katalogowych.'
+    let retryable = true
+    setCatalogSearch({ loading: true, retryable: false, warnings: [] })
+    void fetch('/api/photo/catalog-objects', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: abort.signal,
+      body: JSON.stringify({ wcs: astrometry.wcs, width, height }),
+    }).then(async (response) => {
+      const result = await response.json() as PhotoCatalogResult & { error?: string }
+      retryable = response.status !== 422
+      if (!response.ok) throw new Error(result.error || failure)
+      const current = projectRef.current
+      if (abort.signal.aborted || current?.id !== projectId || current.astrometry !== astrometry) return
+      const cuts = mergePhotoCatalogCuts(current.cuts, result.cuts)
+      if (cuts !== current.cuts || result.complete) {
+        change({ ...current, cuts, ...(result.complete && { catalogObjects: { warnings: result.warnings } }) })
+      }
+      if (!current.cuts.length && cuts.length) setActiveId((id) => id ?? cuts[0].id)
+      setCatalogSearch({ loading: false, retryable: !result.complete, warnings: result.warnings })
+    }).catch((error) => {
+      const current = projectRef.current
+      if (!abort.signal.aborted && current?.id === projectId && current.astrometry === astrometry) {
+        setCatalogSearch({ loading: false, retryable, warnings: [error instanceof Error ? error.message : failure] })
+      }
+    })
+    return () => abort.abort()
+    // Wycinki i gwiazdy zmieniają projekt w trakcie pobierania. Zapisujemy wynik do aktualnego projektu.
+  }, [projectId, astrometry, width, height, busy, catalogObjectsLoaded, catalogRetry])
   async function upload(file: File) {
     restorePending.current = false
     abortRef.current?.abort()
+    setCatalogSearch(null)
     const abort = new AbortController()
     abortRef.current = abort
     setBusy(true); setError('')
@@ -115,7 +156,8 @@ export function usePhotoSession(): PhotoSession {
   }
 
   return {
-    project, restoring, change, updateCut, upload: (file) => void upload(file), cancelUpload: () => { abortRef.current?.abort(); setBusy(false) },
+    project, getCurrentProject: () => projectRef.current, restoring, change, updateCut, upload: (file) => void upload(file), cancelUpload: () => { abortRef.current?.abort(); setBusy(false) },
+    retryCatalogObjects: () => setCatalogRetry((n) => n + 1), catalogSearch,
     busy, error, clearError: () => setError(''), saveError, retrySave: () => save(projectRef.current), ready,
     editing, setEditing, activeId, setActiveId,
   }
@@ -139,14 +181,18 @@ export function useGaiaStars(session: PhotoSession, enabled: boolean): { stars: 
         const data = await response.json() as { stars?: PhotoStars['stars']; magLimit?: number; error?: string }
         if (!response.ok || !data.stars) throw new Error(data.error ?? 'Nie udało się pobrać gwiazd Gaia.')
         if (abort.signal.aborted) return
-        const latest = sessionRef.current.project
-        if (latest?.id === project.id) sessionRef.current.change({ ...latest, stars: { stars: data.stars, magLimit: data.magLimit ?? 0, fetchedAt: Date.now() } })
+        const latest = sessionRef.current.getCurrentProject()
+        if (latest?.id !== project.id || latest.astrometry !== project.astrometry) return
+        sessionRef.current.change({ ...latest, stars: { stars: data.stars, magLimit: data.magLimit ?? 0, fetchedAt: Date.now() } })
         setStars({ status: 'idle' })
       })
-      .catch((e: Error) => { if (!abort.signal.aborted) setStars({ status: 'error', message: e.message }) })
+      .catch((e: Error) => {
+        const latest = sessionRef.current.getCurrentProject()
+        if (!abort.signal.aborted && latest?.id === project.id && latest.astrometry === project.astrometry) setStars({ status: 'error', message: e.message })
+      })
     return () => { abort.abort(); setStars({ status: 'idle' }) }
     // Projekt zmienia się przy każdym zapisie; zapytanie zależy tylko od zdjęcia i braku gwiazd.
-  }, [project?.id, missing, enabled, retry])
+  }, [project?.id, project?.astrometry, missing, enabled, retry])
   return { stars, retry: () => setRetry((n) => n + 1) }
 }
 
@@ -160,9 +206,11 @@ export function useCutDistances(session: PhotoSession) {
   sessionRef.current = session
   useEffect(() => {
     if (!project || !catalog || !byId) return
-    const next = refreshCutDistances(project, catalog, byId)
-    if (next !== project) {
-      const current = sessionRef.current
+    const current = sessionRef.current
+    const latest = current.getCurrentProject()
+    if (latest?.id !== project.id || latest.astrometry !== project.astrometry) return
+    const next = refreshCutDistances(latest, catalog, byId)
+    if (next !== latest) {
       const primary = current.activeId && byId.get(current.activeId)?.photoPrimaryId
       if (primary && next.cuts.some((cut) => cut.id === primary)) current.setActiveId(primary)
       current.change(next)
@@ -186,7 +234,7 @@ export function useRegressor(session: PhotoSession, starsFailed: boolean): Reado
   const { catalog } = useCatalog()
   const byId = useMemo(() => catalog && new Map(catalog.map((o) => [o.id, o])), [catalog])
   const [ready, setReady] = useState<boolean | null>(null)
-  const [attempts, setAttempts] = useState<{ projectId: string; jobs: ReadonlyMap<string, RegressorJob> } | null>(null)
+  const [attempts, setAttempts] = useState<{ projectId: string; astrometry: PhotoProject['astrometry']; jobs: ReadonlyMap<string, RegressorJob> } | null>(null)
   const attemptsRef = useRef(attempts)
   const sessionRef = useRef(session)
   sessionRef.current = session
@@ -209,7 +257,8 @@ export function useRegressor(session: PhotoSession, starsFailed: boolean): Reado
 
   useEffect(() => {
     if (!project || ready === null || !targets.length) return
-    const previous = attemptsRef.current?.projectId === project.id ? attemptsRef.current.jobs : NO_REGRESSOR_JOBS
+    const previous = attemptsRef.current?.projectId === project.id && attemptsRef.current.astrometry === project.astrometry
+      ? attemptsRef.current.jobs : NO_REGRESSOR_JOBS
     const pending = targets.filter((cut) => {
       const job = previous.get(cut.id)
       return !job || job.status === 'queued' || job.status === 'running'
@@ -217,7 +266,7 @@ export function useRegressor(session: PhotoSession, starsFailed: boolean): Reado
     if (!pending.length) return
     const ids = pending.map((cut) => cut.id)
     const update = (jobs: ReadonlyMap<string, RegressorJob>) => {
-      const next = { projectId: project.id, jobs: new Map([...previous, ...jobs]) }
+      const next = { projectId: project.id, astrometry: project.astrometry, jobs: new Map([...previous, ...jobs]) }
       attemptsRef.current = next
       setAttempts(next)
     }
@@ -231,8 +280,8 @@ export function useRegressor(session: PhotoSession, starsFailed: boolean): Reado
     const abort = new AbortController()
     let timer: ReturnType<typeof setTimeout> | undefined
     const apply = (jobs: ReadonlyMap<string, RegressorJob>) => {
-      const latest = sessionRef.current.project
-      if (!latest || latest.id !== project.id || abort.signal.aborted) return false
+      const latest = sessionRef.current.getCurrentProject()
+      if (latest?.id !== project.id || latest.astrometry !== project.astrometry || abort.signal.aborted) return false
       let changed = false
       const cuts = latest.cuts.map((cut) => {
         const job = jobs.get(cut.id)
@@ -293,9 +342,9 @@ export function useRegressor(session: PhotoSession, starsFailed: boolean): Reado
       })
     return () => { abort.abort(); clearTimeout(timer) }
     // Zmiana pozostałych pól projektu (np. zapis gwiazd) nie zgłasza wycinków ponownie.
-  }, [ready, project?.id, targetKey])
+  }, [ready, project?.id, project?.astrometry, targetKey])
   // Zadanie może pozostać na serwerze, gdy wynik z gwiazdy oświetlającej dotrze wcześniej.
-  if (!attempts || attempts.projectId !== project?.id) return NO_REGRESSOR_JOBS
+  if (!attempts || attempts.projectId !== project?.id || attempts.astrometry !== project.astrometry) return NO_REGRESSOR_JOBS
   const visible = new Map<string, RegressorJob>()
   for (const cut of targets) {
     const job = attempts.jobs.get(cut.id)

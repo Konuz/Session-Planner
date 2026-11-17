@@ -2,6 +2,7 @@ import { ArrowDown, ArrowUp, Trash2, AlertTriangle } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { AltitudeChart } from '../components/AltitudeChart'
+import { Select } from '../components/Select'
 import { Thumb } from '../components/Thumb'
 import { angularDistanceDeg, computeOptics, moonJ2000 } from '../lib/astro'
 import { mosaicCenters } from '../lib/framing'
@@ -175,9 +176,13 @@ export default function PlannerView() {
             slot={chartSlot && { ...chartSlot, conflict: conflicts.has(chartRow.item.key) }}
             title="Przebieg nocy"
             toolbar={<div className="planner-chart-toolbar">
-              <label className="field"><span className="label">Cel na wykresie</span><select className="control" value={chartRow.item.key} onChange={(e) => setChartTargetKey(e.target.value)}>
-                {rows.map((r, i) => <option value={r.item.key} key={r.item.key}>{i + 1}. {r.o.id}{displayName(r.o) ? ` - ${displayName(r.o)}` : ''}</option>)}
-              </select></label>
+              <label className="field"><span className="label">Cel na wykresie</span><Select
+                className="control"
+                ariaLabel="Cel na wykresie"
+                value={chartRow.item.key}
+                options={rows.map((r, i) => ({ value: r.item.key, label: `${i + 1}. ${r.o.id}${displayName(r.o) ? ` - ${displayName(r.o)}` : ''}` }))}
+                onChange={(v) => setChartTargetKey(v)}
+              /></label>
               <span className="planner-chart-key"><i /> Granice planowanego okna{chartSlot ? ` · ${fmtTime(chartSlot.startMs, tz)}–${fmtTime(chartSlot.endMs, tz)}` : ' · brak okna'}</span>
               <button className="button small" onClick={() => rows.forEach((r) => updatePlan(r.item.key, { startMs: null, endMs: null }))}>Ułóż okna automatycznie</button>
             </div>}
@@ -241,9 +246,17 @@ export default function PlannerView() {
       )}
       <section className="card planner-export">
         <div className="planner-section-head"><h2>Zabierz plan na sesję</h2><span className="label">CSV / TXT</span></div>
-        <div className="planner-export-actions"><label className="field"><span className="label">Format CSV</span><select className="control" value={exportFormat} onChange={(e) => setExportFormat(e.target.value)}>
-          <option value="nina">NINA - cele i kadry (Telescopius)</option><option value="scheduler">Target Scheduler - cele i kadry</option><option value="exposures">Wykaz ekspozycji - pełne dane</option>
-        </select></label><button className="button primary" disabled={!rows.length || (exportFormat === 'exposures' && (invalidExposures || invalidWindows))} onClick={exportCsv}>Pobierz CSV</button><button className="button" disabled={!rows.length || invalidExposures || invalidWindows} onClick={exportText}>Plan nocy TXT</button></div>
+        <div className="planner-export-actions"><label className="field"><span className="label">Format CSV</span><Select
+          className="control"
+          ariaLabel="Format CSV"
+          value={exportFormat}
+          options={[
+            { value: 'nina', label: 'NINA - cele i kadry (Telescopius)' },
+            { value: 'scheduler', label: 'Target Scheduler - cele i kadry' },
+            { value: 'exposures', label: 'Wykaz ekspozycji - pełne dane' },
+          ]}
+          onChange={(v) => setExportFormat(v)}
+        /></label><button className="button primary" disabled={!rows.length || (exportFormat === 'exposures' && (invalidExposures || invalidWindows))} onClick={exportCsv}>Pobierz CSV</button><button className="button" disabled={!rows.length || invalidExposures || invalidWindows} onClick={exportText}>Plan nocy TXT</button></div>
         <p className="planner-help">{exportFormat === 'nina' ? 'Importuj cele w prostym sekwencerze NINA (Import targets). Plik zawiera nazwę, RA/Dec J2000 i obrót kadru. Ekspozycje pochodzą z szablonu NINA; do zaawansowanego sekwencera przenieś plan w NINA.' : exportFormat === 'scheduler' ? 'W Target Scheduler wybierz profil → Import Targets. Plik zawiera typ, nazwę, RA/Dec J2000, obrót i ROI 100%. Ekspozycje przypisz przez szablon celu w tej wtyczce.' : 'Jeden wiersz na filtr: klatki, sekundy, integracja, kadr, okno UTC, strefa i notatka. To wykaz do arkusza lub ręcznego przeniesienia ustawień, nie plik importu sekwencji NINA.'}</p>
         <details className="planner-export-help"><summary>Co przenosi się do NINA?</summary><p>Nie istnieje wspólny CSV pełnej sesji dla wszystkich modułów. Importery celów nie odczytują liczby klatek ani czasów ekspozycji z dodatkowych kolumn. Pobierz też wykaz ekspozycji lub TXT, aby zachować te ustawienia. Okna z planera są wskazówką; pliki celów ich nie wymuszają.</p><a href="https://tcpalmer.github.io/nina-scheduler/target-management/targets.html" target="_blank" rel="noreferrer">Dokumentacja Target Scheduler</a><span> · </span><a href="https://github.com/isbeorn/nina/blob/develop/NINA/ViewModel/Sequencer/SimpleSequence/SimpleSequenceVM.cs" target="_blank" rel="noreferrer">Importer NINA</a></details>
       </section>

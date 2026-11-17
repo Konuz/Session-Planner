@@ -128,10 +128,13 @@ const PRESSURE_VARS = PRESSURE_LEVELS.flatMap((p) => [
   `wind_direction_${p}hPa`,
   `geopotential_height_${p}hPa`,
 ])
+// Do południa planer może pokazywać noc rozpoczętą w poprzedniej dobie UTC.
+const OPEN_METEO_PAST_DAYS = 1
 
 export async function fetchWeather(lat: number, lon: number, provider: WeatherProviderId = DEFAULT_WEATHER_PROVIDER): Promise<WeatherHour[]> {
   const info = weatherProviderInfo(provider)
-  const key = `wx4:${info.id}:${lat.toFixed(2)},${lon.toFixed(2)}`
+  const pastKey = info.openMeteoModel ? `:past${OPEN_METEO_PAST_DAYS}` : ''
+  const key = `wx4:${info.id}:${lat.toFixed(2)},${lon.toFixed(2)}${pastKey}`
   const cached = readCache<WeatherHour[]>(key, 30 * 60_000)
   if (Array.isArray(cached) && cached.every(validWeatherHour)) return cached
   return once(key, () => loadWeather(key, info, lat, lon))
@@ -150,7 +153,7 @@ async function loadOpenMeteo(model: string, lat: number, lon: number): Promise<W
   // ich brak w części modeli (np. ECMWF IFS, GEM) nie może odrzucać całej godziny.
   const hourlyVars = [...REQUIRED_SURFACE_VARS, ...OPTIONAL_SURFACE_VARS, ...BL_VARS, ...PRESSURE_VARS].join(',')
   const modelParam = model && model !== 'best_match' ? `&models=${encodeURIComponent(model)}` : ''
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}${modelParam}&hourly=${hourlyVars}&forecast_days=8&timezone=UTC&timeformat=unixtime`
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}${modelParam}&hourly=${hourlyVars}&forecast_days=8&past_days=${OPEN_METEO_PAST_DAYS}&timezone=UTC&timeformat=unixtime`
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Pogoda niedostępna (HTTP ${res.status})`)
   const j = await res.json()

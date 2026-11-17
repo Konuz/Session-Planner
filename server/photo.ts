@@ -13,6 +13,7 @@ import { blackBorderMask } from '../src/lib/blackBorderMask.ts'
 import { canonicalPhotoCuts, catalogDistance } from '../src/lib/distance.ts'
 import type { OwnPhotoSolved } from '../src/lib/ownPhoto.ts'
 import type { PhotoProject } from '../src/lib/photo.ts'
+import { loadPhotoCatalogObjects, photoCatalogType } from './photoCatalogObjects.ts'
 import { loadPhotoDistances } from './photoDistances.ts'
 import { regressorApi, regressorService, type RegressorEnv } from './regressor.ts'
 import { loadPhotoStars, type FieldProjection } from './photoStars.ts'
@@ -20,7 +21,7 @@ import { loadPhotoStars, type FieldProjection } from './photoStars.ts'
 export type PhotoEnv = { SKYSHOT_BRIDGE?: string; SKYSHOT_INDEX?: string } & RegressorEnv
 const execute = promisify(execFile)
 const maxBytes = 40 * 1024 * 1024
-const maxStarsRequestBytes = 2 * 1024 * 1024
+const maxProjectionRequestBytes = 2 * 1024 * 1024
 const maxRasterPixels = 64_000_000
 /** Punkty siatki własnego zdjęcia na bok (piksel → niebo przez most Skyshota). */
 const ownPhotoGrid = 17
@@ -113,7 +114,9 @@ export async function photoApi(req: IncomingMessage, res: ServerResponse, env: P
   if (path.endsWith('/distances')) {
     if (req.method !== 'GET') { res.setHeader('Allow', 'GET'); json(405, { error: 'Wymagane zapytanie GET.' }); return }
     const byId = await getCatalogById()
-    const object = byId.get(url.searchParams.get('id') ?? '')
+    const id = url.searchParams.get('id') ?? ''
+    const externalType = photoCatalogType(id)
+    const object = byId.get(id) ?? (externalType && { id, type: externalType, distLy: null, distUncLy: null, distInfo: null })
     if (!object) { json(404, { error: 'Nieznany obiekt katalogowy.' }); return }
     const abort = new AbortController()
     res.on('close', () => { if (!res.writableEnded) abort.abort() })
@@ -121,20 +124,22 @@ export async function photoApi(req: IncomingMessage, res: ServerResponse, env: P
     if (!abort.signal.aborted) json(200, result, result.warnings.length ? 'no-store' : 'private, max-age=3600')
     return
   }
-  if (path.endsWith('/stars')) {
+  const catalogObjects = path.endsWith('/catalog-objects')
+  if (catalogObjects || path.endsWith('/stars')) {
     if (req.method !== 'POST') { res.setHeader('Allow', 'POST'); json(405, { error: 'Wymagane zapytanie POST.' }); return }
     if (req.headers['content-type']?.split(';')[0] !== 'application/json') { json(415, { error: 'Wymagany JSON z WCS zdjęcia.' }); return }
-    const body = await receivePhoto(req, maxStarsRequestBytes)
+    const body = await receivePhoto(req, maxProjectionRequestBytes)
     if (body === null || res.destroyed) return
     if (typeof body === 'number') { res.setHeader('Connection', 'close'); json(body, { error: body === 408 ? 'Przekroczono czas przesyłania.' : 'Zbyt duże zapytanie.' }); return }
     let request: { wcs?: unknown; width?: unknown; height?: unknown }
     try { request = JSON.parse(body.toString('utf8')) } catch { json(400, { error: 'Niepoprawny JSON.' }); return }
+    if (!request || typeof request !== 'object') { json(400, { error: 'Brak WCS lub wymiarów zdjęcia.' }); return }
     const { wcs, width, height } = request
     const size = (v: unknown): v is number => Number.isInteger(v) && (v as number) > 0 && (v as number) <= 20_000
     if (!wcs || typeof wcs !== 'object' || !size(width) || !size(height)) { json(400, { error: 'Brak WCS lub wymiarów zdjęcia.' }); return }
-    if (!await access(binary).then(() => true, () => false)) { json(503, { error: 'Gwiazdy wymagają lokalnej instalacji Skyshota (rzut przez WCS).' }); return }
+    if (!await access(binary).then(() => true, () => false)) { json(503, { error: 'Rzutowanie WCS wymaga lokalnej instalacji Skyshota.' }); return }
     const key = createHash('sha256').update(JSON.stringify([wcs, width, height])).digest('hex')
-    const cached = starsCache.get(key)
+    const cached = catalogObjects ? undefined : starsCache.get(key)
     if (cached) { json(200, cached); return }
     const abort = new AbortController()
     res.on('close', () => { if (!res.writableEnded) abort.abort() })
@@ -147,6 +152,11 @@ export async function photoApi(req: IncomingMessage, res: ServerResponse, env: P
         const { stdout } = await execute(binary, ['project', file], { timeout: 20_000, maxBuffer: 16 * 1024 * 1024, signal: abort.signal, windowsHide: true })
         return JSON.parse(stdout) as FieldProjection
       }
+      if (catalogObjects) {
+        const result = await loadPhotoCatalogObjects(width, height, project, await getCatalogById(), fetchImpl, abort.signal)
+        if (!abort.signal.aborted) json(200, result)
+        return
+      }
       const result = await loadPhotoStars(width, height, project, fetchImpl, abort.signal)
       if (starsCache.size >= 32) starsCache.delete(starsCache.keys().next().value!)
       starsCache.set(key, result)
@@ -156,8 +166,8 @@ export async function photoApi(req: IncomingMessage, res: ServerResponse, env: P
       if (error instanceof RangeError) json(422, { error: error.message })
       else {
         // Ślad w logu serwera: bez niego awaria GAVO albo mostu wyglądała jak zły obraz (C21, S6).
-        console.error('photo/stars:', error instanceof Error ? error.message : error)
-        json(502, { error: 'Nie udało się wczytać gwiazd Gaia. Spróbuj ponownie.' })
+        console.error(catalogObjects ? 'photo/catalog-objects:' : 'photo/stars:', error instanceof Error ? error.message : error)
+        json(502, { error: catalogObjects ? 'Nie udało się wczytać obiektów katalogowych. Spróbuj ponownie.' : 'Nie udało się wczytać gwiazd Gaia. Spróbuj ponownie.' })
       }
     } finally {
       if (temp) await rm(temp, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }).catch(() => console.warn('Nie udało się usunąć tymczasowych plików gwiazd.'))

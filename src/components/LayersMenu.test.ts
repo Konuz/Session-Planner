@@ -66,7 +66,7 @@ describe('LayersMenu', () => {
     expect(html.match(/class="layers-group"/g)).toHaveLength(3)
     expect(html.match(/class="layers-body"/g)).toHaveLength(3)
     expect(html).toContain('>Wspólne</span>')
-    expect(html).toContain('Opisy')
+    expect(html).toContain('Nazwy obiektów')
     expect(html).toContain('>Droga Mleczna</span>')
     expect(html).toContain('Gwiazdozbiory 3D')
     expect(html).not.toContain('Nazwy gwiazd')

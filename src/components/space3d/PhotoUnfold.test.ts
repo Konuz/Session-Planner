@@ -20,6 +20,7 @@ function render(overrides: Partial<PhotoSession> = {}, visible = true) {
   const session: PhotoSession = {
     project, activeId: null, busy: false, editing: false, restoring: false, error: '', saveError: '', ready: true,
     change: vi.fn(), updateCut: vi.fn(), upload: vi.fn(), cancelUpload: vi.fn(), clearError: vi.fn(), retrySave: vi.fn(), setEditing: vi.fn(), setActiveId: vi.fn(),
+    getCurrentProject: () => project, retryCatalogObjects: vi.fn(), catalogSearch: null,
     ...overrides,
   }
   return renderToStaticMarkup(createElement(PhotoUnfold, { session, visible }))

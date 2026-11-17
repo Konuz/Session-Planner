@@ -118,7 +118,7 @@ async function nedDistances(id: string, fetchImpl: typeof fetch, signal: AbortSi
   return { measurements, warnings: truncated ? ['NED: lista pomiarów jest niepełna (limit usługi).'] : [] }
 }
 
-export async function loadPhotoDistances(object: DSO, fetchImpl: typeof fetch = fetch, signal: AbortSignal = AbortSignal.timeout(15_000)): Promise<PhotoDistances> {
+export async function loadPhotoDistances(object: Pick<DSO, 'id' | 'type' | 'distLy' | 'distUncLy' | 'distInfo'>, fetchImpl: typeof fetch = fetch, signal: AbortSignal = AbortSignal.timeout(15_000)): Promise<PhotoDistances> {
   const timeout = AbortSignal.any([signal, AbortSignal.timeout(15_000)])
   const galaxy = object.type === 'G' || object.type === 'GG'
   const sid = simbadId(object.id)

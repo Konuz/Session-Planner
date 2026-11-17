@@ -1,13 +1,13 @@
 // Pasek narzędzi okna „Pozycja 3D”: przełącznik skal, wybór gwiazdozbioru 3D, opis skali i warstwy.
 import { Camera } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { TYPE_INFO, type DSO, type ObjectType } from '../../lib/catalog'
 import { CONSTELLATION_PL } from '../../lib/constellations'
 import { fmtDistance } from '../../lib/format'
 import { GALACTIC_LIMIT_LY, type SpaceScale } from '../../lib/space3d'
 import { useCatalog } from '../../state/data'
+import { ConstellationPicker } from '../ConstellationPicker'
 import { LayersMenu } from '../LayersMenu'
-import { useOutside } from '../TopBar'
 import type { SpaceSettingsState } from './spaceSettings'
 
 const SCALES: { id: SpaceScale; label: string }[] = [{ id: 'galaxy', label: 'Droga Mleczna' }, { id: 'universe', label: 'Wszechświat lokalny' }]
@@ -79,21 +79,4 @@ export function SpaceToolbar({ o, settings, onScale, onConstellationView, crumb,
       </div>}
     </div>
   )
-}
-
-/** Własna lista zamiast <select>: systemowa lista nie przyjmuje stylu paska przewijania aplikacji. */
-function ConstellationPicker({ value, options, onChange }: { value: string; options: { value: string; label: string }[]; onChange(value: string): void }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  useOutside(ref, () => setOpen(false), open)
-  const all = [{ value: 'all', label: 'Wszystkie gwiazdozbiory' }, ...options]
-  return <div ref={ref} className="constellation-picker">
-    <button type="button" className="control constellation-select" aria-label="Gwiazdozbiór w przestrzeni 3D" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-      <span>{all.find((o) => o.value === value)?.label ?? value}</span>
-    </button>
-    {open && <div className="popover constellation-list" role="listbox" aria-label="Gwiazdozbiór">
-      {all.map((o) => <button key={o.value} type="button" role="option" aria-selected={o.value === value} className={o.value === value ? 'on' : ''} ref={o.value === value ? (el) => el?.scrollIntoView({ block: 'nearest' }) : undefined}
-        onClick={() => { onChange(o.value); setOpen(false) }}>{o.label}</button>)}
-    </div>}
-  </div>
 }
