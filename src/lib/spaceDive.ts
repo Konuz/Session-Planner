@@ -239,8 +239,8 @@ export function coneTan(k: number, real: [number, number], pyramid: [number, num
 }
 
 /** Głębokość stożka w skali Drogi Mlecznej. Na szwie jego końce leżą w narożnikach zdjęcia. */
-export function coneLength(k: number, guideLength: number, bridgeScale: number): number {
-  return diveScale(guideAlignment(k), guideLength, EARTH_Z * bridgeScale)
+export function coneLength(k: number, guideLength: number, bridgeScale: number, startBridgeScale = bridgeScale): number {
+  return diveScale(guideAlignment(k), guideLength * (bridgeScale / startBridgeScale), EARTH_Z * bridgeScale)
 }
 
 /**

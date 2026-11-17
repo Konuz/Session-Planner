@@ -104,7 +104,7 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
   const editing = mode === 'scale' && !!activePhoto && session.editing
   // Stożek pola i znaczniki zdjęcia w obu skalach (we Wszechświecie lokalnym jak w Drodze Mlecznej).
   const guideRef = usePhotoGuide(handle, activePhoto, settings.scale, mode !== 'photo' && !editing,
-    session.activeId, session.setActiveId, mode !== 'photo')
+    session.activeId, session.setActiveId, mode !== 'photo', diving || editing)
   /** Przewodnik nurkowania sceny bieżącej skali. */
   const sceneGuide = useCallback(() => guideRef.current, [guideRef])
 

@@ -23,16 +23,17 @@ import { createLabelLayer, type SceneLabel } from './sceneLabels'
 /** Grot obiektów spoza skali: tyle długości stożka od Ziemi. */
 const BEYOND = 1.22
 /** Wielkość znacznika (ułamek wysokości kadru): zwykła, w grupie i zaznaczonego albo wskazanego. */
-const MARK = 0.04
+export const MARK = 0.04
 const MARK_GROUPED = 0.024
 const MARK_ACTIVE = 0.056
 const MARK_BEYOND = 0.034
-const MARK_PROJECTION_Y = 1 / Math.tan(THREE.MathUtils.degToRad(SPACE_FOV / 2))
+export const MARK_PROJECTION_Y = 1 / Math.tan(THREE.MathUtils.degToRad(SPACE_FOV / 2))
 /** Promień trafienia znacznika kursorem (px). */
 const HIT_PX = 11
 
 export interface PhotoGuide {
   group: THREE.Group
+  markers: THREE.Group
   /** Stożek pola: grupa w Ziemi, osie bazy kadru; skala (tg x, tg y, 1) daje kąt otwarcia. */
   cone: THREE.Group
   /** Prawdziwe tangensy połowy pola. */
@@ -47,9 +48,9 @@ export interface PhotoGuide {
   labels: HTMLDivElement
   setOpacity(opacity: number, cone?: number, faces?: number, axis?: number): void
   /** Dopasowanie końca i kresek linii do osi Obserwatorium podczas nurkowania. */
-  alignSightLine(amount: number, bridgeScale: number): void
+  alignSightLine(amount: number, bridgeScale: number, startBridgeScale?: number): void
   setConeRoll(angle: number): void
-  placeMarkers(project?: (id: string, position: Vec3) => Vec3): void
+  placeMarkers(project?: (id: string, position: Vec3) => Vec3, align?: number): void
   /** Ukrycie na czas edycji okręgów (płaskie zdjęcie nad sceną). */
   setVisible(visible: boolean): void
   /** Zaznaczony obiekt (powiększony znacznik i własny podpis poza grupami). */
@@ -71,7 +72,7 @@ export interface SightCone {
   materials: THREE.Material[]
   disposables: { dispose(): void }[]
   setOpacity(opacity: number, cone?: number, faces?: number, axis?: number): void
-  alignSightLine(amount: number, bridgeScale: number): void
+  alignSightLine(amount: number, bridgeScale: number, startBridgeScale?: number): void
   setConeRoll(angle: number): void
 }
 
@@ -143,10 +144,10 @@ export function createSightCone(handle: Space3DHandle, basis: NonNullable<Return
       }
       handle.invalidate()
     },
-    alignSightLine(amount, bridgeScale) {
+    alignSightLine(amount, bridgeScale, startBridgeScale = bridgeScale) {
       const depth = EARTH_Z + AXIS_LENGTH
       // Długość linii w shaderze jest lokalna. Po dopasowaniu odmierzamy kreski w jednostkach Obserwatorium.
-      line.scale.setScalar(diveScale(amount, 1, depth * bridgeScale / length))
+      line.scale.setScalar(diveScale(amount, bridgeScale / startBridgeScale, depth * bridgeScale / length))
       lineMaterial.scale = THREE.MathUtils.lerp(1, depth / length, amount)
       lineMaterial.dashSize = THREE.MathUtils.lerp(dashSize, AXIS_DASH, amount)
       lineMaterial.gapSize = THREE.MathUtils.lerp(gapSize, AXIS_DASH, amount)
@@ -191,12 +192,15 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, s
   }
 
   // Znaczniki: symbol atlasowy typu w kolorze adnotacji, każdy wycinek osobno (w nurkowaniu leci do swojej karty).
+  const markers = new THREE.Group()
+  group.add(markers)
   let selected: string | null = null, hovered: string | null = null
   const layer = createLabelLayer(handle, 'space-photo-labels', { onPick, onHover: (id) => setHover(id) })
   const marks: { id: string; text: string; color: string; position: Vec3; sprite: THREE.Sprite; label: SceneLabel; grouped: boolean }[] = []
   const textures = new Map<string, THREE.CanvasTexture>()
   const colorOf = (type: ObjectType) => colors[type] ?? DEFAULT_ANNOTATION_COLORS[type]
   let markerScale = 1
+  let diveAlign = 0
   // Podpis wskazanego znacznika, gdy jego własny podpis jest schowany w plakietce grupy.
   const hoverEl = document.createElement('div')
   hoverEl.className = 'obs-label space-photo-label hovered'
@@ -209,7 +213,8 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, s
     mark.label.pinned = mark.id === selected
     mark.label.el.classList.toggle('selected', mark.id === selected)
     mark.label.el.classList.toggle('hovered', mark.id === hovered)
-    mark.sprite.scale.setScalar(markerScale * (active ? MARK_ACTIVE : mark.grouped ? MARK_GROUPED : MARK))
+    const base = active ? MARK_ACTIVE : mark.grouped ? MARK_GROUPED : MARK
+    mark.sprite.scale.setScalar(markerScale * (base + (MARK - base) * diveAlign))
     mark.sprite.renderOrder = active ? 6 : 5
   }
   for (const { cut, world } of placed) {
@@ -221,7 +226,7 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, s
     }
     const sprite = glyphSprite(map, MARK)
     sprite.position.copy(world)
-    group.add(sprite)
+    markers.add(sprite)
     disposables.push(sprite.material)
     materials.push(sprite.material)
     handle.anchors.add(sprite.position)
@@ -251,7 +256,7 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, s
     const map = beyondTexture(accent)
     beyondSprite = glyphSprite(map, MARK_BEYOND)
     beyondSprite.position.copy(sunPos).addScaledVector(dir, length * BEYOND)
-    group.add(beyondSprite)
+    markers.add(beyondSprite)
     disposables.push(map, beyondSprite.material)
     materials.push(beyondSprite.material)
     const ids = outside.map((o) => o.cut.id)
@@ -343,7 +348,7 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, s
     { fovDeg: SPACE_FOV, aspect: camera.aspect, room: [0.5, 0.42], minDistance })
 
   return {
-    group, cone, fieldTan, basis, length, labels: layer.root, getFramePose,
+    group, markers, cone, fieldTan, basis, length, labels: layer.root, getFramePose,
     frameCamera(options) {
       handle.flyTo(getFramePose(), undefined, options?.zoom ?? false)
     },
@@ -351,13 +356,17 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, s
       sight.setOpacity(opacity, cone, faces, axis)
       layer.root.style.opacity = String(opacity)
     },
-    alignSightLine(amount, bridgeScale) {
-      sight.alignSightLine(amount, bridgeScale)
+    alignSightLine(amount, bridgeScale, startBridgeScale = bridgeScale) {
+      sight.alignSightLine(amount, bridgeScale, startBridgeScale)
       beyondSprite?.position.copy(sunPos).addScaledVector(dir, length * BEYOND * line.scale.x)
     },
     setConeRoll: sight.setConeRoll,
-    placeMarkers(project) {
+    placeMarkers(project, align = 0) {
       for (const mark of marks) mark.sprite.position.set(...(project?.(mark.id, mark.position) ?? mark.position))
+      if (align !== diveAlign) {
+        diveAlign = align
+        for (const mark of marks) refresh(mark)
+      }
       layer.invalidate()
     },
     setVisible(next) {
@@ -392,7 +401,7 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, s
 
 /** Stożek i znaczniki zdjęcia według zakładki: odbudowa przy zmianie wycinków, sceny lub zakładki; kadr przy nowym zdjęciu,
  *  scenie i zakładce (sama zmiana zakładki to przelot ze zmianą skali, jak bez zdjęcia). */
-export function usePhotoGuide(handle: Space3DHandle | null, project: PhotoProject | null, scale: SpaceScale, visible: boolean, selected: string | null, onPick: (id: string) => void, frameOnChange: boolean): RefObject<PhotoGuide | null> {
+export function usePhotoGuide(handle: Space3DHandle | null, project: PhotoProject | null, scale: SpaceScale, visible: boolean, selected: string | null, onPick: (id: string) => void, frameOnChange: boolean, frozen = !visible): RefObject<PhotoGuide | null> {
   const colors = useStore((s) => s.annotationColors)
   const guideRef = useRef<PhotoGuide | null>(null)
   const framed = useRef<{ handle: Space3DHandle | null; id: string; scale: SpaceScale | null }>({ handle: null, id: '', scale: null })
@@ -410,7 +419,7 @@ export function usePhotoGuide(handle: Space3DHandle | null, project: PhotoProjec
   // każdy pointermove zmienia x/y) się nie przebudowuje; zmiany dogania raz, gdy znów jest widoczny (audyt C05).
   const cutsKey = project ? project.cuts.map((c) => [c.id, c.type, c.enabled, c.distLy, c.uncertaintyLy, c.raDeg, c.decDeg, c.x, c.y, c.radius].join(':')).join('|') : ''
   const builtKey = useRef(cutsKey)
-  if (visible) builtKey.current = cutsKey
+  if (!frozen) builtKey.current = cutsKey
   useEffect(() => {
     const project = projectRef.current
     if (!handle || !project) {

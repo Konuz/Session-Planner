@@ -271,3 +271,42 @@ it('krycie kopuł 3D przycięte do 10–100 %', async () => {
   useStore.getState().setDomeOpacity(0.55)
   expect(useStore.getState().domeOpacity).toBe(0.55)
 })
+
+it('ustawienia kadrowania (framing i framingView) zachowują się po wyjściu z widoku kadrowania', async () => {
+  const { useStore } = await import('./store')
+  useStore.getState().select(7, false)
+  useStore.getState().setCenterMode('framing')
+  useStore.getState().setFraming({ raDeg: 83.8, decDeg: -5.4, paDeg: 45, mosaic: { cols: 2, rows: 2, overlapPct: 20 } })
+  useStore.getState().setFramingView({
+    layer: 'nsns',
+    zoom: 1.8,
+    comparisonOpen: true,
+    comparedSetIds: ['1', '2'],
+    candidateId: '2',
+    frameVisible: false,
+    photoCenter: { objectIndex: 7, raDeg: 84.0, decDeg: -5.2 },
+  })
+
+  // Wyjście z kadrowania na kopułę i inną kartę oraz powrót do tego samego obiektu.
+  useStore.getState().setCenterMode('dome')
+  useStore.getState().setTab('planner')
+  useStore.getState().setTab('sky')
+  useStore.getState().setCenterMode('framing')
+  useStore.getState().select(7, false)
+
+  expect(useStore.getState().framing).toEqual({
+    raDeg: 83.8,
+    decDeg: -5.4,
+    paDeg: 45,
+    mosaic: { cols: 2, rows: 2, overlapPct: 20 },
+  })
+  expect(useStore.getState().framingView).toEqual({
+    layer: 'nsns',
+    zoom: 1.8,
+    comparisonOpen: true,
+    comparedSetIds: ['1', '2'],
+    candidateId: '2',
+    frameVisible: false,
+    photoCenter: { objectIndex: 7, raDeg: 84.0, decDeg: -5.2 },
+  })
+})

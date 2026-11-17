@@ -17,6 +17,7 @@ export function useHipsSkyLayer(canvasRef: RefObject<HTMLCanvasElement | null>, 
     let created: HipsSkyLayer | null = null
     const lost = (e: Event) => {
       e.preventDefault()
+      created?.dispose()
       created = null
       layer.current = null
       redrawRef.current()

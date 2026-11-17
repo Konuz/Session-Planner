@@ -166,9 +166,22 @@ export class SpaceDive {
       }
       this.o.onPhase(f.phase, this.o.direction)
     }
-    const spaceView = f.phase === 'dive' ? this.applySpace(f, seam, now) : null
+    const { guide } = this.o
+    const fades = f.phase === 'dive' && obs?.ready ? diveFades(f.k) : null
+    // Siatka jest na przednim płótnie. W tych klatkach znaczniki rysujemy na nim po siatce.
+    const markers = fades && fades.grid > 0 && fades.guide > 0 && guide?.group.visible && guide.markers.children.length
+      ? guide.markers : undefined
+    let spaceView = null
+    if (f.phase === 'dive') {
+      if (markers) markers.visible = false
+      try {
+        spaceView = this.applySpace(f, seam, now)
+      } finally {
+        if (markers) markers.visible = true
+      }
+    }
     if (obs?.ready) {
-      this.applyObservatory(obs, f, seam, now, spaceView)
+      this.applyObservatory(obs, f, seam, now, spaceView, markers)
       if (!this.observatoryStarted) {
         this.observatoryStarted = true
         this.o.onObservatoryFrame()
@@ -198,14 +211,15 @@ export class SpaceDive {
     space.override.earthBlend = w
     this.fadeSpace(k)
     const [tx, ty] = coneTan(k, this.real, this.pyramid)
-    const depthScale = coneLength(k, guide.length, u) / guide.length
+    const depthScale = coneLength(k, guide.length, u, u0) / guide.length
     guide.cone.scale.set(tx * depthScale, ty * depthScale, depthScale)
     guide.setConeRoll(this.roll * guideRollWeight(k))
-    guide.alignSightLine(guideAlignment(k), u)
+    const align = guideAlignment(k)
+    guide.alignSightLine(align, u, u0)
     guide.placeMarkers((id, position) => {
       const target = this.o.markerTargets.get(id)
       return target ? diveMarkerPosition(this.bridge!, position, target, k, u0, u) : position
-    })
+    }, align)
     camera.up.set(...pose.up)
     camera.position.set(...pose.position)
     controls.target.set(...pose.target)
@@ -243,7 +257,7 @@ export class SpaceDive {
     guide?.setOpacity(fades.guide, fades.cone, fades.coneFaces, fades.spaceAxis)
   }
 
-  private applyObservatory(obs: ObservatoryScene, { phase, k, photoProgress }: DiveFrame, seam: Pose, now: number, spaceView: (Pose & { fov: number }) | null) {
+  private applyObservatory(obs: ObservatoryScene, { phase, k, photoProgress }: DiveFrame, seam: Pose, now: number, spaceView: (Pose & { fov: number }) | null, markers?: THREE.Group) {
     obs.setExternal(true)
     obs.setInteractive(false)
     obs.setProgress(this.o.seamProgress * photoProgress)
@@ -261,7 +275,7 @@ export class SpaceDive {
       const gridScale = this.o.guide ? diveGridScale(k) : 1
       obs.setFade({ earth: fades.earth, pyramid: fades.pyramid, axis: fades.axis, photo: fades.photo, grid }, 0, gridScale)
     }
-    obs.step(now)
+    obs.step(now, markers && { object: markers, camera: this.o.space.camera })
   }
 
   private finish(obs: ObservatoryScene | null) {

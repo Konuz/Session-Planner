@@ -10,7 +10,7 @@ import { isDefaultLevels, normalizeLevels, tableValues } from '../lib/stretch'
 import { getOwnSkyImage, OwnPhotoMissingError } from '../lib/ownPhotoImage'
 import { getSkyImage, type SkyImageOptions } from '../lib/thumbs'
 import { useSelected } from '../state/data'
-import { useStore } from '../state/store'
+import { useStore, type FramingLayer as Layer } from '../state/store'
 import { Range } from './Range'
 import { Select } from './Select'
 import { StretchDialog } from './StretchDialog'
@@ -26,7 +26,6 @@ const HANDLE_MIN_R = 6
 // Stały identyfikator filtra (useId daje znaki psujące url(#…)); okno kadrowania jest jedno.
 const STRETCH_FILTER_ID = 'framing-stretch'
 
-type Layer = 'red' | 'color' | 'ps1' | 'nsns' | 'nsnsRgb'
 // `label`: pozycja listy, `caption`: podpis na zdjęciu (przed źródłem).
 const LAYERS: Record<Layer, Required<Pick<SkyImageOptions, 'survey' | 'mode'>> & { label: string; caption: string }> = {
   red: { survey: 'dss2', mode: 'red', label: 'DSS2 czarno-biała', caption: 'DSS2 czerwony' },
@@ -43,6 +42,8 @@ export function FramingPanel() {
   const activeEquipmentSetId = useStore((s) => s.activeEquipmentSetId)
   const framing = useStore((s) => s.framing)
   const setFraming = useStore((s) => s.setFraming)
+  const framingView = useStore((s) => s.framingView)
+  const setFramingView = useStore((s) => s.setFramingView)
   const addToPlan = useStore((s) => s.addToPlan)
   const setTab = useStore((s) => s.setTab)
   const updatePlan = useStore((s) => s.updatePlan)
@@ -53,26 +54,30 @@ export function FramingPanel() {
   const own = useStore((s) => (o ? s.ownPhotos[o.id] : undefined))
   const ownId = own?.shown ? own.photoId : ''
   const removeOwnPhoto = useStore((s) => s.removeOwnPhoto)
-  const [layer, setLayer] = useState<Layer>('color')
+  const { layer, zoom, comparisonOpen, candidateId, frameVisible, photoCenter } = framingView
+  const comparedSetIds = framingView.comparedSetIds ?? [activeEquipmentSetId]
+  const setLayer = (l: Layer) => setFramingView({ layer: l })
+  const setPhotoCenter = (pc: { objectIndex: number; raDeg: number; decDeg: number } | null) => setFramingView({ photoCenter: pc })
+  const setCandidateId = (id: string) => setFramingView({ candidateId: id })
+  const setComparisonOpen = (open: boolean) => setFramingView({ comparisonOpen: open })
+  const setFrameVisible = (visible: boolean | ((v: boolean) => boolean)) =>
+    setFramingView({ frameVisible: typeof visible === 'function' ? visible(useStore.getState().framingView.frameVisible) : visible })
+  const setComparedSetIds = (ids: string[] | ((prev: string[]) => string[])) => {
+    const prev = useStore.getState().framingView.comparedSetIds ?? [useStore.getState().activeEquipmentSetId]
+    setFramingView({ comparedSetIds: typeof ids === 'function' ? ids(prev) : ids })
+  }
   // Zdjęcie z miejscem, które pokazuje: po przesunięciu nieba poprzednie zostaje widoczne, przesunięte, do czasu wczytania nowego.
   const [img, setImg] = useState<{ key: string; blob: Blob; sharp: boolean; raDeg: number; decDeg: number; fovDeg: number; layer: Layer } | null>(null)
   const imageUrl = useObjectUrl(img?.blob ?? null)
   // Bieżące przeciąganie zdjęcia [jednostki SVG]; null, gdy nie przeciągamy.
   const [pan, setPan] = useState<[number, number] | null>(null)
   const [err, setErr] = useState<string | null>(null)
-  const [zoom, setZoom] = useState(1)
   const [coordinateInput, setCoordinateInput] = useState({ ra: '', dec: '' })
   const [coordinateError, setCoordinateError] = useState<string | null>(null)
-  const [photoCenter, setPhotoCenter] = useState<{ objectIndex: number; raDeg: number; decDeg: number } | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const imgRef = useRef<HTMLImageElement>(null)
   const stretchButtonRef = useRef<HTMLButtonElement>(null)
   const [stretchOpen, setStretchOpen] = useState(false)
-  const [comparisonOpen, setComparisonOpen] = useState(false)
-  const [comparedSetIds, setComparedSetIds] = useState([activeEquipmentSetId])
-  const [candidateId, setCandidateId] = useState('')
-  // Ukrycie nakładki kadru (prostokąt, mozaika, uchwyt), żeby lepiej widzieć zdjęcie, np. przy pracy z histogramem.
-  const [frameVisible, setFrameVisible] = useState(true)
   const drag = useRef<{ kind: 'move' | 'rotate' | 'pan'; startX: number; startY: number; startCenter: { xi: number; eta: number }; startPa: number } | null>(null)
 
   const optics = useMemo(() => computeOptics(eq), [eq])
@@ -104,8 +109,10 @@ export function FramingPanel() {
   const stretchTable = useMemo(() => (stretched ? tableValues(levels) : ''), [stretched, levels.black, levels.white, levels.gamma, pointsKey])
 
   useEffect(() => {
-    if (o && center) setPhotoCenter({ objectIndex: o.i, raDeg: center.raDeg, decDeg: center.decDeg })
-  }, [o?.i])
+    if (o && center && photoCenter?.objectIndex !== o.i) {
+      setPhotoCenter({ objectIndex: o.i, raDeg: center.raDeg, decDeg: center.decDeg })
+    }
+  }, [o?.i, photoCenter?.objectIndex])
 
   // Kółko myszy nad zdjęciem zmienia powiększenie (0,5–4×) bez przewijania strony.
   const hasView = !!(o && center)
@@ -114,7 +121,8 @@ export function FramingPanel() {
     if (!el) return
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
-      setZoom((z) => Math.min(4, Math.max(0.5, z * Math.exp(-e.deltaY * 0.0015))))
+      const z = useStore.getState().framingView.zoom
+      setFramingView({ zoom: Math.min(4, Math.max(0.5, z * Math.exp(-e.deltaY * 0.0015))) })
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
@@ -130,8 +138,8 @@ export function FramingPanel() {
   const layerCovered = covered(layer)
 
   useEffect(() => {
-    if (!layerCovered) setLayer('color')
-  }, [layerCovered])
+    if (imageDec !== null && !layerCovered) setLayer('color')
+  }, [imageDec, layerCovered])
 
   useEffect(() => {
     if (!o || imageRa === null || imageDec === null) return

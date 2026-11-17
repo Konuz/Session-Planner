@@ -3,7 +3,7 @@
 // w shaderze ten sam co dla gwiazd; krycie z wysokości nad horyzontem, jasności nieba i granicy pokrycia.
 import type { Mat3, Vec3 } from './astro'
 import { DEG } from './astro'
-import { allskyUvRect, ALLSKY_ORDER, detailOrder, NSNS_EDGE_DEC, segmentsFor, tileMesh, viewCircle, visibleTiles, type TileMesh } from './hipsSky'
+import { allskyUvRect, ALLSKY_ORDER, detailOrder, detailOrderScale, NSNS_EDGE_DEC, segmentsFor, tileMesh, viewCircle, visibleTiles, type TileMesh } from './hipsSky'
 import type { Survey } from './hips'
 import { fetchTile } from './hipsTiles'
 import { imageCache } from './imageCache'
@@ -69,15 +69,25 @@ void main() {
   outColor = vec4(texture(u_tex, v_uv).rgb * a, a);
 }`
 
-// Pobierane naraz kafelki szczegółowe i limit tekstur w pamięci GPU (kafelek 512² RGBA ≈ 1 MB).
+// Kafelek 512² RGBA z mipmapami zajmuje ok. 1,33 MiB. Budżet mieści bieżący poziom i sąsiednie fragmenty pola.
 const MAX_LOADING = 6
-const MAX_TEXTURES = 64
+const MAX_TEXTURES = 112
+const MAX_PRELOAD_LOADING = 2
+const PRELOAD_DELAY_MS = 250
+const FADE_MS = 200
+const MAX_FADE_STEP_MS = 50
 // Nieudany kafelek lub Allsky (limit czasu przy zimnym pośredniku, 404 na skraju pokrycia) próbujemy znowu po tym czasie.
 const RETRY_MS = 20000
 const allskyCache = imageCache('tracker-hips-allsky', 4)
 
 interface Mesh { vao: WebGLVertexArrayObject; buffers: WebGLBuffer[]; count: number }
-interface Tile { mesh: Mesh | null; tex: WebGLTexture | null; lastDrawn: number; failedAt: number }
+interface TileImage { mesh: Mesh; tex: WebGLTexture }
+interface Tile {
+  image: TileImage | null
+  shown: boolean
+  lastDrawn: number
+  failedAt: number | null
+}
 
 function compile(gl: WebGL2RenderingContext): WebGLProgram {
   const p = gl.createProgram()!
@@ -102,22 +112,43 @@ export function createHipsSkyLayer(gl: WebGL2RenderingContext, survey: Survey, o
   const base = survey.mirrors[0]
   const tiles = new Map<string, Tile>()
   const allskyMeshes = new Map<number, Mesh>()
+  // Najnowszy poziom pokrywa starsze, które wypełniają luki po błędach i podczas ruchu widoku.
+  let shownOrders: number[] = []
+  let fade: { order: number | null; elapsed: number; lastFrameAt: number; tiles: Set<Tile> } | null = null
   let allsky: { tex: WebGLTexture; width: number; height: number } | null = null
   let allskyState: 'idle' | 'loading' | 'failed' = 'idle'
   let allskyFailedAt = 0
   let loading = 0
   let disposed = false
+  let latestFrame: HipsSkyFrame | null = null
+  let notifyDome = false
   let frameRequest = 0
   let retryTimer = 0
+  let preloadTimer = 0
+  let preloadAt = 0
+  let preloadView = ''
+  let preloadTiles: { order: number; npix: number; key: string }[] | null = null
   // Po porażce jedno przerysowanie po RETRY_MS ponawia kafelki bez ruchu widoku.
   const retryLater = () => {
-    if (!retryTimer) retryTimer = window.setTimeout(() => { retryTimer = 0; loaded() }, RETRY_MS + 100)
+    if (!disposed && !retryTimer) retryTimer = window.setTimeout(() => {
+      retryTimer = 0
+      scheduleDraw(allskyState === 'failed')
+    }, RETRY_MS + 100)
   }
 
-  // Kafelki przychodzą seriami: jedno przerysowanie kopuły na klatkę.
-  const loaded = () => {
-    if (disposed || frameRequest) return
-    frameRequest = requestAnimationFrame(() => { frameRequest = 0; if (!disposed) onLoaded() })
+  // Pobrania i animacja odświeżają płótno warstwy. Kopuła musi zareagować tylko na stan podkładu.
+  const scheduleDraw = (allskyChanged = false) => {
+    if (disposed) return
+    notifyDome ||= allskyChanged
+    if (frameRequest) return
+    frameRequest = requestAnimationFrame(() => {
+      frameRequest = 0
+      if (disposed || gl.isContextLost()) return
+      if (notifyDome) {
+        notifyDome = false
+        onLoaded()
+      } else if (latestFrame) layer.draw(latestFrame)
+    })
   }
 
   const mesh = (m: TileMesh): Mesh => {
@@ -173,43 +204,44 @@ export function createHipsSkyLayer(gl: WebGL2RenderingContext, survey: Survey, o
       allsky = { tex: texture(bitmap, false), width: bitmap.width, height: bitmap.height }
       bitmap.close()
       allskyState = 'idle'
-      loaded()
+      scheduleDraw(true)
     } catch (e) {
       allskyState = 'failed'
       allskyFailedAt = performance.now()
       retryLater()
-      loaded()
+      scheduleDraw(true)
       console.error('Kopuła: podkład NSNS', e)
     }
   }
 
   function request(order: number, npix: number, key: string) {
-    const tile: Tile = { mesh: null, tex: null, lastDrawn: 0, failedAt: 0 }
+    const tile: Tile = { image: null, shown: false, lastDrawn: 0, failedAt: null }
     tiles.set(key, tile)
     loading++
     fetchTile(survey, order, npix)
       .then((blob) => createImageBitmap(blob))
       .then((bitmap) => {
         if (disposed || gl.isContextLost() || tiles.get(key) !== tile) { bitmap.close(); return }
-        tile.tex = texture(bitmap, true)
+        const tex = texture(bitmap, true)
         bitmap.close()
-        tile.mesh = mesh(tileMesh(order, npix, segmentsFor(order)))
-        loaded()
+        tile.image = { tex, mesh: mesh(tileMesh(order, npix, segmentsFor(order))) }
       })
-      .catch(() => { tile.failedAt = performance.now(); retryLater() })
+      .catch(() => { if (!disposed) { tile.failedAt = performance.now(); retryLater() } })
       // Także po porażce: zwolnione miejsce w kolejce pozwala pobrać następne kafelki bez ruchu widoku.
-      .finally(() => { loading--; loaded() })
+      .finally(() => { loading--; scheduleDraw() })
   }
 
   function evict(keep: ReadonlySet<string>) {
-    const withTex = [...tiles.entries()].filter(([, t]) => t.tex)
-    if (withTex.length <= MAX_TEXTURES) return
+    const withTex = [...tiles.entries()].filter(([, t]) => t.image)
+    let excess = withTex.length - MAX_TEXTURES
+    if (excess <= 0) return
     withTex.sort((a, b) => a[1].lastDrawn - b[1].lastDrawn)
-    for (const [key, t] of withTex.slice(0, withTex.length - MAX_TEXTURES)) {
-      if (keep.has(key)) continue
-      gl.deleteTexture(t.tex)
-      if (t.mesh) freeMesh(t.mesh)
+    for (const [key, t] of withTex) {
+      if (keep.has(key) || !t.image) continue
+      gl.deleteTexture(t.image.tex)
+      freeMesh(t.image.mesh)
       tiles.delete(key)
+      if (--excess === 0) break
     }
   }
 
@@ -218,10 +250,11 @@ export function createHipsSkyLayer(gl: WebGL2RenderingContext, survey: Survey, o
     gl.drawElements(gl.TRIANGLES, m.count, gl.UNSIGNED_SHORT, 0)
   }
 
-  return {
+  const layer: HipsSkyLayer = {
     ready: () => allsky !== null,
     failed: () => allskyState === 'failed',
     draw(f) {
+      latestFrame = f
       const canvas = gl.canvas as HTMLCanvasElement
       gl.viewport(0, 0, canvas.width, canvas.height)
       gl.clearColor(0, 0, 0, 0)
@@ -231,9 +264,68 @@ export function createHipsSkyLayer(gl: WebGL2RenderingContext, survey: Survey, o
       if (allskyState === 'idle' && !allsky && f.allowDecode) void loadAllsky()
       const maxR = Math.hypot(Math.max(f.cx, f.width - f.cx), Math.max(f.cy, f.height - f.cy))
       const { centre, radiusDeg, arcsecPerPx } = viewCircle(f.eqToView, f.scale, maxR)
+      const viewKey = [f.scale, maxR, ...centre, ...f.zen].join('/')
+      if (viewKey !== preloadView) {
+        preloadView = viewKey
+        preloadTiles = null
+        preloadAt = now + PRELOAD_DELAY_MS
+        window.clearTimeout(preloadTimer)
+        preloadTimer = 0
+      }
+      const visibleByOrder = new Map<number, number[]>()
+      const inView = (order: number) => {
+        let pixels = visibleByOrder.get(order)
+        if (!pixels) {
+          pixels = visibleTiles(order, centre, radiusDeg, f.zen, NSNS_EDGE_DEC - 1)
+          visibleByOrder.set(order, pixels)
+        }
+        return pixels
+      }
+      if (fade) {
+        // Długa klatka wydłuża przejście, zachowując pośrednie stopnie ostrości.
+        fade.elapsed += Math.min(now - fade.lastFrameAt, MAX_FADE_STEP_MS)
+        fade.lastFrameAt = now
+        if (fade.elapsed >= FADE_MS) {
+          const { order, tiles: shown } = fade
+          shownOrders = order === null ? [] : [...shownOrders.filter((old) => old !== order), order]
+          for (const tile of shown) tile.shown = true
+          fade = null
+        }
+      }
+
+      const order = detailOrder(arcsecPerPx, survey.maxOrder)
+      const keep = new Set<string>()
+      let waiting = false
+      if (order !== null) {
+        const changedOrder = shownOrders.at(-1) !== order
+        let hasNewImage = false
+        for (const p of inView(order)) {
+          const key = `${order}/${p}`
+          keep.add(key)
+          const tile = tiles.get(key)
+          if (tile?.image) {
+            hasNewImage ||= changedOrder || !tile.shown
+          } else {
+            waiting ||= tile?.failedAt == null
+            const canRequest = !tile || (tile.failedAt !== null && now - tile.failedAt > RETRY_MS)
+            if (canRequest && f.allowDecode && loading < MAX_LOADING) request(order, p, key)
+          }
+        }
+        if (!fade && !waiting && hasNewImage) {
+          // Ustalamy zestaw na całą animację, także dla gotowych tekstur, które mogą wejść w kadr podczas ruchu.
+          const ready = new Set<Tile>()
+          for (const [key, tile] of tiles) {
+            if (key.startsWith(`${order}/`) && tile.image && (changedOrder || !tile.shown)) ready.add(tile)
+          }
+          fade = { order, elapsed: 0, lastFrameAt: now, tiles: ready }
+        }
+      } else if (!fade && shownOrders.length && allsky) {
+        fade = { order: null, elapsed: 0, lastFrameAt: now, tiles: new Set() }
+      }
+
       gl.useProgram(prog)
-      gl.enable(gl.BLEND)
-      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA)
+      // Gotowy kafelek zastępuje podkład. Krycie horyzontu i zmierzchu obowiązuje raz, niezależnie od liczby warstw.
+      gl.disable(gl.BLEND)
       gl.uniformMatrix3fv(uM, true, new Float32Array(f.eqToView))
       gl.uniform3f(uZen, f.zen[0], f.zen[1], f.zen[2])
       gl.uniform1f(uScale, f.scale * f.dpr)
@@ -243,39 +335,94 @@ export function createHipsSkyLayer(gl: WebGL2RenderingContext, survey: Survey, o
       // Brzeg pokrycia wygaszany w pasie ±0,5° wokół granicy (sin δ).
       gl.uniform2f(uEdge, Math.sin((NSNS_EDGE_DEC - 0.5) * DEG), Math.sin((NSNS_EDGE_DEC + 0.5) * DEG))
       gl.activeTexture(gl.TEXTURE0)
-      if (allsky) {
+      const drawAllsky = () => {
+        if (!allsky) return
         gl.bindTexture(gl.TEXTURE_2D, allsky.tex)
-        for (const p of visibleTiles(ALLSKY_ORDER, centre, radiusDeg, f.zen, NSNS_EDGE_DEC - 1)) {
+        for (const p of inView(ALLSKY_ORDER)) {
           let m = allskyMeshes.get(p)
           if (!m) allskyMeshes.set(p, (m = mesh(tileMesh(ALLSKY_ORDER, p, segmentsFor(ALLSKY_ORDER), allskyUvRect(p, allsky.width, allsky.height)))))
           draw(m)
         }
       }
-      const order = detailOrder(arcsecPerPx, survey.maxOrder)
-      const keep = new Set<string>()
-      if (order !== null) {
-        for (const p of visibleTiles(order, centre, radiusDeg, f.zen, NSNS_EDGE_DEC - 1)) {
-          const key = `${order}/${p}`
-          keep.add(key)
+      const visibleImages = (level: number, include: (tile: Tile) => boolean) => {
+        const images: TileImage[] = []
+        for (const p of inView(level)) {
+          const key = `${level}/${p}`
           const tile = tiles.get(key)
-          if (tile?.tex && tile.mesh) {
-            tile.lastDrawn = now
-            gl.bindTexture(gl.TEXTURE_2D, tile.tex)
-            draw(tile.mesh)
-          } else if ((!tile || (tile.failedAt && now - tile.failedAt > RETRY_MS)) && f.allowDecode && loading < MAX_LOADING) request(order, p, key)
+          if (!tile?.image || !include(tile)) continue
+          keep.add(key)
+          tile.lastDrawn = now
+          images.push(tile.image)
         }
+        return images
+      }
+      const drawImage = (image: TileImage) => {
+        gl.bindTexture(gl.TEXTURE_2D, image.tex)
+        draw(image.mesh)
+      }
+      drawAllsky()
+      const layers: TileImage[][] = []
+      for (let i = shownOrders.length - 1; i >= 0; i--) {
+        const level = shownOrders[i]
+        const images = visibleImages(level, (tile) => tile.shown)
+        layers.push(images)
+        if (images.length === inView(level).length) break
+      }
+      for (let i = layers.length - 1; i >= 0; i--) layers[i].forEach(drawImage)
+
+      if (fade) {
+        const t = fade.elapsed / FADE_MS
+        if (t > 0) {
+          // Kolor i krycie obu poziomów mieszamy z tą samą wagą dla całego widoku.
+          gl.enable(gl.BLEND)
+          gl.blendColor(0, 0, 0, t * t * (3 - 2 * t))
+          gl.blendFunc(gl.CONSTANT_ALPHA, gl.ONE_MINUS_CONSTANT_ALPHA)
+          if (fade.order === null) drawAllsky()
+          else {
+            const incoming = fade.tiles
+            visibleImages(fade.order, (tile) => incoming.has(tile)).forEach(drawImage)
+          }
+        }
+        scheduleDraw()
       }
       gl.bindVertexArray(null)
+
+      if (allsky && f.allowDecode && !waiting && !fade) {
+        if (now < preloadAt) {
+          if (!preloadTimer) preloadTimer = window.setTimeout(() => {
+            preloadTimer = 0
+            scheduleDraw()
+          }, preloadAt - now)
+        } else {
+          if (!preloadTiles) {
+            const levels = order === null ? [1] : [order + 1, order - 1]
+            preloadTiles = levels.filter((level) => level > 0 && level <= survey.maxOrder).flatMap((level) => {
+              // Bierzemy pole dopiero na progu zmiany rozdzielczości. Przy powiększaniu będzie ono mniejsze.
+              const { radiusDeg: nextRadius } = viewCircle(f.eqToView, detailOrderScale(level), maxR)
+              return visibleTiles(level, centre, nextRadius, f.zen, NSNS_EDGE_DEC - 1)
+                .map((npix) => ({ order: level, npix, key: `${level}/${npix}` }))
+            })
+          }
+          for (const next of preloadTiles) {
+            if (keep.size >= MAX_TEXTURES) break
+            keep.add(next.key)
+            // Pozostałe miejsca w kolejce są dostępne od razu po ruchu mapy.
+            if (loading < MAX_PRELOAD_LOADING && !tiles.has(next.key)) request(next.order, next.npix, next.key)
+          }
+        }
+      }
       evict(keep)
     },
     dispose() {
       disposed = true
       cancelAnimationFrame(frameRequest)
       clearTimeout(retryTimer)
+      window.clearTimeout(preloadTimer)
       if (gl.isContextLost()) return
       for (const t of tiles.values()) {
-        if (t.tex) gl.deleteTexture(t.tex)
-        if (t.mesh) freeMesh(t.mesh)
+        if (!t.image) continue
+        gl.deleteTexture(t.image.tex)
+        freeMesh(t.image.mesh)
       }
       allskyMeshes.forEach(freeMesh)
       if (allsky) gl.deleteTexture(allsky.tex)
@@ -284,4 +431,5 @@ export function createHipsSkyLayer(gl: WebGL2RenderingContext, survey: Survey, o
       gl.clear(gl.COLOR_BUFFER_BIT)
     },
   }
+  return layer
 }

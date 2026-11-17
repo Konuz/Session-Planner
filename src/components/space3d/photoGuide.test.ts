@@ -6,7 +6,7 @@ import type { PhotoCut, PhotoProject } from '../../lib/photo'
 import { UNIVERSE_MIN_SPAN, scenePosition, sunPosition, type SpaceScale } from '../../lib/space3d'
 import type { CameraPose } from '../../lib/spaceCamera'
 import type { Space3DHandle } from '../Space3D'
-import { createPhotoGuide } from './photoGuide'
+import { createPhotoGuide, MARK, MARK_PROJECTION_Y } from './photoGuide'
 
 // Symbole rysowane na płótnie: w testach zwykły sprite.
 vi.mock('./markerGlyphs', () => ({
@@ -49,7 +49,7 @@ function fixture(scale: SpaceScale, project = comaProject()) {
   } as unknown as Space3DHandle
   const picked: string[] = []
   const guide = createPhotoGuide(handle, project, scale, {}, '#00e0ff', (id) => picked.push(id))!
-  const sprites = guide.group.children.filter((c): c is Sprite => c instanceof Sprite)
+  const sprites = guide.markers.children.filter((c): c is Sprite => c instanceof Sprite)
   return { handle, scene, camera, guide, sprites, picked, mount, canvas }
 }
 
@@ -213,4 +213,23 @@ it('hover nad znacznikiem w grupie pokazuje nazwę obiektu i chowa ją po zejśc
   f.guide.setHover(null)
   layout(32)
   expect(hoverEl.style.display).toBe('none')
+})
+
+it('wyrównuje skalę wszystkich znaczników (w tym zaznaczonego i zgrupowanego) w nurkowaniu i przywraca ją po powrocie', () => {
+  const f = fixture('universe')
+  f.guide.frameCamera()
+  f.camera.fov = 40
+  f.camera.updateProjectionMatrix()
+  const [layout] = f.handle.layout
+  layout(0)
+  f.guide.setSelected('LDN 1')
+  const markerScale = MARK_PROJECTION_Y / f.camera.projectionMatrix.elements[5]
+  const before = f.sprites.map((s) => s.scale.x)
+  expect(new Set(before.map((v) => v.toFixed(6))).size).toBeGreaterThan(1)
+
+  f.guide.placeMarkers(undefined, 1)
+  for (const sprite of f.sprites) expect(sprite.scale.x).toBeCloseTo(MARK * markerScale, 8)
+
+  f.guide.placeMarkers()
+  f.sprites.forEach((sprite, i) => expect(sprite.scale.x).toBeCloseTo(before[i], 8))
 })

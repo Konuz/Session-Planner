@@ -97,6 +97,19 @@ export interface Framing {
   mosaic?: Mosaic
 }
 
+export type FramingLayer = 'red' | 'color' | 'ps1' | 'nsns' | 'nsnsRgb'
+
+export interface FramingViewState {
+  layer: FramingLayer
+  zoom: number
+  comparisonOpen: boolean
+  /** null = aktywny zestaw sprzętu. */
+  comparedSetIds: string[] | null
+  candidateId: string
+  frameVisible: boolean
+  photoCenter: { objectIndex: number; raDeg: number; decDeg: number } | null
+}
+
 export interface PlanItem {
   key: string
   objectIndex: number
@@ -138,6 +151,7 @@ interface State {
   minAltDeg: number
   horizon: HorizonPoint[]
   framing: Framing
+  framingView: FramingViewState
   /** Rozciągnięcie zdjęcia kadru (poziomy) osobno dla każdej warstwy; brak wpisu = bez zmian. */
   framingStretch: Record<string, Levels>
   plan: PlanItem[]
@@ -206,6 +220,7 @@ interface State {
   setMinVisibleMinutes(v: number | 'night'): void
   setHorizon(points: HorizonPoint[]): void
   setFraming(patch: Partial<Framing>): void
+  setFramingView(patch: Partial<FramingViewState>): void
   /** null przywraca domyślne poziomy warstwy. */
   setFramingStretch(layer: string, levels: Levels | null): void
   addToPlan(index: number, id: string): void
@@ -299,6 +314,15 @@ export const useStore = create<State>()(
       minAltDeg: 25,
       horizon: [],
       framing: { raDeg: null, decDeg: null, paDeg: 0 },
+      framingView: {
+        layer: 'color',
+        zoom: 1,
+        comparisonOpen: false,
+        comparedSetIds: null,
+        candidateId: '',
+        frameVisible: true,
+        photoCenter: null,
+      },
       framingStretch: {},
       plan: [],
       favoriteIds: [],
@@ -348,7 +372,7 @@ export const useStore = create<State>()(
             selectedIndex,
             history,
             historyPos: history.length - 1,
-            framing: { raDeg: null, decDeg: null, paDeg: s.framing.paDeg },
+            framing: selectedIndex === s.selectedIndex ? s.framing : { ...s.framing, raDeg: null, decDeg: null },
             findPulse: find ? s.findPulse + 1 : s.findPulse,
           }
         }),
@@ -359,7 +383,7 @@ export const useStore = create<State>()(
           return {
             historyPos,
             selectedIndex: s.history[historyPos],
-            framing: { raDeg: null, decDeg: null, paDeg: s.framing.paDeg },
+            framing: { ...s.framing, raDeg: null, decDeg: null },
             findPulse: s.findPulse + 1,
           }
         }),
@@ -436,6 +460,7 @@ export const useStore = create<State>()(
       setMinVisibleMinutes: (minVisibleMinutes) => set({ minVisibleMinutes, onlyVisible: true }),
       setHorizon: (horizon) => set({ horizon }),
       setFraming: (patch) => set((s) => ({ framing: { ...s.framing, ...patch } })),
+      setFramingView: (patch) => set((s) => ({ framingView: { ...s.framingView, ...patch } })),
       setFramingStretch: (layer, levels) => set((s) => {
         const rest = { ...s.framingStretch }
         delete rest[layer]

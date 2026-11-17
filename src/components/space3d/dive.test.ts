@@ -31,6 +31,41 @@ it('odsłania obserwatorium dopiero po pierwszej gotowej klatce sterowanej przej
   expect(events).toEqual(['render', 'reveal', 'render'])
 })
 
+it('w klatkach z siatką rysuje znaczniki na płótnie Obserwatorium nad siatką', () => {
+  const markers = new THREE.Group().add(new THREE.Sprite())
+  const group = new THREE.Group().add(markers)
+  const camera = new THREE.PerspectiveCamera()
+  const spaceVisibility: boolean[] = []
+  const foregrounds: unknown[] = []
+  const observatory = {
+    ready: true,
+    setExternal() {}, setInteractive() {}, setProgress() {}, setPose() {}, setFade() {},
+    step(_now: number, foreground?: { object: THREE.Object3D; camera: THREE.Camera }) {
+      if (foreground) expect(foreground.object.visible).toBe(true)
+      foregrounds.push(foreground)
+    },
+  }
+  const dive: SpaceDive = Object.create(SpaceDive.prototype)
+  Object.assign(dive, {
+    elapsed: 0, last: null, phase: null, frozen: null, skipping: false, finished: false,
+    applySpace() { spaceVisibility.push(markers.visible); return null },
+    o: {
+      direction: 'in', space: { camera }, guide: { group, markers },
+      seam: { position: [0, 0, 200], target: [0, 0, 0] }, seamProgress: 1,
+      observatory: () => observatory, onPhase() {}, onDone() {}, onObservatoryFrame() {},
+    },
+  })
+  const frame = Reflect.get(dive, 'frame') as (now: number) => void
+  const { dive: diveMs, enter: enterMs } = DIVE_PHASE_MS.in
+  for (const [i, k] of [0.2, 0.56, 0.8, 0.98].entries()) {
+    Object.assign(dive, { frozen: k * diveMs / (diveMs + enterMs) })
+    frame.call(dive, i * 16)
+    expect(markers.visible).toBe(true)
+  }
+  expect(spaceVisibility).toEqual([true, false, false, true])
+  expect(foregrounds).toEqual([undefined, { object: markers, camera }, { object: markers, camera }, undefined])
+})
+
 it('zdjęcie Obserwatorium rozkłada się dopiero w fazie wejścia', () => {
   const obsProgress: number[] = []
   const phases: string[] = []

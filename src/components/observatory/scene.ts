@@ -10,6 +10,8 @@ import { photoCropSquare } from '../../lib/photo'
 import { GALACTIC_LIMIT_LY } from '../../lib/space3d'
 import { openLabelFan, type LabelFan } from '../labelFan'
 import { createEarthAssets, createEarthMesh, setEarthOpacity, type EarthAssets } from '../space3d/earthModel'
+import { glyphSprite, glyphTexture } from '../space3d/markerGlyphs'
+import { MARK, MARK_PROJECTION_Y } from '../space3d/photoGuide'
 
 export type ObservatoryView = 'structure' | 'earth' | 'top' | 'side'
 /** Krycia części sceny w nurkowaniu z Drogi Mlecznej (1: bez zmian). */
@@ -157,7 +159,6 @@ export class ObservatoryScene {
   private starIndex: number[] = []
   private cards = new Map<string, THREE.Sprite>()
   private anchors = new Map<string, THREE.Sprite>()
-  private anchorMaterial: THREE.SpriteMaterial
   private ring: THREE.Sprite
   private cutPreview: THREE.Sprite
   private axis = new THREE.Group()
@@ -215,9 +216,7 @@ export class ObservatoryScene {
     this.cutPreview.renderOrder = 9
     this.cutPreview.visible = false
     this.scene.add(this.ring, this.cutPreview)
-    const anchorMap = ringTexture('#ffffff')
-    this.anchorMaterial = new THREE.SpriteMaterial({ map: anchorMap, depthTest: false, depthWrite: false, transparent: true, sizeAttenuation: false })
-    this.disposables.push(ringMap, ringMaterial, previewMaterial, anchorMap, this.anchorMaterial)
+    this.disposables.push(ringMap, ringMaterial, previewMaterial)
 
     this.scene.add(this.axis, this.data)
     const earthLight = new THREE.DirectionalLight(0xfff8ee, 2.1)
@@ -361,6 +360,7 @@ export class ObservatoryScene {
       this.dataDisposables.push(geometry, material)
     }
 
+    const anchorTextures = new Map<ObjectType, THREE.CanvasTexture>()
     for (const item of items) {
       if (item.kind !== 'object' || !item.type) continue
       const color = colors[item.type] ?? DEFAULT_ANNOTATION_COLORS[item.type]
@@ -372,12 +372,14 @@ export class ObservatoryScene {
       this.cards.set(item.id, sprite)
       this.data.add(sprite)
       if (item.distLy !== null && Number.isFinite(item.distLy) && item.distLy > 0) {
-        const material = this.anchorMaterial.clone()
-        material.color.set(color)
-        this.dataDisposables.push(material)
-        const anchor = new THREE.Sprite(material)
-        anchor.scale.setScalar(0.019)
-        anchor.renderOrder = 5
+        let anchorMap = anchorTextures.get(item.type)
+        if (!anchorMap) {
+          anchorMap = glyphTexture(item.type, color)
+          anchorTextures.set(item.type, anchorMap)
+          this.dataDisposables.push(anchorMap)
+        }
+        const anchor = glyphSprite(anchorMap)
+        this.dataDisposables.push(anchor.material)
         this.anchors.set(item.id, anchor)
         this.data.add(anchor)
       }
@@ -392,6 +394,7 @@ export class ObservatoryScene {
     // dzieje się to w pierwszej klatce, w której zdjęcie staje się widoczne (w nurkowaniu ok. 100 ms w ruchu).
     this.renderer.initTexture(texture)
     for (const card of this.cards.values()) if (card.material.map) this.renderer.initTexture(card.material.map)
+    for (const anchorMap of anchorTextures.values()) this.renderer.initTexture(anchorMap)
     this.ready = false
     const token = ++this.dataToken
     void this.renderer.compileAsync(this.scene, this.camera).catch(() => {}).then(() => { if (token === this.dataToken) { this.ready = true; this.dirty = true } })
@@ -484,6 +487,7 @@ export class ObservatoryScene {
     }
     const pixelScale = PLANE_WIDTH / this.image.width
     const anchorOpacity = (1 - arrival) * f.photo
+    const anchorScale = MARK * MARK_PROJECTION_Y / this.camera.projectionMatrix.elements[5]
     for (const item of this.items) {
       const card = this.cards.get(item.id)
       if (!card) continue
@@ -494,6 +498,7 @@ export class ObservatoryScene {
       const anchor = this.anchors.get(item.id)
       if (anchor) {
         anchor.position.copy(destination)
+        anchor.scale.setScalar(anchorScale)
         anchor.material.opacity = anchorOpacity
         anchor.visible = this.visible.has(item.id) && this.arrival < 1 && anchorOpacity > 0
       }
@@ -712,10 +717,19 @@ export class ObservatoryScene {
     this.step(now)
   }
 
-  step(now: number) {
+  step(now: number, foreground?: { object: THREE.Object3D; camera: THREE.Camera }) {
     this.resize(this.external)
     if (this.external) {
-      if (this.dirty) this.render()
+      if (this.dirty || foreground) this.render()
+      if (foreground) {
+        const autoClear = this.renderer.autoClear
+        this.renderer.autoClear = false
+        try {
+          this.renderer.render(foreground.object, foreground.camera)
+        } finally {
+          this.renderer.autoClear = autoClear
+        }
+      }
       return
     }
     const delta = Math.min(Math.max(0, now - this.lastTick) / 1000, 0.05)

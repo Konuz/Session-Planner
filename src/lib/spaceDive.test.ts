@@ -201,15 +201,27 @@ it('wycinki IC 434 zachowują kolejność odległości i trafiają do rozłożon
   }
 })
 
-it('stożek oddaje ostrosłupowi krawędzie o tych samych końcach i zsynchronizowanym kryciu', () => {
+it('stożek skraca się ze skalą u/u0 przed rozchyleniem i oddaje ostrosłupowi krawędzie o tych samych końcach i zsynchronizowanym kryciu', () => {
   const real: [number, number] = [0.0087, 0.0088]
   const halfWidth = PLANE_WIDTH / 2, halfHeight = PLANE_WIDTH * 0.75 / 2
   const pyramid: [number, number] = [halfWidth / EARTH_Z, halfHeight / EARTH_Z]
   const guideLength = 50
-  expect(coneLength(0, guideLength, 0.33)).toBe(guideLength)
+  const u0 = 0.33
+  const markerDist = guideLength / 1.12
+  const galaxy = bridgePoint(bridge, [0, 0, EARTH_Z - markerDist], 1)
+  const observatory: Vec3 = [0, 0, -100]
+  expect(coneLength(0, guideLength, u0, u0)).toBe(guideLength)
+  for (const k of [0, 0.2, 0.34]) {
+    const scale = diveScale(ease(k), u0, 0.001)
+    const length = coneLength(k, guideLength, scale, u0)
+    expect(length).toBeCloseTo(guideLength * (scale / u0), 9)
+    const marker = diveMarkerPosition(bridge, galaxy, observatory, k, u0, scale)
+    const markerReach = Math.hypot(marker[0] - bridge.origin[0], marker[1] - bridge.origin[1], marker[2] - bridge.origin[2])
+    expect(length / markerReach).toBeCloseTo(guideLength / markerDist, 9)
+  }
   for (const k of [ALIGN_K, 0.72, 0.8, 0.9, 1]) {
-    const scale = diveScale(ease(k), 0.33, 0.001)
-    const length = coneLength(k, guideLength, scale)
+    const scale = diveScale(ease(k), u0, 0.001)
+    const length = coneLength(k, guideLength, scale, u0)
     const [tx, ty] = coneTan(k, real, pyramid)
     for (const [x, y] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) {
       const corner = bridgePoint(bridge, [x * halfWidth, y * halfHeight, 0], scale)

@@ -3,7 +3,7 @@
 // (kierunki J2000 + współrzędne tekstury); rzut stereograficzny liczy shader warstwy (`hipsSkyGL.ts`), jak dla gwiazd.
 import { DEG, type Mat3, type Vec3 } from './astro'
 import { faceXYToVec, nestToFaceXY } from './healpix'
-import { tileOrderFor, type SurveyId } from './hips'
+import { tileOrderFor, tilePixelArcsec, type SurveyId } from './hips'
 
 export type SkyLook = 'default' | 'nsns' | 'nsnsRgb'
 
@@ -36,6 +36,11 @@ const ARCSEC_PER_RAD = 206264.806
 /** Rząd kafelków szczegółowych dla skali ekranu [″/px]; null, gdy wystarcza sam podkład Allsky. */
 export function detailOrder(arcsecPerPx: number, maxOrder: number): number | null {
   return arcsecPerPx >= ALLSKY_ENOUGH_ARCSEC ? null : tileOrderFor(arcsecPerPx, maxOrder)
+}
+
+/** Skala rzutu na granicy, przy której zaczyna być potrzebny podany poziom szczegółów. */
+export function detailOrderScale(order: number): number {
+  return ARCSEC_PER_RAD / Math.min(ALLSKY_ENOUGH_ARCSEC, tilePixelArcsec(order - 1))
 }
 
 /** Środek rzutu (J2000), promień kątowy koła obejmującego ekran [°] i skala w środku [″/px]. */

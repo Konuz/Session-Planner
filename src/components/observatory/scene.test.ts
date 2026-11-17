@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { expect, it } from 'vitest'
 import { ObservatoryScene } from './scene'
 import type { ObservatoryItem } from '../../lib/observatory'
+import { MARK, MARK_PROJECTION_Y } from '../space3d/photoGuide'
 
 // Prawdziwe obiekty Three.js; pomijamy tylko konstruktor wymagający DOM i kontekstu WebGL.
 function fixture() {
@@ -34,7 +35,7 @@ function fixture() {
     items: [item, star], image: { width: 1000, height: 500 }, domain: { minLy: 100, maxLy: 10000 },
     visible: new Set([item.id, star.id]), selected: null, stars: new THREE.Points(geometry), starIndex: [1],
     cards: new Map([[item.id, card]]), anchors: new Map([[item.id, anchor]]), ring, cutPreview, photo, frame,
-    anchorMaterial: new THREE.SpriteMaterial(), grid: new THREE.GridHelper(), axis: new THREE.Group(), ticks: [],
+    grid: new THREE.GridHelper(), axis: new THREE.Group(), ticks: [],
     fade: { earth: 1, pyramid: 1, axis: 1, photo: 1, grid: 1 },
     labels: { style: { setProperty() {} }, querySelector: () => null }, itemLabels: new Map(), labelWidths: new Map(), badges: [], fan: null, hovered: null, earthLabel: { style: {} },
     renderer: {
@@ -72,7 +73,7 @@ it('pokazuje wycinek w pierścieniu zaznaczenia w Drodze Mlecznej i po wskazaniu
 })
 
 it('łączy zmiany postępu, krycia i zaznaczenia w jedną aktualizację buforów przed rysowaniem', () => {
-  const { scene, positions, alphas, card, anchor, ring, photo, rendered } = fixture()
+  const { scene, camera, positions, alphas, card, anchor, ring, photo, rendered } = fixture()
   scene.setProgress(0.25)
   scene.setProgress(0.5)
   scene.setFade({ photo: 0.7 }, 0.3)
@@ -85,6 +86,7 @@ it('łączy zmiany postępu, krycia i zaznaczenia w jedną aktualizację buforó
   expect(alphas.getX(0)).toBeCloseTo(0.4375)
   expect(card.position.toArray()).toEqual([25, 12.5, expect.closeTo(-43.2, 9)])
   expect(anchor.position.toArray()).toEqual([25, 12.5, -200])
+  expect(anchor.scale.x).toBeCloseTo(MARK * MARK_PROJECTION_Y / camera.projectionMatrix.elements[5])
   expect(ring.position.toArray()).toEqual([25, 12.5, -200])
   expect(card.scale.x).toBeCloseTo(19.352)
   expect(card.material.opacity).toBeCloseTo(0.6804)
