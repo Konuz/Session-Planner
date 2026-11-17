@@ -246,6 +246,7 @@ export function LayersMenu({ threeD = false, settings, typeCounts = [], defaultO
           ) : (
             <>
               <div className="layers-choice layers-inline">
+                {skyLookSurvey(skyLook) && <span className="layers-note">{SURVEYS[skyLookSurvey(skyLook)!].credit}. Na południe od −16° gwiazdy katalogu.</span>}
                 <span className="label">Wygląd nieba</span>
                 <Select
                   className="control sky-look-select"
@@ -255,7 +256,6 @@ export function LayersMenu({ threeD = false, settings, typeCounts = [], defaultO
                   onChange={(v) => setSkyLook(v as SkyLook)}
                   ariaLabel="Wygląd nieba"
                 />
-                {skyLookSurvey(skyLook) && <span className="layers-note">{SURVEYS[skyLookSurvey(skyLook)!].credit}. Na południe od −16° gwiazdy katalogu.</span>}
               </div>
               <div className="layers-choice">
                 <label className="label" htmlFor="sky-object-density" style={{ textTransform: 'uppercase' }}>Zagęszczenie obiektów</label>

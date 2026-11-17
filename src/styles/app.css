@@ -627,7 +627,7 @@ input[type='checkbox']:checked::after {
 /* Lista rozwijana warstw kopuły: otwiera się w górę nad paskiem narzędzi. */
 .layers-menu { position: relative; margin-left: auto; }
 .layers-menu .button { display: inline-flex; align-items: center; gap: 6px; }
-.popover.layers-popover { top: auto; bottom: calc(100% + 6px); left: 0; right: auto; width: 276px; max-width: calc(100vw - 24px); padding: 10px 12px; display: grid; gap: 8px; }
+.popover.layers-popover { top: auto; bottom: calc(100% + 6px); left: 0; right: auto; width: 324px; max-width: calc(100vw - 24px); padding: 10px 12px; display: grid; gap: 8px; }
 /* Suwak krycia pod przełącznikiem warstwy: tekst jak przełączniki paska, wcięty do ich podpisu (tor 30 px + odstęp 6 px). */
 .layers-range { display: flex; align-items: center; gap: 8px; min-width: 0; padding-left: 36px; font: 10px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-2); }
 .layers-range input { flex: 1; width: 0; min-width: 0; }
@@ -646,7 +646,8 @@ input[type='checkbox']:checked::after {
 .layers-choice + .layers-choice { margin-top: 2px; padding-top: 8px; border-top: 1px solid var(--border); }
 .layers-choice .label { flex-basis: 100%; color: var(--text-2); font: 11px var(--mono); letter-spacing: 0.02em; text-transform: none; }
 .layers-choice.layers-inline { align-items: center; justify-content: space-between; gap: 6px 8px; }
-.layers-choice.layers-inline .label { flex-basis: auto; }
+.layers-choice.layers-inline .label { flex: none; white-space: nowrap; }
+.layers-choice.layers-inline > .custom-select { max-width: 100%; min-width: 0; }
 /* Stała szerokość: przycisk nie skacze przy zmianie nazwy stylu. */
 .layers-cycle { width: 100%; justify-content: space-between; }
 .layers-cycle .dim { color: inherit; opacity: 0.6; }
