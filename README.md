@@ -1,85 +1,87 @@
 # KONUZASTRO Tracker
 
-**KONUZASTRO Tracker** to webowy planer sesji astrofotograficznych i interaktywne obserwatorium 3D stworzone dla serwisu [konuzastro.pl](https://konuzastro.pl) — zaprojektowane jako szybka, czytelna alternatywa dla narzędzi takich jak Telescopius, SkySafari czy Stellarium.
+**KONUZASTRO Tracker** is a web-based astrophotography session planner and interactive 3D observatory built for [konuzastro.pl](https://konuzastro.pl) — designed as a fast, readable alternative to tools such as Telescopius, SkySafari, and Stellarium.
 
-Aplikacja łączy interaktywną kopułę nieba (WebGL2 + Canvas 2D), bazę ponad **19 000 obiektów głębokiego nieba (DSO)** z wieloźródłowym łańcuchem odległości, symulator kadrowania z przeglądami HiPS (DSS2, PanSTARRS, NSNS), prognozę warunków obserwacyjnych i seeingu, planer nocy z eksportem do N.I.N.A. oraz **Obserwatorium 3D** z lokalnym solverem astrometrii (Skyshot) i rzutowaniem gwiazd Gaia DR3 w przestrzeni trójwymiarowej.
+The application combines an interactive sky dome (WebGL2 + Canvas 2D), a database of over **19,000 deep-sky objects (DSOs)** with a multi-source distance pipeline, a framing simulator backed by HiPS sky surveys (DSS2, PanSTARRS, NSNS), weather and seeing forecasts, a night session planner with N.I.N.A. export, and a **3D Observatory** powered by a local plate solver (Skyshot) and Gaia DR3 star projection in 3D space.
 
----
-
-## Spis treści
-
-1. [Główne funkcje](#główne-funkcje)
-2. [Stos technologiczny](#stos-technologiczny)
-3. [Szybki start (środowisko deweloperskie)](#szybki-start-środowisko-deweloperskie)
-4. [Wdrożenie i uruchomienie produkcyjne](#wdrożenie-i-uruchomienie-produkcyjne)
-5. [Skrypty i przebudowa danych](#skrypty-i-przebudowa-danych)
-6. [Struktura projektu](#struktura-projektu)
-7. [Źródła danych zewnętrznych i licencje](#źródła-danych-zewnętrznych-i-licencje)
-   - [Katalog obiektów głębokiego nieba (DSO)](#1-katalog-obiektów-głębokiego-nieba-dso)
-   - [Łańcuch odległości obiektów](#2-łańcuch-odległości-obiektów)
-   - [Gwiazdy, gwiazdozbiory, ilustracje i Droga Mleczna](#3-gwiazdy-gwiazdozbiory-ilustracje-i-droga-mleczna)
-   - [Kontury mgławic jasnych i ciemnych](#4-kontury-mgławic-jasnych-i-ciemnych)
-   - [Przeglądy fotograficzne nieba (HiPS)](#5-przeglądy-fotograficzne-nieba-hips)
-   - [Astrometria, gwiazdy pola i katalogi głębokie (Obserwatorium 3D)](#6-astrometria-gwiazdy-pola-i-katalogi-głębokie-obserwatorium-3d)
-   - [Usługi pogodowe, geokodowanie, opisy i zdjęcia](#7-usługi-pogodowe-geokodowanie-opisy-i-zdjęcia)
-   - [Tekstury i grafiki ciał niebieskich](#8-tekstury-i-grafiki-ciał-niebieskich)
+*(Note: the application UI and source code comments are in Polish).*
 
 ---
 
-## Główne funkcje
+## Table of Contents
 
-* **Kopuła nieba (`Niebo`)** — rzut stereograficzny (N u góry, E po lewej), gwiazdy i własne rozwiązane zdjęcia renderowane w WebGL2, tło przeglądów wąskopasmowych NSNS (DR0.1 true-color i DR0.2 bez Hα), pas Drogi Mlecznej, linie i półprzezroczyste ilustracje gwiazdozbiorów po najechaniu kursorem, wielopoziomowe kontury mgławic jasnych i ciemnych, tor ruchu wybranego obiektu, położenie Słońca i Księżyca oraz własny profil horyzontu.
-* **Katalog obiektów (`Katalog`)** — błyskawiczne filtrowanie i wyszukiwanie (wirtualizowana lista) według katalogów (`M`, `NGC`, `IC`, `Sh2`, `LBN`, `LDN`, `B`, `vdB`, `SNR` oraz grupy `Inne`: gromady klasyczne i odkrycia amatorów, `Ced`, `RCW`, `Gum`, `Arp`, `HCG`, `WR`), typów obiektów, gwiazdozbioru, jasności, rozmiaru kątowego oraz widoczności w wybraną noc. Kolorowe miniatury z przeglądów HiPS (DSS2, NSNS) oraz integracja z galerią AstroBin i opisami z Wikipedii.
-* **Kadrowanie i sprzęt (`Sprzęt`)** — konfiguracja teleskopów, kamer, reduktorów/korektorów, obrót i przesuwanie prostokąta matrycy na tle mozaiki HiPS składanej w Web Workerze (rzut styczny TAN), a także możliwość przypisania i wklejenia własnego rozwiązanego zdjęcia obiektu na kopułę i do panelu kadrowania.
-* **Wykres wysokości, fazy nocy i pogoda** — krzywa wysokości obiektu i odległości kątowej od Księżyca, automatyczne wyznaczanie najciemniejszego okna nocy (do białych nocy i dni/nocy polarnych włącznie), przejście przez południk (górowanie) oraz wielomodelowa prognoza pogody (Open-Meteo: Auto, ECMWF IFS, DWD ICON, NOAA GFS, UK Met Office, CMC GEM oraz MET Norway) z wyliczeniem seeingu z pionowego profilu atmosfery ($C_n^2$: warstwa graniczna + swobodna atmosfera) lub prądu strumieniowego.
-* **Planer sesji (`Planer`)** — układanie harmonogramu wielu celów na noc, automatyczny podział okna obserwacyjnego (`autoSchedule`), podsumowanie warunków na 7 kolejnych nocy i eksport planu do formatu CSV zgodnego z **N.I.N.A.** (format Telescopius).
-* **Własny horyzont (`Horyzont`)** — interaktywny edytor profilu przeszkód terenowych (360°) z obsługą importu i eksportu plików horyzontu.
-* **Pozycja 3D i Obserwatorium 3D zdjęcia** — trójwymiarowa wizualizacja położenia obiektu w skali **Drogi Mlecznej** (liniowo do 150 tys. lś) oraz **Wszechświata lokalnego** (skala logarytmiczna z modelami morfologicznymi galaktyk Grupy Lokalnej). Po wgraniu zdjęcia (JPEG, PNG, WebP, TIFF, FITS) lokalny solver astrometrii wyznacza WCS, pobiera do 1000 najjaśniejszych gwiazd pola z **Gaia DR3** (z odległościami Bailer-Jones) oraz dodatkowe katalogi głębokie (`PGC`, kwazary `SDSS DR16Q`, gromady `Abell/ACO`) i pozwala płynnie „zanurkować” kamerą od modelu Galaktyki wprost do rozłożonego w 3D zdjęcia z histogramem odległości i inspektorem źródeł (SIMBAD, NED, katalog, regresor ML).
-
----
-
-## Stos technologiczny
-
-* **Frontend:** React 19, TypeScript 6 (`strict`), Vite 8, Zustand (stan + `localStorage`), `astronomy-engine` (efemerydy), `three.js` (sceny 3D ładowane leniwie), `@tanstack/react-virtual`, WebGL2, Web Workers (`visibility.worker.ts`, `hips.worker.ts`), PWA (`vite-plugin-pwa` + Cache Storage + IndexedDB).
-* **Style:** czysty CSS w `src/styles/app.css` oparty na tokenach kolorystycznych spójnych z [konuzastro.pl](https://konuzastro.pl) (bez Tailwinda i bez zewnętrznych fontów sieciowych).
-* **Backend (`server/`):** natywny serwer HTTP w Node.js 24 (`node:http`, uruchamiający pliki `.ts` bez bundlera), `sharp` (przetwarzanie obrazów i konwersja kafelków HiPS), `fast-xml-parser` (odpowiedzi VOTable z NED), `worker_threads` (wyznaczanie maski czarnych brzegów zdjęcia poza pętlą zdarzeń).
-* **Narzędzia lokalne (opcjonalne na serwerze):**
-  * **Skyshot (`scripts/skyshot-bridge`)** — most w języku Rust do lokalnego solvera astrometrii `skyshot-solver`.
-  * **Astro-Regressor (`astro-regressor-main`, `scripts/regressor/cut_distance.py`)** — proces roboczy w Pythonie (zarządzany przez `pixi`) szacujący w tle niezweryfikowane odległości obiektów bez pomiaru katalogowego.
+1. [Key Features](#key-features)
+2. [Tech Stack](#tech-stack)
+3. [Quick Start (Development)](#quick-start-development)
+4. [Production Deployment](#production-deployment)
+5. [Scripts and Data Rebuild](#scripts-and-data-rebuild)
+6. [Project Structure](#project-structure)
+7. [External Data Sources and Licenses](#external-data-sources-and-licenses)
+   - [Deep-Sky Object (DSO) Catalog](#1-deep-sky-object-dso-catalog)
+   - [Object Distance Chain](#2-object-distance-chain)
+   - [Stars, Constellations, Artwork, and the Milky Way](#3-stars-constellations-artwork-and-the-milky-way)
+   - [Bright and Dark Nebula Outlines](#4-bright-and-dark-nebula-outlines)
+   - [All-Sky Photographic Surveys (HiPS)](#5-all-sky-photographic-surveys-hips)
+   - [Astrometry, Field Stars, and Deep Catalogs (3D Observatory)](#6-astrometry-field-stars-and-deep-catalogs-3d-observatory)
+   - [Weather, Geocoding, Descriptions, and Photos](#7-weather-geocoding-descriptions-and-photos)
+   - [Celestial Body Textures and Graphics](#8-celestial-body-textures-and-graphics)
 
 ---
 
-## Szybki start (środowisko deweloperskie)
+## Key Features
 
-### Wymagania
-* **Node.js 24** (natywna obsługa plików TypeScript oraz flagi `--env-file-if-exists`)
-* Opcjonalnie dla lokalnej astrometrii zdjęć (`/api/photo/solve`, `/api/photo/stars`): **Git**, **Rust (`cargo`)** oraz **Python 3**
-* Opcjonalnie dla regresora odległości ML (`/api/photo/regressor`): **Pixi** oraz katalog `astro-regressor-main`
+* **Sky Dome (`Niebo`)** — stereographic projection (North up, East left), WebGL2-rendered stars and user plate-solved photos, narrowband NSNS background layers (DR0.1 true-color and DR0.2 without Hα), Milky Way band, constellation lines and translucent constellation artwork on hover, multi-level bright and dark nebula outlines, target transit path, Sun/Moon positions, and custom horizon profile.
+* **Object Catalog (`Katalog`)** — fast filtering and search (virtualized list) across catalogs (`M`, `NGC`, `IC`, `Sh2`, `LBN`, `LDN`, `B`, `vdB`, `SNR`, and the `Other` group: classical open/globular clusters & amateur discoveries, `Ced`, `RCW`, `Gum`, `Arp`, `HCG`, `WR`), object types, constellations, magnitudes, angular sizes, and visibility on a selected night. Features color thumbnails from HiPS surveys (DSS2, NSNS), AstroBin gallery integration, and Wikipedia descriptions.
+* **Framing and Equipment (`Sprzęt`)** — telescope, camera, and reducer/flattener profiles, rotation and panning of the sensor frame over a HiPS mosaic assembled in a Web Worker (TAN gnomonic projection), plus attaching and compositing custom plate-solved user photos onto both the sky dome and the framing panel.
+* **Altitude Chart, Night Phases, and Weather** — object altitude and Moon angular separation curves, automatic darkest-window detection (handling white nights as well as polar day/night), meridian transit, and multi-model weather forecasts (Open-Meteo: Auto, ECMWF IFS, DWD ICON, NOAA GFS, UK Met Office, CMC GEM, and MET Norway) with seeing estimation from atmospheric vertical profiles ($C_n^2$: boundary layer + free atmosphere) or jet-stream winds.
+* **Session Planner (`Planer`)** — multi-target night scheduling, automatic time-window allocation (`autoSchedule`), 7-night weather outlook summary, and CSV export compatible with **N.I.N.A.** (Telescopius format).
+* **Custom Horizon (`Horyzont`)** — interactive 360° horizon obstruction editor with file import and export.
+* **3D Position & Photo 3D Observatory** — 3D visualization of an object's position at the **Milky Way** scale (linear up to 150,000 ly) and the **Local Universe** scale (logarithmic with morphological models of Local Group galaxies). Uploading an astrophotograph (JPEG, PNG, WebP, TIFF, FITS) runs local plate solving to obtain WCS, fetches up to 1,000 brightest field stars from **Gaia DR3** (with Bailer-Jones distances) plus deep catalogs (`PGC`, `SDSS DR16Q` quasars, `Abell/ACO` galaxy clusters), and lets the camera smoothly dive from the Galaxy model straight into the unfolded 3D photograph with a distance histogram and source inspector (SIMBAD, NED, catalog, ML regressor).
 
-### Instalacja i uruchomienie
+---
 
-1. Zainstaluj zależności:
+## Tech Stack
+
+* **Frontend:** React 19, TypeScript 6 (`strict`), Vite 8, Zustand (state + `localStorage`), `astronomy-engine` (ephemerides), `three.js` (lazy-loaded 3D scenes), `@tanstack/react-virtual`, WebGL2, Web Workers (`visibility.worker.ts`, `hips.worker.ts`), PWA (`vite-plugin-pwa` + Cache Storage + IndexedDB).
+* **Styling:** plain CSS in `src/styles/app.css` using color tokens consistent with [konuzastro.pl](https://konuzastro.pl) (no Tailwind, no external web fonts).
+* **Backend (`server/`):** native Node.js 24 HTTP server (`node:http`, executing `.ts` files directly without a bundler), `sharp` (image processing and HiPS tile transcoding), `fast-xml-parser` (NED VOTable responses), `worker_threads` (off-thread black-border mask detection).
+* **Local Tools (optional on server):**
+  * **Skyshot (`scripts/skyshot-bridge`)** — Rust bridge for the local `skyshot-solver` plate solver.
+  * **Astro-Regressor (`astro-regressor-main`, `scripts/regressor/cut_distance.py`)** — persistent Python worker (managed via `pixi`) estimating unverified distances in the background when no catalog distance is available.
+
+---
+
+## Quick Start (Development)
+
+### Requirements
+* **Node.js 24** (native TypeScript execution and `--env-file-if-exists` support)
+* Optional, for local photo plate solving (`/api/photo/solve`, `/api/photo/stars`): **Git**, **Rust (`cargo`)**, and **Python 3**
+* Optional, for the ML distance regressor (`/api/photo/regressor`): **Pixi** and the `astro-regressor-main` environment
+
+### Installation and Running
+
+1. Install dependencies:
    ```powershell
    npm install
    ```
-2. *(Opcjonalnie)* Skopiuj plik `.env.example` do `.env.local` i uzupełnij klucze API AstroBin (używane wyłącznie po stronie serwera do pobierania zdjęć autora):
+2. *(Optional)* Copy `.env.example` to `.env.local` and fill in your AstroBin API credentials (used strictly server-side to query the author's images):
    ```powershell
    Copy-Item .env.example .env.local
    ```
-3. *(Opcjonalnie)* Zainstaluj i skompiluj lokalny solver astrometrii Skyshot wraz z indeksami gwiazd (pobierane do `scripts/.cache/`):
+3. *(Optional)* Clone, build, and fetch star indexes for the local Skyshot plate solver (stored in `scripts/.cache/`):
    ```powershell
    npm run setup:skyshot
    ```
-4. Uruchom serwer deweloperski Vite (domyślnie `http://localhost:5173`, zawiera również trasy `/api/*`):
+4. Start the Vite development server (defaults to `http://localhost:5173`, includes all `/api/*` middleware routes):
    ```powershell
    npm run dev
    ```
 
 ---
 
-## Wdrożenie i uruchomienie produkcyjne
+## Production Deployment
 
-Sam statyczny hosting ani `npm run preview` nie obsługują tras serwerowych (`/api/photo/*`, `/api/astrobin-photo`, `/api/hips/*`). W środowisku produkcyjnym aplikację uruchamia dedykowany serwer Node.js (`server/index.ts`).
+Static hosting alone or `npm run preview` does not expose the backend endpoints (`/api/photo/*`, `/api/astrobin-photo`, `/api/hips/*`). In production, the application must be served by the dedicated Node.js server (`server/index.ts`).
 
 ```powershell
 npm ci
@@ -87,24 +89,24 @@ npm run build
 npm start
 ```
 
-### Najważniejsze zmienne środowiskowe (`server/index.ts`)
-* `HOST` — adres nasłuchu (domyślnie `127.0.0.1`).
-* `PORT` — port serwera (domyślnie `4173`).
-* `ALLOWED_HOSTS` — **wymagane przy publikacji pod domeną** (lista nazw hostów oddzielonych przecinkami, np. `ALLOWED_HOSTS=tracker.konuzastro.pl`). Serwer odrzuca kodem `403` żądania z nagłówkiem `Host` innym niż IP, `localhost` lub nazwa z `ALLOWED_HOSTS` (ochrona przed DNS rebinding).
-* `ASTROBIN_API_KEY`, `ASTROBIN_API_SECRET` — klucze API AstroBin (bez prefiksu `VITE_`). W razie ich braku endpoint zwraca `503`, a interfejs automatycznie korzysta z przeglądów DSS2.
-* `HIPS_CACHE_DIR` — katalog bufora kafelków NSNS na dysku (domyślnie `scripts/.cache/hips-proxy`).
-* `SKYSHOT_BRIDGE`, `SKYSHOT_INDEX` — ścieżki do binarki `tracker-skyshot` i indeksów astrometrycznych (domyślnie w `scripts/.cache/`).
-* `REGRESSOR_DIR`, `PIXI` — ścieżka do katalogu `astro-regressor-main` i pliku wykonywalnego `pixi` (jeśli brak, regresor jest bezpiecznie wyłączony).
+### Environment Variables (`server/index.ts`)
+* `HOST` — listen address (default `127.0.0.1`).
+* `PORT` — listen port (default `4173`).
+* `ALLOWED_HOSTS` — **required when serving under a domain name** (comma-separated list, e.g. `ALLOWED_HOSTS=tracker.konuzastro.pl`). Requests whose `Host` header is not an IP address, `localhost`, or listed in `ALLOWED_HOSTS` are rejected with `403` (DNS rebinding protection).
+* `ASTROBIN_API_KEY`, `ASTROBIN_API_SECRET` — AstroBin API keys (never use a `VITE_` prefix). If omitted, the endpoint returns `503` and the UI falls back to DSS2.
+* `HIPS_CACHE_DIR` — disk cache directory for NSNS tiles (default `scripts/.cache/hips-proxy`).
+* `SKYSHOT_BRIDGE`, `SKYSHOT_INDEX` — paths to the `tracker-skyshot` executable and astrometric index directory (default inside `scripts/.cache/`).
+* `REGRESSOR_DIR`, `PIXI` — path to `astro-regressor-main` and the `pixi` executable (if unavailable, the regressor is cleanly disabled).
 
-### Jakie pliki są potrzebne na serwerze produkcyjnym?
-Serwer udostępnia na zewnątrz wyłącznie zawartość katalogu `dist/`, ale w czasie działania proces Node.js potrzebuje obok `dist/`:
-1. **`dist/`** — zbudowany frontend wraz z wygenerowanymi przy buildzie wariantami `.br` i `.gz`,
-2. **`server/`** — kod serwera HTTP i endpointów API,
-3. **`src/lib/`** — moduły logiki współdzielone z serwerem (`catalog.ts`, `blackBorderMask.ts`, `distance.ts`, `ownPhoto.ts`, `photo.ts`, `perf.ts`),
-4. **`public/data/catalog.json`** — odczytywany bezpośrednio przez `server/photo.ts`,
-5. **`package.json`**, **`package-lock.json`** i **`node_modules/`** (zależności wykonawcze, m.in. `sharp`, `fast-xml-parser`),
-6. **Binarka Skyshota oraz bufor regresora** (`scripts/.cache/skyshot-build/release/tracker-skyshot.exe` wraz z bibliotekami `.dll` oraz `scripts/.cache/regressor/*.json`) — dołączone bezpośrednio do repozytorium Git.
-7. **Duże paczki danych z GitHub Releases (`v0.1.0`)** — ze względu na limity rozmiaru plików w Git indeksy astrometryczne Skyshota (`skyshot-data.tar`, ~842 MB) oraz pełne kopie przeglądów HiPS NSNS (`hips-proxy-nsns-tc8.tar`, ~874 MB i `hips-proxy-nsns-rgb8.tar`, ~596 MB) są opublikowane w sekcji **Releases** repozytorium. Po pobraniu rozpakuj je w katalogu głównym projektu:
+### Files Required on a Production Server
+The server exposes only the contents of `dist/` over HTTP, while the Node.js runtime itself requires the following alongside `dist/`:
+1. **`dist/`** — built frontend bundle along with precompressed `.br` and `.gz` variants,
+2. **`server/`** — HTTP server and API endpoint handlers,
+3. **`src/lib/`** — shared domain modules imported directly by the server (`catalog.ts`, `blackBorderMask.ts`, `distance.ts`, `ownPhoto.ts`, `photo.ts`, `perf.ts`),
+4. **`public/data/catalog.json`** — read directly by `server/photo.ts`,
+5. **`package.json`**, **`package-lock.json`**, and **`node_modules/`** (runtime dependencies including `sharp` and `fast-xml-parser`),
+6. **Skyshot Windows binary & regressor cache** (`scripts/.cache/skyshot-build/release/tracker-skyshot.exe` with runtime `.dll` files, plus `scripts/.cache/regressor/*.json`) — committed directly in this Git repository *(note: on Linux/macOS, compile the bridge for your target OS via `npm run setup:skyshot`)*,
+7. **Large Data Archives from GitHub Releases (`v0.1.0`)** — due to Git file-size limits, the Skyshot astrometric index (`skyshot-data.tar`, ~842 MB) and complete NSNS HiPS survey mirrors (`hips-proxy-nsns-tc8.tar`, ~882 MB and `hips-proxy-nsns-rgb8.tar`, ~604 MB) are hosted in the repository's **Releases** section. After downloading them, extract into the project root:
    ```powershell
    tar -xf skyshot-data.tar -C scripts/.cache
    mkdir -Force scripts/.cache/hips-proxy
@@ -112,155 +114,155 @@ Serwer udostępnia na zewnątrz wyłącznie zawartość katalogu `dist/`, ale w 
    tar -xf hips-proxy-nsns-rgb8.tar -C scripts/.cache/hips-proxy
    ```
 
-Szczegółowy opis konfiguracji produkcyjnej znajduje się w pliku [`docs/uruchomienie.md`](docs/uruchomienie.md).
+Additional production setup notes (in Polish) are available in [`docs/uruchomienie.md`](docs/uruchomienie.md).
 
 ---
 
-## Skrypty i przebudowa danych
+## Scripts and Data Rebuild
 
-| Polecenie | Opis |
+| Command | Description |
 | :--- | :--- |
-| `npm run dev` | Uruchamia serwer deweloperski Vite z middleware `/api/*`. |
-| `npm run build` | Wykonuje `tsc --noEmit`, buduje aplikację i Service Workera (`vite build`), a następnie tworzy warianty `.br` i `.gz` (`scripts/compress-dist.ts`). |
-| `npm start` | Uruchamia serwer produkcyjny (`server/index.ts`) z obsługą `.env.local`. |
-| `npm test` | Uruchamia testy jednostkowe i integracyjne Vitest (`src/**/*.test.ts`). |
-| `npm run typecheck` | Sprawdza typy TypeScript (`tsc --noEmit`) w `src`, `server` i `scripts`. |
-| `npm run build:data` | Przebudowuje pliki w `public/data/` oraz `src/lib/constellations.ts` ze źródeł zewnętrznych (buforowanych w `scripts/.cache/`). Możliwe uruchomienie pojedynczego etapu: `node scripts/build-data.ts catalog\|sky\|outlines\|milkyway\|hips`. |
-| `npm run setup:skyshot` | Klonuje i buduje w Rust most `tracker-skyshot` oraz pobiera indeksy astrometryczne do `scripts/.cache/`. |
-| `node scripts/hips-mirror.ts` | Pobiera z góry pełną lokalną kopię zestawów kafelków NSNS (`nsns-tc8`, `nsns-rgb8`) do `HIPS_CACHE_DIR` (~0,9 GB JPEG na zestaw) i zapisuje znacznik `mirror-complete.json`. |
+| `npm run dev` | Starts the Vite dev server with `/api/*` middleware. |
+| `npm run build` | Runs `tsc --noEmit`, builds the client bundle and Service Worker (`vite build`), and generates `.br`/`.gz` files (`scripts/compress-dist.ts`). |
+| `npm start` | Starts the production Node.js server (`server/index.ts`) loading `.env.local` if present. |
+| `npm test` | Runs Vitest unit and integration tests (`src/**/*.test.ts`). |
+| `npm run typecheck` | Runs TypeScript type checking (`tsc --noEmit`) across `src`, `server`, and `scripts`. |
+| `npm run build:data` | Rebuilds `public/data/` and `src/lib/constellations.ts` from upstream sources (cached in `scripts/.cache/`). Supports individual stages: `node scripts/build-data.ts catalog\|sky\|outlines\|milkyway\|hips`. |
+| `npm run setup:skyshot` | Clones and builds the Rust `tracker-skyshot` bridge and downloads Gaia DR3 astrometric indexes into `scripts/.cache/`. |
+| `node scripts/hips-mirror.ts` | Pre-downloads complete local copies of NSNS HiPS tile sets (`nsns-tc8`, `nsns-rgb8`) into `HIPS_CACHE_DIR` (~0.9 GB JPEG per set) and writes `mirror-complete.json`. |
 
 ---
 
-## Struktura projektu
+## Project Structure
 
-* `src/` — kod źródłowy aplikacji klienckiej:
-  * `src/components/` — komponenty UI, kopuła nieba (`SkyDome`), wykres wysokości (`AltitudeChart`), kadrowanie (`FramingPanel`), scena 3D (`space3d/`) oraz Obserwatorium 3D (`observatory/`),
-  * `src/views/` — główne zakładki aplikacji (`SkyView`, `CatalogView`, `PlannerView`, `EquipmentView`, `HorizonView`),
-  * `src/lib/` — czysta logika obliczeniowa (mechanika nieba, fazy nocy, rzutowanie, HEALPix/HiPS, seeing, parser katalogu, eksport N.I.N.A.) wraz z testami `*.test.ts`,
-  * `src/workers/` — Web Workery (`visibility.worker.ts`, `hips.worker.ts`),
-  * `src/state/` — magazyn stanu Zustand (`store.ts`) i hooki danych (`data.ts`).
-* `server/` — serwer produkcyjny Node.js, pośrednik kafelków HiPS NSNS, obsługa AstroBin API, astrometrii Skyshot, zapytań SIMBAD/NED/Gaia oraz kolejka regresora.
-* `public/` — zasoby statyczne kopiowane do `dist/` (`public/data/` z katalogiem, gwiazdami, obrysami i ilustracjami gwiazdozbiorów, `public/icons/`, `public/textures/`).
-* `scripts/` — generator danych katalogowych (`build-data.ts` i moduły pomocnicze), kompresja `dist/`, most Rust `skyshot-bridge/`, wrapper `regressor/` oraz bufor `scripts/.cache/` (ignorowany przez Git).
-* `docs/` — dokumentacja uruchomieniowa, lista wymagań, raporty z audytów i dokumentacja weryfikacji odległości.
+* `src/` — client application source code:
+  * `src/components/` — UI components, sky dome (`SkyDome`), altitude chart (`AltitudeChart`), framing simulator (`FramingPanel`), 3D scenes (`space3d/`), and 3D Photo Observatory (`observatory/`),
+  * `src/views/` — top-level views (`SkyView`, `CatalogView`, `PlannerView`, `EquipmentView`, `HorizonView`),
+  * `src/lib/` — pure calculation modules (astro mechanics, night phases, projections, HEALPix/HiPS, seeing, catalog parser, N.I.N.A. exporter) and `*.test.ts` suites,
+  * `src/workers/` — Web Workers (`visibility.worker.ts`, `hips.worker.ts`),
+  * `src/state/` — Zustand store (`store.ts`) and data hooks (`data.ts`).
+* `server/` — production HTTP server, NSNS HiPS proxy, AstroBin API handler, Skyshot plate-solving bridge, SIMBAD/NED/Gaia loaders, and ML regressor job queue.
+* `public/` — static assets copied into `dist/` (`public/data/` containing the catalog, stars, outlines, Milky Way map, and constellation art, plus `public/icons/` and `public/textures/`).
+* `scripts/` — catalog/sky build pipeline (`build-data.ts` and helpers), `dist/` precompression, Rust `skyshot-bridge/`, Python `regressor/` wrapper, and local runtime cache `scripts/.cache/`.
+* `docs/` — deployment documentation (`uruchomienie.md`) and catalog identity verification data (`odleglosci/tozsamosc.json`).
 
 ---
 
-## Źródła danych zewnętrznych i licencje
+## External Data Sources and Licenses
 
-Aplikacja **KONUZASTRO Tracker** korzysta z otwartych katalogów astronomicznych, przeglądów nieba, baz naukowych oraz usług pogodowych i encyklopedycznych. Poniżej znajduje się pełne zestawienie źródeł danych wraz z warunkami licencyjnymi i wymaganymi atrybucjami.
+**KONUZASTRO Tracker** relies on open astronomical catalogs, all-sky surveys, scientific databases, and public weather/encyclopedic APIs. Below is the complete list of external data sources along with their licenses and attribution requirements.
 
-### 1. Katalog obiektów głębokiego nieba (DSO)
+### 1. Deep-Sky Object (DSO) Catalog
 
-Plik `public/data/catalog.json` powstaje w procesie `npm run build:data` z połączenia poniższych katalogów:
+`public/data/catalog.json` is built via `npm run build:data` by merging the following catalogs:
 
-| Zbiór danych / Katalog | Autorzy / Źródło | Licencja / Warunki wykorzystania |
+| Dataset / Catalog | Authors / Source | License / Terms of Use |
 | :--- | :--- | :--- |
 | **OpenNGC** (`NGC.csv`, `addendum.csv`) | Mattia Verga ([github.com/mattiaverga/OpenNGC](https://github.com/mattiaverga/OpenNGC)) | **CC BY-SA 4.0** (Creative Commons Attribution-ShareAlike 4.0 International) |
-| **Katalog obszarów H II Sharplessa (Sh2)** (`VII/20`) | S. Sharpless (1959), *ApJS* 4, 257 · CDS VizieR | Dane naukowe z serwisu **VizieR (CDS, Strasbourg)** — otwarty dostęp akademicki za podaniem źródła i cytowaniem autorów publikacji |
-| **Katalog Ciemnych Mgławic Lyndsa (LDN)** (`VII/7A`) | B. T. Lynds (1962), *ApJS* 7, 1 · CDS VizieR | Dane z serwisu **VizieR (CDS)** — cytowanie autorki katalogu |
-| **Katalog Jasnych Mgławic Lyndsa (LBN)** (`VII/9`) | B. T. Lynds (1965), *ApJS* 12, 163 · CDS VizieR | Dane z serwisu **VizieR (CDS)** — cytowanie autorki katalogu |
-| **Katalog Mgławic Refleksyjnych van den Bergha (vdB)** (`VII/21`) | S. van den Bergh (1966), *AJ* 71, 990 · CDS VizieR | Dane z serwisu **VizieR (CDS)** — cytowanie autora katalogu |
-| **Katalog Ciemnych Obiektów Barnarda (B)** (`VII/220A`) | E. E. Barnard (1927), *Carnegie Inst. Washington Publ.* 247 · CDS VizieR | Domena publiczna / Dane z serwisu **VizieR (CDS)** |
-| **Katalog Galaktycznych Pozostałości po Supernowych (SNR)** (`VII/297`) | D. A. Green (2025), *J. Astrophys. Astron.* / Cavendish Laboratory · CDS VizieR | Dane z serwisu **VizieR (CDS)** — cytowanie D. A. Greena |
-| **Strasbourg-ESO Catalogue of Galactic Planetary Nebulae** (`V/84`) | A. Acker i in. (1992), ESO · CDS VizieR | Dane z serwisu **VizieR (CDS)** — cytowanie autorów katalogu |
-| **Gromady otwarte i kuliste w Gaia DR3** (`J/A+A/673/A114`) | E. L. Hunt, S. Reffert (2023), *A&A* 673, A114 · CDS VizieR | Dane z serwisu **VizieR (CDS)** / **CC BY 4.0** (publikacja A&A) |
-| **Mgławice planetarne odkryte przez amatorów** (`J/A+A/666/A152`) | P. Le Dû i in. (2022), *A&A* 666, A152 · CDS VizieR | Dane z serwisu **VizieR (CDS)** / **CC BY 4.0** (publikacja A&A) |
-| **Katalog jasnych mgławic dyfuzyjnych Cederblada (Ced)** (`VII/231`) | S. Cederblad (1946), *Lund Medd. Astron. Obs.* Ser. II, 119 · CDS VizieR | Dane z serwisu **VizieR (CDS)** — cytowanie autora katalogu |
-| **Katalog obszarów emisji Hα południowej Drogi Mlecznej (RCW / Gum)** (`VII/216`) | A. W. Rodgers, C. T. Campbell, J. B. Whiteoak (1960), *MNRAS* 121, 103 · CDS VizieR | Dane z serwisu **VizieR (CDS)** — cytowanie autorów katalogu |
-| **Atlas Galaktyk Osobliwych Arpa (Arp)** (`VII/192`) | H. Arp (1966), *ApJS* 14, 1 · CDS VizieR | Dane z serwisu **VizieR (CDS)** — cytowanie autora katalogu |
-| **Zwarte Grupy Galaktyk Hicksona (HCG)** (`VII/213`) | P. Hickson (1982), *ApJ* 255, 382 · CDS VizieR | Dane z serwisu **VizieR (CDS)** — cytowanie autora katalogu |
-| **Mgławice wokół gwiazd Wolfa-Rayeta (WR)** | J. A. Toalá i in. (2015), *A&A* 578, A66, Tabela 1 | Dane z publikacji naukowej — cytowanie autorów |
-| **Ujednolicenie identyfikatorów ciemnych obłoków** (`J/A+A/383/631`) | C. M. Dutra, E. Bica (2002), *A&A* 383, 631 · CDS VizieR | Dane z serwisu **VizieR (CDS)** — cytowanie autorów |
-| **Lista ręczna odkryć amatorskich** (`Zie 1`, `StDr 56`, `Ou 4`, `HFG 2`, `Simeis 57`, `SDSO 1`) | SIMBAD, [planetarynebulae.net](https://www.planetarynebulae.net), P. Ogle i in. (2025, arXiv:2507.15834), M. Drechsler i in. (2023, *RNAAS* 7, 1) | Dane faktograficzne z literatury naukowej i katalogu kandydatów PN (za podaniem źródła) |
-| **Polskie i angielskie tytuły artykułów Wikipedii** | **Wikidata** Query Service (`schema:about`, właściwości katalogowe `P528`/`P972`) | **CC0 1.0 Universal** (Domena publiczna Wikidata) |
+| **Sharpless Catalogue of H II Regions (Sh2)** (`VII/20`) | S. Sharpless (1959), *ApJS* 4, 257 · CDS VizieR | **VizieR (CDS, Strasbourg)** scientific data — open academic access with source attribution and author citation |
+| **Lynds' Catalogue of Dark Nebulae (LDN)** (`VII/7A`) | B. T. Lynds (1962), *ApJS* 7, 1 · CDS VizieR | **VizieR (CDS)** data — cite the catalog author |
+| **Lynds' Catalogue of Bright Nebulae (LBN)** (`VII/9`) | B. T. Lynds (1965), *ApJS* 12, 163 · CDS VizieR | **VizieR (CDS)** data — cite the catalog author |
+| **van den Bergh Catalogue of Reflection Nebulae (vdB)** (`VII/21`) | S. van den Bergh (1966), *AJ* 71, 990 · CDS VizieR | **VizieR (CDS)** data — cite the catalog author |
+| **Barnard's Catalogue of 349 Dark Objects (B)** (`VII/220A`) | E. E. Barnard (1927), *Carnegie Inst. Washington Publ.* 247 · CDS VizieR | Public domain / **VizieR (CDS)** data |
+| **Catalogue of Galactic Supernova Remnants (SNR)** (`VII/297`) | D. A. Green (2025), *J. Astrophys. Astron.* / Cavendish Laboratory · CDS VizieR | **VizieR (CDS)** data — cite D. A. Green |
+| **Strasbourg-ESO Catalogue of Galactic Planetary Nebulae** (`V/84`) | A. Acker et al. (1992), ESO · CDS VizieR | **VizieR (CDS)** data — cite the catalog authors |
+| **Gaia DR3 Open & Globular Clusters** (`J/A+A/673/A114`) | E. L. Hunt, S. Reffert (2023), *A&A* 673, A114 · CDS VizieR | **VizieR (CDS)** / **CC BY 4.0** (*A&A* publication) |
+| **Amateur-Discovered Planetary Nebulae** (`J/A+A/666/A152`) | P. Le Dû et al. (2022), *A&A* 666, A152 · CDS VizieR | **VizieR (CDS)** / **CC BY 4.0** (*A&A* publication) |
+| **Cederblad Catalogue of Bright Diffuse Galactic Nebulae (Ced)** (`VII/231`) | S. Cederblad (1946), *Lund Medd. Astron. Obs.* Ser. II, 119 · CDS VizieR | **VizieR (CDS)** data — cite the catalog author |
+| **RCW / Gum Catalogue of Hα Emission Regions** (`VII/216`) | A. W. Rodgers, C. T. Campbell, J. B. Whiteoak (1960), *MNRAS* 121, 103 · CDS VizieR | **VizieR (CDS)** data — cite the catalog authors |
+| **Atlas of Peculiar Galaxies (Arp)** (`VII/192`) | H. Arp (1966), *ApJS* 14, 1 · CDS VizieR | **VizieR (CDS)** data — cite the catalog author |
+| **Hickson Compact Groups of Galaxies (HCG)** (`VII/213`) | P. Hickson (1982), *ApJ* 255, 382 · CDS VizieR | **VizieR (CDS)** data — cite the catalog author |
+| **Wolf-Rayet Ring Nebulae (WR)** | J. A. Toalá et al. (2015), *A&A* 578, A66, Table 1 | Scientific publication data — cite the authors |
+| **Dark Cloud Designation Cross-Identification** (`J/A+A/383/631`) | C. M. Dutra, E. Bica (2002), *A&A* 383, 631 · CDS VizieR | **VizieR (CDS)** data — cite the authors |
+| **Manual Amateur Discoveries** (`Zie 1`, `StDr 56`, `Ou 4`, `HFG 2`, `Simeis 57`, `SDSO 1`) | SIMBAD, [planetarynebulae.net](https://www.planetarynebulae.net), P. Ogle et al. (2025, arXiv:2507.15834), M. Drechsler et al. (2023, *RNAAS* 7, 1) | Factual astronomical parameters from published literature and PN candidate lists (attributed to source) |
+| **Polish and English Wikipedia Article Titles** | **Wikidata** Query Service (`schema:about`, catalog properties `P528`/`P972`) | **CC0 1.0 Universal** (Wikidata Public Domain) |
 
-### 2. Łańcuch odległości obiektów
+### 2. Object Distance Chain
 
-Odległości w katalogu i w inspektorze Obserwatorium 3D pochodzą z weryfikowanego względem **SIMBAD** łańcucha publikacji naukowych (pobieranych przez **VizieR**, **SIMBAD TAP** oraz **NED**):
+Distances in the catalog and the 3D Observatory inspector come from a **SIMBAD**-identity-checked pipeline of scientific catalogs (queried via **VizieR**, **SIMBAD TAP**, and **NED**):
 
-* **Gromady gwiazd:** E. L. Hunt, S. Reffert (2023), *A&A* 673, A114 (`J/A+A/673/A114`, paralaksy Gaia DR3 członków gromad) — **CC BY 4.0** / CDS VizieR.
-* **Obszary H II i mgławice emisyjne:**
-  * L. D. Anderson i in. (2014), *ApJS* 212, 1 (`J/ApJS/212/1`, katalog H II WISE — paralaksy i odległości kinematyczne) — **CC BY 3.0 / 4.0** (AAS) / CDS VizieR.
-  * T. Foster, C. M. Brunt (2015), *AJ* 150, 147 (`J/AJ/150/147`, odległości spektrofotometryczne i prędkości CO) — CDS VizieR.
-  * D. Russeil (2003), *A&A* 397, 133 (`J/A+A/397/133`, prędkości radialne obszarów gwiazdotwórczych) — CDS VizieR.
-  * M. J. Reid i in. (2019), *ApJ* 885, 131 (model krzywej rotacji Galaktyki A5 używany do wyliczania odległości kinematycznych Monte Carlo).
-  * C. A. L. Bailer-Jones i in. (2021), *AJ* 161, 147 (odległość geometryczna gwiazdy jonizującej HD 227018 dla Sh2-101 z Gaia EDR3).
-* **Galaktyki i grupy galaktyk:**
-  * R. B. Tully i in. (2023), *ApJ* 944, 94 (`J/ApJ/944/94`, **Cosmicflows-4**) — **CC BY 4.0** (AAS) / CDS VizieR.
-  * **SIMBAD Astronomical Database** (CDS, Strasbourg / lustro IDIA) — przesunięcia ku czerwieni ($z$) oraz bezpośrednie pomiary z tabeli `mesDistance` (otwarty dostęp badawczy CDS, wymaga cytowania Wexler i in. 2000, *A&AS* 143, 9).
-  * **NASA/IPAC Extragalactic Database (NED)** (Jet Propulsion Laboratory, Caltech / NASA) — pomiary odległości (`DistancesOfObject`) i przesunięcia ku czerwieni (`ObjectLookup`); dane publiczne NASA/IPAC za podaniem atrybucji NED.
-* **Mgławice planetarne:** N. Chornay, N. A. Walton (2021), *A&A* 656, A110 (`J/A+A/656/A110`, paralaksy gwiazd centralnych w Gaia EDR3) — **CC BY 4.0** / CDS VizieR.
-* **Pozostałości po supernowych i ich składowe optyczne:**
+* **Star Clusters:** E. L. Hunt, S. Reffert (2023), *A&A* 673, A114 (`J/A+A/673/A114`, Gaia DR3 cluster member parallaxes) — **CC BY 4.0** / CDS VizieR.
+* **H II Regions and Emission Nebulae:**
+  * L. D. Anderson et al. (2014), *ApJS* 212, 1 (`J/ApJS/212/1`, WISE H II Region Catalog — parallaxes and kinematic distances) — **CC BY 3.0 / 4.0** (AAS) / CDS VizieR.
+  * T. Foster, C. M. Brunt (2015), *AJ* 150, 147 (`J/AJ/150/147`, spectrophotometric distances and CO velocities) — CDS VizieR.
+  * D. Russeil (2003), *A&A* 397, 133 (`J/A+A/397/133`, star-forming complex radial velocities) — CDS VizieR.
+  * M. J. Reid et al. (2019), *ApJ* 885, 131 (Galactic rotation curve model A5 used for Monte Carlo kinematic distance estimation).
+  * C. A. L. Bailer-Jones et al. (2021), *AJ* 161, 147 (Gaia EDR3 geometric distance of ionizing star HD 227018 for Sh2-101).
+* **Galaxies and Galaxy Groups:**
+  * R. B. Tully et al. (2023), *ApJ* 944, 94 (`J/ApJ/944/94`, **Cosmicflows-4**) — **CC BY 4.0** (AAS) / CDS VizieR.
+  * **SIMBAD Astronomical Database** (CDS, Strasbourg / IDIA mirror) — redshifts ($z$) and direct measurements from `mesDistance` (open CDS research access; requires citing Wenger et al. 2000, *A&AS* 143, 9).
+  * **NASA/IPAC Extragalactic Database (NED)** (Jet Propulsion Laboratory, Caltech / NASA) — distance measurements (`DistancesOfObject`) and redshifts (`ObjectLookup`); NASA/IPAC public data with NED attribution.
+* **Planetary Nebulae:** N. Chornay, N. A. Walton (2021), *A&A* 656, A110 (`J/A+A/656/A110`, Gaia EDR3 central star parallaxes) — **CC BY 4.0** / CDS VizieR.
+* **Supernova Remnants and Optical Components:**
   * S. Ranasinghe, D. Leahy (2022), *ApJ* 940, 63 (`J/ApJ/940/63`) — **CC BY 4.0** / CDS VizieR.
-  * H. Zhao i in. (2020), *ApJ* 891, 137 (HB 9 / `SNR G160.9+02.6`) oraz E. M. Reynoso i in. (2017), *MNRAS* 464, 3029 (Puppis A / `SNR G260.4-03.4`).
-* **Mgławice ciemne:** C. Zucker i in. (2020), *A&A* 633, A51 (`J/A+A/633/A51`, trójwymiarowe mapowanie skoku ekstynkcji pyłu z Gaia DR2) — **CC BY 4.0** / CDS VizieR.
-* **Pojedyncze publikacje dla obiektów listy ręcznej:** P. Ogle i in. (2025, `arXiv:2507.15834` dla `Zie 1`), E. R. Oudshoorn i in. (2021, *A&A* 650, A171 dla `Simeis 57`).
-* **Źródło zapasowe (oznaczane w interfejsie jako „niezweryfikowane”):** **Wikidata** (właściwość `P2583` — odległość od Ziemi) — **CC0 1.0 Universal**.
+  * H. Zhao et al. (2020), *ApJ* 891, 137 (HB 9 / `SNR G160.9+02.6`) and E. M. Reynoso et al. (2017), *MNRAS* 464, 3029 (Puppis A / `SNR G260.4-03.4`).
+* **Dark Nebulae:** C. Zucker et al. (2020), *A&A* 633, A51 (`J/A+A/633/A51`, 3D dust extinction jump mapping with Gaia DR2) — **CC BY 4.0** / CDS VizieR.
+* **Individual Literature Distances for Manual Objects:** P. Ogle et al. (2025, `arXiv:2507.15834` for `Zie 1`), E. R. Oudshoorn et al. (2021, *A&A* 650, A171 for `Simeis 57`).
+* **Fallback Source (marked as "unverified" in UI):** **Wikidata** (property `P2583` — distance from Earth) — **CC0 1.0 Universal**.
 
-### 3. Gwiazdy, gwiazdozbiory, ilustracje i Droga Mleczna
+### 3. Stars, Constellations, Artwork, and the Milky Way
 
-Pliki `public/data/sky.json`, `public/data/constellations3d.json`, `public/data/milkyway.png`, `public/data/art/*.webp` oraz `src/lib/constellations.ts` korzystają z:
+`public/data/sky.json`, `public/data/constellations3d.json`, `public/data/milkyway.png`, `public/data/art/*.webp`, and `src/lib/constellations.ts` use:
 
-| Zasób | Źródło / Autorzy | Licencja |
+| Asset | Source / Authors | License |
 | :--- | :--- | :--- |
-| **Katalog gwiazd tła do 6,5 mag, nazwy gwiazd, środki etykiet gwiazdozbiorów oraz izofoty Drogi Mlecznej** (`stars.6.json`, `starnames.json`, `constellations.json`, `mw.json`) | **d3-celestial** — Olaf Frohn ([github.com/ofrohn/d3-celestial](https://github.com/ofrohn/d3-celestial)) | **Licencja BSD 3-klauzulowa** (`BSD-3-Clause`) |
-| **Linie i definicje współczesnych gwiazdozbiorów** (`skycultures/modern/index.json`) | **Stellarium** (`modern` skyculture) ([github.com/Stellarium/stellarium](https://github.com/Stellarium/stellarium)) | **CC BY-SA 4.0** (Creative Commons Attribution-ShareAlike 4.0) |
-| **Ilustracje postaci gwiazdozbiorów** (`public/data/art/<IAU>.webp`, przetworzone do monochromatycznego obrysu z kanałem alfa) | **Stellarium** (`skycultures/modern/*.png`, Johan Meuris) | **Free Art License (FAL 1.3)** / Licencja Sztuki Wolnej |
-| **Polskie nazwy gwiazdozbiorów IAU** (`po/stellarium-skycultures/pl.po`) | Zespół tłumaczy **Stellarium** | **GNU GPL v2+** / **CC BY-SA 4.0** (zgodnie z repozytorium Stellarium) |
-| **Uzupełniające pozycje i paralaksy gwiazd linii gwiazdozbiorów (3D)** (`I/239/hip_main`) | **Katalog Hipparcos** (ESA, 1997) pobierany przez **CDS VizieR** | Dane publiczne **ESA / CDS VizieR** |
+| **Background stars down to mag 6.5, star names, constellation label positions, and Milky Way isophotes** (`stars.6.json`, `starnames.json`, `constellations.json`, `mw.json`) | **d3-celestial** — Olaf Frohn ([github.com/ofrohn/d3-celestial](https://github.com/ofrohn/d3-celestial)) | **3-Clause BSD License** (`BSD-3-Clause`) |
+| **Modern constellation stick figures and definitions** (`skycultures/modern/index.json`) | **Stellarium** (`modern` skyculture) ([github.com/Stellarium/stellarium](https://github.com/Stellarium/stellarium)) | **CC BY-SA 4.0** (Creative Commons Attribution-ShareAlike 4.0) |
+| **Constellation figure artwork** (`public/data/art/<IAU>.webp`, converted to monochrome alpha-channel outlines) | **Stellarium** (`skycultures/modern/*.png`, Johan Meuris) | **Free Art License (FAL 1.3)** |
+| **Polish IAU constellation names** (`po/stellarium-skycultures/pl.po`) | **Stellarium** translation team | **GNU GPL v2+** / **CC BY-SA 4.0** (per Stellarium repository) |
+| **Additional constellation line star positions and parallaxes (3D)** (`I/239/hip_main`) | **Hipparcos Catalogue** (ESA, 1997) via **CDS VizieR** | Public **ESA / CDS VizieR** data |
 
-### 4. Kontury mgławic jasnych i ciemnych
+### 4. Bright and Dark Nebula Outlines
 
-Plik `public/data/outlines.json` zawiera wielopoziomowe obrysy mgławic:
+`public/data/outlines.json` provides multi-level nebula contours:
 
-* **Obrysy mgławic jasnych i dużych regionów emisyjnych:** **OpenNGC outlines** — Mattia Verga ([github.com/mattiaverga/OpenNGC/tree/v20260501/outlines](https://github.com/mattiaverga/OpenNGC/tree/v20260501/outlines)), wyrysowane na przeglądzie DSS2 w programie Aladin (CDS, Strasbourg). Licencja: **CC BY-SA 4.0** *(modyfikacje w aplikacji: wybrano poziomy 2 i 3 oraz poziom 1 dla obrysów o promieniu $\ge 2^\circ$, przypisano pierścienie regionów do obiektów katalogu i uproszczono polilinie algorytmem Douglasa-Peuckera do $0{,}005^\circ$)*.
-* **Obrysy mgławic ciemnych (`LDN`, `B`) oraz wybrane kompleksy pyłowe (`scripts/data/dark-outlines.json`):** współrzędne konturów wyznaczone w ramach projektu metodami segmentacji hybrydowej i progowania ekstynkcji/emisji pyłu na podstawie publicznych przeglądów naukowych:
-  * **Planck** (353 GHz / 857 GHz, ESA / Planck Collaboration, przez NASA SkyView) — dane publiczne ESA/NASA,
-  * **IRIS** (100 µm, Miville-Deschênes & Lagache 2005, poprawione mapy IRAS) — otwarte dane naukowe,
-  * **Atlas ciemnych obłoków Dobashiego** (K. Dobashi i in. 2005, *PASJ* 57, S1; K. Dobashi 2011, *PASJ* 63, S1 — mapy ekstynkcji DSS i 2MASS) — otwarte dane naukowe,
+* **Bright Nebulae and Large Emission Region Outlines:** **OpenNGC outlines** — Mattia Verga ([github.com/mattiaverga/OpenNGC/tree/v20260501/outlines](https://github.com/mattiaverga/OpenNGC/tree/v20260501/outlines)), drawn on DSS2 imagery in Aladin (CDS, Strasbourg). License: **CC BY-SA 4.0** *(modifications: selected levels 2 and 3 plus level 1 for outlines with radius $\ge 2^\circ$, matched region rings to catalog objects, and simplified polylines via Douglas-Peucker to $0.005^\circ$)*.
+* **Dark Nebulae (`LDN`, `B`) and Selected Dust Complexes (`scripts/data/dark-outlines.json`):** contour coordinates derived in-project via hybrid segmentation and dust extinction/emission thresholding over public scientific surveys:
+  * **Planck** (353 GHz / 857 GHz, ESA / Planck Collaboration via NASA SkyView) — public ESA/NASA data,
+  * **IRIS** (100 µm, Miville-Deschênes & Lagache 2005, reprocessed IRAS maps) — open scientific data,
+  * **Dobashi Dark Cloud Atlas** (K. Dobashi et al. 2005, *PASJ* 57, S1; K. Dobashi 2011, *PASJ* 63, S1 — DSS and 2MASS extinction maps) — open scientific data,
   * **DSS2** (Digitized Sky Survey 2).
-  *(Zdjęcia referencyjne wykorzystane wyłącznie pomocniczo podczas lokalnej analizy nie są publikowane ani dołączane do repozytorium).*
+  *(Reference photographs used solely as local visual aids during contour extraction are neither published nor included in this repository).*
 
-### 5. Przeglądy fotograficzne nieba (HiPS)
+### 5. All-Sky Photographic Surveys (HiPS)
 
-Miniatury obiektów, tło panelu kadrowania oraz fotorealistyczne warstwy kopuły korzystają ze standardu **HiPS (Hierarchical Progressive Surveys, IVOA)**:
+Object thumbnails, framing view backgrounds, and photorealistic sky-dome layers use the **HiPS (Hierarchical Progressive Surveys, IVOA)** standard:
 
-| Przegląd | Dostawca / Autorzy | Licencja i warunki wykorzystania |
+| Survey | Provider / Authors | License and Terms of Use |
 | :--- | :--- | :--- |
-| **DSS2 Color** (Digitized Sky Survey 2, lustra: ESA ESASky, STScI/MAST, CSIRO CASDA, CDS Alasky) | **STScI / NASA / ESA / POSS-II / UKSTU / AAO / Caltech / Royal Observatory Edinburgh** | Otwarty dostęp do zastosowań edukacyjnych, badawczych i niekomercyjnych za podaniem atrybucji **ESA/MAST/STScI** ([zasady copyright DSS STScI](https://archive.stsci.edu/dss/copyright.html)) |
-| **Pan-STARRS DR1 Color (i-r-g)** (lustra: STScI/MAST, CDS Alasky) | **Pan-STARRS1 Science Consortium / IfA University of Hawaii / STScI MAST** | **CC BY 4.0** / otwarty dostęp naukowy MAST za podaniem atrybucji **Pan-STARRS1 / MAST** |
-| **Northern Sky Narrowband Survey (NSNS)** — `DR0.1 true-color` (`tc8`) oraz `DR0.2 bez Hα` (`rgb8`) | **Stefan Ziegenbalg** ([www.simg.de](https://www.simg.de/nebulae3/)) | **CC BY-NC-SA 4.0** (Creative Commons Uznanie autorstwa – Użycie niekomercyjne – Na tych samych warunkach 4.0). Aplikacja pobiera kafelki o statusie `clonable` przez pośrednika `server/hipsProxy.ts`, przekodowuje je do JPEG z zachowaniem tej samej licencji **CC BY-NC-SA 4.0** i wyświetla podpis autora oraz licencji przy każdym obrazie. |
+| **DSS2 Color** (Digitized Sky Survey 2; mirrors: ESA ESASky, STScI/MAST, CSIRO CASDA, CDS Alasky) | **STScI / NASA / ESA / POSS-II / UKSTU / AAO / Caltech / Royal Observatory Edinburgh** | Open access for educational, research, and non-commercial use with attribution to **ESA/MAST/STScI** ([STScI DSS copyright](https://archive.stsci.edu/dss/copyright.html)) |
+| **Pan-STARRS DR1 Color (i-r-g)** (mirrors: STScI/MAST, CDS Alasky) | **Pan-STARRS1 Science Consortium / IfA University of Hawaii / STScI MAST** | **CC BY 4.0** / open MAST scientific access with attribution to **Pan-STARRS1 / MAST** |
+| **Northern Sky Narrowband Survey (NSNS)** — `DR0.1 true-color` (`tc8`) and `DR0.2 without Hα` (`rgb8`) | **Stefan Ziegenbalg** ([www.simg.de](https://www.simg.de/nebulae3/)) | **CC BY-NC-SA 4.0** (Creative Commons Attribution-NonCommercial-ShareAlike 4.0). Tiles marked `clonable` are fetched through `server/hipsProxy.ts`, transcoded to JPEG under the same **CC BY-NC-SA 4.0** license, and credited alongside every rendered image. |
 
-### 6. Astrometria, gwiazdy pola i katalogi głębokie (Obserwatorium 3D)
+### 6. Astrometry, Field Stars, and Deep Catalogs (3D Observatory)
 
-Podczas rozwiązywania zdjęć użytkownika i budowy sceny Obserwatorium 3D serwer oraz narzędzia pomocnicze korzystają z:
+During user photo solving and 3D Observatory scene construction, the server and helper tools use:
 
-* **Lokalny solver astrometrii:** [**skyshot-solver**](https://github.com/ashtree74/skyshot-solver) (repozytorium `ashtree74/skyshot-solver`, wywoływane przez most `scripts/skyshot-bridge`) oraz jego indeksy gwiazdowe oparte na katalogu **Gaia DR3**.
-* **Gwiazdy pola i odległości fotogeometryczne/geometryczne:**
-  * **ESA Gaia DR3** (`gaia.dr3lite` / `gaiadr3.gaia_source`) — dane publiczne **Europejskiej Agencji Kosmicznej (ESA)** oraz **Gaia Data Processing and Analysis Consortium (DPAC)**, udostępniane na licencji **CC BY 4.0**.
-  * **Odległości gwiazd Gaia EDR3:** C. A. L. Bailer-Jones i in. (2021), *AJ* 161, 147 (`gedr3dist.main` / `gedr3dist.litewithdist`), pobierane przez usługę TAP **GAVO Data Center** (ZAH, Uniwersytet w Heidelbergu) z lustrem zapasowym **XAO Data Center** (Xinjiang Astronomical Observatory) oraz archiwami **ARI Heidelberg** i **ESA Gaia Archive**.
-* **Dodatkowe katalogi głębokie rzutowane na zdjęcie (`server/photoCatalogObjects.ts` przez CDS VizieR):**
-  * **HYPERLEDA I. Catalog of galaxies (`PGC`)** (`VII/237/pgc`) — G. Paturel i in. (2003), *A&A* 412, 45.
-  * **SDSS Quasar Catalog DR16Q (`QSO`)** (`VII/289/dr16q`) — B. W. Lyke i in. (2020), *ApJS* 250, 8 — dane **Sloan Digital Sky Survey IV** (**CC BY 4.0**).
-  * **Gromady galaktyk Abella (`ACO` / `ACOS`)** (`VII/110A`) — G. O. Abell, H. G. Corwin Jr., R. P. Olowin (1989), *ApJS* 70, 1.
-* **Widma przesunięć ku czerwieni w regresorze (`scripts/regressor/cut_distance.py`):**
-  * **Sloan Digital Sky Survey (SDSS SkyServer)** przez `astroquery.sdss` — publiczne dane naukowe **SDSS** (**CC BY 4.0**).
+* **Local Plate Solver:** [**skyshot-solver**](https://github.com/ashtree74/skyshot-solver) (`ashtree74/skyshot-solver`, invoked via `scripts/skyshot-bridge`) with star indexes derived from **Gaia DR3**.
+* **Field Stars and Photogeometric/Geometric Distances:**
+  * **ESA Gaia DR3** (`gaia.dr3lite` / `gaiadr3.gaia_source`) — public data from the **European Space Agency (ESA)** and **Gaia DPAC**, released under **CC BY 4.0**.
+  * **Gaia EDR3 Stellar Distances:** C. A. L. Bailer-Jones et al. (2021), *AJ* 161, 147 (`gedr3dist.main` / `gedr3dist.litewithdist`), queried via **GAVO Data Center** TAP (ZAH, Heidelberg University) with fallback to **XAO Data Center** (Xinjiang Astronomical Observatory), **ARI Heidelberg**, and **ESA Gaia Archive**.
+* **Additional Deep Catalogs Projected onto Photos (`server/photoCatalogObjects.ts` via CDS VizieR):**
+  * **HYPERLEDA I. Catalog of galaxies (`PGC`)** (`VII/237/pgc`) — G. Paturel et al. (2003), *A&A* 412, 45.
+  * **SDSS Quasar Catalog DR16Q (`QSO`)** (`VII/289/dr16q`) — B. W. Lyke et al. (2020), *ApJS* 250, 8 — **Sloan Digital Sky Survey IV** (**CC BY 4.0**).
+  * **Abell Galaxy Clusters (`ACO` / `ACOS`)** (`VII/110A`) — G. O. Abell, H. G. Corwin Jr., R. P. Olowin (1989), *ApJS* 70, 1.
+* **Redshift Spectra in ML Regressor (`scripts/regressor/cut_distance.py`):**
+  * **Sloan Digital Sky Survey (SDSS SkyServer)** via `astroquery.sdss` — public **SDSS** data (**CC BY 4.0**).
 
-### 7. Usługi pogodowe, geokodowanie, opisy i zdjęcia
+### 7. Weather, Geocoding, Descriptions, and Photos
 
-Usługi odpytywane w czasie rzeczywistym bezpośrednio przez przeglądarkę (`src/lib/services.ts`) lub przez serwer (`server/astrobin.ts`):
+Live services queried directly by the browser (`src/lib/services.ts`) or server (`server/astrobin.ts`):
 
-| Usługa | Dostawca i modele źródłowe | Licencja / Warunki korzystania |
+| Service | Provider and Underlying Models | License / Terms of Use |
 | :--- | :--- | :--- |
-| **Prognoza pogody i profil pionowy atmosfery** (`api.open-meteo.com`) | **Open-Meteo** (dane modeli: **ECMWF IFS**, **DWD ICON**, **NOAA GFS**, **UK Met Office**, **CMC GEM**) | **CC BY 4.0** (Open-Meteo API do użytku niekomercyjnego; zawiera zmodyfikowane dane Copernicus/ECMWF, DWD, NOAA, UK Met Office i Environment Canada) |
-| **Alternatywna prognoza pogody** (`api.met.no`) | **MET Norway** (Norwegian Meteorological Institute, Locationforecast 2.0) | **CC BY 4.0** / **NLOD 2.0** (Norwegian Licence for Open Government Data) |
-| **Wyszukiwarka miejscowości (geokodowanie)** (`geocoding-api.open-meteo.com`) | **Open-Meteo Geocoding API** (na bazie danych **GeoNames.org**) | **CC BY 4.0** (Open-Meteo / GeoNames) |
-| **Opisy obiektów astronomicznych** (`pl.wikipedia.org`, `en.wikipedia.org`) | **Wikipedia REST API** (Wikimedia Foundation i autorzy artykułów Wikipedii) | **CC BY-SA 4.0** (Creative Commons Attribution-ShareAlike 4.0 International) |
-| **Zdjęcia obiektów z galerii autora** (`www.astrobin.com/api/v1/image/`) | **AstroBin API** (wyszukiwanie zdjęć użytkownika `Konuz`) | Korzystanie przez oficjalne API AstroBin z kluczem autora; prawa autorskie do zdjęć należą do autora (**Michał Kania / KONUZASTRO**) |
+| **Weather Forecasts and Vertical Atmospheric Profiles** (`api.open-meteo.com`) | **Open-Meteo** (models: **ECMWF IFS**, **DWD ICON**, **NOAA GFS**, **UK Met Office**, **CMC GEM**) | **CC BY 4.0** (Open-Meteo API for non-commercial use; incorporates modified Copernicus/ECMWF, DWD, NOAA, UK Met Office, and Environment Canada data) |
+| **Alternative Weather Forecast** (`api.met.no`) | **MET Norway** (Norwegian Meteorological Institute, Locationforecast 2.0) | **CC BY 4.0** / **NLOD 2.0** (Norwegian Licence for Open Government Data) |
+| **Location Search / Geocoding** (`geocoding-api.open-meteo.com`) | **Open-Meteo Geocoding API** (backed by **GeoNames.org**) | **CC BY 4.0** (Open-Meteo / GeoNames) |
+| **Astronomical Object Descriptions** (`pl.wikipedia.org`, `en.wikipedia.org`) | **Wikipedia REST API** (Wikimedia Foundation and Wikipedia contributors) | **CC BY-SA 4.0** (Creative Commons Attribution-ShareAlike 4.0 International) |
+| **Author's Gallery Images** (`www.astrobin.com/api/v1/image/`) | **AstroBin API** (queries images of user `Konuz`) | Accessed via official AstroBin API using the author's credentials; image copyrights belong to **Michał Kania / KONUZASTRO** |
 
-### 8. Tekstury i grafiki ciał niebieskich
+### 8. Celestial Body Textures and Graphics
 
-* **Fotografia tarczy Księżyca** (`public/icons/moon-phases/moon-full.webp`, `scripts/moon-full-reference.webp`): fotografia z sondy **Galileo** (**PIA00405**, *NASA / JPL / USGS*) — **Domena publiczna** (*NASA/JPL-Caltech/USGS public domain*).
-* **Tekstura powierzchni Ziemi w widoku 3D** (`public/textures/earth.webp`): mapa Ziemi na bazie obrazowania **NASA Blue Marble / Earth Observatory** — **Domena publiczna** (*NASA public domain*; mapy reliefu, odbić oceanicznych oraz warstwa chmur fBm są wyliczane proceduralnie w przeglądarce przez `src/components/space3d/earthModel.ts`).
-* **Grafiki interfejsu i logo** (`public/michal-kania-logo.jpg`, `public/icons/`): materiały własne **Michał Kania / KONUZASTRO**.
+* **Full Moon Reference Image** (`public/icons/moon-phases/moon-full.webp`, `scripts/moon-full-reference.webp`): **Galileo** spacecraft photograph (**PIA00405**, *NASA / JPL / USGS*) — **Public Domain** (*NASA/JPL-Caltech/USGS public domain*).
+* **3D Earth Surface Texture** (`public/textures/earth.webp`): Earth map based on **NASA Blue Marble / Earth Observatory** imagery — **Public Domain** (*NASA public domain*; bump, ocean specular, and fBm cloud layers are generated procedurally at runtime in `src/components/space3d/earthModel.ts`).
+* **UI Icons and Logo** (`public/michal-kania-logo.jpg`, `public/icons/`): original assets by **Michał Kania / KONUZASTRO**.
