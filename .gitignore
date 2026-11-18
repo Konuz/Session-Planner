@@ -1,11 +1,32 @@
 node_modules
-dist
 dev-dist
-scripts/.cache
+scripts/.cache/*
+!scripts/.cache/regressor/
+scripts/.cache/regressor/*
+!scripts/.cache/regressor/*.json
+!scripts/.cache/skyshot-build/
+scripts/.cache/skyshot-build/*
+!scripts/.cache/skyshot-build/release/
+scripts/.cache/skyshot-build/release/*
+!scripts/.cache/skyshot-build/release/tracker-skyshot.exe
+!scripts/.cache/skyshot-build/release/libgcc_s_seh-1.dll
+!scripts/.cache/skyshot-build/release/libwinpthread-1.dll
 *.local
-.claude/worktrees
+.claude/
+.codex-attachments/
+.superpowers/
 .playwright-mcp
+CLAUDE.md
 /icons/
+
+# Dokumentacja robocza, audyty i plany LLM
+docs/audits/
+docs/prompts/
+docs/superpowers/
+docs/photo-space-3d.md
+docs/ranking-100-ldn.csv
+docs/wymagania.md
+docs/odleglosci/stan.md
 
 # Narzędzia i robocze warianty grafik
 .serena/
@@ -14,4 +35,4 @@ public/icons/version-a/
 public/icons/version-b/
 
 # Lokalne dane analizy konturów ciemnych mgławic
-/research/dark-nebula-contours/
+/research/

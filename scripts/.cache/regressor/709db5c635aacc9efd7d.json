@@ -1,0 +1,1 @@
+{"cone_deg":0.45,"stars":500,"regressor_method":"HDBSCAN + Parallax MLE (44/494 members; ZP applied 44/44)","status":"ok","kind":"group","members":44,"distance_pc":395.66846552542273,"lo_pc":385.28007784,"hi_pc":401.22841288,"sigma_vt_kms":0.7986328463992279}
