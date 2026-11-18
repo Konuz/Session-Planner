@@ -1,6 +1,8 @@
 import * as THREE from 'three'
 
 const CLOUD_BASE_OPACITY = 0.34
+const EARTH_ROTATION_MS = 30_000
+export const EARTH_FRAME_MS = 1000 / 30
 
 export interface EarthAssets {
   map: THREE.Texture
@@ -13,6 +15,7 @@ export interface EarthAssets {
 export interface EarthRig {
   mesh: THREE.Mesh<THREE.SphereGeometry, THREE.MeshPhongMaterial>
   clouds: THREE.Mesh<THREE.SphereGeometry, THREE.MeshPhongMaterial>
+  spin(now: number): void
   disposables: { dispose(): void }[]
 }
 
@@ -364,6 +367,11 @@ export function createEarthMesh(radius: number, assets: EarthAssets): EarthRig {
   return {
     mesh,
     clouds,
+    spin(now) {
+      const angle = (now / EARTH_ROTATION_MS) * 2 * Math.PI
+      mesh.rotation.y = angle
+      clouds.rotation.y = angle * 0.25
+    },
     disposables: [
       surfaceGeometry,
       surfaceMaterial,

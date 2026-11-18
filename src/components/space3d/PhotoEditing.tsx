@@ -3,8 +3,8 @@
 // prowadzi nurkowanie.
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { catalogOf, DEFAULT_ANNOTATION_COLORS, EXTRA_CATALOGS, TYPE_INFO } from '../../lib/catalog'
-import { hasDistance, MAX_RELATIVE_UNCERTAINTY, NO_DISTANCE, REGRESSOR_TYPES, SCOPE_LABELS, type DistanceScope } from '../../lib/distance'
-import { coveredPhotoCircles, cutsInThreeD, distanceSummary, PHOTO_CATALOG_LABELS, photoFrame, type PhotoCatalogKind, type PhotoCut, type PhotoDistance, type PhotoDistances } from '../../lib/photo'
+import { hasDistance, MAX_RELATIVE_UNCERTAINTY, measurementDistance, newestCutMeasurement, NO_DISTANCE, REGRESSOR_TYPES, SCOPE_LABELS, type DistanceScope } from '../../lib/distance'
+import { coveredPhotoCircles, cutsInThreeD, distanceSummary, PHOTO_CATALOG_LABELS, photoFrame, type PhotoCatalogKind, type PhotoCut, type PhotoDistances } from '../../lib/photo'
 import { hasUnsavedPhoto } from '../../lib/photoStorage'
 import { useCatalog } from '../../state/data'
 import { useStore } from '../../state/store'
@@ -130,7 +130,6 @@ export function PhotoCutEditor({ session, regressorJobs }: { session: PhotoSessi
   const catalogWarnings = catalogSearch?.warnings ?? project?.catalogObjects?.warnings ?? []
   const measurements = [...(recorded ? [recorded] : []), ...(distanceData?.measurements ?? [])]
   const selectedDistance = measurements.findIndex((m) => m.distLy === active?.distLy && m.uncertaintyLy === active?.uncertaintyLy && m.distanceSource === active?.distanceSource && m.distanceMethod === active?.distanceMethod)
-  const choose = (m: PhotoDistance) => ({ distLy: m.distLy, uncertaintyLy: m.uncertaintyLy, distanceScope: m.distanceScope, distanceMethod: m.distanceMethod, distanceSource: m.distanceSource, distanceRef: m.distanceRef, distanceOrigin: 'user' as const })
   useEffect(() => {
     if (!distanceKey || !activeId) return
     const abort = new AbortController()
@@ -140,6 +139,13 @@ export function PhotoCutEditor({ session, regressorJobs }: { session: PhotoSessi
       .catch(() => { if (!abort.signal.aborted) setDistances({ key: distanceKey, data: { measurements: [], warnings: ['Nie udało się pobrać źródeł odległości.'] } }) })
     return () => abort.abort()
   }, [distanceKey, activeId, distanceRetry])
+  useEffect(() => {
+    if (!distanceData || !active || !catalog || local?.unresolved) return
+    const current = session.getCurrentProject()
+    if (current !== project) return
+    const next = newestCutMeasurement(active, recorded ? [recorded, ...distanceData.measurements] : distanceData.measurements)
+    if (next) updateCut(active.id, next)
+  }, [distanceData, active, catalog, local, session, project, recorded, updateCut])
   if (!project) return null
 
   return <div className="photo-editor">
@@ -168,7 +174,7 @@ export function PhotoCutEditor({ session, regressorJobs }: { session: PhotoSessi
       <label>Źródło odległości<select value={selectedDistance < 0 ? active.distLy ? 'saved' : 'unknown' : selectedDistance} title={distanceSummary(active)} onChange={(e) => {
         if (e.target.value === 'unknown') { updateCut(active.id, { ...NO_DISTANCE, distanceOrigin: 'user' }); return }
         const measurement = measurements[Number(e.target.value)]
-        if (measurement) updateCut(active.id, choose(measurement))
+        if (measurement) updateCut(active.id, measurementDistance(measurement, 'user'))
       }}>
         <option value="unknown">Brak odległości — bez 3D</option>
         {selectedDistance < 0 && active.distLy && <option value="saved">{distanceSummary(active)}</option>}

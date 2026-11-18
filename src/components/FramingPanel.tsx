@@ -9,7 +9,7 @@ import { SURVEYS } from '../lib/hips'
 import { isDefaultLevels, normalizeLevels, tableValues } from '../lib/stretch'
 import { getOwnSkyImage, OwnPhotoMissingError } from '../lib/ownPhotoImage'
 import { getSkyImage, type SkyImageOptions } from '../lib/thumbs'
-import { useSelected } from '../state/data'
+import { useOwnPhotoKey, useSelected } from '../state/data'
 import { useStore, type FramingLayer as Layer } from '../state/store'
 import { Range } from './Range'
 import { Select } from './Select'
@@ -51,7 +51,8 @@ export function FramingPanel() {
   const storedStretch = useStore((s) => s.framingStretch)
   const setFramingStretch = useStore((s) => s.setFramingStretch)
   // Własne zdjęcie wpasowane w tło kadrowania, gdy w karcie wybrano „moje”.
-  const own = useStore((s) => (o ? s.ownPhotos[o.id] : undefined))
+  const photoKey = useOwnPhotoKey(o)
+  const own = useStore((s) => s.ownPhotos[photoKey])
   const ownId = own?.shown ? own.photoId : ''
   const removeOwnPhoto = useStore((s) => s.removeOwnPhoto)
   const { layer, zoom, comparisonOpen, candidateId, frameVisible, photoCenter } = framingView
@@ -150,7 +151,7 @@ export function FramingPanel() {
     let previewFailed = false
     const where = { raDeg: imageRa, decDeg: imageDec, fovDeg: imageFov, layer }
     const load = (layerOpts: SkyImageOptions) => ownId
-      ? getOwnSkyImage(o.id, ownId, { raDeg: imageRa, decDeg: imageDec, fovDeg: imageFov, sizePx: SIZE }, ctrl.signal, layerOpts)
+      ? getOwnSkyImage(photoKey, ownId, { raDeg: imageRa, decDeg: imageDec, fovDeg: imageFov, sizePx: SIZE }, ctrl.signal, layerOpts)
       : getSkyImage(imageRa, imageDec, imageFov, SIZE, ctrl.signal, layerOpts)
     load({ ...opts, coarser: 2 })
       .then((blob) => !ctrl.signal.aborted && setImg((prev) => (prev?.key === imageKey && prev.sharp ? prev : { key: imageKey, blob, sharp: false, ...where })))
@@ -162,11 +163,11 @@ export function FramingPanel() {
       .then((blob) => !ctrl.signal.aborted && setImg({ key: imageKey, blob, sharp: true, ...where }))
       .catch((e: Error) => {
         // Brak rekordu w IndexedDB: indeks wraca do domyślnego tła, efekt wczyta je ponownie.
-        if (e instanceof OwnPhotoMissingError) removeOwnPhoto(o.id)
+        if (e instanceof OwnPhotoMissingError) removeOwnPhoto(photoKey)
         else if (e.name !== 'AbortError' && previewFailed) setErr(IMAGE_ERROR)
       })
     return () => ctrl.abort()
-  }, [o, imageRa, imageDec, imageFov, layer, imageKey, ownId, removeOwnPhoto])
+  }, [o, imageRa, imageDec, imageFov, layer, imageKey, ownId, photoKey, removeOwnPhoto])
 
   if (!o || !center) return <div className="sky-stage empty" style={{ display: 'grid', placeItems: 'center' }}>Wybierz obiekt, aby kadrować.</div>
 

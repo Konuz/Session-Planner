@@ -123,6 +123,27 @@ describe('kafelki z luster', () => {
     expect(a).toBe(b)
   })
 
+  it('udostępnia NSNS podczas zapisu do cache i współdzieli kafelek do końca tego zapisu', async () => {
+    let finish!: () => void
+    const writing = new Promise<void>((resolve) => { finish = resolve })
+    const put = vi.fn(() => writing)
+    vi.stubGlobal('caches', { open: async () => ({ match: async () => undefined, keys: async () => [], put }) })
+    const network = stubFetch(() => image)
+    const { fetchTile } = await import('./hipsTiles')
+    let ready: Blob | undefined
+    const first = fetchTile(SURVEYS.nsns, 5, 42)
+    void first.then((blob) => { ready = blob })
+    try {
+      await vi.waitFor(() => expect(put).toHaveBeenCalledOnce())
+      expect(ready).toBeInstanceOf(Blob)
+      expect(await fetchTile(SURVEYS.nsns, 5, 42)).toBe(ready)
+      expect(network).toHaveBeenCalledOnce()
+    } finally {
+      finish()
+      await first
+    }
+  })
+
   it.each(['open', 'match', 'put'])('awaria cache.%s nie niszczy pobranego kafelka', async (operation) => {
     const fail = async () => { throw new DOMException('full', 'QuotaExceededError') }
     vi.stubGlobal('caches', { open: operation === 'open' ? fail : async () => ({ match: operation === 'match' ? fail : async () => undefined, keys: async () => [], delete: async () => true, put: fail }) })

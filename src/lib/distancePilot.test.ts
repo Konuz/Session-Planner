@@ -3,7 +3,7 @@
 // automatycznego łańcucha aplikacji (z powodem znanej różnicy). Po `npm run build:data` test pokazuje zmianę pokrycia.
 import { readFileSync } from 'node:fs'
 import { expect, it } from 'vitest'
-import { parseCatalog } from './catalog'
+import { parseCatalog, quickSearch } from './catalog'
 import { cutDistance, hasDistance, NO_DISTANCE, refreshCutDistances, type DistanceScope } from './distance'
 import fixture from './distancePilot.fixture.json'
 import type { PhotoCut, PhotoStar } from './photo'
@@ -22,6 +22,36 @@ it('wczytuje opublikowaną odległość Sh2-155 bez regresora', () => {
 })
 const byId = new Map(catalog.map((o) => [o.id, o]))
 
+it('w kadrze Woźnicy wyszukuje jedną mgławicę pod każdym oznaczeniem i zachowuje źródło pomiaru', () => {
+  for (const [alias, primary] of [['LBN 747', 'Sh2-219'], ['LBN 744', 'Sh2-216'], ['B 25', 'LDN 1465']]) {
+    const results = quickSearch(catalog, alias).map((o) => o.id)
+    expect(results[0]).toBe(primary)
+    expect(results).not.toContain(alias)
+    expect(byId.get(primary)?.aliases).toContain(alias)
+  }
+  expect(byId.get('Sh2-219')?.distLy).toBe(13796)
+  expect(byId.get('Sh2-216')).toMatchObject({ type: 'PN', unresolved: false, distInfo: { ref: '2021A&A...656A.110C' } })
+  expect(byId.get('Sh2-216')!.distLy! / 3.26156).toBeCloseTo(126, 0)
+  // B 15 to część większego obłoku LDN 1445 (Dutra i Bica 2002).
+  expect(byId.get('B 15')?.photoPrimaryId).toBeUndefined()
+  expect(byId.get('LDN 1445')?.photoPrimaryId).toBeUndefined()
+  // Osobne populacje członkowskie w HR23 mimo wspólnej identyfikacji SIMBAD.
+  expect(byId.get('vdBH 10')?.photoPrimaryId).toBeUndefined()
+  expect(byId.get('Ruprecht 35')?.photoPrimaryId).toBeUndefined()
+  expect(byId.get('Pismis 6')?.photoPrimaryId).toBe('NGC 2645')
+  expect(byId.get('NGC 2645')).toMatchObject({ distLy: 5611, distInfo: { ref: '2023A&A...673A.114H' } })
+})
+
+it('dziedziczy odległość zapisaną tylko pod aliasem, nawet gdy solver wykrył sam główny wpis', () => {
+  const rows = parseCatalog([
+    ['Sh2-1', '', '', '', 'EN', 1, 2, 10, 0, -1, 99, 99, '', 0, '', ''],
+    ['LBN 1', '', '', '', 'EN', 1, 2, 10, 0, -1, 99, 99, '', 1200, '', '', 100, 0],
+  ], [[0, 'pomiar', 'publikacja', 'ref', 1]], [], { 'LBN 1': 'Sh2-1' })
+  const cut: PhotoCut = { ...NO_DISTANCE, id: 'Sh2-1', type: 'EN', x: 10, y: 10, radius: 5, raDeg: 1, decDeg: 2, enabled: false }
+  const project = refreshCutDistances({ cuts: [cut], stars: null }, rows, new Map(rows.map((o) => [o.id, o])))
+  expect(project.cuts[0]).toMatchObject({ id: 'Sh2-1', distLy: 1200, uncertaintyLy: 120, distanceSource: 'publikacja', enabled: false })
+})
+
 it('odświeża zapisany projekt Tulipana do jednego wycinka i zachowuje ręczny pomiar', () => {
   const makeCut = (id: string, x: number, patch: Partial<PhotoCut> = {}): PhotoCut =>
     ({ ...NO_DISTANCE, id, type: 'EN', x, y: 16, radius: 10, raDeg: 300, decDeg: 35, enabled: true, ...patch })
@@ -32,6 +62,9 @@ it('odświeża zapisany projekt Tulipana do jednego wycinka i zachowuje ręczny 
   expect(refreshCutDistances(project, catalog, byId)).toBe(project)
   const restored = refreshCutDistances({ cuts: [alias], stars: null }, catalog, byId)
   expect(restored.cuts).toEqual([expect.objectContaining({ id: 'Sh2-101', x: 10, distLy: 7000 })])
+  const manualNone = { ...alias, ...NO_DISTANCE, distanceOrigin: 'user' as const }
+  expect(refreshCutDistances({ cuts: [primary, manualNone], stars: null }, catalog, byId).cuts[0])
+    .toMatchObject({ id: 'Sh2-101', distLy: null, distanceOrigin: 'user', x: 18 })
 })
 
 function appDistance(id: string) {

@@ -212,7 +212,7 @@ export default function Observatory({ project, slots, stars, onRetryStars, divin
         </>}
       </section>
       <input className="control" type="search" placeholder="Znajdź obiekt…" aria-label="Znajdź obiekt" value={query} onChange={(e) => setQuery(e.target.value)} />
-      <ObjectList items={listed} selected={selected} onSelect={setSelected} descending={descending} onSort={() => setDescending((d) => !d)} />
+      <ObjectList key={project.id} items={listed} revealStars={category === 'stars' || !!query.trim()} selected={selected} onSelect={setSelected} descending={descending} onSort={() => setDescending((d) => !d)} />
       <div className="faint figures">W 3D: {withDistance.length}{skipped > 0 && ` · pominięte bez odległości: ${skipped}`}</div>
     </aside>
     <DistanceHistogram histogram={histogram} domain={domain} range={range} onRange={setRange} marker={active?.distLy ?? null} />

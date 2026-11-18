@@ -3,7 +3,7 @@
 // w shaderze ten sam co dla gwiazd; krycie z wysokości nad horyzontem, jasności nieba i granicy pokrycia.
 import type { Mat3, Vec3 } from './astro'
 import { DEG } from './astro'
-import { allskyUvRect, ALLSKY_ORDER, detailOrder, detailOrderScale, NSNS_EDGE_DEC, segmentsFor, tileMesh, viewCircle, visibleTiles, type TileMesh } from './hipsSky'
+import { allskyUvRect, ALLSKY_ORDER, detailOrder, detailOrderScale, NSNS_EDGE_DEC, segmentsFor, tileMesh, tileView, visibleTiles, type TileMesh } from './hipsSky'
 import type { Survey } from './hips'
 import { fetchTile } from './hipsTiles'
 import { imageCache } from './imageCache'
@@ -126,7 +126,8 @@ export function createHipsSkyLayer(gl: WebGL2RenderingContext, survey: Survey, o
   let retryTimer = 0
   let preloadTimer = 0
   let preloadAt = 0
-  let preloadView = ''
+  let lastViewKey = ''
+  const visibleByOrder = new Map<number, number[]>()
   let preloadTiles: { order: number; npix: number; key: string }[] | null = null
   // Po porażce jedno przerysowanie po RETRY_MS ponawia kafelki bez ruchu widoku.
   const retryLater = () => {
@@ -262,21 +263,20 @@ export function createHipsSkyLayer(gl: WebGL2RenderingContext, survey: Survey, o
       const now = performance.now()
       if (allskyState === 'failed' && now - allskyFailedAt > RETRY_MS) allskyState = 'idle'
       if (allskyState === 'idle' && !allsky && f.allowDecode) void loadAllsky()
-      const maxR = Math.hypot(Math.max(f.cx, f.width - f.cx), Math.max(f.cy, f.height - f.cy))
-      const { centre, radiusDeg, arcsecPerPx } = viewCircle(f.eqToView, f.scale, maxR)
-      const viewKey = [f.scale, maxR, ...centre, ...f.zen].join('/')
-      if (viewKey !== preloadView) {
-        preloadView = viewKey
+      const view = tileView(f)
+      const viewKey = [f.scale, f.width, f.height, f.cx, f.cy, ...f.eqToView, ...f.zen].join('/')
+      if (viewKey !== lastViewKey) {
+        lastViewKey = viewKey
+        visibleByOrder.clear()
         preloadTiles = null
         preloadAt = now + PRELOAD_DELAY_MS
         window.clearTimeout(preloadTimer)
         preloadTimer = 0
       }
-      const visibleByOrder = new Map<number, number[]>()
       const inView = (order: number) => {
         let pixels = visibleByOrder.get(order)
         if (!pixels) {
-          pixels = visibleTiles(order, centre, radiusDeg, f.zen, NSNS_EDGE_DEC - 1)
+          pixels = visibleTiles(order, view, f.zen, NSNS_EDGE_DEC - 1)
           visibleByOrder.set(order, pixels)
         }
         return pixels
@@ -293,7 +293,7 @@ export function createHipsSkyLayer(gl: WebGL2RenderingContext, survey: Survey, o
         }
       }
 
-      const order = detailOrder(arcsecPerPx, survey.maxOrder)
+      const order = detailOrder(view.arcsecPerPx, survey.maxOrder)
       const keep = new Set<string>()
       let waiting = false
       if (order !== null) {
@@ -398,8 +398,8 @@ export function createHipsSkyLayer(gl: WebGL2RenderingContext, survey: Survey, o
             const levels = order === null ? [1] : [order + 1, order - 1]
             preloadTiles = levels.filter((level) => level > 0 && level <= survey.maxOrder).flatMap((level) => {
               // Bierzemy pole dopiero na progu zmiany rozdzielczości. Przy powiększaniu będzie ono mniejsze.
-              const { radiusDeg: nextRadius } = viewCircle(f.eqToView, detailOrderScale(level), maxR)
-              return visibleTiles(level, centre, nextRadius, f.zen, NSNS_EDGE_DEC - 1)
+              const nextView = tileView({ ...f, scale: detailOrderScale(level) })
+              return visibleTiles(level, nextView, f.zen, NSNS_EDGE_DEC - 1)
                 .map((npix) => ({ order: level, npix, key: `${level}/${npix}` }))
             })
           }

@@ -205,12 +205,14 @@ export function fitDistance(width: number, height: number, aspect: number): numb
   return Math.max(height / 2 / Math.tan(v), width / 2 / Math.tan(h)) * 1.12
 }
 
-/** Widok „Z Ziemi”: zza Ziemi, lekko nad osią; widać Ziemię, ostrosłup i zdjęcie. */
-export function earthViewPose(image: { width: number; height: number }, aspect: number, depth: number): { position: Vec3; target: Vec3 } {
+/** Widok „Z Ziemi”: blisko za Ziemią, lekko nad osią; widać dużą Ziemię na dole, ostrosłup i cały kadr na wprost. */
+export function earthViewPose(image: { width: number; height: number }, aspect: number): { position: Vec3; target: Vec3 } {
   const h = PLANE_WIDTH * image.height / image.width
+  const z = Math.max(EARTH_Z + 15, fitDistance(PLANE_WIDTH, h, aspect) * 0.96)
+  const y = Math.min(0.14 * (z - EARTH_Z) * (z / EARTH_Z), 0.22 * z)
   return {
-    target: [0, h * 0.08, -Math.min(depth, AXIS_LENGTH) * 0.15],
-    position: [0, h * 0.42, EARTH_Z + fitDistance(PLANE_WIDTH, h, aspect) * 0.75],
+    target: [0, 0, 0],
+    position: [0, y, z],
   }
 }
 

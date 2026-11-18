@@ -2,7 +2,7 @@
 // gwiazda oświetlająca z gwiazd Gaia pola zdjęcia i identyfikatory SIMBAD. Moduł bez importów wartości
 // (używa go serwer i skrypt budowy danych bez bundlera).
 import type { DSO } from './catalog.ts'
-import type { PhotoCut, PhotoStar } from './photo.ts'
+import type { PhotoCut, PhotoDistance, PhotoStar } from './photo.ts'
 
 /** Czego dotyczy wartość: obiektu, populacji (gromady, asocjacji), gwiazdy oświetlającej, obłoku pyłu
  *  na linii widzenia albo przesunięcia ku czerwieni (oszacowanie pośrednie z przepływu Hubble’a). */
@@ -27,6 +27,27 @@ export interface DistanceInfo {
 /** Pola odległości wycinka zdjęcia. */
 export type CutDistance = Pick<PhotoCut, 'distLy' | 'uncertaintyLy' | 'distanceScope' | 'distanceMethod' | 'distanceSource' | 'distanceRef' | 'distanceOrigin'>
 export const NO_DISTANCE: CutDistance = { distLy: null, uncertaintyLy: null, distanceScope: 'object', distanceMethod: '', distanceSource: '', distanceRef: '', distanceOrigin: 'catalog' }
+
+export function measurementDistance({ source: _, url: _url, ...fields }: PhotoDistance, distanceOrigin: 'catalog' | 'published' | 'user'): CutDistance {
+  return { ...fields, distanceOrigin }
+}
+
+export const publicationYear = (ref: string) => Number(ref.match(/^(\d{4})/)?.[1] ?? 0)
+
+export function newestCutMeasurement(cut: CutDistance, measurements: readonly PhotoDistance[]): CutDistance | null {
+  if (cut.distanceOrigin === 'user') return null
+  let year = cut.distLy === null || cut.distanceOrigin === 'regressor' ? -1 : publicationYear(cut.distanceRef)
+  let best: PhotoDistance | null = null
+  for (const m of measurements) {
+    if (m.distLy === null || !Number.isFinite(m.distLy) || m.distLy <= 0) continue
+    const candidateYear = publicationYear(m.distanceRef)
+    if (candidateYear > year) {
+      best = m
+      year = candidateYear
+    }
+  }
+  return best && measurementDistance(best, 'published')
+}
 
 /** Największa względna niepewność (1σ) odległości pokazywanej w 3D. */
 export const MAX_RELATIVE_UNCERTAINTY = 0.5
@@ -141,32 +162,33 @@ export function cutDistance(object: Pick<DSO, 'distLy' | 'distUncLy' | 'distInfo
 
 const CUT_FIELDS = ['distLy', 'uncertaintyLy', 'distanceScope', 'distanceMethod', 'distanceSource', 'distanceRef', 'distanceOrigin'] as const
 
-/** Scala potwierdzone oznaczenia tego samego regionu H II. Zachowuje geometrię głównego wpisu i ręczny wybór odległości. */
+/** Scala potwierdzone oznaczenia, zachowując geometrię głównego wycinka i ręczny wybór odległości. */
 export function canonicalPhotoCuts(cuts: PhotoCut[], byId: ReadonlyMap<string, DSO>): PhotoCut[] {
-  const groups = new Map<string, { geometry: PhotoCut; distance: PhotoCut }>()
+  const groups = new Map<string, { geometry: PhotoCut; distance: PhotoCut; catalogMatch: PhotoCut['catalogMatch'] }>()
   let changed = false
   for (const cut of cuts) {
     const primary = byId.get(byId.get(cut.id)?.photoPrimaryId ?? '')
     const id = primary?.id ?? cut.id
     const group = groups.get(id)
     if (!group) {
-      groups.set(id, { geometry: cut, distance: cut })
+      groups.set(id, { geometry: cut, distance: cut, catalogMatch: cut.catalogMatch })
       changed ||= !!primary
       continue
     }
     changed = true
     if (cut.id === id) group.geometry = cut
+    if (cut.catalogMatch && (!group.catalogMatch || (!group.catalogMatch.distance && cut.catalogMatch.distance))) group.catalogMatch = cut.catalogMatch
     const current = group.distance
-    const manual = cut.distanceOrigin === 'user'
-    const currentManual = current.distanceOrigin === 'user'
-    if (manual !== currentManual ? manual : cut.id === id) group.distance = cut
+    const rank = (value: PhotoCut) => value.distanceOrigin === 'user' ? 4 : value.distLy === null ? 0
+      : hasDistance(value) ? (value.distanceOrigin === 'regressor' ? 2 : 3) : 1
+    if (rank(cut) > rank(current) || (rank(cut) === rank(current) && cut.id === id)) group.distance = cut
   }
   if (!changed) return cuts
-  return [...groups].map(([id, { geometry, distance }]) => {
-    if (geometry.id === id && geometry === distance) return geometry
+  return [...groups].map(([id, { geometry, distance, catalogMatch }]) => {
+    if (geometry.id === id && geometry === distance && geometry.catalogMatch === catalogMatch) return geometry
     const primary = byId.get(id)
     const fields = Object.fromEntries(CUT_FIELDS.map((field) => [field, distance[field]])) as CutDistance
-    return { ...geometry, ...fields, id, raDeg: primary?.raDeg ?? geometry.raDeg, decDeg: primary?.decDeg ?? geometry.decDeg }
+    return { ...geometry, ...fields, id, catalogMatch, type: primary?.type ?? geometry.type, raDeg: primary?.raDeg ?? geometry.raDeg, decDeg: primary?.decDeg ?? geometry.decDeg }
   })
 }
 
@@ -177,9 +199,16 @@ export function refreshCutDistances<P extends { cuts: PhotoCut[]; stars: { stars
   const canonical = canonicalPhotoCuts(project.cuts, byId)
   let changed = canonical !== project.cuts
   const cuts = canonical.map((cut) => {
-    const object = cut.distanceOrigin === 'user' ? undefined : byId.get(cut.id)
+    const object = byId.get(cut.id)
     if (!object) return cut
-    const next = cutDistance(object, stars, object.illuminator?.cluster != null ? catalog[object.illuminator.cluster] ?? null : null)
+    if (cut.type !== object.type) { changed = true; cut = { ...cut, type: object.type } }
+    if (cut.distanceOrigin === 'user') return cut
+    let next = cutDistance(object, stars, object.illuminator?.cluster != null ? catalog[object.illuminator.cluster] ?? null : null)
+    if (next.distLy === null && !object.unresolved && cut.catalogMatch?.distance) {
+      next = measurementDistance(cut.catalogMatch.distance, 'catalog')
+    }
+    if (cut.distanceOrigin === 'published' && !object.unresolved &&
+        (next.distLy === null || publicationYear(cut.distanceRef) >= publicationYear(next.distanceRef))) return cut
     // Wartość regresora zostaje, dopóki katalog lub gwiazda oświetlająca nie dadzą lepszej.
     if (next.distLy === null && cut.distanceOrigin === 'regressor' && !object.unresolved) return cut
     if (CUT_FIELDS.every((field) => next[field] === cut[field])) return cut

@@ -199,7 +199,7 @@ export function useGaiaStars(session: PhotoSession, enabled: boolean): { stars: 
 /** Odległości wycinków ustalane przez aplikację: z bieżącego katalogu (także w zapisanych projektach) i, po pobraniu
  *  gwiazd Gaia, z gwiazdy oświetlającej. Wybory z edycji wycinka zostają. */
 export function useCutDistances(session: PhotoSession) {
-  const { catalog } = useCatalog()
+  const { indexed: catalog } = useCatalog()
   const byId = useMemo(() => catalog && new Map(catalog.map((o) => [o.id, o])), [catalog])
   const { project } = session
   const sessionRef = useRef(session)
@@ -231,7 +231,7 @@ const pollState = (jobs: ReadonlyMap<string, RegressorJob>): RegressorPollState 
  * Zwraca aktualny stan i wynik ostatniej próby dla każdego zgłoszonego wycinka.
  */
 export function useRegressor(session: PhotoSession, starsFailed: boolean): ReadonlyMap<string, RegressorJob> {
-  const { catalog } = useCatalog()
+  const { indexed: catalog } = useCatalog()
   const byId = useMemo(() => catalog && new Map(catalog.map((o) => [o.id, o])), [catalog])
   const [ready, setReady] = useState<boolean | null>(null)
   const [attempts, setAttempts] = useState<{ projectId: string; astrometry: PhotoProject['astrometry']; jobs: ReadonlyMap<string, RegressorJob> } | null>(null)

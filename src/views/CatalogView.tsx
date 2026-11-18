@@ -82,18 +82,18 @@ function ExtraCatalogFilter({ selected, counts, onChange }: { selected: string[]
   return (
     <span className="annotation-color-settings" style={{ margin: 0 }}>
       <button className={`toggle-chip${chosen.length ? ' on' : ''}`} title="Katalogi spoza głównej listy" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
-        Inne <span className="faint">{chosen.length && !all ? `${chosen.length}/${EXTRA_IDS.length}` : counts[EXTRA_TOTAL] ?? 0}</span>
+        Inne <span className="faint">{chosen.length && !all ? `${chosen.length}/${EXTRA_IDS.length}` : `(${counts[EXTRA_TOTAL] ?? 0})`}</span>
       </button>
       {open && (
         <div className="popover type-filter" style={{ left: 0, right: 'auto' }} role="group" aria-label="Inne katalogi">
           <label>
             <input type="checkbox" checked={all} onChange={() => onChange(all ? selected.filter((c) => !EXTRA_IDS.includes(c)) : [...selected.filter((c) => !EXTRA_IDS.includes(c)), ...EXTRA_IDS])} />
-            Wszystkie inne <span className="faint">{counts[EXTRA_TOTAL] ?? 0}</span>
+            Wszystkie inne <span className="faint">({counts[EXTRA_TOTAL] ?? 0})</span>
           </label>
           {EXTRA_CATALOGS.map(({ id, label, title }) => (
             <label key={id} title={title}>
               <input type="checkbox" checked={selected.includes(id)} onChange={() => toggle(id)} />
-              {label} <span className="faint">{counts[id] ?? 0}</span>
+              {label} <span className="faint">({counts[id] ?? 0})</span>
             </label>
           ))}
         </div>
@@ -243,7 +243,7 @@ export default function CatalogView() {
           <div className="chips">
             {CATALOGS.map((c) => (
               <button key={c.id} title={c.title} className={`toggle-chip${filter.catalogs.includes(c.id) ? ' on' : ''}`} onClick={() => setFilter({ catalogs: toggleIn(filter.catalogs, c.id) })}>
-                {c.label} <span className="faint">{counts[c.id] ?? 0}</span>
+                {c.label} <span className="faint">({counts[c.id] ?? 0})</span>
               </button>
             ))}
             <ExtraCatalogFilter selected={filter.catalogs} counts={counts} onChange={(catalogs) => setFilter({ catalogs })} />

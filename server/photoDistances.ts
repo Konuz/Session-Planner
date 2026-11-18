@@ -1,6 +1,6 @@
 import { XMLParser } from 'fast-xml-parser'
 import type { DSO } from '../src/lib/catalog.ts'
-import { adsUrl, catalogDistance, isStarOtype, redshiftDistance, simbadId } from '../src/lib/distance.ts'
+import { adsUrl, catalogDistance, isStarOtype, publicationYear, redshiftDistance, simbadId } from '../src/lib/distance.ts'
 import type { PhotoDistance, PhotoDistances } from '../src/lib/photo.ts'
 import { readResponseText } from './readResponseText.ts'
 
@@ -118,7 +118,7 @@ async function nedDistances(id: string, fetchImpl: typeof fetch, signal: AbortSi
   return { measurements, warnings: truncated ? ['NED: lista pomiarów jest niepełna (limit usługi).'] : [] }
 }
 
-export async function loadPhotoDistances(object: Pick<DSO, 'id' | 'type' | 'distLy' | 'distUncLy' | 'distInfo'>, fetchImpl: typeof fetch = fetch, signal: AbortSignal = AbortSignal.timeout(15_000)): Promise<PhotoDistances> {
+export async function loadPhotoDistances(object: Pick<DSO, 'id' | 'type' | 'distLy' | 'distUncLy' | 'distInfo' | 'otherDistances'>, fetchImpl: typeof fetch = fetch, signal: AbortSignal = AbortSignal.timeout(15_000)): Promise<PhotoDistances> {
   const timeout = AbortSignal.any([signal, AbortSignal.timeout(15_000)])
   const galaxy = object.type === 'G' || object.type === 'GG'
   const sid = simbadId(object.id)
@@ -140,9 +140,12 @@ export async function loadPhotoDistances(object: Pick<DSO, 'id' | 'type' | 'dist
     else if (nedZ.status === 'rejected') result.warnings.push('NED: nie udało się pobrać przesunięcia ku czerwieni. Spróbuj ponownie.')
   }
   const unique = new Map(result.measurements.map((m) => [JSON.stringify([m.distanceSource, m.distanceMethod, m.distLy, m.uncertaintyLy]), m]))
-  const year = (m: PhotoDistance) => Number(m.distanceRef.match(/^(\d{4})/)?.[1] ?? 0)
-  result.measurements = [...unique.values()].sort((a, b) => year(b) - year(a))
-  const catalog = catalogDistance(object)
-  if (catalog.distLy !== null) result.measurements.unshift({ source: 'Katalog', distLy: catalog.distLy, uncertaintyLy: catalog.uncertaintyLy, distanceScope: catalog.distanceScope, distanceMethod: catalog.distanceMethod, distanceSource: catalog.distanceSource, distanceRef: catalog.distanceRef, url: adsUrl(catalog.distanceRef) })
+  result.measurements = [...unique.values()].sort((a, b) => publicationYear(b.distanceRef) - publicationYear(a.distanceRef))
+  const local = new Map<string, PhotoDistance>()
+  for (const entry of [object, ...(object.otherDistances ?? [])]) {
+    const { distanceOrigin: _, ...fields } = catalogDistance(entry)
+    if (fields.distLy !== null) local.set(JSON.stringify(fields), { ...fields, source: 'Katalog', url: adsUrl(fields.distanceRef) })
+  }
+  result.measurements.unshift(...local.values())
   return result
 }

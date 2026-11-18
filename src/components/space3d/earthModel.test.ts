@@ -31,6 +31,19 @@ function stubAssets(): EarthAssets {
 }
 
 describe('earthModel', () => {
+  it('obraca powierzchnię o pełny obrót w 30 sekund i zachowuje płynny dryf chmur', () => {
+    const rig = createEarthMesh(1, stubAssets())
+    rig.spin(12_000)
+    const before = rig.mesh.quaternion.clone()
+    const cloudAngle = rig.clouds.rotation.y
+    rig.spin(19_500)
+    expect(rig.mesh.quaternion.angleTo(before)).toBeCloseTo(Math.PI / 2)
+    rig.spin(42_000)
+    expect(rig.mesh.quaternion.angleTo(before)).toBeCloseTo(0)
+    expect(rig.clouds.rotation.y - cloudAngle).toBeCloseTo(Math.PI / 2)
+    for (const d of rig.disposables) d.dispose()
+  })
+
   it('tworzy kulę z chmurami i warstwami poświaty oraz skaluje krycie wszystkich warstw razem', () => {
     const assets = stubAssets()
     const rig = createEarthMesh(1.5, assets)

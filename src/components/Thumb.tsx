@@ -3,6 +3,7 @@ import { getAstroBinPhoto } from '../lib/astrobin'
 import { SURVEYS, type SurveyId } from '../lib/hips'
 import { getSkyImage, getThumb, thumbFovDeg, thumbImageOptions } from '../lib/thumbs'
 import { getOwnSkyImage, OwnPhotoMissingError } from '../lib/ownPhotoImage'
+import { useOwnPhotoKey } from '../state/data'
 import { useStore } from '../state/store'
 import type { DSO } from '../lib/catalog'
 import { useObjectUrl } from './useObjectUrl'
@@ -12,7 +13,8 @@ export function Thumb({ object, className = 'thumb', style, fovDeg, sizePx, pref
   const ref = useRef<HTMLDivElement>(null)
   const [src, setSrc] = useState<{ key: string; url?: string; blob?: Blob; own?: boolean; nsns?: SurveyId; astroBin?: { galleryUrl: string; title: string } } | null>(null)
   const [failed, setFailed] = useState<string | null>(null)
-  const own = useStore((s) => s.ownPhotos[object.id])
+  const photoKey = useOwnPhotoKey(object)
+  const own = useStore((s) => s.ownPhotos[photoKey])
   const ownId = own?.shown ? own.photoId : ''
   const source = useStore((s) => s.thumbSource)
   const key = `${object.i}:${fovDeg ?? ''}:${sizePx ?? ''}:${preferAstroBin}:${ownId}:${source}`
@@ -34,11 +36,11 @@ export function Thumb({ object, className = 'thumb', style, fovDeg, sizePx, pref
             : { raDeg: object.raDeg, decDeg: object.decDeg, fovDeg: thumbFovDeg(object), sizePx: 224 }
           try {
             const opts = thumbImageOptions(source, object.decDeg, view.fovDeg, view.sizePx, fovDeg ? 0 : 1)
-            const blob = await getOwnSkyImage(object.id, ownId, view, ctrl.signal, opts)
+            const blob = await getOwnSkyImage(photoKey, ownId, view, ctrl.signal, opts)
             if (!ctrl.signal.aborted) setSrc({ key, blob, own: true, nsns: opts.survey === 'dss2' ? undefined : opts.survey })
           } catch (e) {
             // Brak rekordu w IndexedDB: indeks wraca do domyślnego zdjęcia, efekt wczyta DSS2.
-            if (e instanceof OwnPhotoMissingError) useStore.getState().removeOwnPhoto(object.id)
+            if (e instanceof OwnPhotoMissingError) useStore.getState().removeOwnPhoto(photoKey)
             else throw e
           }
           return
@@ -67,7 +69,7 @@ export function Thumb({ object, className = 'thumb', style, fovDeg, sizePx, pref
       io.disconnect()
       ctrl.abort()
     }
-  }, [object, key, fovDeg, sizePx, preferAstroBin, ownId, source])
+  }, [object, key, fovDeg, sizePx, preferAstroBin, ownId, photoKey, source])
 
   const current = src?.key === key && failed !== key ? src.url ?? blobUrl : null
   const nsnsSurvey = src?.nsns ? SURVEYS[src.nsns] : null

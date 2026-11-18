@@ -23,7 +23,7 @@ import {
 } from './space3d/galaxyModels'
 import { GALAXY_LEVELS, type ConstellationStar, type SpaceSettings } from './space3d/spaceSettings'
 import { createDomeMaterial } from './space3d/domeMaterials'
-import { createEarthAssets, createEarthMesh } from './space3d/earthModel'
+import { createEarthAssets, createEarthMesh, EARTH_FRAME_MS, type EarthRig } from './space3d/earthModel'
 
 interface Props {
   settings: SpaceSettings
@@ -106,8 +106,6 @@ const FLY_MS = 900
 const SWITCH_MS = 1600
 /** Powrót pola widzenia i gwiazdozbioru z widoku nieba do 3D, gdy użytkownik przejmie kamerę. */
 const LENS_MS = 600
-/** Obrót Ziemi (2°/s) widać dopiero przy takim promieniu na ekranie (ok. 1 px/s); mniejszy znacznik nie wymaga klatek. */
-const EARTH_SPIN_PX = 30
 /** Krycie modelu Drogi Mlecznej z daleka: 52 tys. punktów sumuje się jak dawne 12 tys. we Wszechświecie lokalnym. */
 const MW_FAR_OPACITY = 0.14
 const easeOut = (t: number) => 1 - (1 - t) ** 3
@@ -389,14 +387,12 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
 
     // Ziemia jako umowny znacznik naszego położenia (rozmiar poza skalą).
     let earth: THREE.Mesh
-    let earthClouds: THREE.Mesh
+    let earthRig: EarthRig
     {
-      // Wczytana tekstura od razu w klatce (renderowanie na żądanie nie ma już klatek obrotu małej Ziemi co 100 ms).
       const assets = createEarthAssets(import.meta.env.BASE_URL, renderer.capabilities.getMaxAnisotropy(), () => { sceneDirty.current = true })
       // Kula jednostkowa: promień w scenie ustawia skala (znacznik do 7 px, nie więcej niż earthCap).
-      const rig = createEarthMesh(1, assets)
-      earth = rig.mesh
-      earthClouds = rig.clouds
+      earthRig = createEarthMesh(1, assets)
+      earth = earthRig.mesh
       const axis = new THREE.Group()
       axis.position.copy(sunPos)
       // Biegun ziemski J2000: l = 122,932°, b = 27,128°; płaszczyzna Galaktyki to XZ.
@@ -409,7 +405,7 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
       light.position.copy(sunPos).add(new THREE.Vector3(10, 15, 10))
       light.target.position.copy(sunPos)
       scene.add(light, light.target)
-      disposables.push(assets, ...rig.disposables)
+      disposables.push(assets, ...earthRig.disposables)
     }
     const earthLabel = label('Ziemia', '#93cfff', sunPos, -30)
     const mwLabel = label('Droga Mleczna', '#e6edf7')
@@ -575,7 +571,6 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
       textLayoutDirty.current = true
       sceneDirty.current = true
     }
-    const t0 = performance.now()
     let raf = 0
     let lastTick = performance.now()
     let animNow = 0
@@ -670,12 +665,7 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
       // Zegar przelotów, powrotu soczewki i przenikania kryć: suma kroków klatek, każdy najwyżej 50 ms. Długa klatka
       // (kompilacja shaderów przy pierwszym rysowaniu, wysyłka tekstur) wstrzymuje ruch zamiast przeskoczyć część przelotu.
       animNow += delta * 1000
-      // Powolny obrót poglądowy: jeden obrót na trzy minuty, niezależnie od liczby klatek; chmury dryfują nieco szybciej.
-      if (!reduced) {
-        const spin = ((performance.now() - t0) / 180_000) * Math.PI * 2
-        earth.rotation.y = spin
-        earthClouds.rotation.y = spin * 0.25
-      }
+      if (!reduced) earthRig.spin(now)
       if (flight && !override.camera) {
         flight.start ??= animNow
         const t = Math.min(1, (animNow - flight.start) / flight.ms)
@@ -721,7 +711,7 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
         }
       }
       if (!rightLook && !override.camera) controls.update()
-      let earthPx = 0
+      let earthInView = false
       if (photoRef.current) controls.autoRotate = false
       camera.updateMatrixWorld()
       applyFades(animNow)
@@ -759,7 +749,10 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
         const earthScale = override.earthRadius === null ? marker : marker + (override.earthRadius - marker) * override.earthBlend
         earth.scale.setScalar(earthScale)
         if (!override.camera) earth.visible = earthScale > 1e-6
-        earthPx = earth.visible && depth > 0 ? earthScale / unitsPerPixel : 0
+        const earthPx = depth > 0 ? earthScale / unitsPerPixel : 0
+        earthInView = earth.visible && earthPx > 0
+          && Math.abs(earthScreenPosition.x) <= 1 + 2 * earthPx / Math.max(1, width)
+          && Math.abs(earthScreenPosition.y) <= 1 + 2 * earthPx / height
       }
       {
         // Przy zbliżeniu gwiazdy pozostają widoczne, a z daleka nie zlewają się w jasną plamę.
@@ -846,12 +839,10 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
           layout.connectors.needsUpdate = true
         }
       }
-      // Ziemia obraca się raz na 3 min (2°/s): 10 klatek/s tylko dla dużej Ziemi, znacznik o promieniu kilku pikseli
-      // (zwykły widok) obraca się niezauważalnie. Co sekundę klatka kontrolna.
       const canvas = renderer.domElement
       if (sceneDirty.current || !sameMatrix(renderedCamera, camera.matrixWorld) || !sameMatrix(renderedProjection, camera.projectionMatrix)
         || canvas.width !== renderedWidth || canvas.height !== renderedHeight || objectGuide.visible !== renderedGuide
-        || (earthPx >= EARTH_SPIN_PX && !reduced && now - lastRender >= 100) || now - lastRender >= 1000) {
+        || (earthInView && !reduced && now - lastRender >= EARTH_FRAME_MS) || now - lastRender >= 1000) {
         renderer.render(scene, camera)
         if (sceneStart !== null) {
           measureSince('space3d:scene→first-frame', sceneStart)

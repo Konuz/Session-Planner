@@ -43,9 +43,9 @@ async function tryMirror(url: string, timeoutMs: number): Promise<Blob | 'missin
   }
 }
 
-async function load(survey: Survey, order: number, npix: number, key: string): Promise<Blob> {
+async function load(survey: Survey, order: number, npix: number, key: string, ready: (blob: Blob) => void): Promise<void> {
   const hit = await cache.get(key)
-  if (hit) return hit
+  if (hit) return ready(hit)
   for (const mirror of mirrorOrder(survey)) {
     const result = await tryMirror(tileUrl(mirror, order, npix), survey.timeoutMs ?? TILE_TIMEOUT_MS)
     if (result === 'missing') continue
@@ -53,8 +53,8 @@ async function load(survey: Survey, order: number, npix: number, key: string): P
       demote(survey, mirror)
       continue
     }
-    await cache.put(key, result)
-    return result
+    ready(result)
+    return cache.put(key, result)
   }
   throw new Error('brak kafelka')
 }
@@ -63,7 +63,10 @@ export function fetchTile(survey: Survey, order: number, npix: number): Promise<
   const key = `/hips/${survey.id}/${order}/${npix}`
   const known = inFlight.get(key)
   if (known) return known
-  const promise = load(survey, order, npix, key).finally(() => inFlight.delete(key))
+  // Dekodowanie rusza po pobraniu. Do końca zapisu kolejne wywołania nadal dostają ten sam obraz.
+  const promise = new Promise<Blob>((resolve, reject) => {
+    void load(survey, order, npix, key, resolve).finally(() => inFlight.delete(key)).catch(reject)
+  })
   inFlight.set(key, promise)
   return promise
 }

@@ -4,6 +4,11 @@ import { moonLitPath } from './MoonDisc'
 const parse = (d: string) => d.match(/-?\d+(\.\d+)?/g)!.map(Number)
 
 describe('moonLitPath', () => {
+  it('przy nowiu nie tworzy oświetlonego sierpa przy brzegu', () => {
+    expect(moonLitPath(0, true)).toBe('')
+    expect(moonLitPath(0, false)).toBe('')
+  })
+
   it('półoś terminatora rośnie płynnie z |1 − 2k|', () => {
     // M cx y0 A R R 0 0 lit cx y1 L cx y2 A rx r 0 0 sweep cx y3 Z
     expect(parse(moonLitPath(0.5, true))[11]).toBe(0)

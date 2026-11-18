@@ -27,7 +27,9 @@ const fetchCatalogs = vi.fn<typeof fetch>(async (input) => {
 
 describe('dodatkowe katalogi zdjęcia', () => {
   it('rzutuje obiekty, pomija środki poza kadrem i zachowuje pochodzenie pomiaru', async () => {
-    const catalog = new Map([['NGC 1234', { id: 'NGC 1234', type: 'G' as const, aliases: [], raDeg: 195.1, decDeg: 28 }]])
+    const primary = { id: 'NGC 1234', type: 'G' as const, aliases: ['IC 123'], raDeg: 195.1, decDeg: 28 }
+    const alias = { ...primary, id: 'IC 123', aliases: ['PGC 123'], photoPrimaryId: primary.id }
+    const catalog = new Map([[primary.id, primary], [alias.id, alias]])
     const { cuts, warnings, complete } = await loadPhotoCatalogObjects(100, 100, project, catalog, fetchCatalogs, new AbortController().signal)
     expect(complete).toBe(true)
     expect(warnings).toEqual([])

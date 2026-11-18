@@ -1,5 +1,6 @@
+import * as THREE from 'three'
 import { expect, it } from 'vitest'
-import { AXIS_LENGTH, PLANE_WIDTH, byDistance, fieldOfView, categoryCounts, distanceAt, distanceDomain, distanceHistogram, matchesFilter, observatoryItems, observatoryPosition, orbitOffset, starColor, starSize, structureViewPose, type ObservatoryItem } from './observatory'
+import { AXIS_LENGTH, EARTH_Z, OBSERVATORY_FOV, PLANE_WIDTH, byDistance, fieldOfView, categoryCounts, distanceAt, distanceDomain, distanceHistogram, earthViewPose, matchesFilter, observatoryItems, observatoryPosition, orbitOffset, starColor, starSize, structureViewPose, type ObservatoryItem } from './observatory'
 import type { PhotoCut, PhotoProject, PhotoStar } from './photo'
 
 const image = { width: 2000, height: 1000 }
@@ -121,4 +122,39 @@ it('widok Struktura (szew nurkowania) patrzy na środek całości po rozłożeni
   expect(distance).toBeCloseTo(Math.hypot(100, 50, 470) / 2 / Math.sin(Math.PI / 9) * 0.9, 9)
   const dir = [1.05, 0.62, 0.9].map((v) => v / Math.hypot(1.05, 0.62, 0.9))
   offset.forEach((v, i) => expect(v / distance).toBeCloseTo(dir[i], 9))
+})
+
+it('widok Z Ziemi ustawia kamerę symetrycznie blisko za Ziemią i mieści cały kadr na wprost', () => {
+  for (const img of [{ width: 1720, height: 1000 }, { width: 1500, height: 1000 }, { width: 1000, height: 1000 }, { width: 1000, height: 1500 }]) {
+    for (const aspect of [1.95, 1.5, 1.0]) {
+      const pose = earthViewPose(img, aspect)
+      expect(pose.position[0]).toBe(0)
+      expect(pose.target[0]).toBe(0)
+      expect(pose.position[2]).toBeGreaterThanOrEqual(EARTH_Z + 15)
+
+      const camera = new THREE.PerspectiveCamera(OBSERVATORY_FOV, aspect, 0.1, 5000)
+      camera.position.set(...pose.position)
+      camera.lookAt(...pose.target)
+      camera.updateMatrixWorld()
+
+      const h = PLANE_WIDTH * img.height / img.width
+      const tl = new THREE.Vector3(-PLANE_WIDTH / 2, h / 2, 0).project(camera)
+      const tr = new THREE.Vector3(PLANE_WIDTH / 2, h / 2, 0).project(camera)
+      const bl = new THREE.Vector3(-PLANE_WIDTH / 2, -h / 2, 0).project(camera)
+      const br = new THREE.Vector3(PLANE_WIDTH / 2, -h / 2, 0).project(camera)
+      expect(tl.x).toBeCloseTo(-tr.x, 9)
+      expect(bl.x).toBeCloseTo(-br.x, 9)
+      expect(tl.y).toBeCloseTo(tr.y, 9)
+      expect(bl.y).toBeCloseTo(br.y, 9)
+      for (const c of [tl, tr, bl, br]) {
+        expect(Math.abs(c.x)).toBeLessThan(1)
+        expect(Math.abs(c.y)).toBeLessThan(1)
+      }
+
+      const earth = new THREE.Vector3(0, 0, EARTH_Z).project(camera)
+      expect(earth.x).toBeCloseTo(0, 9)
+      expect(earth.y).toBeLessThan(-0.15)
+      expect(earth.y).toBeGreaterThan(-0.5)
+    }
+  }
 })

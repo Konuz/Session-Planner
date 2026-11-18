@@ -10,7 +10,8 @@ import { useStore } from './store'
 
 // ---------- Katalog (wczytany raz) ----------
 
-let catalogSnapshot: { catalog: DSO[] | null; error: string | null } = { catalog: null, error: null }
+// Listy pokazują jeden wpis na obiekt. Pełna tablica zachowuje indeksy workera, gromad i zapisanych projektów.
+let catalogSnapshot: { catalog: DSO[] | null; indexed: DSO[] | null; error: string | null } = { catalog: null, indexed: null, error: null }
 const listeners = new Set<() => void>()
 let started = false
 const subscribeCatalog = (l: () => void) => {
@@ -23,20 +24,45 @@ function startCatalog() {
   if (started) return
   started = true
   loadCatalog()
-    .then((catalog) => { catalogSnapshot = { catalog, error: null } })
-    .catch((e: Error) => { catalogSnapshot = { catalog: null, error: e.message } })
+    .then((indexed) => {
+      const catalog = indexed.filter((o) => !o.photoPrimaryId)
+      const byId = new Map(catalog.map((o) => [o.id, o]))
+      const redirects = new Map(indexed.filter((o) => o.photoPrimaryId).map((o) => [o.id, byId.get(o.photoPrimaryId!)!]))
+      const state = useStore.getState()
+      const favoriteIds = [...new Set(state.favoriteIds.map((id) => redirects.get(id)?.id ?? id))]
+      const selected = state.selectedIndex === null ? undefined : indexed[state.selectedIndex]
+      const selectedIndex = selected && redirects.get(selected.id)?.i
+      const plan = state.plan.map((item) => {
+        const primary = redirects.get(item.objectId)
+        return primary ? { ...item, objectId: primary.id, objectIndex: primary.i } : item
+      })
+      if (selectedIndex != null || plan.some((item, i) => item !== state.plan[i]) || favoriteIds.some((id, i) => id !== state.favoriteIds[i]) || favoriteIds.length !== state.favoriteIds.length) {
+        useStore.setState({ selectedIndex: selectedIndex ?? state.selectedIndex, plan, favoriteIds })
+      }
+      catalogSnapshot = { catalog, indexed, error: null }
+    })
+    .catch((e: Error) => { catalogSnapshot = { catalog: null, indexed: null, error: e.message } })
     .finally(() => listeners.forEach((l) => l()))
 }
 
-export function useCatalog(): { catalog: DSO[] | null; error: string | null } {
+export function useCatalog() {
   useEffect(startCatalog, [])
   return useSyncExternalStore(subscribeCatalog, getCatalogSnapshot)
 }
 
 export function useSelected(): DSO | null {
-  const { catalog } = useCatalog()
+  const { indexed } = useCatalog()
   const index = useStore((s) => s.selectedIndex)
-  return catalog && index !== null ? (catalog[index] ?? null) : null
+  return indexed && index !== null ? (indexed[index] ?? null) : null
+}
+
+/** Starsze własne zdjęcie pozostaje w IndexedDB pod oznaczeniem użytym przy jego dodaniu. */
+export function useOwnPhotoKey(object: DSO | null): string {
+  return useStore((s) => {
+    if (!object) return ''
+    if (s.ownPhotos[object.id]) return object.id
+    return object.photoAliases?.find((alias) => s.ownPhotos[alias]) ?? object.id
+  })
 }
 
 // ---------- Noc ----------
@@ -104,7 +130,7 @@ const visibilityKey = (catalog: DSO[], site: Site, darkStart: number, darkEnd: n
   `${catalog.length}|${site.latDeg},${site.lonDeg},${site.elevationM}|${darkStart}|${darkEnd}|${minAlt}|${JSON.stringify(horizon)}`
 
 export function useCatalogVisibility(): CatalogVisibility | null {
-  const { catalog } = useCatalog()
+  const { indexed: catalog } = useCatalog()
   const site = useSite()
   const night = useNight()
   const minAlt = useStore((s) => s.minAltDeg)

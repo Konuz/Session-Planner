@@ -277,7 +277,7 @@ function polyline(ctx: CanvasRenderingContext2D, pts: Pt[], size: { w: number; h
   }
 }
 
-function drawCelestialGrid(ctx: CanvasRenderingContext2D, proj: Projector, latDeg: number, size: { w: number; h: number }) {
+function drawCelestialGrid(ctx: CanvasRenderingContext2D, proj: Projector, latDeg: number, size: { w: number; h: number }, showDecLabels: boolean) {
   const sin = Math.sin(latDeg * DEG), cos = Math.cos(latDeg * DEG)
   // Siatka względem południka obserwatora. Biegun nie zależy od godziny.
   const toHorizontal: Mat3 = [-sin, 0, cos, 0, 1, 0, cos, 0, sin]
@@ -288,8 +288,13 @@ function drawCelestialGrid(ctx: CanvasRenderingContext2D, proj: Projector, latDe
   ctx.lineWidth = 1
   ctx.strokeStyle = 'rgba(120, 150, 200, 0.23)'
   ctx.beginPath()
+  const labels: { x: number; y: number; text: string }[] = []
   for (let dec = -80; dec <= 80; dec += 10) {
-    polyline(ctx, Array.from({ length: 121 }, (_, i) => project(i * 3, dec)), size)
+    const ring = Array.from({ length: 121 }, (_, i) => project(i * 3, dec))
+    polyline(ctx, ring, size)
+    // Górna kulminacja jest stałym punktem linii, niezależnym od kadru.
+    const p = ring[0]
+    if (p && showDecLabels) labels.push({ x: p[0], y: p[1], text: `DEC ${dec > 0 ? '+' : ''}${dec}°` })
   }
   for (let angle = 0; angle < 360; angle += 30) {
     polyline(ctx, Array.from({ length: 61 }, (_, i) => project(angle, -90 + i * 3)), size)
@@ -305,6 +310,7 @@ function drawCelestialGrid(ctx: CanvasRenderingContext2D, proj: Projector, latDe
     ctx.font = '11px ui-monospace, Consolas, monospace'
     ctx.fillText(north ? 'Biegun N' : 'Biegun S', x + 7, y - 5)
   }
+  return labels
 }
 
 const groundCanvas = typeof document !== 'undefined' ? document.createElement('canvas') : null
@@ -557,6 +563,7 @@ export function SkyDome({ playing = false }: Props) {
   const { catalog } = useCatalog()
   const selected = useSelected()
   const horizon = useStore((s) => s.horizon)
+  const showGridLabels = useStore((s) => s.showDecLabels)
   const showLines = useStore((s) => s.showLines)
   const showTracks = useStore((s) => s.showTracks)
   const showArt = useStore((s) => s.showArt)
@@ -792,8 +799,8 @@ export function SkyDome({ playing = false }: Props) {
 
     const toScreenHor = (alt: number, az: number) => proj.hor(horizontalToVec({ altDeg: alt, azDeg: az }))
 
-    if (isPolarDome) drawCelestialGrid(uctx, proj, site.latDeg, size)
-    else {
+    const polarLabels = isPolarDome ? drawCelestialGrid(uctx, proj, site.latDeg, size, showGridLabels) : null
+    if (!isPolarDome) {
       // Siatka wysokości (pierścienie co 20°) i kierunki świata.
       uctx.lineWidth = 1
       uctx.strokeStyle = 'rgba(120, 150, 200, 0.16)'
@@ -803,7 +810,7 @@ export function SkyDome({ playing = false }: Props) {
         uctx.beginPath()
         polyline(uctx, Array.from({ length: 121 }, (_, i) => toScreenHor(alt, i * 3)), size)
         uctx.stroke()
-        if (alt > 0) {
+        if (showGridLabels && alt > 0) {
           const p = toScreenHor(alt, 315)
           if (p) uctx.fillText(`${alt}°`, p[0] + 4, p[1] - 4)
         }
@@ -1280,13 +1287,18 @@ export function SkyDome({ playing = false }: Props) {
     }
 
     // Stopnie wysokości na siatce (nad podkładem i ziemią; w przybliżeniu szukamy widocznego punktu pierścienia).
-    if (!isPolarDome) {
+    if (showGridLabels) {
       ctx.save()
       ctx.font = '11px ui-monospace, Consolas, monospace'
       ctx.lineWidth = 2.5
       ctx.strokeStyle = 'rgba(2, 5, 13, 0.75)'
       ctx.fillStyle = 'rgba(180, 205, 235, 0.78)'
-      for (const alt of [0, 20, 40, 60, 80]) {
+      if (polarLabels) {
+        for (const { x, y, text } of polarLabels) {
+          ctx.strokeText(text, x + 4, y - 4)
+          ctx.fillText(text, x + 4, y - 4)
+        }
+      } else for (const alt of [0, 20, 40, 60, 80]) {
         let p: [number, number] | null = null
         if (fullDome) {
           p = toScreenHor(alt, 315)

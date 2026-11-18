@@ -7,7 +7,7 @@ import { CONSTELLATION_PL } from '../lib/constellations'
 import { fmtDec, fmtDeg, fmtDistance, fmtDuration, fmtNum, fmtRa, fmtSize, fmtTime } from '../lib/format'
 import { altitudeTrack, nightGrid, visibility } from '../lib/night'
 import { astrobinSearchUrl, fetchWikiSummary, type WikiSummary } from '../lib/services'
-import { useNight, useSelected, useSite } from '../state/data'
+import { useNight, useOwnPhotoKey, useSelected, useSite } from '../state/data'
 import { useStore } from '../state/store'
 import { CloseButton } from './CloseButton'
 import { OwnPhotoActions } from './OwnPhotoActions'
@@ -15,6 +15,7 @@ import { Thumb } from './Thumb'
 
 export function ObjectDetails({ onClose }: { onClose: () => void }) {
   const o = useSelected()
+  const photoKey = useOwnPhotoKey(o)
   const night = useNight()
   const site = useSite()
   const tz = useStore((s) => s.location.timeZone)
@@ -110,7 +111,7 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
             <button className="button primary" onClick={() => go('dome')}>Pokaż na niebie</button>
             <button className="button" onClick={() => go('3d')}>Pozycja 3D</button>
             <button className="button" onClick={() => { addToPlan(o.i, o.id); onClose(); setTab('planner') }}>Do planu</button>
-            <OwnPhotoActions key={o.id} objectId={o.id} />
+            <OwnPhotoActions key={photoKey} objectId={photoKey} />
             {astrobin?.key === o.i && (
               <a className="button" href={astrobin.url} target="_blank" rel="noreferrer" title="Zdjęcia z AstroBin wyróżnione jako IOTD lub Top Pick">
                 AstroBin

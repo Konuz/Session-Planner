@@ -109,25 +109,61 @@ export function checkIdentity(entry: Entry, simbad: Map<string, SimbadObject>): 
   return { verdict: sepDeg > limit ? 'position' : 'ok', mainId: primary.mainId, otype: primary.otype, sepDeg, foreignAliases, typeNote }
 }
 
-/** Wycinki H II: oznaczenie Lyndsa sprowadzamy do jednoznacznego oznaczenia Sharplessa z SIMBAD. */
-export function photoNebulaAliases(entries: Entry[], identities: readonly Identity[]): Record<string, string> {
+/** W katalogu Dutry i Biki jedna linia Names oznacza jeden obłok; uwagi „in” i „inc” opisują jego części. */
+export function darkCloudIds(text: string): Map<string, number> {
+  const result = new Map<string, number>()
+  parseVizierTsv(text).forEach(({ Names }, i) => {
+    for (const name of Names.split(',')) {
+      const match = /^(LDN|B)\s*(\d+[a-z]?)$/i.exec(name.trim())
+      if (match) {
+        const id = `${match[1]} ${match[2]}`
+        result.set(id, result.has(id) ? -1 : i)
+      }
+    }
+  })
+  return result
+}
+
+/** Tożsamość SIMBAD, zgodny rodzaj i położenie. Wspólna gwiazda lub część większego obłoku nie są aliasami. */
+export function catalogAliases(entries: Entry[], identities: readonly Identity[], clouds: ReadonlyMap<string, number>, clusters: ReadonlyMap<number, Hr23Cluster>): Record<string, string> {
   const groups = new Map<string, Entry[]>()
+  const membership = new Map([...clusters].map(([i, cluster]) => [entries[i], cluster]))
   entries.forEach((entry, i) => {
     const identity = identities[i]
-    if (entry.type !== 'EN' || identity.verdict !== 'ok' || identity.otype !== 'HII') return
-    const group = groups.get(identity.mainId) ?? []
+    if (identity.verdict !== 'ok' || !identity.mainId || identity.foreignAliases.length) return
+    const cls = typeClass(identity.otype)
+    if (!cls || cls === 'gwiazda') return
+    const bright = ['EN', 'RN'].includes(entry.type) && ['mgławica', 'mgławica refleksyjna'].includes(cls)
+    if (!bright && !APP_CLASS[entry.type]?.includes(cls)) return
+    let key = identity.mainId
+    if (entry.type === 'DN') {
+      const row = clouds.get(entry.designations[0])
+      if (row === undefined || row < 0) return
+      key += '|' + row
+    }
+    const group = groups.get(key) ?? []
     group.push(entry)
-    groups.set(identity.mainId, group)
+    groups.set(key, group)
   })
   const aliases: Record<string, string> = {}
+  const family = (e: Entry) => e.designations[0].split(/[ -]/)[0]
+  const priority = ['M', 'Sh2', 'NGC', 'IC', 'SNR', 'LDN']
+  const rank = (e: Entry) => { const i = priority.indexOf(family(e)); return i < 0 ? priority.length : i }
   for (const group of groups.values()) {
-    const sharpless = group.filter((entry) => /^Sh2-\d+$/.test(entry.designations[0]))
-    if (sharpless.length !== 1) continue
-    const [primary] = sharpless
-    for (const alias of group) {
-      if (!/^LBN \d+$/.test(alias.designations[0])) continue
+    if (group.length < 2) continue
+    // HR23 rozdziela także gromady nałożone na siebie. Jedna populacja może mieć kilka nazw historycznych.
+    const populations = new Set(group.map((entry) => membership.get(entry)).filter((c): c is Hr23Cluster => !!c))
+    if (populations.size > 1) continue
+    const [cluster] = populations
+    // Kilka numerów tej samej serii może opisywać osobne fragmenty lub składniki.
+    const distinct = group.filter((e) => group.filter((other) => family(other) === family(e)).length === 1)
+    const [primary, ...others] = distinct.sort((a, b) => rank(a) - rank(b) || a.designations[0].localeCompare(b.designations[0], 'en'))
+    for (const alias of others) {
       const separation = separationDeg(primary.raDeg, primary.decDeg, alias.raDeg, alias.decDeg)
-      if (separation <= (primary.majArcmin + alias.majArcmin) / 120) aliases[alias.designations[0]] = primary.designations[0]
+      if (cluster && [primary, alias].some((e) => separationDeg(e.raDeg, e.decDeg, cluster.raDeg, cluster.decDeg) > Math.max(1 / 60, cluster.rtDeg))) continue
+      // Środki historycznych katalogów mgławic bywają zaokrąglone do kilku minut łuku.
+      const precision = [primary, alias].some((e) => ['LBN', 'Sh2'].includes(family(e))) ? 5 / 60 : 1 / 60
+      if (separation <= Math.max(precision, (primary.majArcmin + alias.majArcmin) / 120)) aliases[alias.designations[0]] = primary.designations[0]
     }
   }
   return aliases
@@ -323,14 +359,14 @@ export function rl22Choice(snr: Rl22Snr): Choice {
 }
 
 /** Gwiazda centralna mgławicy planetarnej z Chornay & Walton 2021 (J/A+A/656/A110/tablea1, Gaia EDR3). */
-export interface Cw21Pn { png: string; raDeg: number; decDeg: number; radiusDeg: number; pc: number; loPc: number; hiPc: number }
+export interface Cw21Pn { name: string; png: string; raDeg: number; decDeg: number; radiusDeg: number; pc: number; loPc: number; hiPc: number }
 
 /** Dopasowania wiarygodne (Rel ≥ 0,5, RUWE < 1,4) z odległością łączoną (paralaksa i prior statystyczny). */
 export function parseCw21(text: string): Cw21Pn[] {
   return parseVizierTsv(text).flatMap((row): Cw21Pn[] => {
     const [ra, dec, rad, pc, lo, hi, rel, ruwe] = ['pnRAdeg', 'pnDEdeg', 'pnRad', 'rcomb', 'b_rcomb', 'B_rcomb', 'Rel', 'RUWE'].map((k) => num(row[k]))
     if (!row.PNG || ra === null || dec === null || pc === null || lo === null || hi === null || rel === null || rel < 0.5 || (ruwe !== null && ruwe >= 1.4)) return []
-    return [{ png: `PN G${row.PNG}`, raDeg: ra, decDeg: dec, radiusDeg: (rad ?? 0) / 3600, pc, loPc: lo, hiPc: hi }]
+    return [{ name: row.Name, png: `PN G${row.PNG}`, raDeg: ra, decDeg: dec, radiusDeg: (rad ?? 0) / 3600, pc, loPc: lo, hiPc: hi }]
   })
 }
 

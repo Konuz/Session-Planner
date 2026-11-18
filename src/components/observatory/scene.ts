@@ -9,7 +9,7 @@ import { objectCount, overlapGroups, type LabelBox } from '../../lib/labelGroups
 import { photoCropSquare } from '../../lib/photo'
 import { GALACTIC_LIMIT_LY } from '../../lib/space3d'
 import { openLabelFan, type LabelFan } from '../labelFan'
-import { createEarthAssets, createEarthMesh, setEarthOpacity, type EarthAssets } from '../space3d/earthModel'
+import { createEarthAssets, createEarthMesh, EARTH_FRAME_MS, setEarthOpacity, type EarthAssets, type EarthRig } from '../space3d/earthModel'
 import { glyphSprite, glyphTexture } from '../space3d/markerGlyphs'
 import { MARK, MARK_PROJECTION_Y } from '../space3d/photoGuide'
 
@@ -25,6 +25,8 @@ const GRID_FRONT = EARTH_Z + 20
 const LABEL_HEIGHT = 37
 const LABEL_DX = 8
 const LABEL_DY = -46
+const MARK_LABEL_DX = 13
+const MARK_LABEL_DY = -9
 const CHAR_PX = 6.1
 
 interface Options {
@@ -146,7 +148,8 @@ export class ObservatoryScene {
   private photo: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial> | null = null
   private frame: THREE.LineLoop | null = null
   private grid: THREE.GridHelper
-  private earth: THREE.Mesh | null = null
+  private earth: EarthRig | null = null
+  private lastRender = -Infinity
   private pyramid: THREE.LineSegments<THREE.BufferGeometry, THREE.LineBasicMaterial> | null = null
   private axisLine: THREE.Line<THREE.BufferGeometry, THREE.LineDashedMaterial> | null = null
   private tickMaterial: THREE.MeshBasicMaterial | null = null
@@ -321,8 +324,8 @@ export class ObservatoryScene {
     // Ziemia i ostrosłup pola: od Ziemi do narożników kadru.
     const earthPos = new THREE.Vector3(0, 0, EARTH_Z)
     const assets = this.earthAssets ??= createEarthAssets(import.meta.env.BASE_URL, this.renderer.capabilities.getMaxAnisotropy(), () => { this.dirty = true })
-    const rig = createEarthMesh(1.5, assets)
-    const earth = this.earth = rig.mesh
+    const rig = this.earth = createEarthMesh(1.5, assets)
+    const earth = rig.mesh
     earth.position.copy(earthPos)
     const pyramidMaterial = new THREE.LineBasicMaterial({ color: this.accent, transparent: true, opacity: 0.35 })
     const pyramid = this.pyramid = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(corners.flatMap((c) => [earthPos, c])), pyramidMaterial)
@@ -384,7 +387,9 @@ export class ObservatoryScene {
         this.data.add(anchor)
       }
       const distance = `≈ ${fmtDistance(item.distLy)}`
-      this.itemLabels.set(item.id, this.label('obs-label obs-card', `${item.id}\n${distance}`))
+      const label = this.label('obs-label obs-card', `${item.id}\n${distance}`)
+      label.style.setProperty('--obs-marker-color', color)
+      this.itemLabels.set(item.id, label)
       this.labelWidths.set(item.id, Math.max(item.id.length, distance.length) * CHAR_PX + 16)
       this.dataDisposables.push(texture, material)
     }
@@ -465,7 +470,7 @@ export class ObservatoryScene {
     }
     ;(this.grid.material as THREE.LineBasicMaterial).opacity = f.grid
     this.grid.visible = f.grid > 0
-    if (this.earth) { setEarthOpacity(this.earth, f.earth); this.earth.visible = f.earth > 0 }
+    if (this.earth) { setEarthOpacity(this.earth.mesh, f.earth); this.earth.mesh.visible = f.earth > 0 }
     if (this.pyramid) { this.pyramid.material.opacity = 0.35 * f.pyramid; this.pyramid.visible = f.pyramid > 0 }
     if (this.axisLine) this.axisLine.material.opacity = 0.7 * f.axis
     if (this.tickMaterial) this.tickMaterial.opacity = 0.6 * f.axis
@@ -486,7 +491,7 @@ export class ObservatoryScene {
       this.starState = { progress: this.progress, photo: f.photo, visible: this.visible }
     }
     const pixelScale = PLANE_WIDTH / this.image.width
-    const anchorOpacity = (1 - arrival) * f.photo
+    const anchorOpacity = (1 - (this.external ? arrival : e)) * f.photo
     const anchorScale = MARK * MARK_PROJECTION_Y / this.camera.projectionMatrix.elements[5]
     for (const item of this.items) {
       const card = this.cards.get(item.id)
@@ -500,7 +505,7 @@ export class ObservatoryScene {
         anchor.position.copy(destination)
         anchor.scale.setScalar(anchorScale)
         anchor.material.opacity = anchorOpacity
-        anchor.visible = this.visible.has(item.id) && this.arrival < 1 && anchorOpacity > 0
+        anchor.visible = this.visible.has(item.id) && anchorOpacity > 0
       }
       card.position.copy(destination)
       // Lecąca tekstura jest obrazem wycinka. Pozycję obiektu wskazuje nieruchomy znacznik.
@@ -580,25 +585,24 @@ export class ObservatoryScene {
 
   /** Poza kamery widoku (bez przelotu). */
   viewPose(view: ObservatoryView): { position: Vec3; target: Vec3 } {
-    const box = this.bounds(view !== 'earth')
-    const center = box.getCenter(new THREE.Vector3())
-    const size = box.getSize(new THREE.Vector3())
-    let position: THREE.Vector3, target: THREE.Vector3
-    if (view === 'earth') {
-      const pose = earthViewPose(this.image, this.camera.aspect, size.z)
-      target = new THREE.Vector3(...pose.target)
-      position = new THREE.Vector3(...pose.position)
-    } else if (view === 'top') {
-      target = center
-      position = center.clone().add(new THREE.Vector3(0, this.fitDistance(size.x, size.z) + size.y / 2, 0.001))
-    } else if (view === 'side') {
-      target = center
-      position = center.clone().add(new THREE.Vector3(this.fitDistance(size.z, size.y) + size.x / 2, 0, 0))
-    } else {
+    if (view === 'earth') return earthViewPose(this.image, this.camera.aspect)
+    if (view === 'structure') {
       // Ta sama poza co szew nurkowania z Drogi Mlecznej (widoczne obiekty, pełne rozłożenie).
       return structureViewPose(this.items.filter((item) => this.visible.has(item.id)), this.image, this.domain)
     }
-    return { position: position.toArray() as Vec3, target: target.toArray() as Vec3 }
+    const box = this.bounds(true)
+    const center = box.getCenter(new THREE.Vector3())
+    const size = box.getSize(new THREE.Vector3())
+    if (view === 'top') {
+      return {
+        target: center.toArray() as Vec3,
+        position: center.clone().add(new THREE.Vector3(0, this.fitDistance(size.x, size.z) + size.y / 2, 0.001)).toArray() as Vec3,
+      }
+    }
+    return {
+      target: center.toArray() as Vec3,
+      position: center.clone().add(new THREE.Vector3(this.fitDistance(size.z, size.y) + size.x / 2, 0, 0)).toArray() as Vec3,
+    }
   }
 
   /** Punkt sceny na ekranie (piksele płótna). */
@@ -719,8 +723,12 @@ export class ObservatoryScene {
 
   step(now: number, foreground?: { object: THREE.Object3D; camera: THREE.Camera }) {
     this.resize(this.external)
+    const earth = this.earth
+    const spinning = earth?.mesh.visible && !this.options.reducedMotion
+    if (spinning) earth.spin(now)
+    const spinFrame = spinning && now - this.lastRender >= EARTH_FRAME_MS
     if (this.external) {
-      if (this.dirty || foreground) this.render()
+      if (this.dirty || foreground || spinFrame) this.render(now, this.dirty || !!foreground)
       if (foreground) {
         const autoClear = this.renderer.autoClear
         this.renderer.autoClear = false
@@ -760,14 +768,16 @@ export class ObservatoryScene {
       }
     }
     // update() zwraca true, gdy tłumienie nadal porusza kamerą.
-    if (this.controls.update() || this.dirty) this.render()
+    const updateLabels = this.controls.update() || this.dirty
+    if (updateLabels || spinFrame) this.render(now, updateLabels)
   }
 
-  private render() {
+  private render(now = performance.now(), updateLabels = true) {
     if (this.layoutDirty) this.layout()
     this.dirty = false
+    this.lastRender = now
     this.renderer.render(this.scene, this.camera)
-    this.placeLabels()
+    if (updateLabels) this.placeLabels()
   }
 
   private placeLabels() {
@@ -800,10 +810,12 @@ export class ObservatoryScene {
       el.classList.toggle('selected', isSelected)
       // W scenie są tylko obiekty z ustaloną odległością (observatoryItems).
       const anchor = this.anchors.get(item.id)
-      const labelPosition = anchor?.visible ? anchor.position : card.position
-      const at = place(el, labelPosition.clone().add(new THREE.Vector3(0, card.scale.y / 2, 0)), this.visible.has(item.id))
+      const byMarker = anchor?.visible === true
+      el.classList.toggle('space-photo-label', byMarker)
+      const labelPosition = byMarker ? anchor.position : card.position.clone().add(new THREE.Vector3(0, card.scale.y / 2, 0))
+      const at = place(el, labelPosition, this.visible.has(item.id))
       if (!at) continue
-      const left = at[0] + LABEL_DX, top = at[1] + LABEL_DY
+      const left = at[0] + (byMarker ? MARK_LABEL_DX : LABEL_DX), top = at[1] + (byMarker ? MARK_LABEL_DY : LABEL_DY)
       shown.push({ item, el, x: at[0], y: at[1] })
       boxes.push({ left, top, right: left + (this.labelWidths.get(item.id) ?? 0), bottom: top + LABEL_HEIGHT })
     }

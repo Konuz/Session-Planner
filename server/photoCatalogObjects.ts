@@ -15,7 +15,7 @@ const sources = [
 ] as const
 
 type Source = typeof sources[number]
-type LocalObject = Pick<DSO, 'id' | 'type' | 'aliases' | 'raDeg' | 'decDeg'>
+type LocalObject = Pick<DSO, 'id' | 'type' | 'aliases' | 'raDeg' | 'decDeg' | 'photoPrimaryId'>
 
 function number(value: string | undefined): number | null {
   return value && Number.isFinite(Number(value)) ? Number(value) : null
@@ -115,7 +115,8 @@ export async function loadPhotoCatalogObjects(
       // Nawiasy oznaczają cały układ, a ? i ! oznaczają sporne lub przeniesione identyfikacje.
       const keys = [id, ...(row.ANames?.split(/\s{2,}/) ?? []).filter((name) => !/[()?!]/.test(name))]
       const matches = source.kind === 'PGC' ? new Set(keys.flatMap((name) => aliases.get(designationKey(name)) ?? [])
-        .filter((object) => separationDeg(raDeg, decDeg, object.raDeg, object.decDeg) <= 1 / 60)) : null
+        .filter((object) => separationDeg(raDeg, decDeg, object.raDeg, object.decDeg) <= 1 / 60)
+        .map((object) => catalog.get(object.photoPrimaryId ?? '') ?? object)) : null
       const local = matches?.size === 1 ? [...matches][0] : undefined
       return [{ id, kind: source.kind, type, raDeg, decDeg, local, recorded, diameterArcmin }]
     })

@@ -25,13 +25,14 @@ function Switch({ on, onClick, label, disabled, title }: { on: boolean; onClick:
   )
 }
 
-type LayerKey = 'showLines' | 'showLabels' | 'showArt' | 'showOutlines' | 'showOwnPhotos' | 'showEllipses' | 'showObjectMarkers' | 'showAnnotations' | 'show3DAnnotations' | 'showTracks'
+type LayerKey = 'showDecLabels' | 'showLines' | 'showLabels' | 'showArt' | 'showOutlines' | 'showOwnPhotos' | 'showEllipses' | 'showObjectMarkers' | 'showAnnotations' | 'show3DAnnotations' | 'showTracks'
 
 const THREE_D_LAYERS: { key: LayerKey; label: string }[] = [
   { key: 'show3DAnnotations', label: 'Nazwy obiektów' },
 ]
 
 const LAYERS: { key: LayerKey; label: string }[] = [
+  { key: 'showDecLabels', label: 'Oznaczenia siatki (wysokość i DEC)' },
   { key: 'showLines', label: 'Linie gwiazdozbiorów' },
   { key: 'showLabels', label: 'Nazwy gwiazdozbiorów' },
   { key: 'showArt', label: 'Postacie gwiazdozbiorów' },

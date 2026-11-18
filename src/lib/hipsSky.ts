@@ -43,12 +43,27 @@ export function detailOrderScale(order: number): number {
   return ARCSEC_PER_RAD / Math.min(ALLSKY_ENOUGH_ARCSEC, tilePixelArcsec(order - 1))
 }
 
-/** Środek rzutu (J2000), promień kątowy koła obejmującego ekran [°] i skala w środku [″/px]. */
-export function viewCircle(eqToView: Mat3, scale: number, maxScreenRadiusPx: number): { centre: Vec3; radiusDeg: number; arcsecPerPx: number } {
+/** Prostokąt ekranu w rzucie stereograficznym i obejmujące go koło na sferze. */
+export function tileView({ eqToView: m, scale, cx, cy, width, height }: { eqToView: Mat3; scale: number; cx: number; cy: number; width: number; height: number }) {
+  const maxScreenRadiusPx = Math.hypot(Math.max(cx, width - cx), Math.max(cy, height - cy))
   // Środek rzutu to +Z układu widoku: trzeci wiersz macierzy J2000 → widok. Promień najwyżej 140°: dalej kafelki
   // zbliżają się do punktu przeciwnego, gdzie rzut stereograficzny rozciąga trójkąty przez cały ekran.
   const radiusDeg = Math.min(140, (2 * Math.atan(maxScreenRadiusPx / (2 * scale))) / DEG)
-  return { centre: [eqToView[6], eqToView[7], eqToView[8]], radiusDeg, arcsecPerPx: ARCSEC_PER_RAD / scale }
+  const centre: Vec3 = [m[6], m[7], m[8]]
+  const twiceScale = 2 * scale
+  const planeNorm = Math.hypot(twiceScale, Math.max(cx, width - cx, cy, height - cy))
+  return {
+    centre, radiusDeg, arcsecPerPx: ARCSEC_PER_RAD / scale,
+    intersectsScreen(x: number, y: number, z: number, depth: number, radius: number) {
+      // Po pomnożeniu przez depth = 1 + Z każda krawędź ekranu jest płaszczyzną.
+      // Cięciwa od środka do brzegu kafelka daje bezpieczny margines dla wszystkich czterech płaszczyzn.
+      const margin = planeNorm * 2 * Math.sin(radius * DEG / 2)
+      const px = twiceScale * (m[0] * x + m[1] * y + m[2] * z)
+      const py = twiceScale * (m[3] * x + m[4] * y + m[5] * z)
+      return px >= -cx * depth - margin && px <= (width - cx) * depth + margin &&
+        py >= -(height - cy) * depth - margin && py <= cy * depth + margin
+    },
+  }
 }
 
 interface TileGrid {
@@ -84,18 +99,21 @@ function tileGrid(order: number): TileGrid {
 }
 
 /**
- * Kafelki rzędu `order` przecinające koło widoku (`centre`, `radiusDeg`), od najbliższego środka. Pomija kafelki
+ * Kafelki rzędu `order` w prostokącie widoku, od najbliższego środka. Pomija kafelki
  * w całości na południe od `minDecDeg` albo w całości pod horyzontem (`zenith` w J2000).
  */
-export function visibleTiles(order: number, centre: Vec3, radiusDeg: number, zenith: Vec3, minDecDeg: number): number[] {
+export function visibleTiles(order: number, view: ReturnType<typeof tileView>, zenith: Vec3, minDecDeg: number): number[] {
+  const { centre, radiusDeg } = view
   const { centres, radiusDeg: tileR } = tileGrid(order)
   const found: { p: number; d: number }[] = []
   // Bez obiektów na kafelek: na rzędzie 5 pętla obejmuje 12 288 kafelków w każdej klatce przeciągania.
   for (let p = 0; p < tileR.length; p++) {
     const x = centres[p * 3], y = centres[p * 3 + 1], z = centres[p * 3 + 2]
     const r = tileR[p]
-    const d = Math.acos(Math.max(-1, Math.min(1, x * centre[0] + y * centre[1] + z * centre[2]))) / DEG
+    const dot = x * centre[0] + y * centre[1] + z * centre[2]
+    const d = Math.acos(Math.max(-1, Math.min(1, dot))) / DEG
     if (d > radiusDeg + r) continue
+    if (!view.intersectsScreen(x, y, z, 1 + dot, r)) continue
     if (Math.asin(z) / DEG + r < minDecDeg) continue
     if (Math.asin(Math.max(-1, Math.min(1, x * zenith[0] + y * zenith[1] + z * zenith[2]))) / DEG < -r - 2) continue
     found.push({ p, d })

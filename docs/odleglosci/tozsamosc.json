@@ -577,12 +577,6 @@
    "sepDeg": 0.298
   },
   {
-   "id": "LBN 744",
-   "simbad": "SH 2-216",
-   "otype": "PN",
-   "sepDeg": 0.402
-  },
-  {
    "id": "LBN 750",
    "simbad": "LBN 159.84+12.50",
    "otype": "HII",
@@ -1399,12 +1393,6 @@
    "sepDeg": 0.624
   },
   {
-   "id": "Sh2-216",
-   "simbad": "SH 2-216",
-   "otype": "PN",
-   "sepDeg": 0.298
-  },
-  {
    "id": "Sh2-220",
    "simbad": "NGC 1499",
    "otype": "HII",
@@ -2175,11 +2163,6 @@
    "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
   },
   {
-   "id": "LBN 149",
-   "simbad": "NGC 6842",
-   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
-  },
-  {
    "id": "LBN 403",
    "simbad": "LBN 088.34+01.71",
    "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
@@ -2355,11 +2338,6 @@
    "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
   },
   {
-   "id": "LBN 633",
-   "simbad": "SH 2-188",
-   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
-  },
-  {
    "id": "LBN 636",
    "simbad": "LBN 130.06+11.55",
    "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
@@ -2423,11 +2401,6 @@
    "id": "LBN 737",
    "simbad": "LBN 157.77+02.28",
    "note": "EN w aplikacji, RNe (mgławica refleksyjna) w SIMBAD"
-  },
-  {
-   "id": "LBN 744",
-   "simbad": "SH 2-216",
-   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
   },
   {
    "id": "LBN 746",
@@ -2995,11 +2968,6 @@
    "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
   },
   {
-   "id": "Sh2-188",
-   "simbad": "SH 2-188",
-   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
-  },
-  {
    "id": "Sh2-189",
    "simbad": "PN A66 3",
    "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
@@ -3023,11 +2991,6 @@
    "id": "Sh2-208",
    "simbad": "Cl Waterloo 1",
    "note": "EN w aplikacji, OpC (gromada) w SIMBAD"
-  },
-  {
-   "id": "Sh2-216",
-   "simbad": "SH 2-216",
-   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
   },
   {
    "id": "Sh2-222",
@@ -3140,16 +3103,6 @@
    "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
   },
   {
-   "id": "Sh2-71",
-   "simbad": "SH 2-71",
-   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
-  },
-  {
-   "id": "Sh2-78",
-   "simbad": "SH 2-78",
-   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
-  },
-  {
    "id": "Sh2-80",
    "simbad": "Hen 2-427",
    "note": "EN w aplikacji, WR* (gwiazda) w SIMBAD"
@@ -3158,11 +3111,6 @@
    "id": "Sh2-9",
    "simbad": "* sig Sco",
    "note": "EN w aplikacji, bC* (gwiazda) w SIMBAD"
-  },
-  {
-   "id": "Sh2-95",
-   "simbad": "NGC 6842",
-   "note": "EN w aplikacji, PN (mgławica planetarna) w SIMBAD"
   },
   {
    "id": "Sh2-97",

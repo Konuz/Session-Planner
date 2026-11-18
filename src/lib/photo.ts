@@ -1,5 +1,5 @@
 import type { ObjectType } from './catalog'
-import { hasDistance, SCOPE_LABELS, type DistanceScope } from './distance'
+import { hasDistance, measurementDistance, SCOPE_LABELS, type DistanceScope } from './distance'
 import { fmtDistance } from './format'
 
 export type PhotoScale = 'galaxy' | 'universe'
@@ -31,7 +31,7 @@ export interface PhotoCut {
   distanceRef: string
   /** catalog, stars: ustalone przez aplikację (katalog, gwiazdy Gaia pola) i odświeżane z nowym katalogiem;
    *  regressor: oszacowanie modelu (niezweryfikowane), gdy łańcuch nic nie daje; user: wybór w edycji wycinka. */
-  distanceOrigin: 'catalog' | 'stars' | 'regressor' | 'user'
+  distanceOrigin: 'catalog' | 'stars' | 'regressor' | 'published' | 'user'
   catalogMatch?: { kind: PhotoCatalogKind; id: string; distance?: PhotoDistance }
 }
 /** Gwiazda Gaia DR3 w kadrze. Pozycja na epokę 2025,0 (jak katalog solvera), piksel z WCS zdjęcia. */
@@ -83,8 +83,10 @@ export function mergePhotoCatalogCuts(cuts: PhotoCut[], candidates: PhotoCut[]):
     if (!current) {
       byId.set(candidate.id, candidate)
       changed = true
-    } else if (!current.catalogMatch && candidate.catalogMatch) {
-      byId.set(current.id, { ...current, catalogMatch: candidate.catalogMatch })
+    } else if (candidate.catalogMatch && (!current.catalogMatch || (!current.catalogMatch.distance && candidate.catalogMatch.distance))) {
+      const recorded = candidate.catalogMatch.distance
+      const distance = recorded && current.distLy === null && current.distanceOrigin !== 'user' ? measurementDistance(recorded, 'catalog') : undefined
+      byId.set(current.id, { ...current, ...distance, catalogMatch: candidate.catalogMatch })
       changed = true
     }
   }

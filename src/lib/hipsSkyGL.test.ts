@@ -2,6 +2,9 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { SURVEYS } from './hips'
 import { createHipsSkyLayer } from './hipsSkyGL'
 import { fetchTile } from './hipsTiles'
+import { DEG, type Mat3 } from './astro'
+import { healpixFaceXY, nestIndex } from './healpix'
+import { makeProjector } from './projection'
 
 vi.mock('./hipsTiles', () => ({ fetchTile: vi.fn() }))
 
@@ -72,11 +75,11 @@ function setup() {
     for (; elapsed > 50; elapsed -= 50) tick(50)
     return tick(elapsed)
   }
-  const draw = (arcsecPerPx: number, elapsed = 0) => {
+  const draw = (arcsecPerPx: number, elapsed = 0, width = 128, height = 128, eqToView: Mat3 = [1, 0, 0, 0, 1, 0, 0, 0, 1]) => {
     now += elapsed
     layer.draw({
-      eqToView: [1, 0, 0, 0, 1, 0, 0, 0, 1], zen: [0, 0, 1],
-      scale: 206264.806 / arcsecPerPx, width: 128, height: 128, cx: 64, cy: 64, dpr: 1, bright: 1, allowDecode: true,
+      eqToView, zen: [0, 0, 1],
+      scale: 206264.806 / arcsecPerPx, width, height, cx: width / 2, cy: height / 2, dpr: 1, bright: 1, allowDecode: true,
     })
     return details()
   }
@@ -99,6 +102,34 @@ function setup() {
 afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
+})
+
+it('po zmianie proporcji mapy pobiera nowe brzegi i pomija kafelki daleko za krótszym bokiem', async () => {
+  const sky = setup()
+  const calls = vi.mocked(fetchTile).mockClear().mock.calls
+  try {
+    for (const [width, height] of [[1920, 320], [320, 1920]]) {
+      const view = { azDeg: 100, altDeg: 35, fovDeg: 2 }
+      const proj = makeProjector([1, 0, 0, 0, 1, 0, 0, 0, 1], view, width / 2, height / 2, Math.min(width, height) / 2)
+      const pixelTile = (x: number, y: number) => {
+        const [a, b, c] = proj.unprojectHor(x, y)
+        return nestIndex(5, ...healpixFaceXY(5, Math.atan2(b, a) / DEG, Math.asin(c) / DEG))
+      }
+      const start = calls.length
+      for (let i = 0; i < 15; i++) {
+        sky.draw(206264.806 / proj.scale, 0, width, height, proj.eqToView)
+        await flush()
+      }
+      const requested = new Set(calls.filter(([, order]) => order === 5).map(([, , npix]) => npix))
+      for (const x of [0, width / 2, width]) {
+        for (const y of [0, height / 2, height]) expect(requested.has(pixelTile(x, y))).toBe(true)
+      }
+      const outside = width > height ? pixelTile(width / 2, height / 2 + 900) : pixelTile(width / 2 + 900, height / 2)
+      expect(calls.slice(start).some(([, order, npix]) => order === 5 && npix === outside)).toBe(false)
+    }
+  } finally {
+    sky.layer.dispose()
+  }
 })
 
 it('przybliżanie zachowuje poprzednie kafelki i wyostrza widoczne pole jednocześnie', async () => {

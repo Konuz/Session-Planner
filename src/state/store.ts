@@ -162,6 +162,7 @@ interface State {
   sortBy: 'best' | 'alt' | 'hours' | 'mag' | 'size' | 'name'
   onlyVisible: boolean
   minVisibleMinutes: number | 'night'
+  showDecLabels: boolean
   showLines: boolean
   showTracks: boolean
   showArt: boolean
@@ -245,7 +246,7 @@ interface State {
   setDomeOpacity(value: number): void
   setSkyLook(look: SkyLook): void
   setThumbSource(source: ThumbSource): void
-  toggle(key: 'showLines' | 'showTracks' | 'showArt' | 'showOutlines' | 'showOwnPhotos' | 'showEllipses' | 'showObjectMarkers' | 'showLabels' | 'showAnnotations' | 'show3DAnnotations' | 'onlyVisible'): void
+  toggle(key: 'showDecLabels' | 'showLines' | 'showTracks' | 'showArt' | 'showOutlines' | 'showOwnPhotos' | 'showEllipses' | 'showObjectMarkers' | 'showLabels' | 'showAnnotations' | 'show3DAnnotations' | 'onlyVisible'): void
 }
 
 function normalizeSkyObjectDensity(value: unknown): number {
@@ -331,6 +332,7 @@ export const useStore = create<State>()(
       sortBy: 'best',
       onlyVisible: false,
       minVisibleMinutes: 0,
+      showDecLabels: true,
       showLines: true,
       showTracks: true,
       showArt: true,
@@ -551,6 +553,7 @@ export const useStore = create<State>()(
         sortBy: s.sortBy,
         onlyVisible: s.onlyVisible,
         minVisibleMinutes: s.minVisibleMinutes,
+        showDecLabels: s.showDecLabels,
         showLines: s.showLines,
         showTracks: s.showTracks,
         showArt: s.showArt,

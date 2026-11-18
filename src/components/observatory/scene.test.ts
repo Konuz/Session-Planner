@@ -47,6 +47,27 @@ function fixture() {
   return { scene, camera, positions, alphas, card, anchor, ring, cutPreview, photo, rendered, host, sizes, item }
 }
 
+it('odświeża nieruchomą scenę dla obrotu Ziemi, z uwzględnieniem ograniczenia ruchu', () => {
+  const { scene, rendered } = fixture()
+  const mesh = new THREE.Mesh()
+  const options = { reducedMotion: false }
+  Object.assign(scene, {
+    external: false, controls: { update: () => false }, keys: new Set(), options, lastTick: 0, lastRender: -Infinity,
+    sizedWidth: 600, sizedHeight: 600, bufferWidth: 600, bufferHeight: 600,
+    earth: { mesh, spin: (now: number) => { mesh.rotation.y = now / 1000 } },
+  })
+
+  scene.step(100)
+  scene.step(150)
+  expect(rendered).toHaveLength(2)
+  expect(mesh.rotation.y).toBe(0.15)
+
+  options.reducedMotion = true
+  scene.step(200)
+  expect(rendered).toHaveLength(2)
+  expect(mesh.rotation.y).toBe(0.15)
+})
+
 it('pokazuje wycinek w pierścieniu zaznaczenia w Drodze Mlecznej i po wskazaniu obiektu spoza niej', () => {
   const { scene, item, card, ring, cutPreview } = fixture()
   scene.setSelected(item.id)
@@ -101,6 +122,34 @@ it('łączy zmiany postępu, krycia i zaznaczenia w jedną aktualizację buforó
   expect(positions.version).toBe(1)
   expect(alphas.version).toBe(2)
   expect(alphas.getX(0)).toBeCloseTo(0.21875)
+})
+
+it('pokazuje znaczniki z wejścia z DM i WL także przy odtwarzaniu i przewijaniu zdjęcia', () => {
+  const { scene: dive, anchor: diveAnchor } = fixture()
+  const { scene, anchor, item } = fixture()
+  Object.assign(scene, { external: false, controls: { update: () => false }, keys: new Set() })
+  dive.setProgress(0.5)
+  dive.setFade({ photo: 1 }, 0.5)
+  dive.step(100)
+
+  scene.setProgress(0.5)
+  scene.step(100)
+  expect(anchor.visible).toBe(true)
+  expect(anchor.material.opacity).toBe(diveAnchor.material.opacity)
+  expect(anchor.position.toArray()).toEqual(diveAnchor.position.toArray())
+
+  scene.setProgress(1)
+  scene.step(116)
+  expect(anchor.visible).toBe(false)
+  scene.setProgress(0)
+  scene.step(132)
+  expect(anchor.visible).toBe(true)
+  scene.setVisible(new Set())
+  scene.step(148)
+  expect(anchor.visible).toBe(false)
+  scene.setVisible(new Set([item.id]))
+  scene.step(164)
+  expect(anchor.visible).toBe(true)
 })
 
 it('wybór kursorem uwzględnia aktualną widoczność i pozycję przed następną klatką', () => {

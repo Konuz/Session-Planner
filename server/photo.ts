@@ -116,7 +116,7 @@ export async function photoApi(req: IncomingMessage, res: ServerResponse, env: P
     const byId = await getCatalogById()
     const id = url.searchParams.get('id') ?? ''
     const externalType = photoCatalogType(id)
-    const object = byId.get(id) ?? (externalType && { id, type: externalType, distLy: null, distUncLy: null, distInfo: null })
+    const object = byId.get(byId.get(id)?.photoPrimaryId ?? id) ?? (externalType && { id, type: externalType, distLy: null, distUncLy: null, distInfo: null })
     if (!object) { json(404, { error: 'Nieznany obiekt katalogowy.' }); return }
     const abort = new AbortController()
     res.on('close', () => { if (!res.writableEnded) abort.abort() })

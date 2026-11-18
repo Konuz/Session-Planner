@@ -1,6 +1,5 @@
 // Przygotowuje grafiki interfejsu w public/icons z obrazów źródłowych (domyślnie folder icons/ w katalogu głównym):
 // - telescope.webp: kadr teleskopu (zanikanie krawędzi robi CSS),
-// - moon.webp: baza Księżyca do wygenerowania tekstury pełni przez build-moon-phases.ts,
 // - tab-<id>-on.webp / tab-<id>-off.webp: ikony zakładek z jednego arkusza (świecące = aktywna, srebrne = nieaktywna)
 //   z kanałem alfa wyliczonym z jasności względem ciemnego tła arkusza.
 //
@@ -15,7 +14,6 @@ const SRC = process.argv[2] ?? join(ROOT, 'icons')
 const OUT = join(ROOT, 'public', 'icons')
 mkdirSync(OUT, { recursive: true })
 
-const MOON = 'Gemini_Generated_Image_3pafp3pafp3pafp3.jpg'
 const TELESCOPE = 'Gemini_Generated_Image_mcenj6mcenj6mcen.jpg'
 // Jeden arkusz 1773×592: górny rząd srebrne (nieaktywne), dolny świecące (aktywne), pod ikonami podpisy (pomijane).
 const TABS = 'Gemini_Generated_Image_yb411dyb411dyb41.jpg'
@@ -31,16 +29,6 @@ await sharp(join(SRC, TELESCOPE))
   .resize(720)
   .webp({ quality: 78 })
   .toFile(join(OUT, 'telescope.webp'))
-
-// Księżyc: kwadrat opisany na tarczy (środek i promień zmierzone na obrazie 2048 px).
-const MOON_CX = 1024
-const MOON_CY = 1023
-const MOON_R = 876
-await sharp(join(SRC, MOON))
-  .extract({ left: MOON_CX - MOON_R, top: MOON_CY - MOON_R, width: 2 * MOON_R, height: 2 * MOON_R })
-  .resize(256)
-  .webp({ quality: 82 })
-  .toFile(join(OUT, 'moon.webp'))
 
 /**
  * Ikony: kwadrat wokół środka każdej z 5 ikon arkusza; alfa z najjaśniejszego kanału ponad tło,

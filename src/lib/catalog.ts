@@ -1,5 +1,5 @@
 // Katalog obiektów: wczytanie zwartego pliku public/data/catalog.json, typy, filtry i wyszukiwanie.
-import { AMATEUR_PN, type DistanceInfo, type DistanceScope } from './distance.ts'
+import { AMATEUR_PN, hasDistance, type DistanceInfo, type DistanceScope } from './distance.ts'
 // Rozszerzenie .ts: serwer (Node bez bundlera) importuje ten moduł w czasie wykonania; perf.ts nie ma importów.
 import { measureSince, perfNow } from './perf.ts'
 
@@ -15,7 +15,7 @@ export interface DSO {
   i: number
   id: string
   aliases: string[]
-  /** Główne oznaczenie tego samego regionu H II przy wykrywaniu wycinków zdjęcia. */
+  /** Główne oznaczenie obiektu, jeśli ten wiersz jest jego potwierdzonym aliasem. */
   photoPrimaryId?: string
   /** Potwierdzone oznaczenia zapasowe wyświetlane w edytorze wycinka. */
   photoAliases?: string[]
@@ -36,6 +36,8 @@ export interface DSO {
   distUncLy: number | null
   /** Pochodzenie odległości (wspólny wpis tabeli źródeł); null bez odległości. */
   distInfo: DistanceInfo | null
+  /** Pozostałe pomiary pod potwierdzonymi oznaczeniami, dostępne w edytorze wycinka. */
+  otherDistances?: Pick<DSO, 'distLy' | 'distUncLy' | 'distInfo'>[]
   /** Gwiazda oświetlająca mgławicy (van den Bergh 1966); odległość dopiero z gwiazd Gaia pola zdjęcia. */
   illuminator: Illuminator | null
   /** Tożsamość nierozstrzygnięta (pozycja SIMBAD > 0,25° od katalogu): bez odległości z żadnego źródła. */
@@ -135,7 +137,7 @@ export function parseCatalog(rows: Row[], sourceRows: SourceRow[] = [], unresolv
     aliases.push(alias)
     aliasesByPrimary.set(primary, aliases)
   }
-  return rows.map((r, i) => {
+  const catalog: DSO[] = rows.map((r, i) => {
     const ill = r[18]
     const aliases = r[1] ? r[1].split('|') : []
     const namesEn = r[3] ? r[3].split('|') : []
@@ -169,6 +171,28 @@ export function parseCatalog(rows: Row[], sourceRows: SourceRow[] = [], unresolv
       search: normalizeQuery([...all, r[2], ...namesEn].join(' ')),
     }
   })
+  const byId = new Map(catalog.map((o) => [o.id, o]))
+  for (const [id, ids] of aliasesByPrimary) {
+    const primary = byId.get(id)
+    if (!primary) continue
+    const members = ids.map((alias) => byId.get(alias)).filter((o): o is DSO => !!o)
+    primary.aliases = [...new Set([...primary.aliases, ...members.flatMap((o) => [o.id, ...o.aliases])])].filter((alias) => alias !== id)
+    primary.catalogs = [...new Set([...primary.catalogs, ...members.flatMap((o) => o.catalogs)])]
+    primary.search += ' ' + members.map((o) => o.search).join(' ')
+    const rank = (o: DSO) => {
+      if (!o.distInfo || !o.distLy || o.unresolved) return 0
+      return 1 + Number(o.distInfo.verified) + 2 * Number(hasDistance({ distLy: o.distLy, uncertaintyLy: o.distUncLy }))
+    }
+    const best = members.reduce((chosen, o) => rank(o) > rank(chosen) ? o : chosen, primary)
+    const others = [primary, ...members].filter((o) => rank(o) > 0 &&
+      (o.distLy !== best.distLy || o.distUncLy !== best.distUncLy || o.distInfo !== best.distInfo))
+    if (others.length) primary.otherDistances = others.map(({ distLy, distUncLy, distInfo }) => ({ distLy, distUncLy, distInfo }))
+    primary.distLy = best.distLy
+    primary.distUncLy = best.distUncLy
+    primary.distInfo = best.distInfo
+    primary.illuminator ??= members.find((o) => o.illuminator)?.illuminator ?? null
+  }
+  return catalog
 }
 
 let lastRawQuery = ''
@@ -271,7 +295,7 @@ export function quickSearch(catalog: readonly DSO[], query: string): DSO[] {
   const best: { object: DSO; score: number }[] = []
   const limit = 12
   for (const object of catalog) {
-    if (object.majArcmin < 0 || !object.search.includes(q)) continue
+    if (object.photoPrimaryId || object.majArcmin < 0 || !object.search.includes(q)) continue
     const score = scoreForQuery(object, q) + (object.mag ?? 15) / 100
     let index = best.length
     while (index > 0 && best[index - 1].score > score) index--

@@ -53,6 +53,14 @@ it('przelicza jednostki SIMBAD, zachowuje publikację i odrzuca granice oraz pus
   expect(query).not.toMatch(/ORDER BY\s+\w+\./)
 })
 
+it('pokazuje różne pomiary obu katalogów po zapytaniu o każde z oznaczeń Sh2-217', async () => {
+  for (const id of ['Sh2-217', 'LBN 745']) {
+    const { data } = await request(id, async () => new Response(simbad([])))
+    expect(data.measurements.map((m: { distLy: number; distanceRef: string }) => [m.distLy, m.distanceRef]))
+      .toEqual([[14253, '2015AJ....150..147F'], [11415, '2014ApJS..212....1A']])
+  }
+})
+
 it('odczytuje NED TABLEDATA według identyfikatorów pól, także puste komórki i encje XML', async () => {
   const fetchImpl = route(() => new Response(simbad([])),
     () => new Response(ned('<TR><TD>1</TD><TD>0.11</TD><TD>6.19</TD><TD>Cepheids</TD><TD>2013ApJ...777...79M</TD><TD>V &amp; I</TD></TR><TR><TD>2</TD><TD/><TD>6.43</TD><TD>TRGB</TD><TD>2024A&amp;A...000A...1A</TD><TD/></TR>')))

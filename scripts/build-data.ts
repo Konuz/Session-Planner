@@ -19,7 +19,7 @@ import { join } from 'node:path'
 import * as Astronomy from 'astronomy-engine'
 import sharp from 'sharp'
 import { isStarOtype, simbadId } from '../src/lib/distance.ts'
-import { checkIdentity, cf4Choice, cw21Choice, findCw21, findHr23, findRl22, hr23ByName, identityLimitDeg, parseCw21, parseRl22, rl22Choice, hr23Choice, ILLUMINATOR_MATCH_DEG, KNOWN_DISCREPANCIES, withWikidataFallback, matchCf4, parseCf4, parseHr23, parseSimbadIdents, parseVizierTsv, parseZucker, photoNebulaAliases, redshiftChoice, separationDeg, simbadKey, WIKIDATA, zuckerChoice, type Choice, type Entry, type Hr23Cluster, type SimbadObject, type SourceKey } from './catalogDistances.ts'
+import { checkIdentity, cf4Choice, cw21Choice, findCw21, findHr23, findRl22, hr23ByName, identityLimitDeg, parseCw21, parseRl22, rl22Choice, hr23Choice, ILLUMINATOR_MATCH_DEG, KNOWN_DISCREPANCIES, withWikidataFallback, matchCf4, parseCf4, parseHr23, parseSimbadIdents, parseVizierTsv, parseZucker, catalogAliases, darkCloudIds, redshiftChoice, separationDeg, simbadKey, WIKIDATA, zuckerChoice, type Choice, type Entry, type Hr23Cluster, type SimbadObject, type SourceKey } from './catalogDistances.ts'
 import { cachedBytes, cachedText } from './download.ts'
 import { hiiChoice, parseFosterBrunt, parseRusseil, parseWise, type HiiSources } from './hiiDistances.ts'
 import { GALAXY_TYPES, parseArp, parseCederblad, parseHcg, parseRcw, planNebulae } from './brightNebulae.ts'
@@ -69,7 +69,7 @@ function parseCsv(text: string): string[][] {
 const r = (v: number, d: number) => Math.round(v * 10 ** d) / 10 ** d
 
 // Lustra VizieR (CDS w Strasburgu bywa nieosiągalny, lustro bywa bez bazy); te same tabele i format asu-tsv.
-const VIZIER_MIRRORS = ['https://vizier.cfa.harvard.edu/viz-bin/asu-tsv', 'http://vizier.nao.ac.jp/viz-bin/asu-tsv']
+const VIZIER_MIRRORS = ['https://vizier.cfa.harvard.edu/viz-bin/asu-tsv', 'http://vizier.nao.ac.jp/viz-bin/asu-tsv', 'http://vizier.china-vo.org/viz-bin/asu-tsv']
 /** Odpowiedź VizieR z błędem zapytania albo bez wierszy danych nie trafia do pamięci. */
 function checkVizier(text: string) {
   if (/QUERY_STATUS=ERROR|^#INFO\tError=/m.test(text)) throw new Error('VizieR: błąd zapytania')
@@ -398,7 +398,7 @@ async function buildCatalog() {
       ids.filter((d) => d !== primary).join('|'),
       plName,
       o.commonNames.join('|'),
-      TYPE_CODE[o.type] ?? 'X',
+      entries[i].type,
       r(o.raDeg, 4),
       r(o.decDeg, 4),
       o.sizeMajorArcmin === null ? 0 : r(o.sizeMajorArcmin, 1),
@@ -433,6 +433,7 @@ async function planDistances(entries: Entry[], wikidata: (designations: string[]
   const zucker = parseZucker(await vizier('zucker2020-handbook', '-source=J/A%2BA/633/A51/handbook&-out.all'))
   const rl22 = new Map(parseRl22(await vizier('rl22-snr', '-source=J/ApJ/940/63/table1&-out.all')).map((snr) => [snr.key, snr]))
   const cw21 = parseCw21(await vizier('cw21-pn', '-source=J/A%2BA/656/A110/tablea1&-out=PNG,Name,Rel,RUWE,pnRAdeg,pnDEdeg,pnRad,rcomb,b_rcomb,B_rcomb'))
+  const clouds = darkCloudIds(await vizier('db02-cloud-names', '-source=J/A%2BA/383/631/cdn&-out=Names'))
   const cw21ByPng = new Map(cw21.map((pn) => [pn.png, pn]))
   const vdbStars = new Map(parseVizierTsv(await vizier('vdb-vii21', '-source=VII/21&-out=VdB,DM,HD')).map((row) => [Number(row.VdB), row.HD ? `HD ${row.HD}` : row.DM.replace(/\s+/g, ' ')]))
   // Obszary H II: Foster & Brunt 2015, katalog WISE (Anderson i in. 2014) i prędkości Russeil 2003 (scripts/hiiDistances.ts).
@@ -455,7 +456,19 @@ async function planDistances(entries: Entry[], wikidata: (designations: string[]
   const counts: Record<string, number> = { 'Hunt & Reffert': 0, CF4: 0, z: 0, Zucker: 0, 'Ranasinghe & Leahy': 0, 'Chornay & Walton': 0, 'WISE paralaksa': 0, 'Foster & Brunt': 0, WISE: 0, kinematyczna: 0, 'gwiazdy jonizujące': 0, publikacja: 0, Wikidata: 0, 'Wikidata zamiast σ > 50 %': 0, 'bez tożsamości': 0 }
   const review: { position: object[]; aliases: object[]; types: object[]; known: object[] } = { position: [], aliases: [], types: [], known: KNOWN_DISCREPANCIES }
   const clusters = new Map<number, Hr23Cluster>()
-  const identities = entries.map((e) => checkIdentity(e, simbad))
+  const centralStars = new Map<number, (typeof cw21)[number]>()
+  const identities = entries.map((e, i) => {
+    const identity = checkIdentity(e, simbad)
+    if (identity.otype !== 'PN' || !['EN', 'RN', 'PN'].includes(e.type)) return identity
+    // Dla rozległej PN SIMBAD może podawać pozycję gwiazdy centralnej, a Lynds środek jasnego łuku.
+    // Wymagamy tej samej nazwy w CW21 i SIMBAD oraz środka wpisu wewnątrz opublikowanego promienia PN.
+    const named = cw21.filter((pn) => simbadKey(pn.name) === simbadKey(identity.mainId)
+      && separationDeg(e.raDeg, e.decDeg, pn.raDeg, pn.decDeg) <= Math.max(1 / 60, pn.radiusDeg))
+    if (named.length !== 1 || identity.foreignAliases.length) return identity
+    centralStars.set(i, named[0])
+    e.type = 'PN'
+    return { ...identity, verdict: 'ok' as const, typeNote: '' }
+  })
   const choices = entries.map((e, i): Choice | null => {
     const identity = identities[i]
     const id = e.designations[0]
@@ -485,6 +498,8 @@ async function planDistances(entries: Entry[], wikidata: (designations: string[]
           source: { scope: 'illuminator', method: 'paralaksa gwiazdy jonizującej HD 227018 (Gaia DR3 2059434898612310656)', source: 'Bailer-Jones i in. 2021, odległość geometryczna', ref: '2021AJ....161..147B', verified: true },
         } satisfies Choice }
       }
+      const central = centralStars.get(i)
+      if (central) return { key: 'Chornay & Walton', choice: cw21Choice(central) }
       const cluster = findHr23(e, usable, hr23ByKey)
       if (cluster) { clusters.set(i, cluster); return { key: 'Hunt & Reffert', choice: hr23Choice(cluster) } }
       const hiiStep = hiiChoice(e, usable, hii)
@@ -531,7 +546,7 @@ async function planDistances(entries: Entry[], wikidata: (designations: string[]
   })
   return {
     sources, sourceIndex, review, counts: { ...counts, 'gwiazdy oświetlające': illuminators.size },
-    photoAliases: photoNebulaAliases(entries, identities),
+    photoAliases: catalogAliases(entries, identities, clouds, clusters),
     unresolved: identities.flatMap((identity, i) => identity.verdict === 'position' ? [i] : []),
     objects: entries.map((_, i) => ({ choice: choices[i], illuminator: illuminators.get(i) ?? null })),
   }

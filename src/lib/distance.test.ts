@@ -1,9 +1,21 @@
 import { expect, it } from 'vitest'
 import type { DSO } from './catalog'
-import { cutDistance, hasDistance, illuminatorDistance, isStarOtype, redshiftDistance, refreshCutDistances, regressorDistance, regressorEligible, regressorPollDelay, simbadId, type DistanceInfo, type RegressorPollState } from './distance'
+import { cutDistance, hasDistance, illuminatorDistance, isStarOtype, newestCutMeasurement, NO_DISTANCE, redshiftDistance, refreshCutDistances, regressorDistance, regressorEligible, regressorPollDelay, simbadId, type DistanceInfo, type RegressorPollState } from './distance'
 import type { PhotoCut, PhotoStar } from './photo'
 
 const LY_PER_PC = 3.26156
+
+it('wybiera najnowszy pomiar po roku publikacji i zachowuje go po odświeżeniu wycinka', () => {
+  const m = { ...NO_DISTANCE, distLy: 400, distanceRef: '2023AJ', source: 'SIMBAD' as const, url: '', distanceSource: 'SIMBAD' }
+  const choices = [{ ...m, distanceRef: '' }, m, { ...m, distanceRef: '2010AJ' }]
+  const next = newestCutMeasurement(NO_DISTANCE, choices)!
+  expect(next).toMatchObject({ distanceOrigin: 'published', distanceRef: '2023AJ', distLy: 400 })
+  expect(newestCutMeasurement(next, choices)).toBeNull()
+  expect(newestCutMeasurement({ ...NO_DISTANCE, distanceOrigin: 'user' }, choices)).toBeNull()
+  const object = { id: 'test', type: 'DN', distLy: null, illuminator: null } as DSO
+  const project = { cuts: [{ id: object.id, type: object.type, ...next } as PhotoCut], stars: null }
+  expect(refreshCutDistances(project, [object], new Map([[object.id, object]]))).toBe(project)
+})
 
 it('przelicza z na odległość w układzie CMB jak pilotaż (astropy, H₀ = 70, Ωm = 0,3)', () => {
   // Wartości z output/odleglosci-pilotaz-2026-11-06 (decisions.py): IC 4278 i IC 2388.
@@ -76,7 +88,7 @@ it('łańcuch: sprawdzony katalog, potem gwiazda oświetlająca, na końcu Wikid
 })
 
 it('odświeża odległości ustalone przez aplikację, wybór użytkownika zostaje', () => {
-  const object = (id: string, extra: Partial<DSO>) => ({ id, distLy: null, distUncLy: null, distInfo: null, illuminator: null, ...extra }) as DSO
+  const object = (id: string, extra: Partial<DSO>) => ({ id, type: 'RN', distLy: null, distUncLy: null, distInfo: null, illuminator: null, ...extra }) as DSO
   const catalog = [object('M 45', { i: 0, distLy: 440, distUncLy: 4.4, distInfo: verified('Hunt & Reffert 2023') }), object('IC 349', { i: 1, illuminator: { star: 'HD 23480', raDeg: 56.5816, decDeg: 23.9484, vMag: 4.18, cluster: 0 } }), object('B 33', { i: 2, distLy: 1500, distInfo: { scope: 'object', method: 'Wikidata, niezweryfikowane', source: 'Wikidata (P2583)', ref: '', verified: false } })]
   const byId = new Map(catalog.map((o) => [o.id, o]))
   const cut = (id: string, extra: Partial<PhotoCut> = {}): PhotoCut => ({ id, type: 'RN', raDeg: 0, decDeg: 0, x: 0, y: 0, radius: 1, enabled: true, distLy: null, uncertaintyLy: null, distanceScope: 'object', distanceMethod: '', distanceSource: '', distanceRef: '', distanceOrigin: 'catalog', ...extra })
@@ -115,7 +127,7 @@ it('regresor: tylko wycinki bez odległości, z rozstrzygniętą tożsamością 
   expect(regressorEligible(cut({ type: 'DN' }), { unresolved: false })).toBe(false)
   expect(regressorEligible(cut({ distanceOrigin: 'user' }), { unresolved: false })).toBe(false)
   expect(regressorEligible(cut({ distLy: 1000 }), { unresolved: false })).toBe(false)
-  const object = { id: 'LBN 950', distLy: null, distUncLy: null, distInfo: null, illuminator: null, unresolved: false } as unknown as DSO
+  const object = { id: 'LBN 950', type: 'EN', distLy: null, distUncLy: null, distInfo: null, illuminator: null, unresolved: false } as unknown as DSO
   const regressed = cut({ distLy: 1238, uncertaintyLy: 75, distanceScope: 'population', distanceMethod: 'regresor, niezweryfikowane: grupa', distanceSource: 'astro-regressor (model)', distanceOrigin: 'regressor' })
   const project = { cuts: [regressed], stars: null }
   expect(refreshCutDistances(project, [object], new Map([['LBN 950', object]]))).toBe(project)
