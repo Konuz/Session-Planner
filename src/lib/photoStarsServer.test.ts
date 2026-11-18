@@ -114,6 +114,72 @@ it('po przekroczeniu limitu GAVO pobiera gwiazdy z lustra i dopasowuje odległo�
   expect(data.stars[1].distLy).toBeNull()
 })
 
+it('po awarii bazy GAVO pobiera gwiazdy z XAO i odległości z archiwum ESA', async () => {
+  const id = '3017364063330718080'
+  const fetchImpl = vi.fn<typeof fetch>()
+    .mockResolvedValueOnce(new Response('<INFO name="QUERY_STATUS" value="ERROR">Database unavailable</INFO>'))
+    .mockResolvedValueOnce(new Response(`${header.split(',').slice(0, 10).join(',')}\n${id},83.81,-5.39,,,5,5,5,2.5,0.1`))
+    .mockRejectedValueOnce(new TypeError('fetch failed'))
+    .mockResolvedValueOnce(new Response(`source_id,r_med_geo,r_lo_geo,r_hi_geo\n${id},393.43,373.59,411.63`))
+
+  const { status, data } = await post(request(), fetchImpl)
+  expect(status).toBe(200)
+  expect(fetchImpl.mock.calls.map(([url]) => new URL(String(url)).hostname)).toEqual([
+    'dc.zah.uni-heidelberg.de', 'data.xao.ac.cn', 'dc.zah.uni-heidelberg.de', 'gea.esac.esa.int',
+  ])
+  expect((fetchImpl.mock.calls[3][1]?.body as URLSearchParams).get('QUERY')).toContain(`external.gaiaedr3_distance WHERE source_id IN (${id})`)
+  expect(data.stars[0].id).toBe(`Gaia DR3 ${id}`)
+  expect(data.stars[0].distLy).toBeCloseTo(393.43 * 3.26156)
+})
+
+it('gdy GAVO i XAO są niedostępne, wyszukuje gwiazdy i odległości w ESA', async () => {
+  const id = '3017364063330718080'
+  const fetchImpl = vi.fn<typeof fetch>()
+    .mockRejectedValueOnce(new TypeError('fetch failed'))
+    .mockResolvedValueOnce(new Response(null, { status: 503 }))
+    .mockResolvedValueOnce(new Response(`${header.split(',').slice(0, 10).join(',')}\n${id},83.81,-5.39,,,5,5,5,2.5,0.1`))
+    .mockResolvedValueOnce(new Response(`source_id,r_med_geo,r_lo_geo,r_hi_geo\n${id},393.43,373.59,411.63`))
+
+  const { status, data } = await post(request(), fetchImpl)
+  expect(status).toBe(200)
+  const url = new URL(String(fetchImpl.mock.calls[2][0]))
+  expect(url.hostname).toBe('gea.esac.esa.int')
+  expect(url.searchParams.get('QUERY')).toContain('FROM gaiadr3.gaia_source AS g')
+  expect(new URL(String(fetchImpl.mock.calls[3][0])).hostname).toBe('gea.esac.esa.int')
+  expect(data.stars[0].distLy).toBeCloseTo(393.43 * 3.26156)
+})
+
+it('zachowuje gwiazdy i granicę jasności z udanego zapytania, gdy głębsze wyszukiwanie zawiedzie', async () => {
+  field.radius = 2
+  const fetchImpl = vi.fn<typeof fetch>(async () => new Response(null, { status: 503 }))
+    .mockResolvedValueOnce(new Response(csv('7,83.8,-5.4,,,10,10.5,9.5,5,0.1,200,195,205')))
+
+  const { status, data } = await post(request(), fetchImpl)
+  expect(status).toBe(200)
+  expect(data.stars.map((star: { id: string }) => star.id)).toEqual(['Gaia DR3 7'])
+  expect(data.magLimit).toBe(magnitudeLimit(2))
+})
+
+it('po przekroczeniu czasu w gęstym polu pobiera jaśniejsze gwiazdy z archiwum zapasowego', async () => {
+  const id = '3017364063330718080'
+  const fetchImpl = vi.fn<typeof fetch>(async () => new Response(null, { status: 503 }))
+    .mockResolvedValueOnce(new Response(null, { status: 503 }))
+    .mockRejectedValueOnce(new DOMException('Limit czasu', 'TimeoutError'))
+    .mockRejectedValueOnce(new DOMException('Limit czasu', 'TimeoutError'))
+    .mockResolvedValueOnce(new Response(`${header.split(',').slice(0, 10).join(',')}\n${id},83.81,-5.39,,,5,5,5,2.5,0.1`))
+    .mockResolvedValueOnce(new Response(`source_id,r_med_geo,r_lo_geo,r_hi_geo\n${id},393.43,373.59,411.63`))
+
+  const { status, data } = await post(request(), fetchImpl)
+  expect(status).toBe(200)
+  expect(data.magLimit).toBe(14)
+  const retry = new URL(String(fetchImpl.mock.calls[3][0]))
+  expect(retry.hostname).toBe('gea.esac.esa.int')
+  expect(retry.searchParams.get('QUERY')).toContain('phot_g_mean_mag < 14')
+  expect(data.stars[0].id).toBe(`Gaia DR3 ${id}`)
+  expect(data.stars[0].distLy).toBeCloseTo(393.43 * 3.26156)
+  expect(fetchImpl).toHaveBeenCalledTimes(5)
+})
+
 it('odróżnia awarię GAVO, zbyt rozległe pole i niepoprawne zapytania', async () => {
   const failing = vi.fn<typeof fetch>(async () => new Response('', { status: 503 }))
   expect((await post(request(), failing)).status).toBe(502)
@@ -124,7 +190,7 @@ it('odróżnia awarię GAVO, zbyt rozległe pole i niepoprawne zapytania', async
   expect((await post(request(), failing, 'text/plain')).status).toBe(415)
   expect((await post('{', failing)).status).toBe(400)
   expect((await post({ wcs: {}, width: 0, height: 10 }, failing)).status).toBe(400)
-  expect(failing).toHaveBeenCalledTimes(2)
+  expect(failing).toHaveBeenCalledTimes(3)
 })
 
 it('granica jasności maleje z polem i ma rozsądne krańce', () => {

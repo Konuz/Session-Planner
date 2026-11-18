@@ -18,6 +18,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path'
 import * as Astronomy from 'astronomy-engine'
 import sharp from 'sharp'
+import { CATALOG_DISTANCE_SCOPES, type CatalogRow } from '../src/lib/catalog.ts'
 import { isStarOtype, simbadId } from '../src/lib/distance.ts'
 import { checkIdentity, cf4Choice, cw21Choice, findCw21, findHr23, findRl22, hr23ByName, identityLimitDeg, parseCw21, parseRl22, rl22Choice, hr23Choice, ILLUMINATOR_MATCH_DEG, KNOWN_DISCREPANCIES, withWikidataFallback, matchCf4, parseCf4, parseHr23, parseSimbadIdents, parseVizierTsv, parseZucker, catalogAliases, darkCloudIds, redshiftChoice, separationDeg, simbadKey, WIKIDATA, zuckerChoice, type Choice, type Entry, type Hr23Cluster, type SimbadObject, type SourceKey } from './catalogDistances.ts'
 import { cachedBytes, cachedText } from './download.ts'
@@ -26,6 +27,7 @@ import { GALAXY_TYPES, parseArp, parseCederblad, parseHcg, parseRcw, planNebulae
 import { MANUAL_OBJECTS, WR_NEBULAE } from './manualObjects.ts'
 import { newPlanetaryNebulae, parseLeDu, parseV84, planLeDu, type PlanetaryNebula } from './planetaryNebulae.ts'
 import { displayOf, parseHr23Catalog, planClusters, type Hr23Entry } from './openClusters.ts'
+import { inheritSnrComponentDistances, SNR_COMPONENT_PARENT_DISTANCES } from './snrComponents.ts'
 
 const ROOT = join(import.meta.dirname, '..')
 const CACHE = join(ROOT, 'scripts', '.cache')
@@ -377,6 +379,7 @@ async function buildCatalog() {
   })
   // Nowe źródła dopisujemy po dotychczasowych, w kolejności dodania, żeby zachować indeksy w zapisanym katalogu.
   const appended = ['2015AJ....150..147F', '2021AJ....161..147B', '2014ApJS..212....1A', '2019ApJ...885..131R', ...MANUAL_OBJECTS.flatMap((m) => m.distance ? [m.distance.ref] : [])]
+  for (const { ref } of SNR_COMPONENT_PARENT_DISTANCES.values()) appended.push(ref)
   for (const ref of [null, ...appended]) {
     for (const { choice } of distancePlan.objects) {
       if (choice && (ref === null ? !appended.includes(choice.source.ref) : choice.source.ref === ref)) distancePlan.sourceIndex(choice.source)
@@ -393,12 +396,12 @@ async function buildCatalog() {
     const w = WIKI_EXTRA[primary] ?? keys.map((k) => wiki.get(k)).find((d) => d !== undefined)
     const plName = w?.pl && !looksLikeCode(w.pl) ? w.pl.replace(/\s*\(.*\)$/, '') : ''
     const { choice, illuminator } = distancePlan.objects[i]
-    const row: unknown[] = [
+    const row: CatalogRow = [
       primary,
       ids.filter((d) => d !== primary).join('|'),
       plName,
       o.commonNames.join('|'),
-      entries[i].type,
+      entries[i].type as CatalogRow[4],
       r(o.raDeg, 4),
       r(o.decDeg, 4),
       o.sizeMajorArcmin === null ? 0 : r(o.sizeMajorArcmin, 1),
@@ -411,15 +414,19 @@ async function buildCatalog() {
       w?.pl ?? '',
       w?.en ?? '',
     ]
-    if (choice || illuminator) row.push(choice?.sigmaLy ? Math.max(1, Math.round(choice.sigmaLy / choice.ly * 1000)) : 0, choice ? distancePlan.sourceIndex(choice.source) : -1)
-    if (illuminator) row.push(illuminator)
+    if (choice || illuminator) {
+      row[16] = choice?.sigmaLy ? Math.max(1, Math.round(choice.sigmaLy / choice.ly * 1000)) : 0
+      row[17] = choice ? distancePlan.sourceIndex(choice.source) : -1
+    }
+    if (illuminator) row[18] = illuminator
     return row
   })
+  const inherited = inheritSnrComponentDistances(rows, distancePlan.sources, distancePlan.unresolved, distancePlan.photoAliases)
   const withDist = rows.filter((row) => row[13] !== 0).length
   writeFileSync(join(OUT, 'catalog.json'), JSON.stringify({ v: 2, sources: distancePlan.sources, unresolved: distancePlan.unresolved, photoAliases: distancePlan.photoAliases, rows }))
   mkdirSync(join(ROOT, 'docs', 'odleglosci'), { recursive: true })
   writeFileSync(join(ROOT, 'docs', 'odleglosci', 'tozsamosc.json'), JSON.stringify(distancePlan.review, null, 1) + '\n')
-  console.log(`catalog: ${rows.length} obiektów, ${withDist} z odległością (${Object.entries(distancePlan.counts).map(([k, v]) => `${k} ${v}`).join(', ')})`)
+  console.log(`catalog: ${rows.length} obiektów, ${withDist} z odległością (składowe SNR: ${inherited}; ${Object.entries(distancePlan.counts).map(([k, v]) => `${k} ${v}`).join(', ')})`)
 }
 
 /**
@@ -447,10 +454,9 @@ async function planDistances(entries: Entry[], wikidata: (designations: string[]
 
   const sources: [number, string, string, string, number][] = []
   const sourceKeys = new Map<string, number>()
-  const SCOPES = ['object', 'population', 'illuminator', 'cloud', 'redshift']
   const sourceIndex = (key: SourceKey) => {
     const id = JSON.stringify(key)
-    if (!sourceKeys.has(id)) { sourceKeys.set(id, sources.length); sources.push([SCOPES.indexOf(key.scope), key.method, key.source, key.ref, key.verified ? 1 : 0]) }
+    if (!sourceKeys.has(id)) { sourceKeys.set(id, sources.length); sources.push([CATALOG_DISTANCE_SCOPES.indexOf(key.scope), key.method, key.source, key.ref, key.verified ? 1 : 0]) }
     return sourceKeys.get(id)!
   }
   const counts: Record<string, number> = { 'Hunt & Reffert': 0, CF4: 0, z: 0, Zucker: 0, 'Ranasinghe & Leahy': 0, 'Chornay & Walton': 0, 'WISE paralaksa': 0, 'Foster & Brunt': 0, WISE: 0, kinematyczna: 0, 'gwiazdy jonizujące': 0, publikacja: 0, Wikidata: 0, 'Wikidata zamiast σ > 50 %': 0, 'bez tożsamości': 0 }
@@ -514,7 +520,15 @@ async function planDistances(entries: Entry[], wikidata: (designations: string[]
       const pn = findCw21(e, usable, cw21, cw21ByPng)
       if (pn) return { key: 'Chornay & Walton', choice: cw21Choice(pn) }
       const snr = findRl22(e, usable, rl22)
-      if (snr) return { key: 'Ranasinghe & Leahy', choice: rl22Choice(snr) }
+      if (snr) {
+        const measured = SNR_COMPONENT_PARENT_DISTANCES.get(id)
+        if (measured) {
+          const { pc, sigmaPc, method, source, ref } = measured
+          const lyPerPc = LY_PER_UNIT['http://www.wikidata.org/entity/Q12129']
+          return { key: 'publikacja', choice: { ly: pc * lyPerPc, sigmaLy: sigmaPc * lyPerPc, source: { scope: 'object', method, source, ref, verified: true } } satisfies Choice }
+        }
+        return { key: 'Ranasinghe & Leahy', choice: rl22Choice(snr) }
+      }
       const cloud = e.type === 'DN' ? zuckerChoice(e, zucker) : null
       return cloud ? { key: 'Zucker', choice: cloud } : null
     })()

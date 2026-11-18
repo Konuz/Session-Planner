@@ -17,6 +17,16 @@ it('wybiera najnowszy pomiar po roku publikacji i zachowuje go po odświeżeniu 
   expect(refreshCutDistances(project, [object], new Map([[object.id, object]]))).toBe(project)
 })
 
+it('zachowuje własny opublikowany pomiar wycinka przed odległością odziedziczoną z SNR', () => {
+  const inherited = { ...NO_DISTANCE, distLy: 2400, distanceScope: 'remnant' as const, distanceRef: '2022ApJ' }
+  const own = { ...NO_DISTANCE, distLy: 2200, distanceRef: '2018AJ', source: 'SIMBAD' as const, url: '' }
+  const published = newestCutMeasurement(inherited, [{ ...inherited, source: 'Katalog', url: '' }, own])
+  expect(published).toMatchObject({ distLy: 2200, distanceOrigin: 'published' })
+  const object = { id: 'test', type: 'SNR', distLy: 2400, distUncLy: null, distInfo: verified('publikacja SNR', 'remnant'), illuminator: null } as DSO
+  const project = { cuts: [{ id: object.id, type: object.type, ...published } as PhotoCut], stars: null }
+  expect(refreshCutDistances(project, [object], new Map([[object.id, object]]))).toBe(project)
+})
+
 it('przelicza z na odległość w układzie CMB jak pilotaż (astropy, H₀ = 70, Ωm = 0,3)', () => {
   // Wartości z output/odleglosci-pilotaz-2026-11-06 (decisions.py): IC 4278 i IC 2388.
   const ic4278 = redshiftDistance(0.01705246367, 202.6148, 47.2469)!

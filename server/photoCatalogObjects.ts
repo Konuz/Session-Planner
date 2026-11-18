@@ -1,10 +1,16 @@
 import type { DSO } from '../src/lib/catalog.ts'
 import { adsUrl, comovingDistanceLy, NO_DISTANCE, redshiftDistance, separationDeg } from '../src/lib/distance.ts'
 import type { PhotoCatalogKind, PhotoCatalogResult, PhotoCut, PhotoDistance } from '../src/lib/photo.ts'
+import { firstCatalogResponse } from './catalogMirrors.ts'
 import type { ProjectStars } from './photoStars.ts'
 import { readResponseText } from './readResponseText.ts'
 
-const vizier = 'https://vizier.cfa.harvard.edu/viz-bin/asu-tsv'
+const vizierMirrors = [
+  { url: 'https://vizier.cfa.harvard.edu/viz-bin/asu-tsv', timeoutMs: 7_000 },
+  { url: 'https://vizier.cds.unistra.fr/viz-bin/asu-tsv', timeoutMs: 5_000 },
+  { url: 'https://vizier.idia.ac.za/viz-bin/asu-tsv', timeoutMs: 6_000 },
+  { url: 'http://vizier.china-vo.org/viz-bin/asu-tsv', timeoutMs: 12_000 },
+]
 const limit = 300
 const sources = [
   { kind: 'PGC', table: 'VII/237/pgc', column: 'PGC', fields: 'OType,logD25,ANames', label: 'PGC' },
@@ -33,8 +39,13 @@ async function vizierRows(source: Source, raDeg: number, decDeg: number, radiusD
     '-c.rd': radiusDeg.toFixed(8), '-out': `${source.column},${source.fields}`,
     '-out.add': '_RAJ,_DEJ', '-oc.form': 'd', '-sort': '_r', '-out.max': String(limit + 1),
   })
-  const response = await fetchImpl(new URL(`${vizier}?${params}`), { signal })
-  const text = await readResponseText(response, 512 * 1024)
+  return firstCatalogResponse(vizierMirrors, signal, async ({ url }, attempt) => {
+    const response = await fetchImpl(new URL(`${url}?${params}`), { signal: attempt })
+    return parseVizierRows(await readResponseText(response, 512 * 1024), source)
+  })
+}
+
+function parseVizierRows(text: string, source: Source) {
   if (/^#(?:ERROR\b|INFO\s+[^\n]*(?:QUERY_STATUS\s*=\s*ERROR|Error=))/im.test(text)) throw new Error('VizieR')
   const lines = text.split(/\r?\n/).filter((line) => line.trim() && !line.startsWith('#'))
   if (!lines.length && text.includes('VizieR Astronomical Server') && /^#(?:Name:|RESOURCE=)/m.test(text)) return []
@@ -80,8 +91,7 @@ export async function loadPhotoCatalogObjects(
     throw new RangeError('Dodatkowe katalogi obsługują pola o promieniu do 10°.')
   }
   if (!Number.isFinite(raDeg) || !Number.isFinite(decDeg)) throw new RangeError('Niepoprawne współrzędne kadru.')
-  const timeout = AbortSignal.any([signal, AbortSignal.timeout(15_000)])
-  const results = await Promise.allSettled(sources.map((source) => vizierRows(source, raDeg, decDeg, radiusDeg, fetchImpl, timeout)))
+  const results = await Promise.allSettled(sources.map((source) => vizierRows(source, raDeg, decDeg, radiusDeg, fetchImpl, signal)))
   signal.throwIfAborted()
   const complete = results.every((result) => result.status === 'fulfilled')
   const warnings: string[] = []

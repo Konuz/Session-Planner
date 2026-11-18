@@ -119,18 +119,18 @@ export interface Illuminator {
   cluster: number | null
 }
 
-const SCOPES: DistanceScope[] = ['object', 'population', 'illuminator', 'cloud', 'redshift']
+export const CATALOG_DISTANCE_SCOPES: readonly DistanceScope[] = ['object', 'population', 'illuminator', 'cloud', 'redshift', 'remnant']
 /** Katalog sprzed tabeli źródeł (np. z pamięci service workera): odległości pochodziły tylko z Wikidata. */
 const LEGACY_SOURCE: DistanceInfo = { scope: 'object', method: 'Wikidata, niezweryfikowane', source: 'Wikidata (P2583)', ref: '', verified: false }
 /** Wpis tabeli źródeł w catalog.json: [zakres, metoda, źródło, bibcode, sprawdzona (1/0)]. */
 export type SourceRow = [number, string, string, string, number]
 /** Kolumny 16–18 tylko w wierszach z odległością lub gwiazdą oświetlającą: względna niepewność w promilach (0: brak),
  *  indeks tabeli źródeł (−1: brak), gwiazda oświetlająca [oznaczenie, RA, Dec, V (99: brak), indeks gromady (−1: brak)]. */
-type Row = [string, string, string, string, ObjectType, number, number, number, number, number, number, number, string, number, string, string, number?, number?, [string, number, number, number, number]?]
+export type CatalogRow = [string, string, string, string, ObjectType, number, number, number, number, number, number, number, string, number, string, string, number?, number?, [string, number, number, number, number]?]
 
-export function parseCatalog(rows: Row[], sourceRows: SourceRow[] = [], unresolvedRows: number[] = [], photoAliases: Record<string, string> = {}): DSO[] {
+export function parseCatalog(rows: CatalogRow[], sourceRows: SourceRow[] = [], unresolvedRows: number[] = [], photoAliases: Record<string, string> = {}): DSO[] {
   const unresolved = new Set(unresolvedRows)
-  const sources = sourceRows.map(([scope, method, source, ref, verified]): DistanceInfo => ({ scope: SCOPES[scope], method, source, ref, verified: verified === 1 }))
+  const sources = sourceRows.map(([scope, method, source, ref, verified]): DistanceInfo => ({ scope: CATALOG_DISTANCE_SCOPES[scope], method, source, ref, verified: verified === 1 }))
   const aliasesByPrimary = new Map<string, string[]>()
   for (const [alias, primary] of Object.entries(photoAliases)) {
     const aliases = aliasesByPrimary.get(primary) ?? []
@@ -310,7 +310,7 @@ export async function loadCatalog(): Promise<DSO[]> {
   const start = perfNow()
   const res = await fetch('/data/catalog.json')
   if (!res.ok) throw new Error(`Nie udało się wczytać katalogu (HTTP ${res.status})`)
-  const data = (await res.json()) as { rows: Row[]; sources?: SourceRow[]; unresolved?: number[]; photoAliases?: Record<string, string> }
+  const data = (await res.json()) as { rows: CatalogRow[]; sources?: SourceRow[]; unresolved?: number[]; photoAliases?: Record<string, string> }
   const catalog = parseCatalog(data.rows, data.sources, data.unresolved, data.photoAliases)
   measureSince('catalog:load', start)
   return catalog

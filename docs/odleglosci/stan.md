@@ -50,6 +50,25 @@ tylko jako podpowiedź i wiersz w inspektorze obserwatorium.
 - **Test referencyjny** (`src/lib/distancePilot.test.ts`, fixture 40 wycinków): 20 obiektów ze sprawdzoną odległością
   zgodną z pilotażem (w 2σ, min. 2 %), 3 z Wikidata; kandydaci i obiekty bez danych zawsze bez odległości.
 
+## Składowe pozostałości po supernowych
+
+Generator katalogu przepisuje odległość i niepewność zweryfikowanego pomiaru całej pozostałości do potwierdzonych składowych z listy [`snrComponents.ts`](../../scripts/snrComponents.ts). Wersja 2 katalogu używa zakresu `remnant` z etykietą „odziedziczona z pozostałości po supernowej”. Oznaczenia, pozycje i kontury składowych pozostają osobne. Własny wiarygodny pomiar i ręczny wybór odległości mają pierwszeństwo. Podana niepewność dotyczy pomiaru całej pozostałości.
+
+| Pozostałość | Składowe w katalogu | Odległość i potwierdzenie związku |
+| --- | --- | --- |
+| Pętla Łabędzia (`G074.0−08.5`) | NGC 6960, NGC 6974, NGC 6979, NGC 6992, NGC 6995, IC 1340 | 735 ± 25 pc. [Fesen i in. 2018 opisują sześć mgławic optycznych](https://doi.org/10.1093/mnras/sty072). |
+| `G065.3+05.7` | Sh2-91, Sh2-94, Sh2-96 | 770 ± 200 pc. [Shelton i in. opisują włókna S91 i S94](https://ntrs.nasa.gov/api/citations/20040171456/downloads/20040171456.pdf). [Czeskie Towarzystwo Astronomiczne identyfikuje też Sh2-96](https://www.astro.cz/fotogalerie/ceska-astrofotografie-mesice.html?id=3522&tag=%C4%8CAM). |
+| CTB 1 (`G116.9+00.2`) | LBN 576 | 2100 ± 600 pc. [Oznaczenie części optycznej](https://www.spektrum.de/alias/wunder-des-weltalls/abell-85-ctb1/1519831). |
+| HB 3 (`G132.7+01.3`) | LBN 641 | 1950 ± 40 pc. [Włókna w obrysie LBN 641](https://academic.oup.com/mnras/article/512/2/1658/6529241) · [Identyfikacja pola](https://app.astrobin.com/i/f02pmq). |
+| HB 9 (`G160.9+02.6`) | LBN 759 | 540 ± 100 pc z ekstynkcji, zgodnie z [Zhao i in. 2020](https://arxiv.org/abs/2002.04748). [Identyfikacja fragmentu optycznego](https://www2.arnes.si/~ucotar/astro/Sky%26Telescope/2025/aas_st_202501.pdf). |
+| VRO 42.05.01 (`G166.0+04.3`) | Sh2-224 | 1000 ± 400 pc. [Okrągła część optyczna i większe skrzydło](https://www.perseus.gr/Astro-DSO-Nebulae-Sh2-224.htm) · [Opracowanie morfologii](https://doi.org/10.1007/s10509-024-04346-y). |
+| Puppis A (`G260.4−03.4`) | RCW 28, RCW 29, RCW 30, RCW 31 | 1300 ± 300 pc z obserwacji HI. [Reynoso i in. 2017](https://doi.org/10.1093/mnras/stw2219) · [Gum 13 i sąsiednie włókna](https://www.assa.org.au/gum-13) · [Identyfikacja RCW 28–31](https://astrobasics.de/galerie/kataloge/rcw/). |
+| Vela (`G263.9−03.3`) | NGC 2736 (RCW 37) | 250 ± 30 pc. [Obserwacje optyczne i UV węzła D](https://simbad.idia.ac.za/simbad/sim-ref?bibcode=2003ApJ...589..242S) · [Identyfikacja NASA](https://science.nasa.gov/image-article/apod-2024-february-23-the-pencil-nebula-supernova-shock-wave/). |
+
+Tabela korzysta z odległości przyjętych w katalogu z Ranasinghe i Leahy 2022 oraz z pomiarów Zhao i in. dla HB 9 i Reynoso i in. dla Puppis A. Porównanie identyfikatora Puppis A w katalogu Greena i SIMBAD potwierdziło różnicę położenia środka ok. 0,36° przy średnicy 1° przyjętej w aplikacji. Wyjątek w `checkIdentity` obejmuje tę pozostałość. [Ranasinghe i Leahy 2022](https://doi.org/10.26093/cds/vizier.19400063) · [Pozycja i rozmiar w katalogu Greena](https://www.mrao.cam.ac.uk/surveys/snrs/snrs.G260.4-3.4.html).
+
+Przegląd objął współrzędne obiektów przy pozostałościach z katalogu Greena, relacje SIMBAD i literaturę optyczną. Sh2-103, Sh2-221 i Sh2-248 oznaczają całe pozostałości. Związek LBN 156 z CTB 80 wymaga dalszego rozstrzygnięcia. LBN 109 leży w kierunku W50 i ma w literaturze osobną identyfikację. [Obserwacje okolic CTB 80](https://doi.org/10.1051/0004-6361:20011606) · [Obserwacje W50](https://academic.oup.com/mnras/article/381/1/308/998595).
+
 ## Znane różnice względem pilotażu (w fixture z powodem)
 Wymagały literatury: IC 434 i B 33 (σ Ori), NGC 2024 (VLBA), NGC 1435 (Merope 11′ od mgławicy). B 33 pokazuje
 Wikidata 1500 lś (niezweryfikowane). vdB 23: Alcyone bez paralaksy w Gaia DR3. IC 4278: z tylko w NED (dostępne

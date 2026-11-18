@@ -53,6 +53,22 @@ describe('dodatkowe katalogi zdjęcia', () => {
     expect(result.warnings.join(' ')).toContain('kwazar')
   })
 
+  it('po błędzie bazy w odpowiedzi HTTP 200 pobiera brakujący katalog z kolejnego lustra', async () => {
+    const fetchWithMirrors = vi.fn<typeof fetch>(async (input, init) => {
+      const url = new URL(String(input))
+      if (url.searchParams.get('-source') !== 'VII/237/pgc' || url.hostname === 'vizier.china-vo.org') return fetchCatalogs(input, init)
+      if (url.hostname === 'vizier.cfa.harvard.edu') return new Response('#INFO\tError=Postgres connect error\t')
+      return new Response('Niedostępny', { status: 503 })
+    })
+    const result = await loadPhotoCatalogObjects(100, 100, project, new Map(), fetchWithMirrors, new AbortController().signal)
+    expect(result.complete).toBe(true)
+    expect(result.warnings).toEqual([])
+    expect(result.cuts.map(({ id }) => id)).toContain('PGC 123')
+    const retries = fetchWithMirrors.mock.calls.slice(5).map(([url]) => new URL(String(url)))
+    expect(retries.at(-1)?.hostname).toBe('vizier.china-vo.org')
+    expect(retries.every((url) => url.search === new URL(String(fetchWithMirrors.mock.calls[0][0])).search)).toBe(true)
+  })
+
   it('scala PGC po potwierdzonym oznaczeniu ESO i odrzuca sporny alias', async () => {
     const catalog = new Map([
       ['ESO 121-006', { id: 'ESO 121-006', type: 'G' as const, aliases: [], raDeg: 195.1, decDeg: 28 }],

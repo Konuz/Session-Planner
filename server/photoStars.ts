@@ -1,11 +1,24 @@
 import type { PhotoStar } from '../src/lib/photo.ts'
+import { firstCatalogResponse } from './catalogMirrors.ts'
 import { readResponseText } from './readResponseText.ts'
 
-// Gwiazdy Gaia DR3 z odległościami Bailer-Jones et al. 2021 (EDR3) przez GAVO DC (Heidelberg).
-const tapUrl = 'https://dc.zah.uni-heidelberg.de/tap/sync'
-const mirrorTapUrl = 'https://data.xao.ac.cn/tap/sync'
+const gavoTap = 'https://dc.zah.uni-heidelberg.de/tap/sync'
+const esaTap = 'https://gea.esac.esa.int/tap-server/tap/sync'
+const starSources = [
+  { url: gavoTap, table: 'gaia.dr3lite', timeoutMs: 24_000 },
+  { url: 'https://data.xao.ac.cn/tap/sync', table: 'gaia.dr3lite', timeoutMs: 12_000 },
+  { url: esaTap, table: 'gaiadr3.gaia_source', timeoutMs: 12_000 },
+] as const
+type StarSource = typeof starSources[number]
+// Te same odległości Bailer-Jones et al. 2021 (EDR3) są dostępne pod różnymi nazwami tabel.
+const distanceSources = [
+  { url: gavoTap, table: 'gedr3dist.main', timeoutMs: 6_000 },
+  { url: esaTap, table: 'external.gaiaedr3_distance', timeoutMs: 8_000 },
+  { url: 'https://gaia.ari.uni-heidelberg.de/tap/sync', table: 'gaiaedr3_complements.distances', timeoutMs: 8_000 },
+] as const
+const starColumns = ['source_id', 'ra', 'dec', 'pmra', 'pmdec', 'phot_g_mean_mag', 'phot_bp_mean_mag', 'phot_rp_mean_mag', 'parallax', 'parallax_error']
+const distanceColumns = ['r_med_geo', 'r_lo_geo', 'r_hi_geo']
 const maxResponseBytes = 4 * 1024 * 1024
-const gavoConeMs = 24_000
 const queryMs = 60_000
 const LY_PER_PC = 3.26156
 /** Katalog D80 solvera (Gaia DR3) ma epokę 2025,0; dopasowujemy do niej pozycje J2016,0. */
@@ -28,10 +41,10 @@ export function magnitudeLimit(radiusDeg: number): number {
   return Math.round(Math.min(18, Math.max(10, limit)) * 10) / 10
 }
 
-function csvRows(text: string, requiredColumn = 'r_med_geo'): Record<string, string>[] {
+function csvRows(text: string, requiredColumns: readonly string[]): Record<string, string>[] {
   const lines = text.trim().split(/\r?\n/)
   const head = lines.shift()?.split(',') ?? []
-  if (!head.includes('source_id') || !head.includes(requiredColumn)) throw new Error('Nieoczekiwany format danych Gaia.')
+  if (!requiredColumns.every((column) => head.includes(column))) throw new Error('Nieoczekiwany format danych Gaia.')
   return lines.map((line) => {
     const cells = line.split(',')
     return Object.fromEntries(head.map((name, i) => [name, cells[i] ?? '']))
@@ -42,35 +55,51 @@ const num = (value: string | undefined) => value === undefined || value.trim() =
 
 const tapParams = (query: string) => new URLSearchParams({ REQUEST: 'doQuery', LANG: 'ADQL', FORMAT: 'csv', QUERY: query })
 
-async function queryGaia(raDeg: number, decDeg: number, radiusDeg: number, magLimit: number, fetchImpl: typeof fetch, signal: AbortSignal) {
-  const select = `SELECT TOP ${candidates} g.source_id, g.ra, g.dec, g.pmra, g.pmdec, g.phot_g_mean_mag, g.phot_bp_mean_mag, g.phot_rp_mean_mag, g.parallax, g.parallax_error`
-  const cone = `WHERE 1 = CONTAINS(POINT('ICRS', g.ra, g.dec), CIRCLE('ICRS', ${raDeg.toFixed(6)}, ${decDeg.toFixed(6)}, ${radiusDeg.toFixed(6)})) AND g.phot_g_mean_mag < ${magLimit} ORDER BY g.phot_g_mean_mag`
-  // LEFT JOIN: gwiazdy bez paralaksy (brak w gedr3dist) zostają na zdjęciu bez odległości.
-  const query = `${select}, d.r_med_geo, d.r_lo_geo, d.r_hi_geo FROM gaia.dr3lite AS g LEFT OUTER JOIN gedr3dist.main AS d ON d.source_id = g.source_id ${cone}`
-  const gavoSignal = AbortSignal.any([signal, AbortSignal.timeout(gavoConeMs)])
-  try {
-    const response = await fetchImpl(new URL(`${tapUrl}?${tapParams(query)}`), { signal: gavoSignal })
-    // Limit zapytań (429) to stan GAVO, nie błąd zapytania: lustro XAO ma osobny limit (C21).
-    if (response.status < 500 && response.status !== 429) return csvRows(await readResponseText(response, maxResponseBytes))
-    void response.body?.cancel().catch(() => {})
-  } catch (error) {
-    signal.throwIfAborted()
-    if (!gavoSignal.aborted && !(error instanceof TypeError)) throw error
-  }
-
-  // GAVO może przerwać wyszukiwanie w gęstym polu. Lustro XAO ma tę samą tabelę
-  // Gaia DR3, a GAVO nadal może odczytać odległości po indeksowanym source_id.
-  const mirror = await fetchImpl(new URL(`${mirrorTapUrl}?${tapParams(`${select} FROM gaia.dr3lite AS g ${cone}`)}`), { signal })
-  const rows = csvRows(await readResponseText(mirror, maxResponseBytes), 'phot_g_mean_mag')
-  if (rows.length === 0) return rows
-  const ids = rows.map((row) => row.source_id)
-  if (ids.some((id) => !/^\d{1,19}$/.test(id))) throw new Error('Niepoprawny identyfikator Gaia DR3.')
-  const distances = await fetchImpl(tapUrl, {
-    method: 'POST', signal,
-    body: tapParams(`SELECT TOP ${ids.length} source_id, r_med_geo, r_lo_geo, r_hi_geo FROM gedr3dist.main WHERE source_id IN (${ids.join(',')})`),
+async function queryGaia(field: FieldProjection, magLimit: number, fetchImpl: typeof fetch, signal: AbortSignal, preferred?: StarSource) {
+  const { raDeg, decDeg, radiusDeg } = field
+  const select = `SELECT TOP ${candidates} ${starColumns.map((column) => `g.${column}`).join(', ')}`
+  const region = `WHERE 1 = CONTAINS(POINT('ICRS', g.ra, g.dec), CIRCLE('ICRS', ${raDeg.toFixed(6)}, ${decDeg.toFixed(6)}, ${radiusDeg.toFixed(6)}))`
+  const sources = preferred ? [preferred, ...starSources.filter((source) => source !== preferred)] : starSources
+  const timedOut: StarSource[] = []
+  const queryCone = (archives: readonly StarSource[], limit: number) => firstCatalogResponse(archives, signal, async (source, attempt) => {
+    const cone = `${region} AND g.phot_g_mean_mag < ${limit} ORDER BY g.phot_g_mean_mag`
+    const from = `FROM ${source.table} AS g`
+    // LEFT JOIN pozostawia gwiazdy bez odległości. W archiwach zapasowych osobne zapytania omijają wolne złączenie.
+    const joined = source.url === gavoTap
+    const query = joined
+      ? `${select}, ${distanceColumns.map((column) => `d.${column}`).join(', ')} ${from} LEFT OUTER JOIN ${distanceSources[0].table} AS d ON d.source_id = g.source_id ${cone}`
+      : `${select} ${from} ${cone}`
+    const text = await fetchImpl(new URL(`${source.url}?${tapParams(query)}`), { signal: attempt })
+      .then((response) => readResponseText(response, maxResponseBytes))
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === 'TimeoutError') timedOut.push(source)
+        throw error
+      })
+    const columns = joined ? [...starColumns, ...distanceColumns] : starColumns
+    const rows = csvRows(text, columns)
+    if (rows.some((row) => !/^\d{1,19}$/.test(row.source_id))) throw new Error('Niepoprawny identyfikator Gaia DR3.')
+    return { rows, source, magLimit: limit }
   })
-  const byId = new Map(csvRows(await readResponseText(distances, maxResponseBytes)).map((row) => [row.source_id, row]))
-  return rows.map((row) => ({ ...row, ...byId.get(row.source_id) }))
+  const result = await queryCone(sources, magLimit).catch((error) => {
+    signal.throwIfAborted()
+    // W gęstym polu węższy zakres jasności ogranicza sortowanie w archiwum.
+    if (preferred || !timedOut.length || magLimit <= 10) throw error
+    const brighterLimit = Math.round(Math.max(10, Math.min(14, magLimit - 3)) * 10) / 10
+    return queryCone([...timedOut].reverse(), brighterLimit)
+  })
+  const { rows, source } = result
+  if (source.url === gavoTap || rows.length === 0) return result
+
+  const ids = rows.map((row) => row.source_id)
+  const archives = source.url === esaTap ? [distanceSources[1], distanceSources[2], distanceSources[0]] : distanceSources
+  const columns = ['source_id', ...distanceColumns]
+  const distances = await firstCatalogResponse(archives, signal, async ({ url, table }, attempt) => {
+    const body = tapParams(`SELECT TOP ${ids.length} ${columns.join(', ')} FROM ${table} WHERE source_id IN (${ids.join(',')})`)
+    const response = await fetchImpl(url, { method: 'POST', signal: attempt, body })
+    return csvRows(await readResponseText(response, maxResponseBytes), columns)
+  })
+  const byId = new Map(distances.map((row) => [row.source_id, row]))
+  return { ...result, rows: rows.map((row) => ({ ...row, ...byId.get(row.source_id) })) }
 }
 
 function propagate(row: Record<string, string>): [number, number] {
@@ -102,17 +131,26 @@ export async function loadPhotoStars(width: number, height: number, project: Pro
   const timeout = AbortSignal.any([signal, AbortSignal.timeout(queryMs)])
   let magLimit = magnitudeLimit(field.radiusDeg)
   let stars: PhotoStar[] = []
+  let preferred: StarSource | undefined
   // Drugie, głębsze zapytanie tylko w rzadkim polu, gdy pierwsze nie wyczerpało limitu kandydatów.
   for (let attempt = 0; ; attempt++) {
-    const rows = (await queryGaia(field.raDeg, field.decDeg, field.radiusDeg, magLimit, fetchImpl, timeout)).filter((row) => num(row.ra) !== null && num(row.dec) !== null && num(row.phot_g_mean_mag) !== null)
+    const nextLimit = attempt === 0 ? magLimit : Math.min(19, magLimit + 2)
+    const result = await queryGaia(field, nextLimit, fetchImpl, timeout, preferred).catch((error) => {
+      signal.throwIfAborted()
+      if (!stars.length) throw error
+      return null
+    })
+    if (!result) break
+    preferred = result.source
+    magLimit = result.magLimit
+    const rows = result.rows.filter((row) => num(row.ra) !== null && num(row.dec) !== null && num(row.phot_g_mean_mag) !== null)
     const positions = rows.map(propagate)
     const { pixels } = await project(positions)
     stars = rows.flatMap((row, i) => {
       const pixel = pixels[i]
       return pixel && pixel[0] >= 0 && pixel[0] < width && pixel[1] >= 0 && pixel[1] < height ? [photoStar(row, positions[i], pixel)] : []
     }).sort((a, b) => a.gMag - b.gMag).slice(0, STAR_LIMIT)
-    if (attempt === 1 || stars.length >= STAR_LIMIT || rows.length >= candidates || magLimit >= 18) break
-    magLimit = Math.min(19, magLimit + 2)
+    if (attempt === 1 || stars.length >= STAR_LIMIT || rows.length >= candidates || magLimit >= 18 || magLimit < nextLimit) break
   }
   return { stars, magLimit }
 }

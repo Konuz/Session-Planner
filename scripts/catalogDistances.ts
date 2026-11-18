@@ -106,7 +106,10 @@ export function checkIdentity(entry: Entry, simbad: Map<string, SimbadObject>): 
   const sepDeg = separationDeg(entry.raDeg, entry.decDeg, primary.raDeg, primary.decDeg)
   const cls = typeClass(primary.otype)
   const typeNote = cls && APP_CLASS[entry.type] && !APP_CLASS[entry.type].includes(cls) ? `${entry.type} w aplikacji, ${primary.otype} (${cls}) w SIMBAD` : ''
-  return { verdict: sepDeg > limit ? 'position' : 'ok', mainId: primary.mainId, otype: primary.otype, sepDeg, foreignAliases, typeNote }
+  // Green i SIMBAD lokują środek Puppis A w różnych miejscach tej samej rozległej pozostałości.
+  const puppisA = entry.designations[0] === 'SNR G260.4-03.4' && entry.type === 'SNR'
+    && primary.mainId === 'NAME Pup A' && primary.otype === 'SNR' && sepDeg <= entry.majArcmin / 120
+  return { verdict: sepDeg > limit && !puppisA ? 'position' : 'ok', mainId: primary.mainId, otype: primary.otype, sepDeg, foreignAliases, typeNote }
 }
 
 /** W katalogu Dutry i Biki jedna linia Names oznacza jeden obłok; uwagi „in” i „inc” opisują jego części. */

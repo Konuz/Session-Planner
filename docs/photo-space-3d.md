@@ -41,7 +41,7 @@ Stan zdjęcia w oknie „Pozycja 3D” (po nurkowaniu), w którym gwiazdy z kadr
 - **Powrót do skali**. Wybór zakładki **Droga Mleczna** lub **Wszechświat lokalny** po pełnym rozłożeniu zdjęcia zwija zdjęcie i prowadzi kamerę bezpośrednio do wybranej skali. Kliknięcie w trakcie rozkładania zawraca kamerę z bieżącego miejsca. Zmiana skali wybrana podczas trwającego nurkowania następuje po zakończeniu powrotu.
 - **Brak eksportu wideo:** zdecydował tak użytkownik 5.11.2026.
 
-Gwiazdy pobieramy raz, gdy zdjęcie pojawi się w skali Drogi Mlecznej (scena Obserwatorium jest wtedy kompletna przed nurkowaniem), i zapisujemy w projekcie (IndexedDB, `PhotoProject` w wersji 2). Starsze zapisy przechodzą migrację z `stars: null` i pobierają gwiazdy przy pierwszym otwarciu. Serwer dodatkowo buforuje udane odpowiedzi według WCS. Prywatność bez zmian: do GAVO trafiają tylko środek i promień pola, a zdjęcie i WCS nie opuszczają serwera.
+Gwiazdy pobieramy raz, gdy zdjęcie pojawi się w skali Drogi Mlecznej (scena Obserwatorium jest wtedy kompletna przed nurkowaniem), i zapisujemy w projekcie (IndexedDB, `PhotoProject` w wersji 2). Starsze zapisy przechodzą migrację z `stars: null` i pobierają gwiazdy przy pierwszym otwarciu. Serwer dodatkowo buforuje udane odpowiedzi według WCS. Do usług katalogowych trafiają parametry pola (środek, promień i dla Gaia granica jasności), a przy osobnym pobieraniu odległości także identyfikatory źródeł Gaia. Zdjęcie i WCS zostają na serwerze.
 
 Sprawdzenie na zdjęciu IC 434 z konuzastro.pl (2798 × 2827 px, 1,28″/px):
 - 510 z 580 gwiazd wykrytych przez solver dopasowano do Gaia (≤ 1″);
@@ -67,7 +67,10 @@ npm.cmd run dev
 
 Instalator buduje mały program `tracker-skyshot` z przypiętym Skyshot Solver `76f01812fe0fc0fcdcbeba1ab89b339b19e1bc9e` i pobiera oficjalny indeks Full learned (około 838 MB, miejsce z archiwum około 2 GB). Kod i dane pozostają w ignorowanym `scripts/.cache`. Na serwerze produkcyjnym używaj `npm.cmd run build`, następnie `npm.cmd start`; samo statyczne hostowanie `dist` nie uruchamia astrometrii.
 
-Można wskazać istniejące instalacje przez `SKYSHOT_BRIDGE` (ścieżka programu tracker-skyshot) i `SKYSHOT_INDEX` (katalog indeksu). Endpointy `/api/photo/status`, `/api/photo/solve`, `/api/photo/distances?id=...` i `POST /api/photo/stars` (JSON z `wcs`, `width`, `height`) działają w Vite i serwerze produkcyjnym. Po aktualizacji kodu mostu uruchom ponownie `npm.cmd run setup:skyshot` (podkomenda `project`). Serwer rozwiązuje jedno zdjęcie naraz, ogranicza czas procesu i usuwa swoje pliki tymczasowe po zakończeniu. Pobieranie pomiarów nie wymaga solvera; potrzebuje połączenia z SIMBAD/NED. Gwiazdy wymagają mostu (rzut przez WCS) i połączenia z GAVO DC, z limitem 30 s na zapytanie. Każde źródło ma limit czasu 15 s, pomyślne odpowiedzi mogą być przechowywane przez przeglądarkę przez godzinę.
+Można wskazać istniejące instalacje przez `SKYSHOT_BRIDGE` (ścieżka programu tracker-skyshot) i `SKYSHOT_INDEX` (katalog indeksu). Endpointy `/api/photo/status`, `/api/photo/solve`, `/api/photo/distances?id=...`, `POST /api/photo/stars` i `POST /api/photo/catalog-objects` (oba żądania POST z `wcs`, `width`, `height`) działają w Vite i serwerze produkcyjnym. Po aktualizacji kodu mostu uruchom ponownie `npm.cmd run setup:skyshot` (podkomenda `project`). Serwer rozwiązuje jedno zdjęcie naraz, ogranicza czas procesu i usuwa swoje pliki tymczasowe po zakończeniu. Pobieranie pomiarów nie wymaga solvera i korzysta z SIMBAD lub NED.
+
+- **VizieR** próbuje kolejno CfA Harvard, CDS Strasbourg, IDIA i China-VO niezależnie dla każdej tabeli. Ostatnie lustro udostępnia zapytania przez HTTP. Limity wszystkich prób dla tabeli sumują się do 30 s.
+- **Gaia DR3** korzysta z GAVO, potem XAO i ESA. Po przejściu na archiwum zapasowe aplikacja osobno dopasowuje odległości Bailer-Jones po identyfikatorach, korzystając z GAVO, ESA lub ARI. Gdy archiwa przekroczą limit czasu dla pełnego zapytania, serwer może ponowić wyszukiwanie z progiem dla jaśniejszych gwiazd. Łączny limit zapytań katalogowych Gaia wynosi 60 s.
 
 ## Ograniczenia i źródła
 
@@ -80,7 +83,7 @@ Propozycja katalogowa nie dowodzi widoczności obiektu na ekspozycji. Nakładaj�
 - [NED: dokumentacja API](https://ned.ipac.caltech.edu/Docs::API/)
 - [Gaia DR3: Gaia Collaboration, Vallenari i in. 2023, A&A 674, A1](https://ui.adsabs.harvard.edu/abs/2023A%26A...674A...1G/abstract); [instrukcje cytowania i podziękowania DR3](https://gea.esac.esa.int/archive/documentation/GDR3/Miscellaneous/sec_credit_and_citation_instructions/). Dane Gaia: licencja [CC BY-NC 3.0 IGO](https://www.cosmos.esa.int/web/gaia-users/license), czyli użytek niekomercyjny; do użytku komercyjnego obowiązują warunki ESA. Właściciel potwierdził 5.11.2026, że aplikacja na konuzastro.pl jest niekomercyjna; zmiana tego statusu wymaga ponownej oceny danych Gaia. Uznanie autorstwa „ESA/Gaia/DPAC” stoi w legendzie obserwatorium.
 - [Odległości: Bailer-Jones, Rybizki, Fouesneau, Demleitner, Andrae 2021, AJ 161, 147](https://ui.adsabs.harvard.edu/abs/2021AJ....161..147B/abstract), licencja CC BY 4.0.
-- [GAVO Data Center (Heidelberg): TAP z tabelami `gaia.dr3lite` i `gedr3dist.main`](https://dc.zah.uni-heidelberg.de/). ESA Gaia Archive i CDS 5.11.2026 nie odpowiadały z sieci, w której testowaliśmy.
+- [GAVO Data Center](https://dc.zah.uni-heidelberg.de/), [XAO Data Center](https://data.xao.ac.cn/), [ESA Gaia Archive](https://gea.esac.esa.int/archive/), [ARI Gaia TAP](https://gaia.ari.uni-heidelberg.de/tap.html).
 
 Licencja kodu nie zastępuje warunków katalogu, modelu i indeksu. Dane nie są dołączane do repozytorium ani paczki frontendowej. Przed publicznym rozpowszechnianiem indeksów trzeba sprawdzić ich odrębne warunki; obecna integracja służy lokalnemu użyciu osobistemu.
 

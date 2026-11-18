@@ -5,10 +5,11 @@ import type { DSO } from './catalog.ts'
 import type { PhotoCut, PhotoDistance, PhotoStar } from './photo.ts'
 
 /** Czego dotyczy wartość: obiektu, populacji (gromady, asocjacji), gwiazdy oświetlającej, obłoku pyłu
- *  na linii widzenia albo przesunięcia ku czerwieni (oszacowanie pośrednie z przepływu Hubble’a). */
-export type DistanceScope = 'object' | 'population' | 'illuminator' | 'cloud' | 'redshift'
+ *  na linii widzenia, przesunięcia ku czerwieni albo całej pozostałości po supernowej, której częścią jest obiekt. */
+export type DistanceScope = 'object' | 'population' | 'illuminator' | 'cloud' | 'redshift' | 'remnant'
 export const SCOPE_LABELS: Record<DistanceScope, string> = {
   object: 'obiekt', population: 'populacja', illuminator: 'gwiazda oświetlająca', cloud: 'obłok', redshift: 'z przesunięcia ku czerwieni',
+  remnant: 'odziedziczona z pozostałości po supernowej',
 }
 
 /** Wpis tabeli źródeł katalogu: wspólny dla wielu obiektów (zwięzły zapis w catalog.json). */
@@ -36,9 +37,11 @@ export const publicationYear = (ref: string) => Number(ref.match(/^(\d{4})/)?.[1
 
 export function newestCutMeasurement(cut: CutDistance, measurements: readonly PhotoDistance[]): CutDistance | null {
   if (cut.distanceOrigin === 'user') return null
-  let year = cut.distLy === null || cut.distanceOrigin === 'regressor' ? -1 : publicationYear(cut.distanceRef)
+  const inherited = cut.distanceScope === 'remnant'
+  let year = cut.distLy === null || cut.distanceOrigin === 'regressor' || inherited ? -1 : publicationYear(cut.distanceRef)
   let best: PhotoDistance | null = null
   for (const m of measurements) {
+    if (m.distanceScope === 'remnant' || (inherited && (m.distanceScope !== 'object' || !hasDistance(m)))) continue
     if (m.distLy === null || !Number.isFinite(m.distLy) || m.distLy <= 0) continue
     const candidateYear = publicationYear(m.distanceRef)
     if (candidateYear > year) {
@@ -207,8 +210,11 @@ export function refreshCutDistances<P extends { cuts: PhotoCut[]; stars: { stars
     if (next.distLy === null && !object.unresolved && cut.catalogMatch?.distance) {
       next = measurementDistance(cut.catalogMatch.distance, 'catalog')
     }
-    if (cut.distanceOrigin === 'published' && !object.unresolved &&
-        (next.distLy === null || publicationYear(cut.distanceRef) >= publicationYear(next.distanceRef))) return cut
+    if (cut.distanceOrigin === 'published' && !object.unresolved) {
+      if (next.distanceScope === 'remnant') {
+        if (cut.distanceScope === 'object' && hasDistance(cut)) return cut
+      } else if (next.distLy === null || publicationYear(cut.distanceRef) >= publicationYear(next.distanceRef)) return cut
+    }
     // Wartość regresora zostaje, dopóki katalog lub gwiazda oświetlająca nie dadzą lepszej.
     if (next.distLy === null && cut.distanceOrigin === 'regressor' && !object.unresolved) return cut
     if (CUT_FIELDS.every((field) => next[field] === cut[field])) return cut

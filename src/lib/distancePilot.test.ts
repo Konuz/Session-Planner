@@ -3,6 +3,7 @@
 // automatycznego łańcucha aplikacji (z powodem znanej różnicy). Po `npm run build:data` test pokazuje zmianę pokrycia.
 import { readFileSync } from 'node:fs'
 import { expect, it } from 'vitest'
+import { SNR_COMPONENTS } from '../../scripts/snrComponents'
 import { parseCatalog, quickSearch } from './catalog'
 import { cutDistance, hasDistance, NO_DISTANCE, refreshCutDistances, type DistanceScope } from './distance'
 import fixture from './distancePilot.fixture.json'
@@ -21,6 +22,44 @@ it('wczytuje opublikowaną odległość Sh2-155 bez regresora', () => {
   expect(object.distInfo).toMatchObject({ verified: true, ref: '2015AJ....150..147F' })
 })
 const byId = new Map(catalog.map((o) => [o.id, o]))
+
+it('dziedziczy odległość SNR i zachowuje osobne wycinki mgławic w zapisanym zdjęciu', () => {
+  const parent = byId.get('SNR G074.0-08.5')!
+  const ids = ['NGC 6960', 'NGC 6992', 'NGC 6995']
+  const cuts: PhotoCut[] = ids.map((id, i) => {
+    const { type, raDeg, decDeg } = byId.get(id)!
+    return { ...NO_DISTANCE, id, type, raDeg, decDeg, x: 10 + i, y: 20, radius: 5, enabled: i !== 0 }
+  })
+  const updated = refreshCutDistances({ cuts, stars: null }, catalog, byId)
+  expect(parent.distLy).toBeGreaterThan(0)
+  expect(updated.cuts.map((cut) => cut.id)).toEqual(ids)
+  for (const [i, cut] of updated.cuts.entries()) {
+    expect(cut).toMatchObject({
+      distLy: parent.distLy, uncertaintyLy: parent.distUncLy, distanceScope: 'remnant',
+      distanceRef: parent.distInfo?.ref, distanceOrigin: 'catalog', x: cuts[i].x, enabled: cuts[i].enabled,
+    })
+    expect(cut.distanceMethod).toContain(parent.id)
+    expect(hasDistance(cut)).toBe(true)
+  }
+})
+
+it('udostępnia wszystkie potwierdzone składowe SNR z odległością i osobnym oznaczeniem', () => {
+  for (const [parentId, components] of SNR_COMPONENTS) {
+    const parent = byId.get(parentId)!
+    expect(parent.unresolved).toBe(false)
+    expect(parent.photoPrimaryId).toBeUndefined()
+    for (const id of components) {
+      const child = byId.get(id)!
+      const distance = cutDistance(child, null, null)
+      expect(child.photoPrimaryId).toBeUndefined()
+      expect(distance).toMatchObject({
+        distLy: parent.distLy, uncertaintyLy: parent.distUncLy, distanceScope: 'remnant', distanceRef: parent.distInfo?.ref,
+      })
+      expect(hasDistance(distance)).toBe(true)
+    }
+  }
+  expect(byId.get('LBN 109')?.distLy).toBeNull() // Osobna mgławica na tle W50.
+})
 
 it('w kadrze Woźnicy wyszukuje jedną mgławicę pod każdym oznaczeniem i zachowuje źródło pomiaru', () => {
   for (const [alias, primary] of [['LBN 747', 'Sh2-219'], ['LBN 744', 'Sh2-216'], ['B 25', 'LDN 1465']]) {
