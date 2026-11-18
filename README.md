@@ -114,6 +114,22 @@ The server exposes only the contents of `dist/` over HTTP, while the Node.js run
    tar -xf hips-proxy-nsns-rgb8.tar -C scripts/.cache/hips-proxy
    ```
 
+### Optional: ML Distance Regressor Setup
+If you want the server to estimate unverified distances in the background for photo cutouts without catalog measurements (`/api/photo/regressor`), install the Python environment managed by [Pixi](https://pixi.sh) (`astro-regressor-main/.pixi/` is excluded from Git):
+
+1. Install the Pixi environment (supports `win-64`, `linux-64`, and `osx-arm64`):
+   ```powershell
+   pixi install --manifest-path astro-regressor-main/pixi.toml
+   ```
+   *(Pre-installing is required; without it, the first request would install packages on the fly and exceed the server's 5-minute startup timeout).*
+2. Ensure `pixi` is available on `PATH` (checked via `pixi --version` with a 10 s timeout), or set the `PIXI` environment variable to the full path of the `pixi` executable (plus `REGRESSOR_DIR` if `astro-regressor-main/` is located elsewhere).
+3. Ensure the server has outbound HTTPS access to **GAVO TAP**, **ARI/ESA Gaia**, **SDSS SkyServer**, and **CDS VizieR**.
+4. Verify the installation:
+   ```powershell
+   pixi run --manifest-path astro-regressor-main/pixi.toml python -m unittest discover -s scripts/regressor
+   pixi run --manifest-path astro-regressor-main/pixi.toml python scripts/regressor/cut_distance.py --ra 85.38 --dec -2.30 --radius 0.05 --type EN
+   ```
+
 Additional production setup notes (in Polish) are available in [`docs/uruchomienie.md`](docs/uruchomienie.md).
 
 ---
