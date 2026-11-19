@@ -18,12 +18,11 @@ import { GALACTIC_LIMIT_LY, LOG_UNIT, UNIVERSE_GALAXY_SCALE, UNIVERSE_MIN_SPAN, 
 import { constellationView, framePose, sideView, SPACE_FAR, SPACE_FOV, type CameraPose } from '../lib/spaceCamera'
 import { ease, lerpPose, zoomPose, type Pose } from '../lib/spaceDive'
 import {
-  LOCAL_GROUP_SHAPES, MILKY_WAY_DIAMETER_LY, addStarNameLabels, dotTexture, fixedSizeTextSprite,
+  GALACTIC_REGIONS, LOCAL_GROUP_SHAPES, MILKY_WAY_DIAMETER_LY, addStarNameLabels, dotTexture, fixedSizeTextSprite,
   galaxyTexture, localGroupGalaxy, milkyWay, position, textSprite, toThree, type StarNameLayout,
 } from './space3d/galaxyModels'
 import { GALAXY_LEVELS, type ConstellationStar, type SpaceSettings } from './space3d/spaceSettings'
 import { createDomeMaterial } from './space3d/domeMaterials'
-import { GALACTIC_REGIONS } from './space3d/galaxyModels'
 import { createEarthAssets, createEarthMesh, EARTH_FRAME_MS, type EarthRig } from './space3d/earthModel'
 
 interface Props {

@@ -185,7 +185,6 @@ interface State {
   /** Podpisy obiektów tła w widoku 3D (domyślnie wyłączone). */
   show3DAnnotations: boolean
   showGalaxyRegions: boolean
-  showSolarLens: boolean
   /** Wygląd kopuł odległości Wszechświata lokalnego w oknie „Pozycja 3D”. */
   domeStyle: DomeStyle
   /** Krycie kopuł odległości (0,1–1), mnożone przez wygaszanie warstw. */
@@ -248,7 +247,7 @@ interface State {
   setDomeOpacity(value: number): void
   setSkyLook(look: SkyLook): void
   setThumbSource(source: ThumbSource): void
-  toggle(key: 'showDecLabels' | 'showLines' | 'showTracks' | 'showArt' | 'showOutlines' | 'showOwnPhotos' | 'showEllipses' | 'showObjectMarkers' | 'showLabels' | 'showAnnotations' | 'show3DAnnotations' | 'showGalaxyRegions' | 'showSolarLens' | 'onlyVisible'): void
+  toggle(key: 'showDecLabels' | 'showLines' | 'showTracks' | 'showArt' | 'showOutlines' | 'showOwnPhotos' | 'showEllipses' | 'showObjectMarkers' | 'showLabels' | 'showAnnotations' | 'show3DAnnotations' | 'showGalaxyRegions' | 'onlyVisible'): void
 }
 
 function normalizeSkyObjectDensity(value: unknown): number {
@@ -351,7 +350,6 @@ export const useStore = create<State>()(
       showAnnotations: true,
       show3DAnnotations: false,
       showGalaxyRegions: true,
-      showSolarLens: true,
       domeStyle: 'plain',
       domeOpacity: 1,
       skyLook: 'default',
@@ -574,7 +572,6 @@ export const useStore = create<State>()(
         showAnnotations: s.showAnnotations,
         show3DAnnotations: s.show3DAnnotations,
         showGalaxyRegions: s.showGalaxyRegions,
-        showSolarLens: s.showSolarLens,
         domeStyle: s.domeStyle,
         domeOpacity: s.domeOpacity,
         skyLook: s.skyLook,
