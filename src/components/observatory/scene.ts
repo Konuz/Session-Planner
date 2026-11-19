@@ -2,13 +2,13 @@
 // oś odległości (log.) z Ziemią i ostrosłupem pola. Renderowanie na żądanie; podpisy w nakładce DOM.
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { AXIS_DASH, AXIS_LENGTH, EARTH_Z, OBSERVATORY_FOV as FOV, PLANE_WIDTH, byDistance, depthFraction, earthViewPose, fitDistance, observatoryPosition, orbitOffset, starColor, starSize, structureViewPose, type LogDomain, type ObservatoryItem } from '../../lib/observatory'
+import { AXIS_DASH, AXIS_LENGTH, EARTH_Z, OBSERVATORY_FOV as FOV, PLANE_WIDTH, byDistance, depthFraction, earthViewPose, fitDistance, observatoryPosition, orbitOffset, placeCutoutLabel, planeSize, starColor, starSize, structureViewPose, type LogDomain, type ObservatoryItem } from '../../lib/observatory'
 import { DEFAULT_ANNOTATION_COLORS, type ObjectType } from '../../lib/catalog'
 import { fmtDistance, fmtDistanceRange } from '../../lib/format'
 import { objectCount, overlapGroups, type LabelBox } from '../../lib/labelGroups'
 import { photoCropSquare } from '../../lib/photo'
 import { GALACTIC_LIMIT_LY } from '../../lib/space3d'
-import { openLabelFan, type LabelFan } from '../labelFan'
+import { openLabelFan, relativeBox, type LabelFan } from '../labelFan'
 import { createEarthAssets, createEarthMesh, EARTH_FRAME_MS, setEarthOpacity, type EarthAssets, type EarthRig } from '../space3d/earthModel'
 import { glyphSprite, glyphTexture } from '../space3d/markerGlyphs'
 import { MARK, MARK_PROJECTION_Y } from '../space3d/photoGuide'
@@ -29,6 +29,11 @@ const LABEL_DY = -46
 const MARK_LABEL_DX = 13
 const MARK_LABEL_DY = -9
 const CHAR_PX = 6.1
+const RING_BASE = 0.05
+const RING_PREVIEW_RATIO = 0.82
+/** Mnożnik skali kątowej wycinka, aby wewnętrzna krawędź pierścienia (204,5/256) leżała tuż poza obwódką karty. */
+const RING_CARD_RATIO = 1.28
+const RING_OUTER_RATIO = 216 / 256
 
 interface Options {
   reducedMotion: boolean
@@ -69,19 +74,19 @@ function cutTexture(image: HTMLImageElement, item: ObservatoryItem, color: strin
 
 function ringTexture(color: string, highlight = false): THREE.CanvasTexture {
   const canvas = document.createElement('canvas')
-  canvas.width = canvas.height = 128
+  canvas.width = canvas.height = 512
   const g = canvas.getContext('2d')!
   if (highlight) {
     g.beginPath()
-    g.arc(64, 64, 53, 0, Math.PI * 2)
+    g.arc(256, 256, 210, 0, Math.PI * 2)
     g.strokeStyle = '#060b14'
-    g.lineWidth = 4
+    g.lineWidth = 11
     g.stroke()
   }
   g.beginPath()
-  g.arc(64, 64, 52, 0, Math.PI * 2)
+  g.arc(256, 256, 208, 0, Math.PI * 2)
   g.strokeStyle = color
-  g.lineWidth = highlight ? 2 : 6
+  g.lineWidth = highlight ? 7 : 24
   g.stroke()
   return new THREE.CanvasTexture(canvas)
 }
@@ -175,7 +180,7 @@ export class ObservatoryScene {
   private hovered: string | null = null
   private earthLabel: HTMLDivElement
   /** t0: czas pierwszej klatki lotu z requestAnimationFrame (nie performance.now() z chwili kliknięcia, wcześniejszej lub późniejszej). */
-  private flight: { offset: [THREE.Vector3Tuple, THREE.Vector3Tuple]; target: [THREE.Vector3, THREE.Vector3]; fov: [number, number]; t0: number | null; resolve?: () => void } | null = null
+  private flight: { offset: [THREE.Vector3Tuple, THREE.Vector3Tuple]; target: [THREE.Vector3, THREE.Vector3]; t0: number | null; resolve?: () => void } | null = null
   private keys = new Set<string>()
   private lastTick = performance.now()
   private resizeObserver: ResizeObserver
@@ -209,13 +214,13 @@ export class ObservatoryScene {
     const ringMap = ringTexture(this.accent, true)
     const ringMaterial = new THREE.SpriteMaterial({ map: ringMap, depthTest: false, depthWrite: false, transparent: true, sizeAttenuation: false })
     this.ring = new THREE.Sprite(ringMaterial)
-    this.ring.scale.setScalar(0.05)
+    this.ring.scale.setScalar(RING_BASE)
     this.ring.renderOrder = 10
     this.ring.visible = false
     const previewMaterial = new THREE.SpriteMaterial({ depthTest: false, depthWrite: false, transparent: true, sizeAttenuation: false })
     this.cutPreview = new THREE.Sprite(previewMaterial)
     // Obraz zachodzi pod kreskę pierścienia, bez szczeliny przy jego krawędzi.
-    this.cutPreview.scale.setScalar(this.ring.scale.x * 0.82)
+    this.cutPreview.scale.setScalar(RING_BASE * RING_PREVIEW_RATIO)
     this.cutPreview.renderOrder = 9
     this.cutPreview.visible = false
     this.scene.add(this.ring, this.cutPreview)
@@ -310,12 +315,12 @@ export class ObservatoryScene {
       this.photoImage = image
     }
     const texture = this.photoTexture!
-    const planeHeight = PLANE_WIDTH * size.height / size.width
+    const { width: planeWidth, height: planeHeight } = planeSize(size)
     const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, side: THREE.DoubleSide })
-    this.photo = new THREE.Mesh(new THREE.PlaneGeometry(PLANE_WIDTH, planeHeight), material)
+    this.photo = new THREE.Mesh(new THREE.PlaneGeometry(planeWidth, planeHeight), material)
     this.photo.renderOrder = -1
     this.data.add(this.photo)
-    const corners = [[-1, 1], [1, 1], [1, -1], [-1, -1]].map(([x, y]) => new THREE.Vector3(x * PLANE_WIDTH / 2, y * planeHeight / 2, 0))
+    const corners = [[-1, 1], [1, 1], [1, -1], [-1, -1]].map(([x, y]) => new THREE.Vector3(x * planeWidth / 2, y * planeHeight / 2, 0))
     const frameMaterial = new THREE.LineBasicMaterial({ color: this.accent, transparent: true, opacity: 0.55 })
     this.frame = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(corners), frameMaterial)
     this.data.add(this.frame)
@@ -490,7 +495,7 @@ export class ObservatoryScene {
       alpha.needsUpdate = true
       this.starState = { progress: this.progress, photo: f.photo, visible: this.visible }
     }
-    const pixelScale = PLANE_WIDTH / this.image.width
+    const { scale: pixelScale } = planeSize(this.image)
     const anchorOpacity = (1 - (this.external ? arrival : e)) * f.photo
     const anchorScale = MARK * MARK_PROJECTION_Y / this.camera.projectionMatrix.elements[5]
     for (const item of this.items) {
@@ -524,17 +529,6 @@ export class ObservatoryScene {
     this.ring.material.opacity = f.photo
     this.ring.visible = f.photo > 0 && !!selected && this.visible.has(selected.id)
     if (selected) this.ring.position.copy(this.position(selected))
-    const preview = this.cutPreview
-    const map = this.ring.visible && selected && (this.hovered !== null || isGalactic(selected))
-      ? this.cards.get(selected.id)?.material.map ?? null
-      : null
-    preview.visible = map !== null
-    if (map) {
-      if (!preview.material.map) preview.material.needsUpdate = true
-      preview.material.map = map
-      preview.material.opacity = f.photo
-      preview.position.copy(this.ring.position)
-    }
     this.dirty = true
   }
 
@@ -558,17 +552,53 @@ export class ObservatoryScene {
     return best
   }
 
+  private spriteScreenScale(sprite: THREE.Sprite): number {
+    const forward = new THREE.Vector3()
+    this.camera.getWorldDirection(forward)
+    const depth = sprite.position.clone().sub(this.camera.position).dot(forward)
+    return depth > 0.1 ? sprite.scale.x / depth : 0
+  }
+
   private screenRadius(sprite: THREE.Sprite): number {
-    const distance = this.camera.position.distanceTo(sprite.position)
-    return sprite.scale.x / 2 / (2 * distance * Math.tan(THREE.MathUtils.degToRad(FOV) / 2)) * this.renderer.domElement.clientHeight
+    return this.spriteScreenScale(sprite) * this.camera.projectionMatrix.elements[5] * this.renderer.domElement.clientHeight / 4
+  }
+
+  private ringOuterRadiusPx(): number {
+    return this.ring.scale.x * this.camera.projectionMatrix.elements[5] * this.renderer.domElement.clientHeight / 4 * RING_OUTER_RATIO
+  }
+
+  /** Dopasowuje rozmiar pierścienia zaznaczenia do widocznej karty wycinka i chowa miniaturę, gdy karta ją pokrywa. */
+  private updateSelectionRing() {
+    if (!this.ring.visible) {
+      this.cutPreview.visible = false
+      return
+    }
+    const marked = this.hovered ?? this.selected
+    const selected = this.items.find((item) => item.id === marked)
+    const card = selected ? this.cards.get(selected.id) : undefined
+    const cardAtRing = !!card && card.visible && this.arrival >= 1
+    const cardScale = cardAtRing ? this.spriteScreenScale(card) : 0
+    this.ring.scale.setScalar(Math.max(RING_BASE, cardScale * RING_CARD_RATIO))
+
+    const wantPreview = !!selected && !!card?.material.map && (this.hovered !== null || isGalactic(selected))
+    const cardCoversPreview = cardAtRing && cardScale >= RING_BASE * RING_PREVIEW_RATIO
+    const showPreview = wantPreview && !cardCoversPreview
+    this.cutPreview.visible = showPreview
+    if (showPreview && card?.material.map) {
+      if (!this.cutPreview.material.map) this.cutPreview.material.needsUpdate = true
+      this.cutPreview.material.map = card.material.map
+      this.cutPreview.material.opacity = this.fade.photo
+      this.cutPreview.position.copy(this.ring.position)
+      this.cutPreview.scale.setScalar(RING_BASE * RING_PREVIEW_RATIO)
+    }
   }
 
   /** Granice zawartości po pełnym rozłożeniu (widoczne obiekty, płaszczyzna zdjęcia i Ziemia): kadr nie zależy
    *  od suwaka, więc rozkładanie po ustawieniu widoku nie wynosi obiektów poza kadr. */
   private bounds(includeEarth = true): THREE.Box3 {
     const box = new THREE.Box3()
-    const h = PLANE_WIDTH * this.image.height / this.image.width
-    box.expandByPoint(new THREE.Vector3(-PLANE_WIDTH / 2, -h / 2, 0)).expandByPoint(new THREE.Vector3(PLANE_WIDTH / 2, h / 2, 0))
+    const { width: w, height: h } = planeSize(this.image)
+    box.expandByPoint(new THREE.Vector3(-w / 2, -h / 2, 0)).expandByPoint(new THREE.Vector3(w / 2, h / 2, 0))
     if (includeEarth) box.expandByPoint(new THREE.Vector3(0, 0, EARTH_Z))
     for (const item of this.items) if (this.visible.has(item.id) && item.distLy !== null) box.expandByPoint(new THREE.Vector3(...observatoryPosition(item, this.image, item.distLy, this.domain, 1)))
     return box
@@ -580,12 +610,12 @@ export class ObservatoryScene {
 
   setView(view: ObservatoryView, animate = true) {
     const pose = this.viewPose(view)
-    this.fly(new THREE.Vector3(...pose.position), new THREE.Vector3(...pose.target), animate, pose.fov ?? FOV)
+    this.fly(new THREE.Vector3(...pose.position), new THREE.Vector3(...pose.target), animate)
   }
 
   /** Poza kamery widoku (bez przelotu). */
-  viewPose(view: ObservatoryView): { position: Vec3; target: Vec3; fov?: number } {
-    if (view === 'earth') return earthViewPose(this.image, this.camera.aspect)
+  viewPose(view: ObservatoryView): { position: Vec3; target: Vec3 } {
+    if (view === 'earth') return earthViewPose(this.camera.aspect)
     if (view === 'structure') {
       // Ta sama poza co szew nurkowania z Drogi Mlecznej (widoczne obiekty, pełne rozłożenie).
       return structureViewPose(this.items.filter((item) => this.visible.has(item.id)), this.image, this.domain)
@@ -619,8 +649,8 @@ export class ObservatoryScene {
     return this.progress
   }
 
-  getPose(): { position: Vec3; target: Vec3; fov: number } {
-    return { position: this.camera.position.toArray() as Vec3, target: this.controls.target.toArray() as Vec3, fov: this.camera.fov }
+  getPose(): { position: Vec3; target: Vec3 } {
+    return { position: this.camera.position.toArray() as Vec3, target: this.controls.target.toArray() as Vec3 }
   }
 
   /** Poza ustawiana z zewnątrz (nurkowanie), bez przelotu i tłumienia. */
@@ -684,12 +714,11 @@ export class ObservatoryScene {
     this.fly(target.clone().add(direction.multiplyScalar(PLANE_WIDTH * 0.45)), target, true)
   }
 
-  private fly(position: THREE.Vector3, target: THREE.Vector3, animate: boolean, fov = this.camera.fov): Promise<void> {
+  private fly(position: THREE.Vector3, target: THREE.Vector3, animate: boolean): Promise<void> {
     this.closeFans()
     if (!animate || this.options.reducedMotion) {
       this.flight?.resolve?.()
       this.flight = null
-      this.setFov(fov)
       this.camera.position.copy(position)
       this.controls.target.copy(target)
       this.controls.update()
@@ -707,7 +736,7 @@ export class ObservatoryScene {
     return new Promise((resolve) => {
       this.flight?.resolve?.()
       const offset = (p: THREE.Vector3, t: THREE.Vector3) => p.clone().sub(t).toArray([0, 0, 0])
-      this.flight = { offset: [offset(from, fromTarget), offset(position, target)], target: [fromTarget, target], fov: [this.camera.fov, fov], t0: null, resolve }
+      this.flight = { offset: [offset(from, fromTarget), offset(position, target)], target: [fromTarget, target], t0: null, resolve }
     })
   }
 
@@ -753,7 +782,6 @@ export class ObservatoryScene {
       // Kamera po sferze wokół przesuwanego celu: obrót i zmiana wysokości kończą się razem.
       this.controls.target.lerpVectors(this.flight.target[0], this.flight.target[1], e)
       this.camera.position.set(...orbitOffset(this.flight.offset[0], this.flight.offset[1], e)).add(this.controls.target)
-      this.setFov(THREE.MathUtils.lerp(...this.flight.fov, e))
       this.dirty = true
       if (k >= 1) { this.flight.resolve?.(); this.flight = null }
     }
@@ -779,6 +807,8 @@ export class ObservatoryScene {
 
   private render(now = performance.now(), updateLabels = true) {
     if (this.layoutDirty) this.layout()
+    this.camera.updateMatrixWorld()
+    this.updateSelectionRing()
     this.dirty = false
     this.lastRender = now
     this.renderer.render(this.scene, this.camera)
@@ -807,6 +837,7 @@ export class ObservatoryScene {
     }
     const shown: { item: ObservatoryItem; el: HTMLDivElement; x: number; y: number }[] = []
     const boxes: LabelBox[] = []
+    const marked = this.hovered ?? this.selected
     for (const item of this.items) {
       const el = this.itemLabels.get(item.id)
       const isSelected = item.id === this.selected
@@ -817,12 +848,35 @@ export class ObservatoryScene {
       const anchor = this.anchors.get(item.id)
       const byMarker = anchor?.visible === true
       el.classList.toggle('space-photo-label', byMarker)
-      const labelPosition = byMarker ? anchor.position : card.position.clone().add(new THREE.Vector3(0, card.scale.y / 2, 0))
-      const at = place(el, labelPosition, this.visible.has(item.id))
-      if (!at) continue
-      const left = at[0] + (byMarker ? MARK_LABEL_DX : LABEL_DX), top = at[1] + (byMarker ? MARK_LABEL_DY : LABEL_DY)
-      shown.push({ item, el, x: at[0], y: at[1] })
-      boxes.push({ left, top, right: left + (this.labelWidths.get(item.id) ?? 0), bottom: top + LABEL_HEIGHT })
+      const centerWorld = byMarker ? anchor.position : card.position
+      v.copy(centerWorld).project(this.camera)
+      const on = this.visible.has(item.id) && v.z > -1 && v.z < 1 && Math.abs(v.x) < 1.2 && Math.abs(v.y) < 1.2
+      if (!on) {
+        el.style.display = 'none'
+        continue
+      }
+      const cx = (v.x + 1) / 2 * width
+      const cy = (1 - v.y) / 2 * height
+      const cardAtCenter = card.visible && (!byMarker || this.arrival >= 1)
+      const cardRadiusPx = cardAtCenter ? this.screenRadius(card) : 0
+      const ringRadiusPx = this.ring.visible && item.id === marked ? this.ringOuterRadiusPx() : 0
+      const outerRadiusPx = Math.max(cardRadiusPx, ringRadiusPx)
+      const placed = placeCutoutLabel({
+        cx,
+        cy,
+        radius: outerRadiusPx,
+        labelWidth: this.labelWidths.get(item.id) ?? 0,
+        labelHeight: LABEL_HEIGHT,
+        dx: byMarker ? MARK_LABEL_DX : LABEL_DX,
+        dy: byMarker ? MARK_LABEL_DY : LABEL_DY,
+        viewportWidth: width,
+        viewportHeight: height,
+        byMarker,
+      })
+      el.style.display = ''
+      el.style.transform = `translate(${placed.x.toFixed(1)}px, ${placed.y.toFixed(1)}px)`
+      shown.push({ item, el, x: placed.x, y: placed.y })
+      boxes.push(placed.box)
     }
     // Stos nakładających się podpisów zastępuje jedna plakietka grupy; podpis zaznaczonego obiektu zostaje.
     const groups = overlapGroups(boxes).filter((group) => group.length > 1).map((group) => {
@@ -875,20 +929,21 @@ export class ObservatoryScene {
     return badge
   }
 
-  /** Wachlarz nazw grupy wokół punktu ekranu: ramiona wg odległości, zgodnie z ruchem wskazówek zegara. */
+  /** Wachlarz nazw grupy przy bocznej ścianie ramki: ramiona wg odległości, zgodnie z ruchem wskazówek zegara. */
   private toggleFan(badge: GroupBadge) {
     const open = this.fans.get(badge)
     if (open) { open.close(); return }
     const { ids, x, y, el } = badge
     const image = this.photoImage?.src
     const { width, height } = this.image
+    const anchor = relativeBox(el, this.labels, { left: x - 40, top: y + LABEL_DY, right: x + 40, bottom: y + LABEL_DY + LABEL_HEIGHT })
     const entries = this.items.filter((item) => ids.includes(item.id)).sort(byDistance)
       .map((item) => ({
         id: item.id,
         text: `${item.id} · ${fmtDistance(item.distLy)}`,
         cutout: image && item.kind === 'object' ? { image, width, height, x: item.x, y: item.y, radius: item.radius } : undefined,
       }))
-    const fan = openLabelFan(this.labels, entries, x, y, this.sizedWidth, this.sizedHeight, {
+    const fan = openLabelFan(this.labels, entries, anchor, this.sizedWidth, this.sizedHeight, {
       hover: (id) => { this.hovered = id; this.layoutDirty = this.dirty = true },
       pick: (id) => this.options.onSelect(id),
       closed: () => {
@@ -905,7 +960,7 @@ export class ObservatoryScene {
     this.dirty = true
   }
 
-  private closeFans() { for (const fan of this.fans.values()) fan.close() }
+  private closeFans() { for (const fan of [...this.fans.values()]) fan.close() }
 
   dispose() {
     cancelAnimationFrame(this.raf)

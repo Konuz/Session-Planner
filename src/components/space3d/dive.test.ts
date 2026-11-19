@@ -1,5 +1,6 @@
 import * as THREE from 'three'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
+import { EARTH_Z, PLANE_WIDTH } from '../../lib/observatory'
 import { ALIGN_K, DIVE_PHASE_MS, diveFades } from '../../lib/spaceDive'
 import { SpaceDive, collectLayers, restoreSpace } from './dive'
 
@@ -326,4 +327,83 @@ it('reverse() zwraca false przed startem lub gdy Obserwatorium nie jest gotowe, 
   expect(doneDirs).toEqual(['out'])
   expect(space.override.layerFade).toBe(1)
   expect(space.override.camera).toBe(false)
+})
+
+it('wylicza kąt ostrosłupa przez planeSize dla kadru pionowego, kwadratowego i poziomego', () => {
+  vi.stubGlobal('requestAnimationFrame', () => 1)
+  vi.stubGlobal('cancelAnimationFrame', () => {})
+  vi.stubGlobal('window', {})
+  try {
+    const space = {
+      scene: new THREE.Scene(),
+      camera: new THREE.PerspectiveCamera(),
+      controls: { target: new THREE.Vector3(), enabled: true },
+      sunPos: new THREE.Vector3(),
+      override: { camera: false, earthRadius: null, earthBlend: 0, layerFade: 1, labelFade: 1 },
+      stopIntro() {},
+      setExternal() {},
+    }
+    const check = (imageAspect: number) => {
+      const dive = new SpaceDive({
+        direction: 'in',
+        space: space as never,
+        guide: null,
+        observatory: () => null,
+        seam: { position: [0, 0, 200], target: [0, 0, 0] },
+        markerTargets: new Map(),
+        seamProgress: 1,
+        imageAspect,
+        onPhase() {},
+        onObservatoryFrame() {},
+        onDone() {},
+      })
+      const pyramid = Reflect.get(dive, 'pyramid') as [number, number]
+      dive.cancel()
+      return pyramid
+    }
+    const portrait = check(5270 / 3540)
+    expect(portrait[0]).toBeCloseTo(PLANE_WIDTH * 3540 / 5270 / 2 / EARTH_Z, 9)
+    expect(portrait[1]).toBeCloseTo(PLANE_WIDTH / 2 / EARTH_Z, 9)
+
+    const square = check(1)
+    expect(square[0]).toBeCloseTo(PLANE_WIDTH / 2 / EARTH_Z, 9)
+    expect(square[1]).toBeCloseTo(PLANE_WIDTH / 2 / EARTH_Z, 9)
+
+    const landscape = check(0.75)
+    expect(landscape[0]).toBeCloseTo(PLANE_WIDTH / 2 / EARTH_Z, 9)
+    expect(landscape[1]).toBeCloseTo(PLANE_WIDTH * 0.75 / 2 / EARTH_Z, 9)
+  } finally {
+    vi.unstubAllGlobals()
+  }
+})
+
+it('fadeSpace przekazuje osobne krycie labels (fades.labels) do guide.setOpacity, a restoreSpace przywraca 1', () => {
+  const calls: (number | undefined)[][] = []
+  const camera = new THREE.PerspectiveCamera()
+  const space = {
+    override: { camera: true, layerFade: 1, labelFade: 1, earthRadius: null, earthBlend: 0 },
+    scene: new THREE.Scene(), overlay: { style: {} }, earth: null, camera,
+    controls: { enableDamping: false, enabled: false, target: new THREE.Vector3(), update() {} },
+    invalidate() {}, setExternal() {},
+  }
+  const guide = {
+    group: new THREE.Group(),
+    cone: new THREE.Group(),
+    fieldTan: [0.1, 0.1] as [number, number],
+    setOpacity: (...args: (number | undefined)[]) => { calls.push(args) },
+    alignSightLine() {},
+    setConeRoll() {},
+    placeMarkers() {},
+  }
+  const dive: SpaceDive = Object.create(SpaceDive.prototype)
+  Object.assign(dive, { o: { space, guide } })
+  const fadeSpace = Reflect.get(dive, 'fadeSpace') as (k: number) => void
+  fadeSpace.call(dive, 0.4)
+  const f = diveFades(0.4)
+  expect(f.guide).toBe(1)
+  expect(f.labels).toBe(0)
+  expect(calls.at(-1)).toEqual([f.guide, f.cone, f.coneFaces, f.spaceAxis, 0])
+
+  restoreSpace(space as never, guide as never, null)
+  expect(calls.at(-1)).toEqual([1, 1, 1])
 })

@@ -46,7 +46,7 @@ export interface PhotoGuide {
    *  oddalenia na dysk Galaktyki), żeby obiekty zdjęcia nie zbijały się w jeden punkt. zoom: przelot zakładek (zmiana skali). */
   frameCamera(options?: { zoom?: boolean }): void
   labels: HTMLDivElement
-  setOpacity(opacity: number, cone?: number, faces?: number, axis?: number): void
+  setOpacity(opacity: number, cone?: number, faces?: number, axis?: number, labels?: number): void
   /** Dopasowanie końca i kresek linii do osi Obserwatorium podczas nurkowania. */
   alignSightLine(amount: number, bridgeScale: number, startBridgeScale?: number): void
   setConeRoll(angle: number): void
@@ -352,9 +352,9 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, s
     frameCamera(options) {
       handle.flyTo(getFramePose(), undefined, options?.zoom ?? false)
     },
-    setOpacity(opacity, cone, faces, axis) {
+    setOpacity(opacity, cone, faces, axis, labels = opacity) {
       sight.setOpacity(opacity, cone, faces, axis)
-      layer.root.style.opacity = String(opacity)
+      layer.setOpacity(labels)
     },
     alignSightLine(amount, bridgeScale, startBridgeScale = bridgeScale) {
       sight.alignSightLine(amount, bridgeScale, startBridgeScale)

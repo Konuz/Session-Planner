@@ -36,11 +36,18 @@ export interface ObservatoryItem {
   scope: DistanceScope
 }
 
-/** Szerokość płaszczyzny zdjęcia i długość osi w jednostkach sceny. */
+/** Dłuższy bok płaszczyzny zdjęcia i długość osi w jednostkach sceny. */
 export const PLANE_WIDTH = 100
 export const AXIS_LENGTH = 400
 export const AXIS_DASH = 2
 export const GAIA_SOURCE = 'Gaia DR3; odległość: Bailer-Jones i in. 2021 (geometryczna)'
+
+/** Wymiary płaszczyzny zdjęcia w scenie (dłuższy bok = PLANE_WIDTH) i skala piksel → jednostka sceny. */
+export function planeSize(image: { width: number; height: number }): { width: number; height: number; scale: number } {
+  const max = Math.max(image.width, image.height)
+  const scale = max > 0 ? PLANE_WIDTH / max : 0
+  return { width: image.width * scale, height: image.height * scale, scale }
+}
 
 export function categoryOf(type: ObjectType): ObservatoryCategory {
   return type === 'G' || type === 'GG' ? 'galaxies' : 'nebulae'
@@ -97,7 +104,7 @@ const smooth = (progress: number) => {
  * progress 0: płaszczyzna zdjęcia (piksel → punkt płaszczyzny); 1: głębia z odległości.
  */
 export function observatoryPosition(pixel: { x: number; y: number }, image: { width: number; height: number }, distLy: number | null, domain: LogDomain, progress: number): [number, number, number] {
-  const scale = PLANE_WIDTH / image.width
+  const { scale } = planeSize(image)
   const x = (pixel.x - image.width / 2) * scale
   const y = (image.height / 2 - pixel.y) * scale
   const depth = distLy !== null && distLy > 0 ? depthFraction(distLy, domain) * AXIS_LENGTH : 0
@@ -121,6 +128,13 @@ export function orbitOffset(from: Vec3, to: Vec3, e: number): Vec3 {
 }
 
 export interface Histogram { edges: number[]; counts: number[] }
+export interface HistogramStop { offset: number; color: string }
+export interface HistogramCurve { linePath: string; areaPath: string; stops: HistogramStop[] }
+
+export const HISTOGRAM_HEIGHT = 40
+export const HISTOGRAM_TOP = 3
+export const HISTOGRAM_BOTTOM = 39
+const HISTOGRAM_MIN_VISIBLE = 2.5
 
 /** Histogram w koszykach logarytmicznych; edges ma bins + 1 granic w latach świetlnych. */
 export function distanceHistogram(distances: (number | null)[], domain: LogDomain, bins = 48): Histogram {
@@ -130,6 +144,103 @@ export function distanceHistogram(distances: (number | null)[], domain: LogDomai
     counts[Math.min(bins - 1, Math.floor(depthFraction(d, domain) * bins))]++
   }
   return { edges: Array.from({ length: bins + 1 }, (_, i) => distanceAt(i / bins, domain)), counts }
+}
+
+/** Kolor wykresu dla znormalizowanej wartości [0..1]: zielony (mało) → bursztyn → czerwony (dużo). */
+export function histogramColor(intensity: number): string {
+  const v = Math.max(0, Math.min(1, intensity))
+  if (v <= 0) return 'var(--ok)'
+  if (v >= 1) return 'var(--bad)'
+  if (v < 0.5) {
+    const p = Math.round(v * 200)
+    return p === 0 ? 'var(--ok)' : p === 100 ? 'var(--warn)' : `color-mix(in srgb, var(--warn) ${p}%, var(--ok))`
+  }
+  const p = Math.round((v - 0.5) * 200)
+  return p === 0 ? 'var(--warn)' : p === 100 ? 'var(--bad)' : `color-mix(in srgb, var(--bad) ${p}%, var(--warn))`
+}
+
+/** Gładka krzywa monotoniczna (splajn Hermite'a Fritsch–Carlson) oraz gradientowe stopnie kolorów wzdłuż osi X. */
+export function histogramCurve(counts: number[]): HistogramCurve {
+  const bins = counts.length
+  const max = counts.reduce((a, b) => Math.max(a, b), 0)
+  if (bins === 0 || max <= 0) return { linePath: '', areaPath: '', stops: [] }
+
+  const plotH = HISTOGRAM_BOTTOM - HISTOGRAM_TOP
+  const yAt = (count: number) => count <= 0 ? HISTOGRAM_BOTTOM : HISTOGRAM_BOTTOM - (HISTOGRAM_MIN_VISIBLE + (plotH - HISTOGRAM_MIN_VISIBLE) * (count / max))
+  const intensityAt = (y: number) => Math.max(0, Math.min(1, (HISTOGRAM_BOTTOM - y - HISTOGRAM_MIN_VISIBLE) / (plotH - HISTOGRAM_MIN_VISIBLE)))
+
+  const xs = [0, ...Array.from({ length: bins }, (_, i) => i + 0.5), bins]
+  const ys = [yAt(counts[0]), ...counts.map(yAt), yAt(counts[bins - 1])]
+  const n = xs.length
+  const dx = new Array<number>(n - 1)
+  const sec = new Array<number>(n - 1)
+  for (let k = 0; k < n - 1; k++) {
+    dx[k] = xs[k + 1] - xs[k]
+    sec[k] = (ys[k + 1] - ys[k]) / dx[k]
+  }
+
+  const m = new Array<number>(n).fill(0)
+  m[0] = sec[0]
+  m[n - 1] = sec[n - 2]
+  for (let k = 1; k < n - 1; k++) {
+    if (sec[k - 1] * sec[k] <= 0) m[k] = 0
+    else {
+      const w1 = 2 * dx[k] + dx[k - 1]
+      const w2 = dx[k] + 2 * dx[k - 1]
+      m[k] = (w1 + w2) / (w1 / sec[k - 1] + w2 / sec[k])
+    }
+  }
+  for (let k = 0; k < n - 1; k++) {
+    if (sec[k] === 0) {
+      m[k] = 0
+      m[k + 1] = 0
+    } else {
+      const a = m[k] / sec[k]
+      const b = m[k + 1] / sec[k]
+      const s = a * a + b * b
+      if (s > 9) {
+        const tau = 3 / Math.sqrt(s)
+        m[k] = tau * a * sec[k]
+        m[k + 1] = tau * b * sec[k]
+      }
+    }
+  }
+
+  const fmt = (v: number) => Number(v.toFixed(3))
+  const parts = [`M0 ${fmt(ys[0])}`]
+  const raw: HistogramStop[] = [{ offset: 0, color: histogramColor(intensityAt(ys[0])) }]
+
+  for (let k = 0; k < n - 1; k++) {
+    const x0 = xs[k], x1 = xs[k + 1]
+    const y0 = ys[k], y1 = ys[k + 1]
+    const h = dx[k]
+    if (y0 === y1 && m[k] === 0 && m[k + 1] === 0) {
+      parts.push(`L${fmt(x1)} ${fmt(y1)}`)
+      raw.push({ offset: x1 / bins, color: histogramColor(intensityAt(y1)) })
+    } else {
+      const c1x = x0 + h / 3
+      const c1y = y0 + (m[k] * h) / 3
+      const c2x = x1 - h / 3
+      const c2y = y1 - (m[k + 1] * h) / 3
+      parts.push(`C${fmt(c1x)} ${fmt(c1y)} ${fmt(c2x)} ${fmt(c2y)} ${fmt(x1)} ${fmt(y1)}`)
+
+      const t0 = intensityAt(y0)
+      const t1 = intensityAt(y1)
+      const steps = Math.max(2, Math.ceil(Math.abs(t1 - t0) / 0.1))
+      for (let j = 1; j <= steps; j++) {
+        const u = j / steps
+        const om = 1 - u
+        const xu = x0 + u * h
+        const yu = om ** 3 * y0 + 3 * om * om * u * c1y + 3 * om * u * u * c2y + u ** 3 * y1
+        raw.push({ offset: xu / bins, color: histogramColor(intensityAt(yu)) })
+      }
+    }
+  }
+
+  const stops = raw.filter((s, i) => i === 0 || i === raw.length - 1 || raw[i - 1].color !== s.color || raw[i + 1].color !== s.color)
+  const linePath = parts.join(' ')
+  const areaPath = `${linePath} L${bins} ${HISTOGRAM_BOTTOM} L0 ${HISTOGRAM_BOTTOM} Z`
+  return { linePath, areaPath, stops }
 }
 
 export interface ObservatoryFilter {
@@ -205,25 +316,13 @@ export function fitDistance(width: number, height: number, aspect: number): numb
   return Math.max(height / 2 / Math.tan(v), width / 2 / Math.tan(h)) * 1.12
 }
 
-/** Widok „Z Ziemi”: blisko za Ziemią, lekko nad osią; widać dużą Ziemię na dole, ostrosłup i cały kadr na wprost. */
-export function earthViewPose(image: { width: number; height: number }, aspect: number): { position: Vec3; target: Vec3; fov: number } {
-  const h = PLANE_WIDTH * image.height / image.width
-  const baseZ = Math.max(EARTH_Z + 15, fitDistance(PLANE_WIDTH, Math.min(h, PLANE_WIDTH), aspect) * 0.96)
-  const z = Math.max(baseZ, h / 2)
-  const y = Math.min(0.14 * (baseZ - EARTH_Z) * (baseZ / EARTH_Z), 0.22 * baseZ)
-  let fov = OBSERVATORY_FOV
-  if (h > PLANE_WIDTH) {
-    // Górne narożniki są najbliżej pochylonej kamery. Zostaw im taki sam zapas jak w kadrze kwadratowym.
-    const distance = Math.hypot(y, z)
-    const top = h / 2
-    const depth = distance - top * y / distance
-    const extent = Math.max(top * z / distance, PLANE_WIDTH / (2 * aspect))
-    fov = Math.max(fov, Math.atan(extent / (0.96 * depth)) * 360 / Math.PI)
-  }
+/** Widok „Z Ziemi”: blisko za Ziemią, lekko nad osią; jednakowy dla każdych proporcji zdjęcia. */
+export function earthViewPose(aspect: number): { position: Vec3; target: Vec3 } {
+  const z = Math.max(EARTH_Z + 15, fitDistance(PLANE_WIDTH, PLANE_WIDTH, aspect) * 0.96)
+  const y = Math.min(0.14 * (z - EARTH_Z) * (z / EARTH_Z), 0.22 * z)
   return {
     target: [0, 0, 0],
     position: [0, y, z],
-    fov,
   }
 }
 
@@ -232,8 +331,8 @@ export function earthViewPose(image: { width: number; height: number }, aspect: 
  * płaszczyznę zdjęcia, Ziemię i obiekty z odległością. Nie zależy od proporcji płótna (dopasowanie w pionie).
  */
 export function structureViewPose(items: Pick<ObservatoryItem, 'x' | 'y' | 'distLy'>[], image: { width: number; height: number }, domain: LogDomain): { position: Vec3; target: Vec3 } {
-  const h = PLANE_WIDTH * image.height / image.width
-  const min: Vec3 = [-PLANE_WIDTH / 2, -h / 2, 0], max: Vec3 = [PLANE_WIDTH / 2, h / 2, EARTH_Z]
+  const { width: w, height: h } = planeSize(image)
+  const min: Vec3 = [-w / 2, -h / 2, 0], max: Vec3 = [w / 2, h / 2, EARTH_Z]
   for (const item of items) {
     if (item.distLy === null) continue
     const p = observatoryPosition(item, image, item.distLy, domain, 1)
@@ -244,4 +343,72 @@ export function structureViewPose(items: Pick<ObservatoryItem, 'x' | 'y' | 'dist
   const distance = radius / Math.sin(OBSERVATORY_FOV * Math.PI / 360) * 0.9
   const dir = [1.05, 0.62, 0.9], n = Math.hypot(...dir)
   return { target, position: [target[0] + dir[0] / n * distance, target[1] + dir[1] / n * distance, target[2] + dir[2] / n * distance] }
+}
+
+export interface CutoutLabelPlacement {
+  x: number
+  y: number
+  box: { left: number; top: number; right: number; bottom: number }
+}
+
+/** Położenie podpisu wycinka na ekranie poza okręgiem wycinka i pierścieniem zaznaczenia (z zapasem przy krawędziach kadru). */
+export function placeCutoutLabel(opts: {
+  cx: number
+  cy: number
+  radius: number
+  labelWidth: number
+  labelHeight: number
+  dx: number
+  dy: number
+  viewportWidth: number
+  viewportHeight: number
+  byMarker: boolean
+}): CutoutLabelPlacement {
+  const { cx, cy, radius, labelWidth, labelHeight, dx, dy, viewportWidth, viewportHeight, byMarker } = opts
+  const gap = 8
+  const pad = 4
+  const clamp = (v: number, lo: number, hi: number) => hi < lo ? lo : Math.max(lo, Math.min(hi, v))
+  const make = (left: number, top: number): CutoutLabelPlacement => ({
+    x: left - dx,
+    y: top - dy,
+    box: { left, top, right: left + labelWidth, bottom: top + labelHeight },
+  })
+
+  if (!byMarker) {
+    const aboveTop = cy - radius + dy
+    const aboveRightLeft = cx + dx
+    if (aboveTop >= pad && aboveRightLeft >= pad && aboveRightLeft + labelWidth <= viewportWidth - pad) {
+      return make(aboveRightLeft, aboveTop)
+    }
+    const aboveLeftLeft = cx - dx - labelWidth
+    if (aboveTop >= pad && aboveLeftLeft >= pad && aboveLeftLeft + labelWidth <= viewportWidth - pad) {
+      return make(aboveLeftLeft, aboveTop)
+    }
+    const sideTop = clamp(cy - labelHeight / 2, pad, viewportHeight - pad - labelHeight)
+    const rightLeft = cx + radius + gap
+    if (rightLeft + labelWidth <= viewportWidth - pad) return make(rightLeft, sideTop)
+    const leftLeft = cx - radius - gap - labelWidth
+    if (leftLeft >= pad) return make(leftLeft, sideTop)
+    const belowTop = cy + radius + gap
+    if (belowTop + labelHeight <= viewportHeight - pad) {
+      return make(clamp(cx + dx, pad, viewportWidth - pad - labelWidth), belowTop)
+    }
+    return make(aboveRightLeft, aboveTop)
+  }
+
+  const sideOffset = Math.max(dx, radius + gap)
+  const rightLeft = cx + sideOffset
+  const rightTop = cy + dy
+  if (rightLeft + labelWidth <= viewportWidth - pad && rightTop >= pad && rightTop + labelHeight <= viewportHeight - pad) {
+    return make(rightLeft, rightTop)
+  }
+  const leftLeft = cx - sideOffset - labelWidth
+  const leftTop = clamp(cy + dy, pad, viewportHeight - pad - labelHeight)
+  if (leftLeft >= pad) return make(leftLeft, leftTop)
+  const centeredLeft = clamp(cx - labelWidth / 2, pad, viewportWidth - pad - labelWidth)
+  const aboveTop = cy - radius - gap - labelHeight
+  if (aboveTop >= pad) return make(centeredLeft, aboveTop)
+  const belowTop = cy + radius + gap
+  if (belowTop + labelHeight <= viewportHeight - pad) return make(centeredLeft, belowTop)
+  return make(rightLeft, rightTop)
 }

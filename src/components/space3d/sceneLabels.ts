@@ -8,7 +8,7 @@
 import * as THREE from 'three'
 import { fmtDistance, fmtDistanceRange } from '../../lib/format'
 import { objectCount, overlapGroups, type LabelBox } from '../../lib/labelGroups'
-import { openLabelFan, type FanCutout, type LabelFan } from '../labelFan'
+import { openLabelFan, relativeBox, type FanCutout, type LabelFan } from '../labelFan'
 import type { Space3DHandle } from '../Space3D'
 
 export interface SceneLabel {
@@ -77,6 +77,7 @@ export interface LabelLayer {
   add(position: THREE.Vector3, lines: string[], options?: { className?: string; color?: string; gap?: number; id?: string; distLy?: number; cutout?: FanCutout; onGroup?(grouped: boolean): void }): SceneLabel
   clear(): void
   setVisible(visible: boolean): void
+  setOpacity(opacity: number): void
   /** Co klatkę (hak `layout` sceny, z czasem klatki): tani test zmiany, przeliczenie tylko gdy trzeba. */
   update(now: number): void
   /** Wymusza przeliczenie przy następnym update (zmiana położeń punktów albo treści bez ruchu kamery). */
@@ -106,7 +107,7 @@ export function createLabelLayer(handle: Space3DHandle, className: string, { onP
   const v = new THREE.Vector3()
   /** Grupy przeliczone choć raz od dodania podpisów. */
   let groupsReady = false
-  const closeFans = () => { for (const fan of fans.values()) fan.close() }
+  const closeFans = () => { for (const fan of [...fans.values()]) fan.close() }
   handle.renderer.domElement.addEventListener('pointerdown', closeFans)
   handle.renderer.domElement.addEventListener('wheel', closeFans)
 
@@ -128,9 +129,13 @@ export function createLabelLayer(handle: Space3DHandle, className: string, { onP
     if (open) { open.close(); return }
     const { camera, mount } = handle
     v.copy(badge.position).project(camera)
+    const px = (v.x + 1) / 2 * mount.clientWidth
+    const py = (1 - v.y) / 2 * mount.clientHeight
+    const [dx, dy] = spotOffset(badge, badge.spot)
+    const anchor = relativeBox(badge.el, root, { left: px + dx, top: py + dy, right: px + dx + badge.width, bottom: py + dy + badge.height })
     const entries = [...badge.members ?? []].sort((a, b) => (a.distLy ?? 0) - (b.distLy ?? 0) || a.id!.localeCompare(b.id!))
       .map((m) => ({ id: m.id!, text: `${m.id} · ${fmtDistance(m.distLy ?? null)}`, cutout: m.cutout }))
-    const fan = openLabelFan(root, entries, (v.x + 1) / 2 * mount.clientWidth, (1 - v.y) / 2 * mount.clientHeight, mount.clientWidth, mount.clientHeight, {
+    const fan = openLabelFan(root, entries, anchor, mount.clientWidth, mount.clientHeight, {
       hover: (id) => onHover?.(id),
       pick: (id) => { onPick?.(id); for (const item of fans.values()) item.setSelected(id) },
       closed: () => {
@@ -197,9 +202,6 @@ export function createLabelLayer(handle: Space3DHandle, className: string, { onP
       const b = groupBadges[i] ?? reusable.pop() ?? createBadge()
       b.hidden = false
       b.members = members
-      b.position.set(0, 0, 0)
-      for (const m of members) b.position.add(m.position)
-      b.position.divideScalar(members.length)
       const distances = members.map((m) => m.distLy).filter((d): d is number => d !== undefined)
       const lines = [objectCount(members.length), distances.length ? fmtDistanceRange(Math.min(...distances), Math.max(...distances)) : '']
       if (b.el.textContent !== lines.join('\n')) setLabelText(b, lines)
@@ -229,6 +231,11 @@ export function createLabelLayer(handle: Space3DHandle, className: string, { onP
       if (!next) closeFans()
       dirty = true
     },
+    setOpacity(opacity) {
+      if (opacity < 1) closeFans()
+      root.style.opacity = String(opacity)
+      root.style.visibility = opacity > 0 ? '' : 'hidden'
+    },
     invalidate() { dirty = true },
     update(now) {
       const { camera, mount } = handle
@@ -249,6 +256,13 @@ export function createLabelLayer(handle: Space3DHandle, className: string, { onP
       // Grupy jak układ: po zatrzymaniu kamery i po zmianie treści bez ruchu; w ruchu (przelot, nurkowanie) trzymają
       // skład, a pierwsze powstają od razu, żeby przelot startowy nie pokazywał stosu podpisów.
       if (rested || (dirty && !moved) || !groupsReady) { regroup(w, h); groupsReady = true }
+      // Środek plakietki podąża za znacznikami grupy także wtedy, gdy skład grupy nie jest przeliczany (ruch kamery, nurkowanie).
+      for (const b of badges) {
+        if (b.hidden || !b.members?.length) continue
+        b.position.set(0, 0, 0)
+        for (const m of b.members) b.position.add(m.position)
+        b.position.divideScalar(b.members.length)
+      }
       const points = labels.flatMap((label) => {
         v.copy(label.position).project(camera)
         const on = visible && !label.hidden && !label.grouped && v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1

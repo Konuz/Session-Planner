@@ -27,10 +27,18 @@ export const FAN_HALF = 70 * Math.PI / 180
 const ONE_SIDE_MAX = 10
 /** Najmniejszy odstęp osi ramion przy środku (11,76 px wysokości wewnętrznego końca + ~2 px przerwy). */
 const INNER_PITCH = 14
-/** Domyślna odległość wewnętrznego końca środkowego ramienia od środka wachlarza. */
+/** Domyślna odległość wewnętrznego końca środkowego ramienia od środka ramki. */
 const BASE_RADIUS = 40
-/** Minimalny prześwit wewnętrznego końca skrajnego ramienia od środka wachlarza. */
-const MIN_CLEARANCE = 24
+/** Połowa wewnętrznej wysokości paska (28 px × 42 % / 2) oraz minimalny odstęp między stronami przy wachlarzu dwustronnym. */
+const INNER_HALF = 5.88
+const MIN_SIDE_GAP = 4
+
+export interface FanLayoutOptions {
+  /** Połowa szerokości ramki z przerwą: wewnętrzny koniec środkowego ramienia staje przy tej bocznej ścianie. */
+  wallOffset?: number
+  /** Strona dla jednostronnego wachlarza (domyślnie lewa). */
+  side?: 'left' | 'right'
+}
 
 export interface FanSpoke {
   /** Kąt ramienia na ekranie w radianach: 0 w prawo, dodatni w dół (oś y ekranu). */
@@ -54,8 +62,9 @@ export interface FanLayout {
  * Kąt między sąsiednimi ramionami dopasowany jest do zwężającego się kształtu paska o szerokości `spokeWidth`,
  * dzięki czemu paski układają się jeden tuż pod drugim przy odstępie `pitch` na zewnętrznym końcu i bez nakładania przy środku.
  */
-export function fanLayout(count: number, pitch: number, spokeWidth = 200): FanLayout {
-  const left = count > ONE_SIDE_MAX ? Math.ceil(count / 2) : count
+export function fanLayout(count: number, pitch: number, spokeWidth = 200, { wallOffset = BASE_RADIUS, side = 'left' }: FanLayoutOptions = {}): FanLayout {
+  const twoSides = count > ONE_SIDE_MAX
+  const left = twoSides ? Math.ceil(count / 2) : side === 'left' ? count : 0
   const right = count - left
   const maxCount = Math.max(left, right)
   const w = Math.max(80, spokeWidth)
@@ -64,10 +73,13 @@ export function fanLayout(count: number, pitch: number, spokeWidth = 200): FanLa
   const step = maxCount > 0 ? Math.min(idealStep, (2 * FAN_HALF) / maxCount) : idealStep
   const radius = pitch / step - w
   const maxHalfArc = maxCount > 1 ? ((maxCount - 1) / 2) * step : 0
-  const pivotShift = Math.min(radius - BASE_RADIUS, radius * Math.cos(maxHalfArc) - MIN_CLEARANCE)
-  const side = (n: number, middle: number, isLeft: boolean): FanSpoke[] =>
+  const minPivot = radius - wallOffset
+  const pivotShift = twoSides
+    ? Math.min(minPivot, radius * Math.cos(maxHalfArc) - INNER_HALF * Math.sin(maxHalfArc) - MIN_SIDE_GAP)
+    : minPivot
+  const sideSpokes = (n: number, middle: number, isLeft: boolean): FanSpoke[] =>
     Array.from({ length: n }, (_, i) => ({ angle: middle + (i - (n - 1) / 2) * step, left: isLeft }))
-  return { radius, pivotShift, maxHalfArc, spokes: [...side(right, 0, false), ...side(left, Math.PI, true)] }
+  return { radius, pivotShift, maxHalfArc, spokes: [...sideSpokes(right, 0, false), ...sideSpokes(left, Math.PI, true)] }
 }
 
 /** „2 obiekty”, „5 obiektów”, „22 obiekty”. */

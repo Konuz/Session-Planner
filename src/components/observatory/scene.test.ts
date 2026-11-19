@@ -1,7 +1,7 @@
 import * as THREE from 'three'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { ObservatoryScene } from './scene'
-import type { ObservatoryItem } from '../../lib/observatory'
+import { OBSERVATORY_FOV, type ObservatoryItem } from '../../lib/observatory'
 import { MARK, MARK_PROJECTION_Y } from '../space3d/photoGuide'
 
 // Prawdziwe obiekty Three.js; pomijamy tylko konstruktor wymagający DOM i kontekstu WebGL.
@@ -219,4 +219,163 @@ it('w przejściu zmienia co klatkę tylko proporcje kamery, a bufor rysowania po
   host.clientWidth = 500
   expect(resize.call(scene)).toBe(true)
   expect(sizes.at(-1)).toEqual([500, 600])
+})
+
+it('viewPose earth daje identyczną kamerę i stałe pole widzenia dla zdjęć pionowych, kwadratowych i poziomych', () => {
+  const { scene, camera } = fixture()
+  camera.aspect = 1.6
+  camera.updateProjectionMatrix()
+  const poses = [
+    { width: 3540, height: 5270 },
+    { width: 2944, height: 2956 },
+    { width: 1720, height: 1000 },
+  ].map((image) => {
+    Reflect.set(scene, 'image', image)
+    return scene.viewPose('earth')
+  })
+  expect(poses[0]).toEqual(poses[1])
+  expect(poses[2]).toEqual(poses[1])
+  expect(camera.fov).toBe(OBSERVATORY_FOV)
+})
+
+it('toggleFan oznacza aria-expanded wyłącznie na klikniętej plakietce i cofa je po zamknięciu', () => {
+  const makeEl = () => {
+    const classes = new Set<string>()
+    const attrs: Record<string, string> = {}
+    let cls = ''
+    const el = {
+      get className() { return cls },
+      set className(v: string) {
+        cls = v
+        classes.clear()
+        for (const name of v.split(/\s+/).filter(Boolean)) classes.add(name)
+      },
+      textContent: '',
+      title: '',
+      offsetWidth: 120,
+      style: {} as Record<string, string>,
+      children: [] as unknown[],
+      parent: null as unknown,
+      attrs,
+      classList: {
+        add: (...names: string[]) => names.forEach((n) => classes.add(n)),
+        remove: (...names: string[]) => names.forEach((n) => classes.delete(n)),
+        toggle: (name: string, force?: boolean) => { if (force ?? !classes.has(name)) classes.add(name); else classes.delete(name) },
+        contains: (name: string) => classes.has(name),
+      },
+      appendChild(child: { parent: unknown }) { child.parent = el; el.children.push(child); return child },
+      remove() {
+        const p = el.parent as { children: unknown[] } | null
+        if (p) p.children = p.children.filter((c) => c !== el)
+        el.parent = null
+      },
+      setAttribute(k: string, v: string) { attrs[k] = v },
+      getAttribute(k: string) { return attrs[k] ?? null },
+      addEventListener() {},
+      querySelector: () => el.children.find((c) => (c as { classList: { contains: (n: string) => boolean } }).classList.contains('obs-fan')) ?? null,
+    }
+    return el
+  }
+  vi.stubGlobal('document', { createElement: makeEl })
+  vi.stubGlobal('window', { addEventListener: vi.fn(), removeEventListener: vi.fn() })
+  try {
+    const { scene } = fixture()
+    const labels = makeEl()
+    Reflect.set(scene, 'labels', labels)
+    Reflect.set(scene, 'sizedWidth', 1200)
+    Reflect.set(scene, 'sizedHeight', 800)
+    const createBadge = Reflect.get(scene, 'createBadge') as () => { el: ReturnType<typeof makeEl>; ids: string[]; x: number; y: number }
+    const toggleFan = Reflect.get(scene, 'toggleFan') as (badge: ReturnType<typeof createBadge>) => void
+    const b1 = createBadge.call(scene)
+    const b2 = createBadge.call(scene)
+    b1.ids = ['obiekt']
+    b1.x = 400; b1.y = 300
+    b2.ids = ['gwiazda']
+    b2.x = 700; b2.y = 400
+
+    toggleFan.call(scene, b1)
+    expect(b1.el.getAttribute('aria-expanded')).toBe('true')
+    expect(b2.el.getAttribute('aria-expanded')).toBe('false')
+
+    toggleFan.call(scene, b1)
+    expect(b1.el.getAttribute('aria-expanded')).toBe('false')
+    expect(b2.el.getAttribute('aria-expanded')).toBe('false')
+  } finally {
+    vi.unstubAllGlobals()
+  }
+})
+
+it('przy zbliżeniu pierścień otacza wycinek, ukrywa miniaturę i trzyma ramkę nazwy na zewnątrz', () => {
+  const { scene, camera, item, card, ring, cutPreview } = fixture()
+  Object.assign(scene, { external: false, controls: { update: () => false }, keys: new Set(), lastTick: 0, lastRender: -Infinity })
+  const classes = new Set<string>()
+  const labelEl = {
+    style: {} as Record<string, string>,
+    classList: {
+      toggle: (name: string, force?: boolean) => { if (force ?? !classes.has(name)) classes.add(name); else classes.delete(name) },
+    },
+  }
+  Reflect.set(scene, 'itemLabels', new Map([[item.id, labelEl]]))
+  Reflect.set(scene, 'labelWidths', new Map([[item.id, 96]]))
+  scene.setSelected(item.id)
+
+  const assertOutside = () => {
+    const match = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(labelEl.style.transform)!
+    const tx = Number(match[1]), ty = Number(match[2])
+    const byMarker = classes.has('space-photo-label')
+    const left = tx + (byMarker ? 13 : 8)
+    const top = ty + (byMarker ? -9 : -46)
+    const box = { left, top, right: left + 96, bottom: top + 37 }
+    const v = card.position.clone().project(camera)
+    const cx = (v.x + 1) / 2 * 600, cy = (1 - v.y) / 2 * 600
+    const depth = -card.position.clone().applyMatrix4(camera.matrixWorldInverse).z
+    const cardRadiusPx = (card.scale.x / depth) * camera.projectionMatrix.elements[5] * 600 / 4
+    const ringRadiusPx = ring.scale.x * camera.projectionMatrix.elements[5] * 600 / 4 * (216 / 256)
+    const r = Math.max(cardRadiusPx, ringRadiusPx)
+    const px = Math.max(box.left, Math.min(cx, box.right))
+    const py = Math.max(box.top, Math.min(cy, box.bottom))
+    expect(Math.hypot(px - cx, py - cy)).toBeGreaterThanOrEqual(r)
+    return card.scale.x / depth
+  }
+
+  // 1. Zbliżenie z przodu przy progress = 1.
+  scene.setProgress(1)
+  camera.position.set(25, 12.5, -360)
+  camera.lookAt(25, 12.5, -400)
+  scene.step(100)
+  let cardScale = assertOutside()
+  expect(ring.scale.x).toBeGreaterThan(cardScale)
+  expect(ring.scale.x).toBeGreaterThanOrEqual(cardScale * 1.25)
+  expect(cutPreview.visible).toBe(false)
+
+  // 2. Zbliżenie z góry (jak „Z góry”), gdzie wektor +Y świata patrzy wzdłuż linii widzenia.
+  camera.position.set(25, 42.5, -400.001)
+  camera.lookAt(25, 12.5, -400)
+  Reflect.set(scene, 'dirty', true)
+  scene.step(116)
+  cardScale = assertOutside()
+  expect(ring.scale.x).toBeGreaterThanOrEqual(cardScale * 1.25)
+  expect(cutPreview.visible).toBe(false)
+
+  // 3. Zbliżenie podczas częściowego rozłożenia (byMarker = true).
+  scene.setProgress(0.6)
+  scene.step(132)
+  const target = card.position.clone()
+  camera.position.copy(target).add(new THREE.Vector3(0, 0, 35))
+  camera.lookAt(target)
+  Reflect.set(scene, 'dirty', true)
+  scene.step(148)
+  expect(classes.has('space-photo-label')).toBe(true)
+  cardScale = assertOutside()
+  expect(ring.scale.x).toBeGreaterThanOrEqual(cardScale * 1.25)
+  expect(cutPreview.visible).toBe(false)
+
+  // 4. Oddalenie przywraca bazowy pierścień i miniaturę podglądu.
+  scene.setProgress(1)
+  camera.position.set(100, 100, 400)
+  camera.lookAt(0, 0, 0)
+  Reflect.set(scene, 'dirty', true)
+  scene.step(164)
+  expect(ring.scale.x).toBe(0.05)
+  expect(cutPreview.visible).toBe(true)
 })

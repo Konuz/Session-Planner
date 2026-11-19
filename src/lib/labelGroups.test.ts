@@ -59,7 +59,7 @@ it.each([12, 14, 34, 40])('rozkłada %i ramion symetrycznie po obu stronach i tr
   expect(left).toHaveLength(count / 2)
   expect(right).toHaveLength(count / 2)
   right.forEach((spoke, i) => expect(spoke.angle + left[i].angle).toBeCloseTo(Math.PI))
-  expect(radius * Math.cos(maxHalfArc) - pivotShift).toBeGreaterThanOrEqual(24 - 1e-9)
+  expect(radius * Math.cos(maxHalfArc) - 5.88 * Math.sin(maxHalfArc) - pivotShift).toBeGreaterThanOrEqual(4 - 1e-9)
   for (let i = 1; i < right.length; i++) {
     expect((right[i].angle - right[i - 1].angle) * (radius + width)).toBeCloseTo(pitch)
   }
@@ -86,6 +86,22 @@ it('duży wachlarz przy krótkich paskach mieści się w zakresie 2 * FAN_HALF b
 
 it('odmienia liczbę obiektów', () => {
   expect([1, 2, 4, 5, 12, 14, 22, 25, 34, 112].map(objectCount)).toEqual(['1 obiekt', '2 obiekty', '4 obiekty', '5 obiektów', '12 obiektów', '14 obiektów', '22 obiekty', '25 obiektów', '34 obiekty', '112 obiektów'])
+})
+
+it('trzyma środkowe ramię dokładnie w odległości wallOffset od środka i obsługuje stronę prawą', () => {
+  for (const count of [2, 5, 10]) {
+    const left = fanLayout(count, 30, 180, { wallOffset: 54, side: 'left' })
+    expect(left.radius - left.pivotShift).toBeCloseTo(54, 9)
+    expect(left.spokes.every((s) => s.left)).toBe(true)
+
+    const right = fanLayout(count, 30, 180, { wallOffset: 54, side: 'right' })
+    expect(right.radius - right.pivotShift).toBeCloseTo(54, 9)
+    expect(right.spokes.every((s) => !s.left)).toBe(true)
+    expect(right.spokes.map((s) => s.angle)).toEqual([...right.spokes.map((s) => s.angle)].sort((a, b) => a - b))
+    expect(right.spokes[0].angle + right.spokes[count - 1].angle).toBeCloseTo(0, 9)
+  }
+  const both = fanLayout(12, 30, 180, { wallOffset: 54 })
+  expect(both.radius - both.pivotShift).toBeCloseTo(54, 9)
 })
 
 it('zakres odległości pokazuje wspólną jednostkę raz', () => {

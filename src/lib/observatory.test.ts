@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { expect, it } from 'vitest'
-import { AXIS_LENGTH, EARTH_Z, OBSERVATORY_FOV, PLANE_WIDTH, byDistance, fieldOfView, categoryCounts, distanceAt, distanceDomain, distanceHistogram, earthViewPose, matchesFilter, observatoryItems, observatoryPosition, orbitOffset, starColor, starSize, structureViewPose, type ObservatoryItem } from './observatory'
+import { AXIS_LENGTH, EARTH_Z, HISTOGRAM_BOTTOM, HISTOGRAM_TOP, OBSERVATORY_FOV, PLANE_WIDTH, byDistance, fieldOfView, categoryCounts, distanceAt, distanceDomain, distanceHistogram, earthViewPose, histogramColor, histogramCurve, matchesFilter, observatoryItems, observatoryPosition, orbitOffset, placeCutoutLabel, planeSize, starColor, starSize, structureViewPose, type ObservatoryItem } from './observatory'
 import type { PhotoCut, PhotoProject, PhotoStar } from './photo'
 
 const image = { width: 2000, height: 1000 }
@@ -26,6 +26,21 @@ it('przy progress = 1 głębia rośnie monotonicznie z odległością, a x i y s
   expect(half).toBeGreaterThan(observatoryPosition(pixel, image, 1300, domain, 1)[2])
 })
 
+it('planeSize normalizuje dłuższy bok do PLANE_WIDTH dla zdjęć pionowych, kwadratowych i poziomych', () => {
+  const portrait = planeSize({ width: 3540, height: 5270 })
+  expect(portrait.height).toBeCloseTo(PLANE_WIDTH, 9)
+  expect(portrait.width).toBeCloseTo(PLANE_WIDTH * 3540 / 5270, 9)
+  expect(observatoryPosition({ x: 0, y: 0 }, { width: 3540, height: 5270 }, null, domain, 0)).toEqual([-portrait.width / 2, PLANE_WIDTH / 2, -0])
+
+  const square = planeSize({ width: 2944, height: 2956 })
+  expect(square.height).toBeCloseTo(PLANE_WIDTH, 9)
+  expect(square.width).toBeCloseTo(PLANE_WIDTH * 2944 / 2956, 9)
+
+  const landscape = planeSize({ width: 2000, height: 1000 })
+  expect(landscape.width).toBe(PLANE_WIDTH)
+  expect(landscape.height).toBe(PLANE_WIDTH / 2)
+})
+
 it('zakres osi obejmuje pełne dekady, a distanceAt odwraca położenie', () => {
   expect(domain).toEqual({ minLy: 100, maxLy: 1e8 })
   expect(distanceDomain([])).toEqual({ minLy: 10, maxLy: 1e4 })
@@ -39,6 +54,77 @@ it('histogram liczy odległości w koszykach logarytmicznych i pomija brak danyc
   expect(h.edges.map((e) => Math.round(e))).toEqual([100, 316, 1000, 3162, 10000])
   expect(h.counts).toEqual([2, 0, 1, 1])
   expect(distanceHistogram([1e4], { minLy: 100, maxLy: 1e4 }, 4).counts).toEqual([0, 0, 0, 1])
+})
+
+it('histogramColor odwzorowuje [0..1] na rampę zielony → bursztyn → czerwony z tokenów :root', () => {
+  expect(histogramColor(0)).toBe('var(--ok)')
+  expect(histogramColor(0.5)).toBe('var(--warn)')
+  expect(histogramColor(1)).toBe('var(--bad)')
+  expect(histogramColor(-0.4)).toBe('var(--ok)')
+  expect(histogramColor(1.4)).toBe('var(--bad)')
+  expect(histogramColor(0.25)).toBe('color-mix(in srgb, var(--warn) 50%, var(--ok))')
+  expect(histogramColor(0.75)).toBe('color-mix(in srgb, var(--bad) 50%, var(--warn))')
+})
+
+it('histogramCurve buduje gładką krzywą bez przesterowań i z płynnymi przejściami gradientu', () => {
+  expect(histogramCurve([])).toEqual({ linePath: '', areaPath: '', stops: [] })
+  expect(histogramCurve([0, 0, 0, 0])).toEqual({ linePath: '', areaPath: '', stops: [] })
+
+  const skewed = [0, 0, 1, 0, 0, 1, 2, 4, 25, 6, 3, 1, 0, 0]
+  const curve = histogramCurve(skewed)
+  expect(curve.linePath.startsWith('M0 ')).toBe(true)
+  expect(curve.areaPath).toBe(`${curve.linePath} L${skewed.length} ${HISTOGRAM_BOTTOM} L0 ${HISTOGRAM_BOTTOM} Z`)
+
+  const nums = curve.linePath.match(/-?\d+(?:\.\d+)?/g)!.map(Number)
+  expect(nums.length % 2).toBe(0)
+  expect(nums[nums.length - 2]).toBe(skewed.length)
+  for (let i = 1; i < nums.length; i += 2) {
+    expect(nums[i]).toBeGreaterThanOrEqual(HISTOGRAM_TOP)
+    expect(nums[i]).toBeLessThanOrEqual(HISTOGRAM_BOTTOM)
+  }
+
+  // Małe wartości (1 przy maksimum 25) pozostają widoczne nad linią bazową, a zera leżą na bazie.
+  const endpointY = (targetX: number) => {
+    const tokens = curve.linePath.split(' ')
+    for (let i = 0; i < tokens.length; i++) {
+      if (tokens[i].startsWith('M') || tokens[i].startsWith('L')) {
+        if (Number(tokens[i].slice(1)) === targetX) return Number(tokens[i + 1])
+      } else if (tokens[i].startsWith('C')) {
+        if (Number(tokens[i + 4]) === targetX) return Number(tokens[i + 5])
+      }
+    }
+    return null
+  }
+  expect(endpointY(0.5)).toBe(HISTOGRAM_BOTTOM)
+  expect(endpointY(2.5)).toBeLessThan(HISTOGRAM_BOTTOM - 2)
+  expect(endpointY(8.5)).toBe(HISTOGRAM_TOP)
+
+  expect(curve.stops[0]).toEqual({ offset: 0, color: 'var(--ok)' })
+  expect(curve.stops[curve.stops.length - 1]).toEqual({ offset: 1, color: 'var(--ok)' })
+  for (let i = 1; i < curve.stops.length; i++) {
+    expect(curve.stops[i].offset).toBeGreaterThan(curve.stops[i - 1].offset)
+    const pair = [curve.stops[i - 1].color, curve.stops[i].color]
+    expect(pair).not.toEqual(['var(--ok)', 'var(--bad)'])
+    expect(pair).not.toEqual(['var(--bad)', 'var(--ok)'])
+  }
+  expect(curve.stops.some((s) => s.color === 'var(--bad)')).toBe(true)
+  expect(curve.stops.some((s) => s.color.includes('var(--warn)'))).toBe(true)
+
+  const edges = histogramCurve([5, 0, 0, 10])
+  const edgeNums = edges.linePath.match(/-?\d+(?:\.\d+)?/g)!.map(Number)
+  expect(edgeNums[0]).toBe(0)
+  expect(edgeNums[1]).toBeLessThan(HISTOGRAM_BOTTOM)
+  expect(edgeNums[edgeNums.length - 2]).toBe(4)
+  expect(edgeNums[edgeNums.length - 1]).toBe(HISTOGRAM_TOP)
+  expect(edges.stops[edges.stops.length - 1]).toEqual({ offset: 1, color: 'var(--bad)' })
+
+  const uniform = histogramCurve([3, 3, 3])
+  expect(uniform.linePath.startsWith(`M0 ${HISTOGRAM_TOP}`)).toBe(true)
+  expect(uniform.linePath.endsWith(`L3 ${HISTOGRAM_TOP}`)).toBe(true)
+  expect(uniform.stops).toEqual([
+    { offset: 0, color: 'var(--bad)' },
+    { offset: 1, color: 'var(--bad)' },
+  ])
 })
 
 const item = (id: string, category: ObservatoryItem['category'], distLy: number | null, gMag: number | null = null): ObservatoryItem => ({ id, kind: category === 'stars' ? 'star' : 'object', category, type: null, x: 0, y: 0, radius: 0, distLy, distLoLy: null, distHiLy: null, gMag, bpRp: null, parallaxOverError: null, raDeg: 0, decDeg: 0, source: '', method: '', ref: '', scope: 'object' })
@@ -122,26 +208,37 @@ it('widok Struktura (szew nurkowania) patrzy na środek całości po rozłożeni
   expect(distance).toBeCloseTo(Math.hypot(100, 50, 470) / 2 / Math.sin(Math.PI / 9) * 0.9, 9)
   const dir = [1.05, 0.62, 0.9].map((v) => v / Math.hypot(1.05, 0.62, 0.9))
   offset.forEach((v, i) => expect(v / distance).toBeCloseTo(dir[i], 9))
+
+  const portrait = structureViewPose([{ x: 250, y: 500, distLy: 1e4 }], { width: 500, height: 1000 }, domain)
+  const portraitDistance = Math.hypot(...portrait.position.map((v, i) => v - portrait.target[i]))
+  expect(portraitDistance).toBeCloseTo(Math.hypot(50, 100, 470) / 2 / Math.sin(Math.PI / 9) * 0.9, 9)
 })
 
-it('widok Z Ziemi ustawia kamerę symetrycznie blisko za Ziemią i mieści cały kadr na wprost', () => {
-  for (const img of [{ width: 1720, height: 1000 }, { width: 1500, height: 1000 }, { width: 1000, height: 1000 }, { width: 1000, height: 1500 }, { width: 900, height: 1600 }]) {
-    for (const aspect of [1.95, 1.5, 1.0]) {
-      const pose = earthViewPose(img, aspect)
-      expect(pose.position[0]).toBe(0)
-      expect(pose.target[0]).toBe(0)
-      expect(pose.position[2]).toBeGreaterThanOrEqual(EARTH_Z + 15)
+it('widok Z Ziemi ustawia jednakową kamerę dla każdego zdjęcia i mieści cały kadr na wprost', () => {
+  const images = [
+    { width: 1720, height: 1000 },
+    { width: 1500, height: 1000 },
+    { width: 2944, height: 2956 },
+    { width: 3540, height: 5270 },
+    { width: 900, height: 1600 },
+  ]
+  for (const aspect of [1.95, 1.5, 1.0, 0.6]) {
+    const pose = earthViewPose(aspect)
+    expect(pose.position[0]).toBe(0)
+    expect(pose.target).toEqual([0, 0, 0])
+    expect(pose.position[2]).toBeGreaterThanOrEqual(EARTH_Z + 15)
 
-      const camera = new THREE.PerspectiveCamera(pose.fov, aspect, 0.1, 5000)
-      camera.position.set(...pose.position)
-      camera.lookAt(...pose.target)
-      camera.updateMatrixWorld()
+    const camera = new THREE.PerspectiveCamera(OBSERVATORY_FOV, aspect, 0.1, 5000)
+    camera.position.set(...pose.position)
+    camera.lookAt(...pose.target)
+    camera.updateMatrixWorld()
 
-      const h = PLANE_WIDTH * img.height / img.width
-      const tl = new THREE.Vector3(-PLANE_WIDTH / 2, h / 2, 0).project(camera)
-      const tr = new THREE.Vector3(PLANE_WIDTH / 2, h / 2, 0).project(camera)
-      const bl = new THREE.Vector3(-PLANE_WIDTH / 2, -h / 2, 0).project(camera)
-      const br = new THREE.Vector3(PLANE_WIDTH / 2, -h / 2, 0).project(camera)
+    for (const img of images) {
+      const { width: w, height: h } = planeSize(img)
+      const tl = new THREE.Vector3(-w / 2, h / 2, 0).project(camera)
+      const tr = new THREE.Vector3(w / 2, h / 2, 0).project(camera)
+      const bl = new THREE.Vector3(-w / 2, -h / 2, 0).project(camera)
+      const br = new THREE.Vector3(w / 2, -h / 2, 0).project(camera)
       expect(tl.x).toBeCloseTo(-tr.x, 9)
       expect(bl.x).toBeCloseTo(-br.x, 9)
       expect(tl.y).toBeCloseTo(tr.y, 9)
@@ -150,24 +247,61 @@ it('widok Z Ziemi ustawia kamerę symetrycznie blisko za Ziemią i mieści cały
         expect(Math.abs(c.x)).toBeLessThan(1)
         expect(Math.abs(c.y)).toBeLessThan(1)
       }
-
-      const earth = new THREE.Vector3(0, 0, EARTH_Z).project(camera)
-      expect(earth.x).toBeCloseTo(0, 9)
-      expect(earth.y).toBeLessThan(-0.15)
-      expect(earth.y).toBeGreaterThan(-0.5)
     }
+
+    const earth = new THREE.Vector3(0, 0, EARTH_Z).project(camera)
+    expect(earth.x).toBeCloseTo(0, 9)
+    expect(earth.y).toBeLessThan(-0.15)
+    expect(earth.y).toBeGreaterThan(-0.5)
   }
 })
 
-it('pionowy kadr zachowuje pozycję i kierunek kamery kadru kwadratowego', () => {
-  for (const aspect of [1.95, 1.5, 1, 0.6]) {
-    const square = earthViewPose({ width: 1000, height: 1000 }, aspect)
-    expect(square.fov).toBe(OBSERVATORY_FOV)
-    for (const height of [1500, 1778]) {
-      const portrait = earthViewPose({ width: 1000, height }, aspect)
-      expect(portrait.position).toEqual(square.position)
-      expect(portrait.target).toEqual(square.target)
-      expect(portrait.fov).toBeGreaterThanOrEqual(square.fov)
-    }
+it('placeCutoutLabel utrzymuje ramkę podpisu poza okręgiem wycinka i krawędziami kadru', () => {
+  const outside = (box: { left: number; top: number; right: number; bottom: number }, cx: number, cy: number, r: number) => {
+    const px = Math.max(box.left, Math.min(cx, box.right))
+    const py = Math.max(box.top, Math.min(cy, box.bottom))
+    expect(Math.hypot(px - cx, py - cy)).toBeGreaterThan(r)
   }
+
+  const base = { labelWidth: 96, labelHeight: 37, viewportWidth: 1000, viewportHeight: 700 }
+  const cardSmall = placeCutoutLabel({ ...base, cx: 400, cy: 350, radius: 10, dx: 8, dy: -46, byMarker: false })
+  expect(cardSmall.box.left).toBe(408)
+  expect(cardSmall.box.bottom).toBe(350 - 10 - 9)
+  outside(cardSmall.box, 400, 350, 10)
+
+  const cardZoom = placeCutoutLabel({ ...base, cx: 500, cy: 350, radius: 150, dx: 8, dy: -46, byMarker: false })
+  expect(cardZoom.box.bottom).toBeLessThan(350 - 150)
+  outside(cardZoom.box, 500, 350, 150)
+
+  const cardTopEdge = placeCutoutLabel({ ...base, cx: 500, cy: 170, radius: 150, dx: 8, dy: -46, byMarker: false })
+  expect(cardTopEdge.box.left).toBeGreaterThan(500 + 150)
+  outside(cardTopEdge.box, 500, 170, 150)
+
+  const cardTopRightEdge = placeCutoutLabel({ ...base, cx: 860, cy: 170, radius: 150, dx: 8, dy: -46, byMarker: false })
+  expect(cardTopRightEdge.box.right).toBeLessThan(860 - 150)
+  outside(cardTopRightEdge.box, 860, 170, 150)
+
+  const cardBelow = placeCutoutLabel({ labelWidth: 96, labelHeight: 37, viewportWidth: 400, viewportHeight: 700, cx: 200, cy: 170, radius: 150, dx: 8, dy: -46, byMarker: false })
+  expect(cardBelow.box.top).toBeGreaterThan(170 + 150)
+  outside(cardBelow.box, 200, 170, 150)
+
+  const markZero = placeCutoutLabel({ ...base, cx: 400, cy: 350, radius: 0, dx: 13, dy: -9, byMarker: true })
+  expect(markZero.x).toBe(400)
+  expect(markZero.y).toBe(350)
+
+  const markZoom = placeCutoutLabel({ ...base, cx: 500, cy: 350, radius: 150, dx: 13, dy: -9, byMarker: true })
+  expect(markZoom.box.left).toBeGreaterThan(500 + 150)
+  outside(markZoom.box, 500, 350, 150)
+
+  const markRightEdge = placeCutoutLabel({ ...base, cx: 850, cy: 350, radius: 150, dx: 13, dy: -9, byMarker: true })
+  expect(markRightEdge.box.right).toBeLessThan(850 - 150)
+  outside(markRightEdge.box, 850, 350, 150)
+
+  const markAbove = placeCutoutLabel({ labelWidth: 96, labelHeight: 37, viewportWidth: 400, viewportHeight: 700, cx: 200, cy: 350, radius: 150, dx: 13, dy: -9, byMarker: true })
+  expect(markAbove.box.bottom).toBeLessThan(350 - 150)
+  outside(markAbove.box, 200, 350, 150)
+
+  const markBelow = placeCutoutLabel({ labelWidth: 96, labelHeight: 37, viewportWidth: 400, viewportHeight: 700, cx: 200, cy: 170, radius: 150, dx: 13, dy: -9, byMarker: true })
+  expect(markBelow.box.top).toBeGreaterThan(170 + 150)
+  outside(markBelow.box, 200, 170, 150)
 })

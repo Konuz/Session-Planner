@@ -1008,12 +1008,12 @@ input[type='checkbox']:checked::after {
 /* Panele przesuwają się płynnie tylko w nurkowaniu, przez fazę wejścia kierunku (--dive-enter z DIVE_PHASE_MS);
    przełączanie skal i edycji jest natychmiastowe. */
 .obs-window.space-window.is-diving { transition: grid-template-columns var(--dive-enter, 0.9s) var(--ease-std), column-gap var(--dive-enter, 0.9s) var(--ease-std); }
-.space-window > .obs-toolbar, .space-window > .obs-stage, .space-window > .obs-aside, .space-window > .obs-histogram, .space-window > .obs-bottom { margin-top: 10px; }
+.space-window > .obs-toolbar, .space-window > .obs-stage, .space-window > .obs-aside, .space-window > .obs-histogram, .space-window > .obs-timeline, .space-window > .obs-legend { margin-top: 10px; }
 .space-window .obs-stage { grid-column: 1; grid-row: 3; }
-.space-window > .obs-histogram, .space-window > .obs-bottom, .space-window > .obs-aside { overflow: clip; }
-.space-window.is-diving > .obs-histogram, .space-window.is-diving > .obs-bottom, .space-window.is-diving > .obs-aside { transition: height var(--dive-enter, 0.9s) var(--ease-std), margin var(--dive-enter, 0.9s) var(--ease-std), padding var(--dive-enter, 0.9s) var(--ease-std), opacity var(--dive-enter, 0.9s) var(--ease-std); }
+.space-window > .obs-histogram, .space-window > .obs-timeline, .space-window > .obs-legend, .space-window > .obs-aside { overflow: clip; }
+.space-window.is-diving > .obs-histogram, .space-window.is-diving > .obs-timeline, .space-window.is-diving > .obs-legend, .space-window.is-diving > .obs-aside { transition: height var(--dive-enter, 0.9s) var(--ease-std), margin var(--dive-enter, 0.9s) var(--ease-std), padding var(--dive-enter, 0.9s) var(--ease-std), opacity var(--dive-enter, 0.9s) var(--ease-std); }
 .obs-window.space-window.is-scale { grid-template-columns: minmax(0, 1fr) 0px; column-gap: 0; }
-.space-window.is-scale > .obs-histogram, .space-window.is-scale > .obs-bottom { height: 0; margin-top: 0; padding-top: 0; padding-bottom: 0; border-width: 0; opacity: 0; }
+.space-window.is-scale > .obs-histogram, .space-window.is-scale > .obs-timeline, .space-window.is-scale > .obs-legend { height: 0; margin-top: 0; padding-top: 0; padding-bottom: 0; border-width: 0; opacity: 0; }
 .space-window.is-scale > .obs-aside { height: 0; margin-top: 0; padding: 0; border-width: 0; opacity: 0; }
 .space-window.is-diving .obs-layer > :not(.obs-canvas) { transition: opacity var(--dive-enter, 0.9s) var(--ease-std), visibility var(--dive-enter, 0.9s); }
 /* Widok edycji wycinków: płaskie zdjęcie na scenie, panel edytora w kolumnie z prawej (jak panel Obserwatorium). */
@@ -1049,7 +1049,7 @@ input[type='checkbox']:checked::after {
 /* ---------- Obserwatorium 3D (okno nad sceną, układ wzorowany na SyQon, kolory z tokenów) ---------- */
 .observatory { position: fixed; inset: 0; z-index: 60; display: grid; padding: 18px; background: rgba(0, 0, 0, 0.9); }
 .obs-window {
-  display: grid; grid-template-columns: minmax(0, 1fr) 330px; grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  display: grid; grid-template-columns: minmax(0, 1fr) 330px; grid-template-rows: auto auto minmax(0, 1fr) auto auto auto;
   gap: 10px; min-height: 0; padding: 14px; background: var(--card-solid);
 }
 .obs-header { grid-column: 1 / -1; display: flex; align-items: flex-start; gap: 12px; }
@@ -1081,10 +1081,10 @@ input[type='checkbox']:checked::after {
 .obs-group { padding: 4px 7px; text-align: center; background: rgba(11, 13, 23, 0.9); border: 1px solid var(--accent-dim); color: var(--accent); cursor: pointer; pointer-events: auto; opacity: var(--obs-photo-fade, 1); }
 .obs-group:hover, .obs-group:focus-visible { border-color: var(--accent); color: var(--text); outline: none; }
 .obs-labels.inert .obs-group { pointer-events: none; }
-/* Plakietki pozostają nad listami, żeby można było je kliknąć. */
+/* Plakietki pozostają nad listami, żeby można było je kliknąć; otwarta plakietka przygasa, reszta bez zmian. */
 .obs-labels.fan-open > .obs-group { z-index: 3; }
-.obs-group[aria-expanded='true'] { border-color: var(--accent); }
-.obs-fan { position: absolute; left: 0; top: 0; }
+.obs-group[aria-expanded='true'] { opacity: calc(var(--obs-photo-fade, 1) * 0.2); }
+.obs-fan { position: absolute; left: 0; top: 0; z-index: 2; }
 .obs-spoke { --edge: var(--border-strong); --shape: polygon(0 29%, 100% 0, 100% 100%, 0 71%); position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 5px; transform-origin: 0 0; height: 28px; padding: 0 7px; white-space: nowrap; font: 10px/14px var(--mono); background: transparent; border: 0; clip-path: var(--shape); isolation: isolate; color: var(--text-2); cursor: pointer; pointer-events: auto; }
 .obs-spoke.left { --shape: polygon(0 0, 100% 29%, 100% 71%, 0 100%); flex-direction: row-reverse; }
 .obs-spoke::before, .obs-spoke::after { content: ''; position: absolute; clip-path: var(--shape); pointer-events: none; }
@@ -1110,7 +1110,7 @@ input[type='checkbox']:checked::after {
 .obs-reference img { display: block; width: 100%; }
 .obs-crosshair { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border: 1px solid var(--accent); border-radius: 50%; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7); }
 .obs-hint { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); font: 10px var(--mono); white-space: nowrap; pointer-events: none; }
-.obs-aside { grid-column: 2; grid-row: 3 / 5; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; gap: 8px; min-height: 0; padding: 10px; border: 1px solid var(--border); font-size: 11px; }
+.obs-aside { grid-column: 2; grid-row: 3 / 6; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; gap: 8px; min-height: 0; padding: 10px; border: 1px solid var(--border); font-size: 11px; }
 .obs-inspector { display: grid; gap: 6px; }
 .obs-inspector-head { display: flex; gap: 10px; align-items: center; }
 .obs-inspector-head img, .obs-thumb-empty { width: 56px; height: 56px; flex: none; border: 1px solid var(--border-strong); background: #000; }
@@ -1145,10 +1145,12 @@ input[type='checkbox']:checked::after {
 .obs-row .obs-marker.nebulae { background: currentColor; }
 .obs-histogram { grid-column: 1; display: grid; gap: 4px; padding: 8px 10px; border: 1px solid var(--border); background: var(--bg-deep); }
 .obs-histogram-head { display: flex; justify-content: space-between; gap: 10px; font: 10px var(--mono); }
-.obs-histogram svg { width: 100%; height: 46px; cursor: crosshair; touch-action: none; }
-.obs-histogram svg rect { fill: var(--accent-dim); opacity: 0.6; }
-.obs-histogram svg rect.on { fill: var(--accent); opacity: 1; }
-.obs-histogram-marker { stroke: var(--text); stroke-width: 0.15; }
+.obs-histogram svg { display: block; width: 100%; height: 46px; cursor: crosshair; touch-action: none; }
+.obs-histogram-base { stroke: var(--border); stroke-width: 1; }
+.obs-histogram-line { fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.obs-histogram-scrim { fill: var(--bg-deep); opacity: 0.78; }
+.obs-histogram-bound { stroke: var(--accent-dim); stroke-width: 1; }
+.obs-histogram-marker { stroke: var(--text); stroke-width: 1.5; }
 .obs-histogram-scale { display: flex; justify-content: space-between; font-size: 9px; color: var(--text-faint); }
 .obs-range-inputs { position: relative; height: 14px; }
 .obs-range-inputs input { position: absolute; inset: 0; width: 100%; margin: 0; background: none; pointer-events: none; -webkit-appearance: none; appearance: none; }
@@ -1158,23 +1160,25 @@ input[type='checkbox']:checked::after {
 .obs-range-inputs input + input::-moz-range-track { background: transparent; }
 .obs-range-inputs input::-moz-range-thumb { pointer-events: auto; width: 10px; height: 14px; border: 0; border-radius: 0; background: var(--accent); cursor: ew-resize; }
 .obs-range-inputs input:focus-visible { outline: 1px solid var(--accent); }
-.obs-bottom { grid-column: 1 / -1; display: grid; gap: 8px; }
-.obs-timeline { display: flex; align-items: center; gap: 8px; }
-.obs-timeline .icon-button { width: 36px; min-height: 30px; flex: none; }
-.obs-timeline input[type=range] { flex: 1; min-width: 60px; }
-.obs-percent { width: 40px; text-align: right; font-size: 11px; }
-.obs-legend { display: flex; align-items: center; gap: 14px; font: 10px var(--mono); color: var(--text-2); }
+.obs-timeline { grid-column: 1; display: flex; align-items: stretch; gap: 8px; }
+.obs-timeline .icon-button { width: 36px; height: 30px; min-height: 30px; flex: none; }
+.obs-timeline-bar { flex: 1; min-width: 0; height: 30px; display: flex; align-items: center; gap: 10px; padding: 0 10px; border: 1px solid var(--accent); background: var(--bg-deep); }
+.obs-timeline-bar:focus-within { box-shadow: inset 0 0 0 1px var(--accent); }
+.obs-timeline-bar input[type='range'] { flex: 1; min-width: 60px; }
+.obs-timeline-bar input[type='range']:focus-visible { outline: none; }
+.obs-percent { flex: none; width: 34px; text-align: right; font-size: 11px; color: var(--text-2); }
+.obs-legend { grid-column: 1 / -1; display: flex; align-items: center; gap: 14px; font: 10px var(--mono); color: var(--text-2); }
 /* Podczas nurkowania obie sceny nie przyjmują sterowania: podpowiedź Space3D nie powinna nachodzić na przejście Obserwatorium. */
 .space-window.is-diving .space-hint { opacity: 0; transition: opacity 0.2s var(--ease); }
 @media (max-width: 900px) {
   .observatory { padding: 0; }
-  .obs-window { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(300px, 1fr) auto auto auto; overflow: auto; }
+  .obs-window { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(300px, 1fr) auto auto auto auto; overflow: auto; }
   .obs-aside { grid-column: 1; grid-row: auto; max-height: 420px; }
   .obs-histogram { grid-column: 1; }
   .obs-legend .faint, .obs-hint { display: none; }
   /* Okno „Pozycja 3D” w stanie zdjęcia przewija się; panel listy nie może się ścisnąć do nagłówka inspektora. */
   .space-window.is-photo > .obs-aside { min-height: 320px; }
-  .obs-window.space-window { grid-template-rows: auto auto minmax(330px, 1fr) auto auto auto; }
+  .obs-window.space-window { grid-template-rows: auto auto minmax(330px, 1fr) auto auto auto auto; }
   .obs-window.space-window.is-scale.is-editing { grid-template-columns: minmax(0, 1fr); }
   .space-window > .photo-editor { grid-column: 1; grid-row: 4; }
 }

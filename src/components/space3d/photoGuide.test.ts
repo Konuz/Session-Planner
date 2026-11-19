@@ -233,3 +233,51 @@ it('wyrównuje skalę wszystkich znaczników (w tym zaznaczonego i zgrupowanego)
   f.guide.placeMarkers()
   f.sprites.forEach((sprite, i) => expect(sprite.scale.x).toBeCloseTo(before[i], 8))
 })
+
+it('przy skalowaniu znaczników i kamery wokół Ziemi w trakcie ruchu plakietka grupy nie odlatuje z miejsca na ekranie', () => {
+  const created: { className: string; textContent: string; style: Record<string, string> }[] = []
+  const element = () => {
+    const el = { className: '', textContent: '', style: {} as Record<string, string>, classList: { toggle: vi.fn(), add: vi.fn(), remove: vi.fn(), contains: () => false }, appendChild: vi.fn(), remove: vi.fn(), addEventListener: vi.fn(), setAttribute: vi.fn() }
+    created.push(el)
+    return el
+  }
+  vi.stubGlobal('document', { createElement: element })
+  const f = fixture('universe')
+  f.guide.frameCamera()
+  f.camera.updateMatrixWorld()
+  f.camera.updateProjectionMatrix()
+  const [layout] = f.handle.layout
+  layout(0)
+  const badgeEl = created.find((el) => el.className.includes('obs-group') && el.style.display === '')!
+  expect(badgeEl).toBeDefined()
+  const before = badgeEl.style.transform
+
+  const scale = 0.25
+  const sun = f.handle.sunPos
+  const camOffset = f.camera.position.clone().sub(sun)
+  const targetOffset = f.handle.controls.target.clone().sub(sun)
+  f.camera.position.copy(sun).addScaledVector(camOffset, scale)
+  f.handle.controls.target.copy(sun).addScaledVector(targetOffset, scale)
+  f.camera.lookAt(f.handle.controls.target)
+  f.camera.updateMatrixWorld()
+  f.guide.placeMarkers((_id, p) => [sun.x + (p[0] - sun.x) * scale, sun.y + (p[1] - sun.y) * scale, sun.z + (p[2] - sun.z) * scale])
+  layout(16)
+  expect(badgeEl.style.display).toBe('')
+  expect(badgeEl.style.transform).toBe(before)
+})
+
+it('setOpacity steruje kryciem i widocznością warstwy podpisów niezależnie od krycia znaczników', () => {
+  const f = fixture('universe')
+  f.guide.setOpacity(1, 1, 1, 1, 0)
+  expect(f.guide.labels.style.opacity).toBe('0')
+  expect(f.guide.labels.style.visibility).toBe('hidden')
+  expect((f.sprites[0].material as SpriteMaterial).opacity).toBe(1)
+
+  f.guide.setOpacity(1, 1, 1, 1, 0.4)
+  expect(f.guide.labels.style.opacity).toBe('0.4')
+  expect(f.guide.labels.style.visibility).toBe('')
+
+  f.guide.setOpacity(1, 1, 1)
+  expect(f.guide.labels.style.opacity).toBe('1')
+  expect(f.guide.labels.style.visibility).toBe('')
+})

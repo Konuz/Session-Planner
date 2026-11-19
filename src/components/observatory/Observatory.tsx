@@ -216,21 +216,21 @@ export default function Observatory({ project, slots, stars, onRetryStars, divin
       <div className="faint figures">W 3D: {withDistance.length}{skipped > 0 && ` · pominięte bez odległości: ${skipped}`}</div>
     </aside>
     <DistanceHistogram histogram={histogram} domain={domain} range={range} onRange={setRange} marker={active?.distLy ?? null} />
-    <div className="obs-bottom">
-      <div className="obs-timeline">
-        <button type="button" className="button small icon-button" aria-label={playing ? 'Wstrzymaj rozkładanie' : 'Rozłóż zdjęcie'} title={playing ? 'Wstrzymaj rozkładanie' : 'Rozłóż zdjęcie'} onClick={unfold}>{playing ? <Pause size={14} /> : <Play size={14} />}</button>
-        <button type="button" className={`button small icon-button${progress === 0 ? ' active' : ''}`} aria-pressed={progress === 0} aria-label="Początek: płaskie zdjęcie (0%)" title="Początek: płaskie zdjęcie (0%)" onClick={() => { setPlaying(false); setProgress(0) }}><SkipBack size={14} /></button>
-        <button type="button" className={`button small icon-button${progress === 1 ? ' active' : ''}`} aria-pressed={progress === 1} aria-label="Koniec: pełna głębia z odległości (100%)" title="Koniec: pełna głębia z odległości (100%)" onClick={() => { setPlaying(false); setProgress(1) }}><SkipForward size={14} /></button>
+    <div className="obs-timeline">
+      <button type="button" className="button small icon-button" aria-label={playing ? 'Wstrzymaj rozkładanie' : 'Rozłóż zdjęcie'} title={playing ? 'Wstrzymaj rozkładanie' : 'Rozłóż zdjęcie'} onClick={unfold}>{playing ? <Pause size={14} /> : <Play size={14} />}</button>
+      <button type="button" className={`button small icon-button${progress === 0 ? ' active' : ''}`} aria-pressed={progress === 0} aria-label="Początek: płaskie zdjęcie (0%)" title="Początek: płaskie zdjęcie (0%)" onClick={() => { setPlaying(false); setProgress(0) }}><SkipBack size={14} /></button>
+      <button type="button" className={`button small icon-button${progress === 1 ? ' active' : ''}`} aria-pressed={progress === 1} aria-label="Koniec: pełna głębia z odległości (100%)" title="Koniec: pełna głębia z odległości (100%)" onClick={() => { setPlaying(false); setProgress(1) }}><SkipForward size={14} /></button>
+      <div className="obs-timeline-bar">
         <Range aria-label="Rozłożenie zdjęcia w głąb" min={0} max={1} step={0.001} value={progress} onChange={(e) => { setPlaying(false); setProgress(Number(e.target.value)) }} />
         <span className="figures obs-percent">{Math.round(progress * 100)}%</span>
       </div>
-      <div className="obs-legend">
-        <span><span className="obs-marker stars" />Gwiazdy</span>
-        <span><span className="obs-marker galaxies" />Galaktyki</span>
-        <span><span className="obs-marker nebulae" />Mgławice i gromady</span>
-        <span className="obs-spacer" />
-        <span className="faint">Gwiazdy: ESA/Gaia/DPAC (DR3, CC BY-NC 3.0 IGO), odległości Bailer-Jones i in. 2021 (CC BY 4.0) przy ϖ/σ ≥ 5 · pokazujemy tylko obiekty z ustaloną odległością</span>
-      </div>
+    </div>
+    <div className="obs-legend">
+      <span><span className="obs-marker stars" />Gwiazdy</span>
+      <span><span className="obs-marker galaxies" />Galaktyki</span>
+      <span><span className="obs-marker nebulae" />Mgławice i gromady</span>
+      <span className="obs-spacer" />
+      <span className="faint">Gwiazdy: ESA/Gaia/DPAC (DR3, CC BY-NC 3.0 IGO), odległości Bailer-Jones i in. 2021 (CC BY 4.0) przy ϖ/σ ≥ 5 · pokazujemy tylko obiekty z ustaloną odległością</span>
     </div>
   </>
 }
