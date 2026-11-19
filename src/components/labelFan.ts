@@ -50,7 +50,7 @@ interface FanOptions {
 }
 
 /**
- * Otwiera wachlarz w `container` (warstwa podpisów, klasa `fan-open` przygasza resztę) wokół punktu (x, y); środek
+ * Otwiera wachlarz w `container` (warstwa podpisów z klasą `fan-open`) wokół punktu (x, y); środek
  * odsuwa się od brzegów obszaru width × height tak, żeby mieściły się całe ramiona.
  */
 export function openLabelFan(container: HTMLElement, entries: FanEntry[], x: number, y: number, width: number, height: number, on: FanOptions): LabelFan {

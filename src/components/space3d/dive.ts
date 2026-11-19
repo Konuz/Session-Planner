@@ -3,7 +3,7 @@
 // Dwa płótna zostawiają każdej scenie jej renderer i render na żądanie; wspólny znacznik czasu klatki usuwa drganie na szwie.
 import * as THREE from 'three'
 import type { Vec3 } from '../../lib/astro'
-import { EARTH_Z, PLANE_WIDTH } from '../../lib/observatory'
+import { EARTH_Z, OBSERVATORY_FOV, PLANE_WIDTH } from '../../lib/observatory'
 import { SPACE_FAR, SPACE_FOV } from '../../lib/spaceCamera'
 import {
   ALIGN_K, coneLength, coneTan, diveFades, diveFrame, diveGridScale, diveMarkerPosition, diveScale, divePose, diveTotalMs, ease, guideAlignment, guideRollWeight, lerpPose, makeBridge, nearFar, reverseElapsedMs, skipStepMs, startScale, turnWeight, unbridgePoint, unbridgeVector, uprightRoll,
@@ -18,7 +18,6 @@ import { setEarthOpacity } from './earthModel'
 const END_SCALE = 0.001
 /** Najdłuższy krok czasu przejścia w jednej klatce (ok. 30 kl./s). */
 const MAX_STEP_MS = 33
-const OBSERVATORY_FOV = 40
 const UP: Vec3 = [0, 1, 0]
 /** Promień Ziemi Obserwatorium (jednostki sceny). */
 const EARTH_RADIUS = 1.5
@@ -71,7 +70,7 @@ export class SpaceDive {
   private readonly pyramid: [number, number]
   /** Poza sceny 3D na krańcu ustawienia (naprzód: bieżąca; wstecz: zapamiętana przy wejściu). */
   readonly spacePose: SpacePose
-  private obsEnd: { position: Vec3; target: Vec3 } | null = null
+  private obsEnd: { position: Vec3; target: Vec3; fov?: number } | null = null
 
   constructor(private o: DiveOptions) {
     const { space, guide } = o
@@ -125,8 +124,8 @@ export class SpaceDive {
     const { guide } = this.o
     if (!obs || !guide) return null
     const { camera, mount, sunPos } = this.o.space
-    const obsCamera = obs.getPose().position
-    const obsEarthPx = EARTH_RADIUS / (Math.hypot(obsCamera[0], obsCamera[1], obsCamera[2] - EARTH_Z) * Math.tan(THREE.MathUtils.degToRad(OBSERVATORY_FOV) / 2)) * mount.clientHeight / 2
+    const { position: obsCamera, fov } = obs.getPose()
+    const obsEarthPx = EARTH_RADIUS / (Math.hypot(obsCamera[0], obsCamera[1], obsCamera[2] - EARTH_Z) * Math.tan(THREE.MathUtils.degToRad(fov) / 2)) * mount.clientHeight / 2
     const screen = (p: THREE.Vector3): [number, number] => { const v = p.clone().project(camera); return [(v.x + 1) / 2 * mount.clientWidth, (1 - v.y) / 2 * mount.clientHeight] }
     // Punkt 100 jednostek Obserwatorium przed Ziemią na osi i jego odpowiednik w skali końca nurkowania.
     const ahead = sunPos.clone().addScaledVector(new THREE.Vector3(...guide.basis.center), 100 * END_SCALE)
@@ -262,10 +261,10 @@ export class SpaceDive {
     obs.setInteractive(false)
     obs.setProgress(this.o.seamProgress * photoProgress)
     if (phase === 'enter') {
-      const end = this.obsEnd ?? seam
+      const end = this.obsEnd
       const t = ease(k)
-      const pose = lerpPose(seam, { ...end, up: UP }, t)
-      obs.setPose(pose.position, pose.target)
+      const pose = lerpPose(seam, { ...(end ?? seam), up: UP }, t)
+      obs.setPose(pose.position, pose.target, pose.up, THREE.MathUtils.lerp(OBSERVATORY_FOV, end?.fov ?? OBSERVATORY_FOV, t))
       obs.setFade({ earth: 1, pyramid: 1, axis: 1, photo: 1, grid: 1 }, k)
     } else {
       const fades = diveFades(k)

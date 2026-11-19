@@ -17,6 +17,7 @@ export type ObservatoryView = 'structure' | 'earth' | 'top' | 'side'
 /** Krycia części sceny w nurkowaniu z Drogi Mlecznej (1: bez zmian). */
 export interface ObservatoryFade { earth: number; pyramid: number; axis: number; photo: number; grid: number }
 type Vec3 = [number, number, number]
+interface GroupBadge { el: HTMLButtonElement; text: string; ids: string[]; key: string; x: number; y: number }
 const FLY_MS = 900
 const GRID_WIDTH = PLANE_WIDTH * 2.4
 const GRID_DEPTH = AXIS_LENGTH + EARTH_Z + 40
@@ -169,13 +170,12 @@ export class ObservatoryScene {
   private itemLabels = new Map<string, HTMLDivElement>()
   private labelWidths = new Map<string, number>()
   /** Plakietki grup nakładających się podpisów (pula) i skład grupy każdej z nich w bieżącej klatce. */
-  private badges: { el: HTMLButtonElement; text: string; ids: string[]; x: number; y: number }[] = []
-  /** Otwarty wachlarz nazw grupy; ramię pod kursorem podświetla kartę w scenie. */
-  private fan: LabelFan | null = null
+  private badges: GroupBadge[] = []
+  private fans = new Map<GroupBadge, LabelFan>()
   private hovered: string | null = null
   private earthLabel: HTMLDivElement
   /** t0: czas pierwszej klatki lotu z requestAnimationFrame (nie performance.now() z chwili kliknięcia, wcześniejszej lub późniejszej). */
-  private flight: { offset: [THREE.Vector3Tuple, THREE.Vector3Tuple]; target: [THREE.Vector3, THREE.Vector3]; t0: number | null; resolve?: () => void } | null = null
+  private flight: { offset: [THREE.Vector3Tuple, THREE.Vector3Tuple]; target: [THREE.Vector3, THREE.Vector3]; fov: [number, number]; t0: number | null; resolve?: () => void } | null = null
   private keys = new Set<string>()
   private lastTick = performance.now()
   private resizeObserver: ResizeObserver
@@ -196,7 +196,7 @@ export class ObservatoryScene {
     this.controls.enableDamping = !options.reducedMotion
     this.controls.dampingFactor = 0.12
     this.controls.screenSpacePanning = true
-    this.controls.addEventListener('start', () => { this.flight = null; this.closeFan() })
+    this.controls.addEventListener('start', () => { this.flight = null; this.closeFans() })
     this.controls.addEventListener('change', () => { this.dirty = true })
 
     const grid = this.grid = new THREE.GridHelper(1, 24, cssColor('--border-strong', '#232942'), cssColor('--border', '#15192b'))
@@ -231,7 +231,7 @@ export class ObservatoryScene {
     const pointer = { x: 0, y: 0 }
     // Kliknięcie obok otwartego wachlarza tylko go zamyka (bez zmiany zaznaczenia).
     let dismissed = false
-    this.renderer.domElement.addEventListener('pointerdown', (e) => { pointer.x = e.clientX; pointer.y = e.clientY; dismissed = !!this.fan; this.closeFan() })
+    this.renderer.domElement.addEventListener('pointerdown', (e) => { pointer.x = e.clientX; pointer.y = e.clientY; dismissed = this.fans.size > 0; this.closeFans() }, true)
     this.renderer.domElement.addEventListener('pointerup', (e) => {
       if (!dismissed && Math.hypot(e.clientX - pointer.x, e.clientY - pointer.y) < 4) this.options.onSelect(this.pick(e.clientX, e.clientY))
     })
@@ -270,7 +270,7 @@ export class ObservatoryScene {
       this.sizedHeight = height
       this.camera.aspect = width / height
       this.camera.updateProjectionMatrix()
-      this.closeFan()
+      this.closeFans()
       this.dirty = true
     }
     if ((width !== this.bufferWidth || height !== this.bufferHeight) && (!defer || this.steadyFrames >= 2)) {
@@ -409,7 +409,7 @@ export class ObservatoryScene {
 
   /** Usunięcie danych poprzedniego zdjęcia (obiekty, zasoby, podpisy); renderer i kontekst zostają. */
   private clearData() {
-    this.closeFan()
+    this.closeFans()
     for (const badge of this.badges) badge.el.remove()
     this.badges = []
     this.labelWidths.clear()
@@ -438,13 +438,13 @@ export class ObservatoryScene {
     const next = Math.max(0, Math.min(1, progress))
     if (next === this.progress) return
     this.progress = next
-    this.closeFan()
+    this.closeFans()
     this.layoutDirty = this.dirty = true
   }
 
   setVisible(ids: Set<string>) {
     this.visible = ids
-    this.closeFan()
+    this.closeFans()
     this.layoutDirty = this.dirty = true
   }
 
@@ -580,11 +580,11 @@ export class ObservatoryScene {
 
   setView(view: ObservatoryView, animate = true) {
     const pose = this.viewPose(view)
-    this.fly(new THREE.Vector3(...pose.position), new THREE.Vector3(...pose.target), animate)
+    this.fly(new THREE.Vector3(...pose.position), new THREE.Vector3(...pose.target), animate, pose.fov ?? FOV)
   }
 
   /** Poza kamery widoku (bez przelotu). */
-  viewPose(view: ObservatoryView): { position: Vec3; target: Vec3 } {
+  viewPose(view: ObservatoryView): { position: Vec3; target: Vec3; fov?: number } {
     if (view === 'earth') return earthViewPose(this.image, this.camera.aspect)
     if (view === 'structure') {
       // Ta sama poza co szew nurkowania z Drogi Mlecznej (widoczne obiekty, pełne rozłożenie).
@@ -619,8 +619,8 @@ export class ObservatoryScene {
     return this.progress
   }
 
-  getPose(): { position: Vec3; target: Vec3 } {
-    return { position: this.camera.position.toArray() as Vec3, target: this.controls.target.toArray() as Vec3 }
+  getPose(): { position: Vec3; target: Vec3; fov: number } {
+    return { position: this.camera.position.toArray() as Vec3, target: this.controls.target.toArray() as Vec3, fov: this.camera.fov }
   }
 
   /** Poza ustawiana z zewnątrz (nurkowanie), bez przelotu i tłumienia. */
@@ -638,6 +638,7 @@ export class ObservatoryScene {
     if (fov === this.camera.fov) return
     this.camera.fov = fov
     this.camera.updateProjectionMatrix()
+    this.layoutDirty = true
   }
 
   setFade(fade: Partial<ObservatoryFade>, arrival = 1, gridScale = 1) {
@@ -650,7 +651,7 @@ export class ObservatoryScene {
   }
 
   setInteractive(on: boolean) {
-    if (!on) this.closeFan()
+    if (!on) this.closeFans()
     this.labels.classList.toggle('inert', !on)
     this.controls.enabled = on
     this.renderer.domElement.style.pointerEvents = on ? '' : 'none'
@@ -660,7 +661,7 @@ export class ObservatoryScene {
   setExternal(on: boolean) {
     if (on === this.external) return
     this.external = on
-    this.closeFan()
+    this.closeFans()
     cancelAnimationFrame(this.raf)
     this.layoutDirty = this.dirty = true
     if (!on) {
@@ -683,15 +684,18 @@ export class ObservatoryScene {
     this.fly(target.clone().add(direction.multiplyScalar(PLANE_WIDTH * 0.45)), target, true)
   }
 
-  private fly(position: THREE.Vector3, target: THREE.Vector3, animate: boolean): Promise<void> {
+  private fly(position: THREE.Vector3, target: THREE.Vector3, animate: boolean, fov = this.camera.fov): Promise<void> {
+    this.closeFans()
     if (!animate || this.options.reducedMotion) {
+      this.flight?.resolve?.()
+      this.flight = null
+      this.setFov(fov)
       this.camera.position.copy(position)
       this.controls.target.copy(target)
       this.controls.update()
       this.dirty = true
       return Promise.resolve()
     }
-    this.closeFan()
     // Bezwładność obrotu sprzed lotu zerowana bez ruchu kamery: inaczej tłumienie dokładałoby ją do toru lotu.
     const from = this.camera.position.clone(), fromTarget = this.controls.target.clone()
     const damping = this.controls.enableDamping
@@ -703,7 +707,7 @@ export class ObservatoryScene {
     return new Promise((resolve) => {
       this.flight?.resolve?.()
       const offset = (p: THREE.Vector3, t: THREE.Vector3) => p.clone().sub(t).toArray([0, 0, 0])
-      this.flight = { offset: [offset(from, fromTarget), offset(position, target)], target: [fromTarget, target], t0: null, resolve }
+      this.flight = { offset: [offset(from, fromTarget), offset(position, target)], target: [fromTarget, target], fov: [this.camera.fov, fov], t0: null, resolve }
     })
   }
 
@@ -711,7 +715,7 @@ export class ObservatoryScene {
     if (!['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight'].includes(e.code) || e.altKey || e.ctrlKey || e.metaKey) return
     e.preventDefault()
     this.flight = null
-    this.closeFan()
+    this.closeFans()
     this.keys.add(e.code)
   }
   private onKeyUp = (e: KeyboardEvent) => { this.keys.delete(e.code) }
@@ -749,6 +753,7 @@ export class ObservatoryScene {
       // Kamera po sferze wokół przesuwanego celu: obrót i zmiana wysokości kończą się razem.
       this.controls.target.lerpVectors(this.flight.target[0], this.flight.target[1], e)
       this.camera.position.set(...orbitOffset(this.flight.offset[0], this.flight.offset[1], e)).add(this.controls.target)
+      this.setFov(THREE.MathUtils.lerp(...this.flight.fov, e))
       this.dirty = true
       if (k >= 1) { this.flight.resolve?.(); this.flight = null }
     }
@@ -820,23 +825,34 @@ export class ObservatoryScene {
       boxes.push({ left, top, right: left + (this.labelWidths.get(item.id) ?? 0), bottom: top + LABEL_HEIGHT })
     }
     // Stos nakładających się podpisów zastępuje jedna plakietka grupy; podpis zaznaczonego obiektu zostaje.
-    const groups = overlapGroups(boxes).filter((group) => group.length > 1)
-    groups.forEach((group, i) => {
+    const groups = overlapGroups(boxes).filter((group) => group.length > 1).map((group) => {
       const members = group.map((index) => shown[index])
+      const ids = members.map(({ item }) => item.id)
+      return { members, ids, key: JSON.stringify(ids) }
+    })
+    const previous = new Map(this.badges.map((badge) => [badge.key, badge]))
+    const used = new Set(groups.map(({ key }) => key))
+    const reusable = this.badges.filter((badge) => !used.has(badge.key))
+    for (const badge of reusable) {
+      this.fans.get(badge)?.close()
+      badge.el.style.display = 'none'
+      badge.key = ''
+    }
+    for (const { members, ids, key } of groups) {
       for (const { item, el } of members) if (item.id !== this.selected) el.style.display = 'none'
-      const badge = this.badges[i] ??= this.badge(i)
+      const badge = previous.get(key) ?? reusable.pop() ?? this.createBadge()
       const distances = members.map(({ item }) => item.distLy).filter((d): d is number => d !== null)
       const text = `${objectCount(members.length)}\n${distances.length ? fmtDistanceRange(Math.min(...distances), Math.max(...distances)) : ''}`
       if (text !== badge.text) badge.el.textContent = badge.text = text
-      badge.ids = members.map(({ item }) => item.id)
+      badge.ids = ids
+      badge.key = key
       badge.x = members.reduce((sum, m) => sum + m.x, 0) / members.length
       badge.y = members.reduce((sum, m) => sum + m.y, 0) / members.length
       // Tuż nad środkiem grupy (nad najwyższym podpisem bywałaby daleko od kart, gdy grupa jest rozciągnięta w pionie).
       badge.el.style.display = ''
       badge.el.style.transform = `translate(${badge.x.toFixed(1)}px, ${(badge.y + LABEL_DY + LABEL_HEIGHT).toFixed(1)}px) translate(-50%, -100%)`
-    })
-    for (let i = groups.length; i < this.badges.length; i++) this.badges[i].el.style.display = 'none'
-    this.fan?.setSelected(this.selected)
+    }
+    for (const fan of this.fans.values()) fan.setSelected(this.selected)
     let starLabel = this.labels.querySelector<HTMLDivElement>('.obs-star')
     const selected = this.items.find((item) => item.id === this.selected && item.kind === 'star')
     if (selected) {
@@ -846,19 +862,24 @@ export class ObservatoryScene {
     } else if (starLabel) starLabel.style.display = 'none'
   }
 
-  private badge(index: number) {
+  private createBadge(): GroupBadge {
     const el = document.createElement('button')
     el.type = 'button'
     el.className = 'obs-label obs-group'
     el.title = 'Pokaż obiekty grupy'
-    el.addEventListener('click', () => { const badge = this.badges[index]; this.openFan(badge.ids, badge.x, badge.y) })
+    el.setAttribute('aria-expanded', 'false')
+    const badge: GroupBadge = { el, text: '', ids: [], key: '', x: 0, y: 0 }
+    el.addEventListener('click', () => this.toggleFan(badge))
     this.labels.appendChild(el)
-    return { el, text: '', ids: [] as string[], x: 0, y: 0 }
+    this.badges.push(badge)
+    return badge
   }
 
   /** Wachlarz nazw grupy wokół punktu ekranu: ramiona wg odległości, zgodnie z ruchem wskazówek zegara. */
-  private openFan(ids: string[], x: number, y: number) {
-    this.closeFan()
+  private toggleFan(badge: GroupBadge) {
+    const open = this.fans.get(badge)
+    if (open) { open.close(); return }
+    const { ids, x, y, el } = badge
     const image = this.photoImage?.src
     const { width, height } = this.image
     const entries = this.items.filter((item) => ids.includes(item.id)).sort(byDistance)
@@ -867,16 +888,24 @@ export class ObservatoryScene {
         text: `${item.id} · ${fmtDistance(item.distLy)}`,
         cutout: image && item.kind === 'object' ? { image, width, height, x: item.x, y: item.y, radius: item.radius } : undefined,
       }))
-    this.fan = openLabelFan(this.labels, entries, x, y, this.sizedWidth, this.sizedHeight, {
+    const fan = openLabelFan(this.labels, entries, x, y, this.sizedWidth, this.sizedHeight, {
       hover: (id) => { this.hovered = id; this.layoutDirty = this.dirty = true },
       pick: (id) => this.options.onSelect(id),
-      closed: () => { this.fan = null; this.layoutDirty = this.dirty = true },
+      closed: () => {
+        this.fans.delete(badge)
+        el.setAttribute('aria-expanded', 'false')
+        el.title = 'Pokaż obiekty grupy'
+        this.layoutDirty = this.dirty = true
+      },
     })
-    this.fan.setSelected(this.selected)
+    this.fans.set(badge, fan)
+    el.setAttribute('aria-expanded', 'true')
+    el.title = 'Zwiń listę obiektów'
+    fan.setSelected(this.selected)
     this.dirty = true
   }
 
-  private closeFan() { this.fan?.close() }
+  private closeFans() { for (const fan of this.fans.values()) fan.close() }
 
   dispose() {
     cancelAnimationFrame(this.raf)

@@ -125,14 +125,14 @@ it('widok Struktura (szew nurkowania) patrzy na środek całości po rozłożeni
 })
 
 it('widok Z Ziemi ustawia kamerę symetrycznie blisko za Ziemią i mieści cały kadr na wprost', () => {
-  for (const img of [{ width: 1720, height: 1000 }, { width: 1500, height: 1000 }, { width: 1000, height: 1000 }, { width: 1000, height: 1500 }]) {
+  for (const img of [{ width: 1720, height: 1000 }, { width: 1500, height: 1000 }, { width: 1000, height: 1000 }, { width: 1000, height: 1500 }, { width: 900, height: 1600 }]) {
     for (const aspect of [1.95, 1.5, 1.0]) {
       const pose = earthViewPose(img, aspect)
       expect(pose.position[0]).toBe(0)
       expect(pose.target[0]).toBe(0)
       expect(pose.position[2]).toBeGreaterThanOrEqual(EARTH_Z + 15)
 
-      const camera = new THREE.PerspectiveCamera(OBSERVATORY_FOV, aspect, 0.1, 5000)
+      const camera = new THREE.PerspectiveCamera(pose.fov, aspect, 0.1, 5000)
       camera.position.set(...pose.position)
       camera.lookAt(...pose.target)
       camera.updateMatrixWorld()
@@ -155,6 +155,19 @@ it('widok Z Ziemi ustawia kamerę symetrycznie blisko za Ziemią i mieści cały
       expect(earth.x).toBeCloseTo(0, 9)
       expect(earth.y).toBeLessThan(-0.15)
       expect(earth.y).toBeGreaterThan(-0.5)
+    }
+  }
+})
+
+it('pionowy kadr zachowuje pozycję i kierunek kamery kadru kwadratowego', () => {
+  for (const aspect of [1.95, 1.5, 1, 0.6]) {
+    const square = earthViewPose({ width: 1000, height: 1000 }, aspect)
+    expect(square.fov).toBe(OBSERVATORY_FOV)
+    for (const height of [1500, 1778]) {
+      const portrait = earthViewPose({ width: 1000, height }, aspect)
+      expect(portrait.position).toEqual(square.position)
+      expect(portrait.target).toEqual(square.target)
+      expect(portrait.fov).toBeGreaterThanOrEqual(square.fov)
     }
   }
 })

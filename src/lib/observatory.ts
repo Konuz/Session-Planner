@@ -206,13 +206,24 @@ export function fitDistance(width: number, height: number, aspect: number): numb
 }
 
 /** Widok „Z Ziemi”: blisko za Ziemią, lekko nad osią; widać dużą Ziemię na dole, ostrosłup i cały kadr na wprost. */
-export function earthViewPose(image: { width: number; height: number }, aspect: number): { position: Vec3; target: Vec3 } {
+export function earthViewPose(image: { width: number; height: number }, aspect: number): { position: Vec3; target: Vec3; fov: number } {
   const h = PLANE_WIDTH * image.height / image.width
-  const z = Math.max(EARTH_Z + 15, fitDistance(PLANE_WIDTH, h, aspect) * 0.96)
-  const y = Math.min(0.14 * (z - EARTH_Z) * (z / EARTH_Z), 0.22 * z)
+  const baseZ = Math.max(EARTH_Z + 15, fitDistance(PLANE_WIDTH, Math.min(h, PLANE_WIDTH), aspect) * 0.96)
+  const z = Math.max(baseZ, h / 2)
+  const y = Math.min(0.14 * (baseZ - EARTH_Z) * (baseZ / EARTH_Z), 0.22 * baseZ)
+  let fov = OBSERVATORY_FOV
+  if (h > PLANE_WIDTH) {
+    // Górne narożniki są najbliżej pochylonej kamery. Zostaw im taki sam zapas jak w kadrze kwadratowym.
+    const distance = Math.hypot(y, z)
+    const top = h / 2
+    const depth = distance - top * y / distance
+    const extent = Math.max(top * z / distance, PLANE_WIDTH / (2 * aspect))
+    fov = Math.max(fov, Math.atan(extent / (0.96 * depth)) * 360 / Math.PI)
+  }
   return {
     target: [0, 0, 0],
     position: [0, y, z],
+    fov,
   }
 }
 
