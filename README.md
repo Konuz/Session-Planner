@@ -47,7 +47,7 @@ The application combines an interactive sky dome (WebGL2 + Canvas 2D), a databas
 * **Backend (`server/`):** native Node.js 24 HTTP server (`node:http`, executing `.ts` files directly without a bundler), `sharp` (image processing and HiPS tile transcoding), `fast-xml-parser` (NED VOTable responses), `worker_threads` (off-thread black-border mask detection).
 * **Local Tools (optional on server):**
   * **Skyshot (`scripts/skyshot-bridge`)** — Rust bridge for the local `skyshot-solver` plate solver.
-  * **Astro-Regressor (`astro-regressor-main`, `scripts/regressor/cut_distance.py`)** — persistent Python worker (managed via `pixi`) estimating unverified distances in the background when no catalog distance is available.
+  * **Astro-Regressor (`astro-regressor-main`, `scripts/regressor/cut_distance.py`)** — distance regressor created by [kacperkan](https://github.com/kacperkan). A persistent Python worker (managed via `pixi`) estimates unverified distances in the background when no catalog distance is available.
 
 ---
 

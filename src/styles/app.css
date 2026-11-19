@@ -784,9 +784,10 @@ input[type='checkbox']:checked::after {
 .favorites-confirm p { margin: 16px 0 24px; color: var(--text-2); font-size: 13px; line-height: 1.6; }
 .favorites-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 /* Poziomy zdjęcia kadru: przycisk w prawym górnym rogu zdjęcia i okno pod nim bez przyciemnienia tła (podgląd na żywo). */
-.button.framing-stretch-button { position: absolute; top: 8px; right: 8px; width: 31px; height: 31px; min-height: 31px; padding: 0; }
-.button.framing-eye-button { position: absolute; top: 8px; right: 45px; width: 31px; height: 31px; min-height: 31px; padding: 0; }
-.button.framing-comparison-button { position: absolute; top: 8px; right: 82px; width: 31px; height: 31px; min-height: 31px; padding: 0; }
+.button:is(.framing-stretch-button, .framing-eye-button, .framing-comparison-button) { position: absolute; top: 8px; width: 26px; height: 26px; min-height: 26px; padding: 0; }
+.framing-stretch-button { right: 8px; }
+.framing-eye-button { right: 40px; }
+.framing-comparison-button { right: 72px; }
 .button:is(.framing-stretch-button, .framing-eye-button, .framing-comparison-button):not(:hover):not(.on) { background: rgba(0, 0, 0, 0.6); }
 /* Włączony przycisk (rozciągnięte zdjęcie, ukryty kadr) wygląda jak po najechaniu. */
 .framing-stretch-button.on, .framing-eye-button.on, .framing-comparison-button.on { background: var(--accent); color: #000; }

@@ -373,7 +373,7 @@ export function FramingPanel() {
               setComparisonOpen(!comparisonOpen)
             }}
           >
-            <Layers2 size={20} aria-hidden="true" />
+            <Layers2 size={14} aria-hidden="true" />
           </button>
           <button
             className={`button small icon-button framing-eye-button${frameVisible ? '' : ' on'}`}
@@ -383,7 +383,7 @@ export function FramingPanel() {
             data-keeps-stretch
             onClick={() => setFrameVisible((v) => !v)}
           >
-            {frameVisible ? <Eye size={20} aria-hidden="true" /> : <EyeOff size={20} aria-hidden="true" />}
+            {frameVisible ? <Eye size={14} aria-hidden="true" /> : <EyeOff size={14} aria-hidden="true" />}
           </button>
           <button
             ref={stretchButtonRef}
@@ -393,7 +393,7 @@ export function FramingPanel() {
             aria-haspopup="dialog"
             onClick={() => setStretchOpen((v) => !v)}
           >
-            <ChartColumn size={20} aria-hidden="true" />
+            <ChartColumn size={14} aria-hidden="true" />
           </button>
         </div>
       </div>
