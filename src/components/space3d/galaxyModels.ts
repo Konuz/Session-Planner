@@ -61,7 +61,7 @@ function cachedBuffers(key: string, build: () => { pos: Float32Array; col: Float
   return buffers
 }
 
-export function milkyWay(count: number, texture: THREE.Texture): THREE.Points {
+export function milkyWay(count: number, texture: THREE.Texture): THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial> {
   const { pos, col } = cachedBuffers(`mw:${count}`, () => milkyWayBuffers(count))
   const g = new THREE.BufferGeometry()
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
@@ -69,6 +69,21 @@ export function milkyWay(count: number, texture: THREE.Texture): THREE.Points {
   const m = galaxyMaterial(texture)
   return new THREE.Points(g, m)
 }
+
+// Poglądowe podpisy na grzbietach spiral tego samego modelu co gwiazdy.
+function armAngle(radius: number, arm: number) {
+  return Math.log(radius / 4) / Math.tan(12 * Math.PI / 180) + arm * Math.PI / 2
+}
+
+export const GALACTIC_REGIONS = [
+  { name: 'Centrum Galaktyki', anchor: new THREE.Vector3() },
+  ...([['Ramię Perseusza', 34, 0], ['Ramię Strzelca–Kila', 21, 1],
+    ['Ramię Tarczy–Centaura', 16, 2], ['Ramię Zewnętrzne', 44, 3]] as const).map(([name, radius, arm]) => {
+    const angle = armAngle(radius, arm)
+    return { name, anchor: toThree([radius * Math.cos(angle), radius * Math.sin(angle), 0]) }
+  }),
+  { name: 'Ramię Lokalne (Oriona)', anchor: toThree([-26.7, 5, 0]) },
+]
 
 function milkyWayBuffers(count: number) {
   const pos = new Float32Array(count * 3)
@@ -80,7 +95,8 @@ function milkyWayBuffers(count: number) {
   const gauss = () => Math.sqrt(-2 * Math.log(rnd() + 1e-9)) * Math.cos(2 * Math.PI * rnd())
   for (let i = 0; i < count; i++) {
     let x: number, y: number, z: number, c: [number, number, number]
-    if (i < count * 0.22) {
+    const population = rnd()
+    if (population < 0.22) {
       // Zgrubienie centralne z poprzeczką.
       const r = Math.abs(gauss()) * 4.5
       const a = rnd() * Math.PI * 2
@@ -90,9 +106,11 @@ function milkyWayBuffers(count: number) {
       ;[x, y] = [x * Math.cos(bar) - y * Math.sin(bar), x * Math.sin(bar) + y * Math.cos(bar)]
       z = gauss() * 1.6
       c = [1, 0.86, 0.62]
-    } else if (i < count * 0.42) {
+    } else if (population < 0.42) {
       // Słabszy dysk pomiędzy ramionami, bez pustych szczelin.
-      const r = Math.min(50, -Math.log(Math.max(1e-9, rnd() * rnd())) * 10)
+      // Rozkład ucięty na brzegu dysku. Docięcie promienia do 50 tworzyło sztuczny pierścień.
+      let r: number
+      do { r = -Math.log(rnd() * rnd()) * 10 } while (r > 50)
       const a = rnd() * Math.PI * 2
       x = Math.cos(a) * r
       y = Math.sin(a) * r
@@ -102,7 +120,7 @@ function milkyWayBuffers(count: number) {
       // Cztery ramiona spiralne (spirala logarytmiczna, nachylenie ok. 12°).
       const arm = Math.floor(rnd() * 4)
       const r = 4 + Math.pow(rnd(), 0.8) * 46
-      const theta = Math.log(r / 4) / Math.tan((12 * Math.PI) / 180) + (arm * Math.PI) / 2 + gauss() * 0.28
+      const theta = armAngle(r, arm) + gauss() * 0.16
       x = Math.cos(theta) * r + gauss() * 1.4
       y = Math.sin(theta) * r + gauss() * 1.4
       z = gauss() * 0.5

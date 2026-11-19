@@ -7,12 +7,15 @@ import { fmtDistance, fmtDistanceRange } from '../../lib/format'
 import { cutsInThreeD, distanceSummary, photoCropSquare, type PhotoCut, type PhotoProject } from '../../lib/photo'
 import type { SpaceScale } from '../../lib/space3d'
 import type { PhotoGuide } from './photoGuide'
+import type { Space3DHandle } from '../Space3D'
+import { SolarLens } from './SolarLens'
 import type { PhotoSession } from './photoSession'
 
 interface Props {
   session: PhotoSession
   /** Znaczniki zdjęcia w scenie: wskazanie z listy i przelot do obiektu. */
   guideRef?: RefObject<PhotoGuide | null>
+  lensHandle?: Space3DHandle | null
   /** Skala sceny: jej zmiana kadruje ponownie stożek, więc zeruje stan przybliżenia. */
   scale?: SpaceScale
   /** Panel pokazany (tylko w skali, poza edycją i nurkowaniem). */
@@ -46,7 +49,7 @@ function ObjectList({ cuts, project, activeId, onChoose, onHover }: { cuts: Phot
   </div>
 }
 
-export function PhotoUnfold({ session, guideRef, scale, visible = true }: Props) {
+export function PhotoUnfold({ session, guideRef, lensHandle, scale, visible = true }: Props) {
   const { project, editing, activeId, setActiveId } = session
   const [query, setQuery] = useState('')
   const [zoomed, setZoomed] = useState(false)
@@ -76,6 +79,7 @@ export function PhotoUnfold({ session, guideRef, scale, visible = true }: Props)
       <strong>{cuts.length} {cuts.length === 1 ? 'obiekt' : 'obiektów'} w przestrzeni</strong>
       {cuts.length > 0 && <span className="pw-meta">≈ {fmtDistanceRange(cuts[0].distLy!, cuts[cuts.length - 1].distLy!)}</span>}
     </div>
+    {lensHandle && guideRef && <SolarLens handle={lensHandle} guideRef={guideRef} cuts={cuts} selected={activeId} onPick={setActiveId} />}
     {cuts.length > 6 && <input className="pw-search" type="search" placeholder="Znajdź obiekt…" aria-label="Znajdź obiekt na zdjęciu" value={query} onChange={(e) => setQuery(e.target.value)} />}
     {shown.length > 0 && <ObjectList cuts={shown} project={project} activeId={activeId} onChoose={setActiveId} onHover={hover} />}
     {cuts.length > 0 && !shown.length && <p className="pw-note">Brak obiektów pasujących do wyszukiwania.</p>}

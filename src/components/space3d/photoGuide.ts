@@ -80,7 +80,7 @@ export interface SightCone {
  * Linia widzenia i stożek pola od Ziemi, wspólne dla obu skal (w Drodze Mlecznej ze znacznikami, we Wszechświecie
  * lokalnym jako igła do okna zdjęcia). Nurkowanie steruje nimi przez PhotoGuide. k: skala kresek linii.
  */
-export function createSightCone(handle: Space3DHandle, basis: NonNullable<ReturnType<typeof frameBasis>>, image: { width: number; height: number }, length: number, accent: string, k: number): SightCone {
+export function createSightCone(handle: Space3DHandle, basis: NonNullable<ReturnType<typeof frameBasis>>, image: { width: number; height: number }, length: number, accent: string, k: number, adaptWidth = false): SightCone {
   const { sunPos } = handle
   const dir = new THREE.Vector3(...basis.center)
   const group = new THREE.Group()
@@ -126,6 +126,26 @@ export function createSightCone(handle: Space3DHandle, basis: NonNullable<Return
   faceGeometry.setAttribute('position', new THREE.Float32BufferAttribute(faces, 3))
   const faceMaterial = new THREE.MeshBasicMaterial({ color: accent, transparent: true, opacity: 0.07, side: THREE.DoubleSide, depthWrite: false })
   const faceMesh = new THREE.Mesh(faceGeometry, faceMaterial)
+  if (adaptWidth) {
+    // Przy wierzchołku cienkie jak piksel ścianki ustępują miejsca osi. Nurkowanie steruje własnym kryciem.
+    const viewport = { value: new THREE.Vector2() }
+    for (const material of [coneMaterial, faceMaterial]) {
+      material.onBeforeCompile = (shader) => {
+        shader.uniforms.coneViewport = viewport
+        shader.vertexShader = 'uniform vec2 coneViewport; varying float coneWidthPx;\n' + shader.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
+          vec4 axisClip = projectionMatrix * modelViewMatrix * vec4(0., 0., position.z, 1.);
+          coneWidthPx = coneViewport.x == 0. || min(axisClip.w, gl_Position.w) <= 0. ? 12. :
+            length((gl_Position.xy / gl_Position.w - axisClip.xy / axisClip.w) * coneViewport);`)
+        shader.fragmentShader = 'varying float coneWidthPx;\n' + shader.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n diffuseColor.a *= smoothstep(1., 7., coneWidthPx);')
+      }
+    }
+    const syncViewport = () => {
+      if (handle.override.camera) viewport.value.set(0, 0)
+      else viewport.value.set(handle.mount.clientWidth, handle.mount.clientHeight)
+    }
+    faceMesh.onBeforeRender = syncViewport
+    cone.children[0].onBeforeRender = syncViewport
+  }
   faceMesh.renderOrder = -1
   cone.add(faceMesh)
   disposables.push(coneGeometry, coneMaterial, faceGeometry, faceMaterial)
@@ -177,7 +197,7 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, s
   const unit = scale === 'universe' ? 1 / UNIVERSE_GALAXY_SCALE : 1
   // Skala kresek w jednostkach długości stożka.
   const k = Math.max(length, 2 * unit) / 16
-  const sight = createSightCone(handle, basis, project, length, accent, k)
+  const sight = createSightCone(handle, basis, project, length, accent, k, scale === 'galaxy')
   const { group, cone, line, fieldTan, materials, disposables } = sight
   group.name = 'photo-guide'
   // Za końcem stożka słabsze przedłużenie linii widzenia do grotu „poza skalą”.
@@ -225,6 +245,7 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, s
       disposables.push(map)
     }
     const sprite = glyphSprite(map, MARK)
+    sprite.name = cut.id
     sprite.position.copy(world)
     markers.add(sprite)
     disposables.push(sprite.material)
@@ -339,6 +360,14 @@ export function createPhotoGuide(handle: Space3DHandle, project: PhotoProject, s
   const from = scale === 'universe' && Number.isFinite(nearest) ? sunPos.clone().addScaledVector(dir, nearest * 0.85) : sunPos.clone()
   const start = from.distanceTo(sunPos)
   const framed: Vec3[] = [from.toArray() as Vec3, reach.toArray() as Vec3, ...marks.filter((m) => new THREE.Vector3(...m.position).distanceTo(sunPos) >= start).map((m) => m.position)]
+  if (scale === 'galaxy') {
+    for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
+      const corner = sunPos.clone().addScaledVector(dir, length)
+        .addScaledVector(new THREE.Vector3(...basis.x), sx * length * fieldTan[0])
+        .addScaledVector(new THREE.Vector3(...basis.y), sy * length * fieldTan[1])
+      framed.push(corner.toArray() as Vec3)
+    }
+  }
   const middle = from.clone().lerp(reach, 0.5)
   const span = scale === 'galaxy' ? length : from.distanceTo(reach)
   // Wszechświat lokalny: kamera co najmniej tak daleko jak w kadrze obiektu, więc zakładka zawsze oddala do skali Grupy

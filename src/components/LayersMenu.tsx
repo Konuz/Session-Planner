@@ -141,6 +141,8 @@ export function LayersMenu({ threeD = false, settings, typeCounts = [], defaultO
   const extraHidden = useStore((s) => s.skyExtraHidden)
   const toggleExtra = useStore((s) => s.toggleSkyExtra)
   const domeStyle = useStore((s) => s.domeStyle)
+  const showRegions = useStore((s) => s.showGalaxyRegions)
+  const showLens = useStore((s) => s.showSolarLens)
   const setDomeStyle = useStore((s) => s.setDomeStyle)
   const domeOpacity = useStore((s) => s.domeOpacity)
   const skyLook = useStore((s) => s.skyLook)
@@ -176,6 +178,8 @@ export function LayersMenu({ threeD = false, settings, typeCounts = [], defaultO
               </Section>
               {settings && (
                 <Section title="Droga Mleczna" open={sections.galaxy} onToggle={() => setSections({ ...sections, galaxy: !sections.galaxy })}>
+                  <Switch on={showRegions} onClick={() => toggle('showGalaxyRegions')} label="Podpisy obszarów Galaktyki" />
+                  <Switch on={showLens} onClick={() => toggle('showSolarLens')} label="Lupa nakładających się obiektów" title="Pokazuje powiększenie nad zbliżonymi znacznikami zdjęcia" />
                   <Switch
                     on={settings.showConstellations}
                     disabled={!settings.constellations}

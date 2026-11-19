@@ -23,6 +23,7 @@ import {
 } from './space3d/galaxyModels'
 import { GALAXY_LEVELS, type ConstellationStar, type SpaceSettings } from './space3d/spaceSettings'
 import { createDomeMaterial } from './space3d/domeMaterials'
+import { GALACTIC_REGIONS } from './space3d/galaxyModels'
 import { createEarthAssets, createEarthMesh, EARTH_FRAME_MS, type EarthRig } from './space3d/earthModel'
 
 interface Props {
@@ -159,6 +160,9 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
   const domesRef = useRef<THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial>[]>([])
   const annotationsRef = useRef(showAnnotations)
   annotationsRef.current = showAnnotations
+  const showRegions = useStore((s) => s.showGalaxyRegions)
+  const regionsRef = useRef(showRegions)
+  regionsRef.current = showRegions
   const annotationColors = useStore((s) => s.annotationColors)
   const typeRGB = useMemo(() => Object.fromEntries(
     (Object.keys(TYPE_INFO) as ObjectType[]).map((type) => [type, Number.parseInt((annotationColors[type] ?? DEFAULT_ANNOTATION_COLORS[type]).slice(1), 16)]),
@@ -334,13 +338,9 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
       }
       addConstellationsRef.current()
     }
-    const mw = milkyWay(52000, stars)
-    const milkyWayMaterial = mw.material as THREE.PointsMaterial
+    const mw = milkyWay(85000, stars)
     scene.add(mw)
-    disposables.push(mw.geometry, mw.material as THREE.Material)
-    const gcLabel = label('Centrum Galaktyki', '#ffd9a0')
-    gcLabel.position.set(0, 3, 0)
-    scene.add(gcLabel)
+    disposables.push(mw.geometry, mw.material)
     {
       // Pierścienie odległości (skala logarytmiczna) z kopułami; wymiary dawnej sceny Wszechświata × 1/0,12.
       const u = 1 / UNIVERSE_GALAXY_SCALE
@@ -414,7 +414,7 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
     // Warstwy z przełącznikami jednej zakładki: gwiazdozbiory i podpisy Ziemi, centrum Galaktyki albo Drogi Mlecznej.
     const applyScale = () => {
       if (constellationGroupRef.current) constellationGroupRef.current.visible = showConstellationsRef.current && tab === 'galaxy'
-      earthLabel.visible = gcLabel.visible = tab === 'galaxy'
+      earthLabel.visible = tab === 'galaxy'
       mwLabel.visible = tab === 'universe'
       textLayoutDirty.current = sceneDirty.current = true
     }
@@ -438,7 +438,7 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
       extragalacticPoints.material.opacity = 0.8 * fades.extragalactic * layer
       extragalacticPoints.material.visible = fades.extragalactic * layer > 0
       for (const fader of extragalacticFaders) fader(fades.extragalactic * layer, fades.extragalactic * labels)
-      earthLabel.material.opacity = gcLabel.material.opacity = fades.galactic * labels
+      earthLabel.material.opacity = fades.galactic * labels
       mwLabel.material.opacity = fades.extragalactic * labels
     }
 
@@ -632,6 +632,7 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
     const textProjMatrix = new THREE.Matrix4()
     let lastTextWidth = 0, lastTextHeight = 0, lastTextGuideVisible = false
     let lastLabelW = 0, lastLabelH = 0, lastLabelAnnotations: boolean | null = null, lastLabelLevel = -1
+    let lastRegionAlpha = -1
     let lastLabelHidden: readonly ObjectType[] | null = null, lastLabelScale: SpaceScale | null = null, lastLabelPhoto = false
     // Renderowanie na żądanie: bez ruchu kamery i zmian sceny nie rysujemy co klatkę (GPU, bateria).
     const renderedCamera = new THREE.Matrix4()
@@ -755,11 +756,12 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
           && Math.abs(earthScreenPosition.y) <= 1 + 2 * earthPx / height
       }
       {
-        // Przy zbliżeniu gwiazdy pozostają widoczne, a z daleka nie zlewają się w jasną plamę.
-        const close = 1 - THREE.MathUtils.smoothstep(camera.position.distanceTo(controls.target), 20, 100)
-        milkyWayMaterial.size = 2.4 + close * 0.8
-        // Gaśnie razem z warstwami Galaktyki: w Drodze Mlecznej pełna, we Wszechświecie z daleka jak dawne 12 tys. punktów.
-        milkyWayMaterial.opacity = (0.17 + close * 0.13) * override.layerFade * THREE.MathUtils.lerp(1, MW_FAR_OPACITY, 1 - fades.galactic)
+        const lyPerPixel = 2000 * camera.position.distanceTo(controls.target) * Math.tan(camera.getEffectiveFOV() * Math.PI / 360) / Math.max(1, sizedH)
+        const overview = THREE.MathUtils.smoothstep(lyPerPixel, 5, 90)
+        const layer = override.layerFade * THREE.MathUtils.lerp(MW_FAR_OPACITY, 1, fades.galactic)
+        mw.geometry.setDrawRange(0, Math.round(35000 + 50000 * overview))
+        mw.material.size = 3.5 - 0.4 * overview
+        mw.material.opacity = (0.38 - 0.08 * overview) * layer
       }
       for (const model of localGalaxyModels) {
         // Zbliżenie względem promienia modelu: także małe galaktyki zachowują czytelne gwiazdy.
@@ -903,6 +905,7 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
       const w = mount!.clientWidth
       const h = mount!.clientHeight
       const hasPhoto = !!photoRef.current
+      const regionAlpha = regionsRef.current && tab === 'galaxy' ? override.labelFade * fades.galactic : 0
       // Nurkowanie zgasiło warstwy tła: podpisy i kliknięcia zdjęte raz, bez rzutowania wszystkich obiektów w każdej klatce.
       if (override.layerFade === 0) {
         if (lastLabelW !== 0) {
@@ -916,6 +919,7 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
         w === lastLabelW &&
         h === lastLabelH &&
         annotationsRef.current === lastLabelAnnotations &&
+        regionAlpha === lastRegionAlpha &&
         galaxyLevelRef.current === lastLabelLevel &&
         hiddenTypesRef.current === lastLabelHidden &&
         tab === lastLabelScale &&
@@ -928,6 +932,7 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
       lastLabelW = w
       lastLabelH = h
       lastLabelAnnotations = annotationsRef.current
+      lastRegionAlpha = regionAlpha
       lastLabelLevel = galaxyLevelRef.current
       lastLabelHidden = hiddenTypesRef.current
       lastLabelScale = tab
@@ -962,13 +967,13 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
       }
       candidates.sort((a, b) => Number(b.localGroup) - Number(a.localGroup) || a.d - b.d)
       for (const l of candidates) hits.push({ c: l.c, x: l.x, y: l.y, box: null })
-      if (!annotationsRef.current) return
       labelCtx.globalAlpha = fade
       labelCtx.font = '10px ui-monospace, Consolas, monospace'
       labelCtx.lineJoin = 'round'
       labelCtx.lineWidth = 3
       const boxes: [number, number, number, number][] = []
       for (const l of candidates) {
+        if (!annotationsRef.current) break
         if (boxes.length >= 120) break
         const tw = labelCtx.measureText(l.c.id).width
         const boxAt = (x: number, y: number): [number, number, number, number] => [x - 2, y - 11, x + tw + 2, y + 3]
@@ -997,6 +1002,29 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
         labelCtx.strokeText(l.c.id, labelX, labelY)
         labelCtx.fillStyle = `#${typeRGB[l.c.type].toString(16).padStart(6, '0')}c0`
         labelCtx.fillText(l.c.id, labelX, labelY)
+      }
+      if (regionAlpha <= 0) return
+      // Pierwszeństwo mają obiekty oraz znaczniki zdjęcia. Napisy ramion nie tworzą pól klikalnych.
+      for (const p of [sunPos, ...(hasPhoto ? anchors : [target])]) {
+        projected.copy(p).project(camera)
+        if (Math.abs(projected.z) >= 1) continue
+        const x = (1 + projected.x) * w / 2, y = (1 - projected.y) * h / 2
+        boxes.push([x - 12, y - 13, x + 12, y + 13])
+      }
+      labelCtx.globalAlpha = regionAlpha
+      labelCtx.font = 'italic 13px system-ui, sans-serif'
+      labelCtx.strokeStyle = 'rgba(2, 5, 13, 0.85)'
+      labelCtx.fillStyle = '#d4d9e5'
+      for (const { name, anchor } of GALACTIC_REGIONS) {
+        projected.copy(anchor).project(camera)
+        if (Math.abs(projected.z) >= 1) continue
+        const x = (1 + projected.x) * w / 2, y = (1 - projected.y) * h / 2
+        const half = labelCtx.measureText(name).width / 2
+        if (x - half < 4 || x + half > w - 4 || y < 16 || y > h - 4) continue
+        if (boxes.some(([a, b, c, d]) => x + half + 4 > a && x - half - 4 < c && y + 4 > b && y - 14 < d)) continue
+        boxes.push([x - half, y - 14, x + half, y + 4])
+        labelCtx.strokeText(name, x - half, y)
+        labelCtx.fillText(name, x - half, y)
       }
     }
     // Kliknięcie (bez przeciągania) w podpis lub kropkę wybiera obiekt.

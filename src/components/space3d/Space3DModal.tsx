@@ -3,6 +3,7 @@
 // pod spodem bez zmian.
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { fmtDistance } from '../../lib/format'
+import { framePose, SPACE_FOV } from '../../lib/spaceCamera'
 import { distanceDomain, observatoryItems, observatoryPosition, structureViewPose } from '../../lib/observatory'
 import type { SpaceScale } from '../../lib/space3d'
 import { DIVE_PHASE_MS, type DiveDirection, type Pose } from '../../lib/spaceDive'
@@ -56,6 +57,7 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
     setEditing(false)
   }, [setEditing])
   const settings = useSpaceSettings(o, project, active)
+  const showLens = useStore((s) => s.showSolarLens)
   useCutDistances(session)
   const inputRef = useRef<HTMLInputElement>(null)
   const [handle, setHandle] = useState<Space3DHandle | null>(null)
@@ -286,11 +288,16 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
       <div className={`space-scene${mode === 'photo' || editing ? ' is-hidden' : ''}`}>
         {sceneMounted && <Space3D settings={settings} photo={activePhoto} onSelectObject={deactivatePhoto} onHandle={setHandle} />}
       </div>
-      {activePhoto && <PhotoUnfold key={activePhoto.id} session={session} scale={settings.scale} visible={mode === 'scale'} guideRef={guideRef} />}
+      {activePhoto && <PhotoUnfold key={activePhoto.id} session={session} scale={settings.scale} visible={mode === 'scale'} guideRef={guideRef}
+        lensHandle={showLens && settings.scale === 'galaxy' ? handle : null} />}
       {mode === 'scale' && <>
         <PhotoImport session={session} inputRef={inputRef} showButton={!activePhoto} onActivate={activatePhoto} />
         <PhotoMessages session={session} />
-        {activePhoto && <GalaxyPhotoBar session={session} stars={stars} onUnfold={unfold} onPick={() => inputRef.current?.click()} onRetryStars={retry} />}
+        {activePhoto && <GalaxyPhotoBar session={session} stars={stars} onUnfold={unfold}
+          onGalaxyOverview={settings.scale === 'galaxy' && handle && !editing ? () => handle.flyTo(framePose(
+        [[-61, 0, 0], [61, 0, 0], [0, 0, -61], [0, 0, 61]], [-0.35, 1, 0],
+        { fovDeg: SPACE_FOV, aspect: handle.camera.aspect, room: [0.91, 0.90] }), undefined, true) : undefined}
+          onPick={() => inputRef.current?.click()} onRetryStars={retry} />}
         {editing && <PhotoFlatView session={session} />}
       </>}
     </div>

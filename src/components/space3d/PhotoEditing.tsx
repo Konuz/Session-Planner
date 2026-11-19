@@ -201,7 +201,7 @@ export function PhotoCutEditor({ session, regressorJobs }: { session: PhotoSessi
 }
 
 /** Pasek zdjęcia w obu skalach: miejsce i wymiary jak pasek starej nakładki, bez suwaka. */
-export function GalaxyPhotoBar({ session, stars, onUnfold, onPick, onRetryStars }: { session: PhotoSession; stars: StarsStatus; onUnfold(): void; onPick(): void; onRetryStars(): void }) {
+export function GalaxyPhotoBar({ session, stars, onUnfold, onGalaxyOverview, onPick, onRetryStars }: { session: PhotoSession; stars: StarsStatus; onUnfold(): void; onGalaxyOverview?(): void; onPick(): void; onRetryStars(): void }) {
   const { project, editing, setEditing } = session
   if (!project) return null
   const enabled = cutsInThreeD(project.cuts).length
@@ -216,6 +216,7 @@ export function GalaxyPhotoBar({ session, stars, onUnfold, onPick, onRetryStars 
     </div>
     <div className="photo-timeline photo-actions">
       <button type="button" className="button small" title="Przejście do Obserwatorium: gwiazdy Gaia i obiekty w swoich odległościach" onClick={() => { setEditing(false); onUnfold() }}>Rozłóż zdjęcie 3D</button>
+      {onGalaxyOverview && <button type="button" className="button small" onClick={onGalaxyOverview}>Widok poglądowy</button>}
       <button type="button" className={`button small${editing ? ' active' : ''}`} aria-expanded={editing} onClick={() => setEditing(!editing)}>Edytuj wycinki</button>
       <button type="button" className="button small" onClick={onPick} disabled={session.busy}>Zmień zdjęcie</button>
       <button type="button" className="button small" onClick={() => { setEditing(false); session.change(null) }}>Usuń</button>

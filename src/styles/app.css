@@ -1038,6 +1038,22 @@ input[type='checkbox']:checked::after {
 /* Zdjęcie w Drodze Mlecznej: podpisy znaczników wycinków i pasek z przyciskami zamiast suwaka. */
 .space-photo-label { z-index: 1; padding: 2px 6px; background: rgba(11, 13, 23, 0.85); border: 1px solid var(--border-strong); border-left-width: 2px; color: var(--text); }
 .space-photo-label.hovered { z-index: 2; border-color: var(--accent); }
+.solar-lens { position: absolute; z-index: 3; pointer-events: none; }
+.lens-glass { position: absolute; inset: 0; overflow: hidden; border-radius: 50%; border: 2px solid #aec5d6; box-shadow: 0 2px 9px #000b, 0 0 0 2px #29333c; background: #040811; pointer-events: none; }
+.lens-glass > canvas { width: 100%; height: 100%; }
+.lens-glass::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background: radial-gradient(ellipse 48% 18% at 34% 8%, #e7f8ff70, transparent 88%), radial-gradient(ellipse at 76% 95%, #81d0ea32, transparent 37%); box-shadow: inset 1px 2px 3px #effaffaa, inset -2px -3px 4px #80bdd078, inset 0 0 14px #81aec555; pointer-events: none; }
+.solar-lens .lens-tools { position: absolute; z-index: 1; top: calc(100% + 5px); left: 50%; transform: translateX(-50%); display: flex; gap: 4px; }
+.solar-lens .lens-tools button { position: static; transform: none; width: 20px; height: 20px; display: grid; place-items: center; padding: 0; line-height: 1; color: #e3f6ff; background: #152b39df; border: 1px solid #7797a7; font: 14px var(--mono); }
+.lens-rings { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.lens-rings circle { fill: none; stroke: #c9e7fa44; stroke-width: .7; }
+.lens-rings text { fill: #cbdde6; font: 8px var(--mono); text-anchor: middle; paint-order: stroke; stroke: #07101bc9; stroke-width: 2px; }
+.solar-lens .lens-tools button:disabled { opacity: .4; cursor: default; }
+.solar-lens button { position: absolute; transform: translate(-50%,-50%); width: 24px; height: 24px; padding: 0; background: transparent; border: 0; border-radius: 50%; pointer-events: auto; cursor: pointer; }
+.solar-lens button canvas { width: 100%; height: 100%; }
+.solar-lens button span { display: none; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); padding: 1px 3px; background: #050911d9; color: var(--text); font: 10px var(--mono); white-space: nowrap; }
+.solar-lens button:is(:hover,:focus-visible,[aria-pressed=true]) span { display: block; }
+.solar-lens button[aria-pressed=true] { outline: 1px solid var(--text); }
+.solar-lens small { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); color: var(--text-2); font: 10px var(--mono); }
 .space-photo-label.selected { border-color: var(--text); }
 .space-hint { top: 10px; bottom: auto; }
 .obs-leader { position: absolute; left: 0; top: 0; height: 1px; transform-origin: 0 0; background: var(--border-strong); opacity: 0.75; }
