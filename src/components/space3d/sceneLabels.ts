@@ -100,15 +100,15 @@ export function createLabelLayer(handle: Space3DHandle, className: string, { onP
   let labels: SceneLabel[] = []
   /** Pula plakietek grup (ukryte, gdy nieużywane). */
   const badges: SceneLabel[] = []
-  let fan: LabelFan | null = null
+  const fans = new Map<SceneLabel, LabelFan>()
   let visible = true, dirty = true, stale = true, lastW = 0, lastH = 0, lastMove = -Infinity
   const lastCamera = new THREE.Matrix4(), lastProjection = new THREE.Matrix4()
   const v = new THREE.Vector3()
   /** Grupy przeliczone choć raz od dodania podpisów. */
   let groupsReady = false
-  const closeFan = () => fan?.close()
-  handle.renderer.domElement.addEventListener('pointerdown', closeFan)
-  handle.renderer.domElement.addEventListener('wheel', closeFan)
+  const closeFans = () => { for (const fan of fans.values()) fan.close() }
+  handle.renderer.domElement.addEventListener('pointerdown', closeFans)
+  handle.renderer.domElement.addEventListener('wheel', closeFans)
 
   const create = (position: THREE.Vector3, lines: string[], el: HTMLElement, color: string | undefined, gap: number): SceneLabel => {
     const leader = document.createElement('div')
@@ -123,29 +123,37 @@ export function createLabelLayer(handle: Space3DHandle, className: string, { onP
     return label
   }
 
-  const openFan = (badge: SceneLabel) => {
-    closeFan()
+  const toggleFan = (badge: SceneLabel) => {
+    const open = fans.get(badge)
+    if (open) { open.close(); return }
     const { camera, mount } = handle
     v.copy(badge.position).project(camera)
     const entries = [...badge.members ?? []].sort((a, b) => (a.distLy ?? 0) - (b.distLy ?? 0) || a.id!.localeCompare(b.id!))
       .map((m) => ({ id: m.id!, text: `${m.id} · ${fmtDistance(m.distLy ?? null)}`, cutout: m.cutout }))
-    fan = openLabelFan(root, entries, (v.x + 1) / 2 * mount.clientWidth, (1 - v.y) / 2 * mount.clientHeight, mount.clientWidth, mount.clientHeight, {
+    const fan = openLabelFan(root, entries, (v.x + 1) / 2 * mount.clientWidth, (1 - v.y) / 2 * mount.clientHeight, mount.clientWidth, mount.clientHeight, {
       hover: (id) => onHover?.(id),
-      pick: (id) => { onPick?.(id); fan?.setSelected(id) },
-      closed: () => { fan = null },
+      pick: (id) => { onPick?.(id); for (const item of fans.values()) item.setSelected(id) },
+      closed: () => {
+        fans.delete(badge)
+        badge.el.setAttribute('aria-expanded', 'false')
+        badge.el.title = 'Pokaż obiekty grupy'
+      },
     })
+    fans.set(badge, fan)
+    badge.el.setAttribute('aria-expanded', 'true')
+    badge.el.title = 'Zwiń listę obiektów'
   }
 
-  const badge = (index: number): SceneLabel => {
-    if (badges[index]) return badges[index]
+  const createBadge = (): SceneLabel => {
     const el = document.createElement('button')
     el.type = 'button'
     el.className = 'obs-label space-photo-label obs-group'
     el.title = 'Pokaż obiekty grupy'
+    el.setAttribute('aria-expanded', 'false')
     const label = create(new THREE.Vector3(), [''], el, undefined, 13)
-    el.addEventListener('click', () => openFan(label))
+    el.addEventListener('click', () => toggleFan(label))
     label.hidden = true
-    badges[index] = label
+    badges.push(label)
     return label
   }
 
@@ -171,8 +179,22 @@ export function createLabelLayer(handle: Space3DHandle, className: string, { onP
       label.grouped = grouped
       label.onGroup?.(grouped)
     }
+    // Otwarta lista należy do składu grupy. Zmiana kolejności grup nie zamyka jej plakietki.
+    const available = new Set(badges)
+    const groupBadges = groups.map((members) => {
+      const existing = badges.find(({ members: previous }) =>
+        previous?.length === members.length && members.every((member, i) => member === previous[i]))
+      if (existing) available.delete(existing)
+      return existing
+    })
+    const reusable = [...available]
+    for (const b of reusable) {
+      fans.get(b)?.close()
+      b.hidden = true
+      b.members = undefined
+    }
     groups.forEach((members, i) => {
-      const b = badge(i)
+      const b = groupBadges[i] ?? reusable.pop() ?? createBadge()
       b.hidden = false
       b.members = members
       b.position.set(0, 0, 0)
@@ -182,7 +204,6 @@ export function createLabelLayer(handle: Space3DHandle, className: string, { onP
       const lines = [objectCount(members.length), distances.length ? fmtDistanceRange(Math.min(...distances), Math.max(...distances)) : '']
       if (b.el.textContent !== lines.join('\n')) setLabelText(b, lines)
     })
-    for (let i = groups.length; i < badges.length; i++) { badges[i].hidden = true; badges[i].members = [] }
   }
 
   return {
@@ -195,7 +216,7 @@ export function createLabelLayer(handle: Space3DHandle, className: string, { onP
       return label
     },
     clear() {
-      closeFan()
+      closeFans()
       for (const label of labels) { label.el.remove(); label.leader.remove() }
       labels = []
       badges.length = 0
@@ -205,7 +226,7 @@ export function createLabelLayer(handle: Space3DHandle, className: string, { onP
     setVisible(next) {
       visible = next
       root.style.display = next ? '' : 'none'
-      if (!next) closeFan()
+      if (!next) closeFans()
       dirty = true
     },
     invalidate() { dirty = true },
@@ -213,7 +234,7 @@ export function createLabelLayer(handle: Space3DHandle, className: string, { onP
       const { camera, mount } = handle
       const w = mount.clientWidth, h = mount.clientHeight
       const resized = w !== lastW || h !== lastH
-      if (resized) closeFan()
+      if (resized) closeFans()
       // Wygaszanie obrotu może trwać już po puszczeniu myszy i otwarciu wachlarza.
       const moved = resized || !same(lastCamera, camera.matrixWorld) || !same(lastProjection, camera.projectionMatrix)
       if (moved) {
@@ -283,9 +304,9 @@ export function createLabelLayer(handle: Space3DHandle, className: string, { onP
       }
     },
     dispose() {
-      closeFan()
-      handle.renderer.domElement.removeEventListener('pointerdown', closeFan)
-      handle.renderer.domElement.removeEventListener('wheel', closeFan)
+      closeFans()
+      handle.renderer.domElement.removeEventListener('pointerdown', closeFans)
+      handle.renderer.domElement.removeEventListener('wheel', closeFans)
       root.remove()
     },
   }

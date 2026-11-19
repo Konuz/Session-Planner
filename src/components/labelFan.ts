@@ -120,7 +120,7 @@ export function openLabelFan(container: HTMLElement, entries: FanEntry[], x: num
       open = false
       window.removeEventListener('keydown', onKey, true)
       root.remove()
-      container.classList.remove('fan-open')
+      if (!container.querySelector(':scope > .obs-fan')) container.classList.remove('fan-open')
       if (hovered !== null) { hovered = null; on.hover(null) }
       on.closed()
     },

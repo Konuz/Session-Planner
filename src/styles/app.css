@@ -1081,10 +1081,11 @@ input[type='checkbox']:checked::after {
 .obs-group { padding: 4px 7px; text-align: center; background: rgba(11, 13, 23, 0.9); border: 1px solid var(--accent-dim); color: var(--accent); cursor: pointer; pointer-events: auto; opacity: var(--obs-photo-fade, 1); }
 .obs-group:hover, .obs-group:focus-visible { border-color: var(--accent); color: var(--text); outline: none; }
 .obs-labels.inert .obs-group { pointer-events: none; }
-.obs-labels.fan-open > .obs-card, .obs-labels.fan-open > .obs-group { opacity: 0.2; }
+.obs-labels.fan-open:not(.space-photo-labels) > :is(.obs-card, .obs-group, .obs-leader) { opacity: 0.2; }
 .obs-labels.fan-open > .obs-card.selected { opacity: 1; }
-/* Sceny „Pozycja 3D”: przy otwartym wachlarzu przygasają podpisy, plakietki i odnośniki (poza zaznaczeniem). */
-.obs-labels.fan-open > .space-photo-label:not(.selected), .obs-labels.fan-open > .obs-leader { opacity: 0.2; }
+/* Plakietki w „Pozycji 3D” pozostają nad listami, żeby można było je kliknąć. */
+.space-photo-labels.fan-open > .obs-group { z-index: 3; }
+.space-photo-labels > .obs-group[aria-expanded='true'] { border-color: var(--accent); }
 .obs-fan { position: absolute; left: 0; top: 0; }
 .obs-spoke { --edge: var(--border-strong); --shape: polygon(0 29%, 100% 0, 100% 100%, 0 71%); position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 5px; transform-origin: 0 0; height: 28px; padding: 0 7px; white-space: nowrap; font: 10px/14px var(--mono); background: transparent; border: 0; clip-path: var(--shape); isolation: isolate; color: var(--text-2); cursor: pointer; pointer-events: auto; }
 .obs-spoke.left { --shape: polygon(0 0, 100% 29%, 100% 71%, 0 100%); flex-direction: row-reverse; }

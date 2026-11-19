@@ -54,7 +54,7 @@ function fixture(scale: SpaceScale, project = comaProject()) {
 }
 
 beforeEach(() => {
-  const element = () => ({ className: '', textContent: '', style: {} as Record<string, string>, classList: { toggle: vi.fn(), add: vi.fn(), remove: vi.fn(), contains: () => false }, appendChild: vi.fn(), remove: vi.fn(), addEventListener: vi.fn() })
+  const element = () => ({ className: '', textContent: '', style: {} as Record<string, string>, classList: { toggle: vi.fn(), add: vi.fn(), remove: vi.fn(), contains: () => false }, appendChild: vi.fn(), remove: vi.fn(), addEventListener: vi.fn(), setAttribute: vi.fn() })
   vi.stubGlobal('document', { createElement: element })
 })
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
@@ -192,7 +192,7 @@ it('zdjęcie samej Drogi Mlecznej (np. Sh2-181): zakładka Wszechświat oddala k
 it('hover nad znacznikiem w grupie pokazuje nazwę obiektu i chowa ją po zejściu kursora', () => {
   const created: { className: string; textContent: string; style: Record<string, string> }[] = []
   const element = () => {
-    const el = { className: '', textContent: '', style: {} as Record<string, string>, classList: { toggle: vi.fn(), add: vi.fn(), remove: vi.fn(), contains: () => false }, appendChild: vi.fn(), remove: vi.fn(), addEventListener: vi.fn() }
+    const el = { className: '', textContent: '', style: {} as Record<string, string>, classList: { toggle: vi.fn(), add: vi.fn(), remove: vi.fn(), contains: () => false }, appendChild: vi.fn(), remove: vi.fn(), addEventListener: vi.fn(), setAttribute: vi.fn() }
     created.push(el)
     return el
   }
