@@ -2,6 +2,7 @@
 // podsumowanie, krzyżyk, Esc, fokus i powrót fokusu do przycisku, który okno otworzył.
 import { useEffect, useRef, type CSSProperties, type ReactNode, type Ref } from 'react'
 import { createPortal } from 'react-dom'
+import { lockRootInert } from '../../lib/modalInert'
 import { CloseButton } from '../CloseButton'
 
 interface Props {
@@ -24,13 +25,14 @@ export function SpaceWindow({ label, kicker, title, subtitle, summaryRef, summar
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
   useEffect(() => {
-    // Przycisk otwierający znika razem z szufladą szczegółów; wtedy fokus wraca na „Pozycja 3D” w karcie Nieba.
+    const release = lockRootInert()
     const opener = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null
     dialogRef.current?.querySelector<HTMLElement>('.obs-header .close-button')?.focus()
     // Esc zamyka całe okno (także z otwartą listą rozwijaną, którą useOutside zamyka tym samym klawiszem).
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCloseRef.current() }
     window.addEventListener('keydown', onKey)
     return () => {
+      release()
       window.removeEventListener('keydown', onKey)
       const target = opener?.isConnected ? opener : document.querySelector<HTMLElement>('[data-space3d-opener]')
       target?.focus({ preventScroll: true })

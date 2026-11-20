@@ -52,7 +52,7 @@ export function parseRaCoordinate(input: string): number | null {
     return (value * 15) % 360
   }
   if (parts.hasDegreeUnit) return value >= 0 && value <= 360 ? value % 360 : null
-  return value >= 0 && value <= 360 ? value : null
+  return value >= 0 && value <= 360 ? value % 360 : null
 }
 
 /** Dec: decimal degrees or sexagesimal degrees. */

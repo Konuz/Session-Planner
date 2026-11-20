@@ -41,7 +41,10 @@ function startCatalog() {
       }
       catalogSnapshot = { catalog, indexed, error: null }
     })
-    .catch((e: Error) => { catalogSnapshot = { catalog: null, indexed: null, error: e.message } })
+    .catch((e: Error) => {
+      started = false
+      catalogSnapshot = { catalog: null, indexed: null, error: e.message }
+    })
     .finally(() => listeners.forEach((l) => l()))
 }
 
@@ -124,10 +127,43 @@ export interface CatalogVisibility {
   best: Float64Array
 }
 
-// Ostatni wynik z jego parametrami: ponowne wejście do Katalogu z tymi samymi ustawieniami nie czeka na worker (C12).
 let lastVisibility: { key: string; value: CatalogVisibility } | null = null
+const visListeners = new Set<() => void>()
+const subscribeVis = (l: () => void) => {
+  visListeners.add(l)
+  return () => { visListeners.delete(l) }
+}
+const pendingVis = new Map<number, { key: string; darkStart: number; darkEnd: number; sent: number }>()
+let lastRequestedVisKey = ''
+
 const visibilityKey = (catalog: DSO[], site: Site, darkStart: number, darkEnd: number, minAlt: number, horizon: readonly unknown[]) =>
   `${catalog.length}|${site.latDeg},${site.lonDeg},${site.elevationM}|${darkStart}|${darkEnd}|${minAlt}|${JSON.stringify(horizon)}`
+
+function ensureVisibilityWorker() {
+  if (worker) return worker
+  worker = new Worker(new URL('../workers/visibility.worker.ts', import.meta.url), { type: 'module' })
+  worker.onmessage = (e: MessageEvent<VisibilityResult>) => {
+    const meta = pendingVis.get(e.data.id)
+    if (!meta) return
+    pendingVis.delete(e.data.id)
+    measureSince('visibility:roundtrip', meta.sent)
+    if (meta.key !== lastRequestedVisKey) return
+    lastVisibility = {
+      key: meta.key,
+      value: { nightDurationMs: meta.darkEnd - meta.darkStart, maxAlt: e.data.maxAlt, hours: e.data.hours, best: e.data.best },
+    }
+    visListeners.forEach((l) => l())
+  }
+  worker.onerror = () => {
+    pendingVis.clear()
+    worker?.terminate()
+    worker = null
+    sentCatalog = null
+    lastRequestedVisKey = ''
+    visListeners.forEach((l) => l())
+  }
+  return worker
+}
 
 export function useCatalogVisibility(): CatalogVisibility | null {
   const { indexed: catalog } = useCatalog()
@@ -135,21 +171,14 @@ export function useCatalogVisibility(): CatalogVisibility | null {
   const night = useNight()
   const minAlt = useStore((s) => s.minAltDeg)
   const horizon = useStore((s) => s.horizon)
-  const [result, setResult] = useState<CatalogVisibility | null>(() => {
-    if (!catalog || !lastVisibility) return null
-    const [darkStart, darkEnd] = darkWindow(night)
-    return lastVisibility.key === visibilityKey(catalog, site, darkStart, darkEnd, minAlt, horizon) ? lastVisibility.value : null
-  })
+  const [darkStart, darkEnd] = darkWindow(night)
+  const key = catalog ? visibilityKey(catalog, site, darkStart, darkEnd, minAlt, horizon) : ''
+  const snapshot = useSyncExternalStore(subscribeVis, () => (key && lastVisibility?.key === key ? lastVisibility.value : null))
 
   useEffect(() => {
-    if (!catalog) return
-    const [darkStart, darkEnd] = darkWindow(night)
-    const key = visibilityKey(catalog, site, darkStart, darkEnd, minAlt, horizon)
-    if (lastVisibility?.key === key) {
-      setResult(lastVisibility.value)
-      return
-    }
-    worker ??= new Worker(new URL('../workers/visibility.worker.ts', import.meta.url), { type: 'module' })
+    if (!catalog || lastVisibility?.key === key || lastRequestedVisKey === key) return
+    lastRequestedVisKey = key
+    const w = ensureVisibilityWorker()
     const id = ++requestId
     const needCoords = sentCatalog !== catalog
     if (needCoords) sentCatalog = catalog
@@ -162,20 +191,11 @@ export function useCatalogVisibility(): CatalogVisibility | null {
       minAltDeg: minAlt,
       horizon,
     }
-    const sent = perfNow()
-    const onMessage = (e: MessageEvent<VisibilityResult>) => {
-      if (e.data.id !== id) return
-      measureSince('visibility:roundtrip', sent)
-      const value = { nightDurationMs: darkEnd - darkStart, maxAlt: e.data.maxAlt, hours: e.data.hours, best: e.data.best }
-      lastVisibility = { key, value }
-      setResult(value)
-    }
-    worker.addEventListener('message', onMessage)
-    worker.postMessage(req)
-    return () => worker?.removeEventListener('message', onMessage)
-  }, [catalog, site, night, minAlt, horizon])
+    pendingVis.set(id, { key, darkStart, darkEnd, sent: perfNow() })
+    w.postMessage(req)
+  }, [catalog, site, darkStart, darkEnd, minAlt, horizon, key])
 
-  return result
+  return snapshot
 }
 
 // ---------- Pogoda ----------

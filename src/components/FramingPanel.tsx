@@ -75,6 +75,7 @@ export function FramingPanel() {
   const [err, setErr] = useState<string | null>(null)
   const [coordinateInput, setCoordinateInput] = useState({ ra: '', dec: '' })
   const [coordinateError, setCoordinateError] = useState<string | null>(null)
+  const [paDraft, setPaDraft] = useState<string | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const imgRef = useRef<HTMLImageElement>(null)
   const stretchButtonRef = useRef<HTMLButtonElement>(null)
@@ -156,7 +157,7 @@ export function FramingPanel() {
     load({ ...opts, coarser: 2 })
       .then((blob) => !ctrl.signal.aborted && setImg((prev) => (prev?.key === imageKey && prev.sharp ? prev : { key: imageKey, blob, sharp: false, ...where })))
       .catch((e: Error) => {
-        if (e.name === 'AbortError') throw e
+        if (e.name === 'AbortError' || e instanceof OwnPhotoMissingError) throw e
         previewFailed = true
       })
       .then(() => load(opts))
@@ -174,31 +175,33 @@ export function FramingPanel() {
   // Płaszczyzna styczna wokół środka zdjęcia (nie obiektu): po przesunięciu zdjęcia oba środki się różnią.
   const imgCenter = { raDeg: imageRa!, decDeg: imageDec! }
   const offset = gnomonic(imgCenter, center)
-  // Ostatnie zdjęcie tej warstwy i pola, przesunięte o różnicę środków i bieżące przeciąganie.
-  const shown = img && img.layer === layer && img.fovDeg === imageFov ? img : null
-  const shownAt = shown ? tangentToPixel(gnomonic(imgCenter, shown), imageFov, SIZE) : [SIZE / 2, SIZE / 2]
+  const offsetValid = Number.isFinite(offset.xi) && Number.isFinite(offset.eta)
+  const rawShown = img && img.layer === layer && img.fovDeg === imageFov ? img : null
+  const rawShownAt = rawShown ? tangentToPixel(gnomonic(imgCenter, rawShown), imageFov, SIZE) : [SIZE / 2, SIZE / 2]
+  const shown = rawShown && Number.isFinite(rawShownAt[0]) && Number.isFinite(rawShownAt[1]) ? rawShown : null
+  const shownAt = shown ? rawShownAt : [SIZE / 2, SIZE / 2]
   const shiftX = shownAt[0] - SIZE / 2 + (pan?.[0] ?? 0)
   const shiftY = shownAt[1] - SIZE / 2 + (pan?.[1] ?? 0)
-  const corners = frameCorners(offset, mosaicW, mosaicH, framing.paDeg).map((c) => tangentToPixel(c, imageFov, SIZE))
-  const fovFrames = comparisonOpen
+  const corners = offsetValid ? frameCorners(offset, mosaicW, mosaicH, framing.paDeg).map((c) => tangentToPixel(c, imageFov, SIZE)) : []
+  const fovFrames = !offsetValid ? [] : comparisonOpen
     ? comparedSets.map(({ id, name, color, optics }) => ({
         id, name, color,
         corners: frameCorners(offset, optics.fovWdeg, optics.fovHdeg, framing.paDeg).map((c) => tangentToPixel(c, imageFov, SIZE)),
       }))
     : [{ id: activeEquipmentSetId, name: undefined, color: '#00e0ff', corners }]
   const panelCount = mosaic.cols * mosaic.rows
-  const panels = panelCount > 1
+  const panels = offsetValid && panelCount > 1
     ? mosaicOffsets(offset, optics.fovWdeg, optics.fovHdeg, framing.paDeg, mosaic).map((t) => ({
         center: tangentToPixel(t, imageFov, SIZE),
         corners: frameCorners(t, optics.fovWdeg, optics.fovHdeg, framing.paDeg).map((c) => tangentToPixel(c, imageFov, SIZE)),
       }))
     : []
-  const centerPx = tangentToPixel(offset, imageFov, SIZE)
-  const topMid: [number, number] = [(corners[0][0] + corners[1][0]) / 2, (corners[0][1] + corners[1][1]) / 2]
+  const centerPx = offsetValid ? tangentToPixel(offset, imageFov, SIZE) : [SIZE / 2, SIZE / 2]
+  const topMid: [number, number] = corners.length >= 2 ? [(corners[0][0] + corners[1][0]) / 2, (corners[0][1] + corners[1][1]) / 2] : [centerPx[0], centerPx[1]]
   const upLen = Math.hypot(topMid[0] - centerPx[0], topMid[1] - centerPx[1]) || 1
   const up: [number, number] = [(topMid[0] - centerPx[0]) / upLen, (topMid[1] - centerPx[1]) / upLen]
   const shortSide = (c: [number, number][]) => Math.min(Math.hypot(c[1][0] - c[0][0], c[1][1] - c[0][1]), Math.hypot(c[3][0] - c[0][0], c[3][1] - c[0][1]))
-  const handleR = Math.max(HANDLE_MIN_R, shortSide(corners) * HANDLE_R)
+  const handleR = corners.length >= 4 ? Math.max(HANDLE_MIN_R, shortSide(corners) * HANDLE_R) : HANDLE_MIN_R
   const panelFont = panels.length ? Math.min(28, Math.max(10, shortSide(panels[0].corners) * 0.14)) : 0
   const setMosaic = (patch: Partial<Mosaic>) => setFraming({ mosaic: { ...mosaic, ...patch } })
   const planItem = plan.find((p) => p.objectId === o.id)
@@ -321,7 +324,7 @@ export function FramingPanel() {
                 {item.name && <title>{item.name}</title>}
               </polygon>
             ))}
-            {frameVisible && !comparisonOpen && (<>
+            {frameVisible && !comparisonOpen && offsetValid && (<>
             {panels.map((p, k) => (
               <g key={k} style={{ pointerEvents: 'none' }}>
                 <polygon points={p.corners.map((c) => c.join(',')).join(' ')} fill="none" stroke="#00e0ff" strokeOpacity="0.7" strokeWidth="1.2" strokeDasharray="6 4" />
@@ -442,8 +445,23 @@ export function FramingPanel() {
         <div className="field">
           <span className="label">Kąt pozycyjny (PA)</span>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <Range min={0} max={359} value={framing.paDeg} onChange={(e) => setFraming({ paDeg: Number(e.target.value) })} style={{ flex: 1 }} />
-            <input className="control figures" aria-label="Kąt pozycyjny" style={{ width: 64 }} type="number" min={0} max={359} value={framing.paDeg} onChange={(e) => setFraming({ paDeg: ((Number(e.target.value) % 360) + 360) % 360 })} />
+            <Range min={0} max={359} value={framing.paDeg} onChange={(e) => { setPaDraft(null); setFraming({ paDeg: Number(e.target.value) }) }} style={{ flex: 1 }} />
+            <input
+              className="control figures"
+              aria-label="Kąt pozycyjny"
+              style={{ width: 64 }}
+              type="number"
+              min={0}
+              max={359}
+              value={paDraft ?? String(framing.paDeg)}
+              onChange={(e) => {
+                const raw = e.target.value
+                setPaDraft(raw)
+                const n = Number(raw)
+                if (raw.trim() !== '' && Number.isFinite(n)) setFraming({ paDeg: ((n % 360) + 360) % 360 })
+              }}
+              onBlur={() => setPaDraft(null)}
+            />
           </div>
         </div>
         <div className="field">
@@ -474,7 +492,7 @@ export function FramingPanel() {
         </div>
         <div className="framing-button-row">
           <button className="button small" onClick={() => { setPhotoCenter({ objectIndex: o.i, raDeg: o.raDeg, decDeg: o.decDeg }); setFraming({ raDeg: null, decDeg: null }) }}>Wyśrodkuj</button>
-          <button className="button small" onClick={() => setFraming({ paDeg: (framing.paDeg - 90 + 360) % 360 })}>+90°</button>
+          <button className="button small" onClick={() => { setPaDraft(null); setFraming({ paDeg: ((framing.paDeg + 90) % 360 + 360) % 360 }) }}>+90°</button>
         </div>
         {!comparisonOpen && (
           <div className="field">

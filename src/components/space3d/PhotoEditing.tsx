@@ -184,7 +184,7 @@ export function PhotoCutEditor({ session, regressorJobs }: { session: PhotoSessi
         </optgroup>)}
       </select></label>
       {!hasDistance(active) && <p className="photo-notice">{active.distLy ? `Niepewność powyżej ${MAX_RELATIVE_UNCERTAINTY * 100} %: obiekt nie trafia do 3D.` : 'Bez ustalonej odległości obiekt nie trafia do 3D.'}</p>}
-      {active.distanceRef && <a href={`https://ui.adsabs.harvard.edu/abs/${encodeURIComponent(active.distanceRef)}/abstract`} target="_blank" rel="noreferrer">Publikacja źródłowa ↗</a>}
+      {active.distanceRef && <a href={`https://ui.adsabs.harvard.edu/abs/${encodeURIComponent(active.distanceRef)}/abstract`} target="_blank" rel="noopener noreferrer">Publikacja źródłowa ↗</a>}
       <div className="photo-distance-status" aria-live="polite">
         {activeRegressorNotice && <p className="photo-notice">{activeRegressorNotice}</p>}
         {!distanceData && <p className="dim">Pobieranie pomiarów…</p>}

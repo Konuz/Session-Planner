@@ -38,13 +38,16 @@ export const publicationYear = (ref: string) => Number(ref.match(/^(\d{4})/)?.[1
 export function newestCutMeasurement(cut: CutDistance, measurements: readonly PhotoDistance[]): CutDistance | null {
   if (cut.distanceOrigin === 'user') return null
   const inherited = cut.distanceScope === 'remnant'
+  const cutValid = hasDistance(cut)
   let year = cut.distLy === null || cut.distanceOrigin === 'regressor' || inherited ? -1 : publicationYear(cut.distanceRef)
   let best: PhotoDistance | null = null
   for (const m of measurements) {
     if (m.distanceScope === 'remnant' || (inherited && (m.distanceScope !== 'object' || !hasDistance(m)))) continue
     if (m.distLy === null || !Number.isFinite(m.distLy) || m.distLy <= 0) continue
+    const candidateValid = hasDistance(m)
+    if (cutValid && !candidateValid) continue
     const candidateYear = publicationYear(m.distanceRef)
-    if (candidateYear > year) {
+    if (candidateYear > year || (candidateYear === year && candidateValid && best && !hasDistance(best))) {
       best = m
       year = candidateYear
     }
@@ -213,7 +216,11 @@ export function refreshCutDistances<P extends { cuts: PhotoCut[]; stars: { stars
     if (cut.distanceOrigin === 'published' && !object.unresolved) {
       if (next.distanceScope === 'remnant') {
         if (cut.distanceScope === 'object' && hasDistance(cut)) return cut
-      } else if (next.distLy === null || publicationYear(cut.distanceRef) >= publicationYear(next.distanceRef)) return cut
+      } else if (hasDistance(cut) && !hasDistance(next)) {
+        return cut
+      } else if (next.distLy === null || publicationYear(cut.distanceRef) >= publicationYear(next.distanceRef)) {
+        if (hasDistance(cut) || !hasDistance(next)) return cut
+      }
     }
     // Wartość regresora zostaje, dopóki katalog lub gwiazda oświetlająca nie dadzą lepszej.
     if (next.distLy === null && cut.distanceOrigin === 'regressor' && !object.unresolved) return cut
@@ -226,8 +233,8 @@ export function refreshCutDistances<P extends { cuts: PhotoCut[]; stars: { stars
 
 /** Wynik wrappera regresora (scripts/regressor/cut_distance.py). */
 export type RegressorResult =
-  | { status: 'ok'; kind: 'group'; members: number; distance_pc: number; lo_pc: number; hi_pc: number; cone_deg: number; sigma_vt_kms?: number | null }
-  | { status: 'ok'; kind: 'cf4'; distance_pc: number; lo_pc: number; hi_pc: number }
+  | { status: 'ok'; kind: 'group'; members: number; distance_pc: number; lo_pc: number | null; hi_pc: number | null; cone_deg: number; sigma_vt_kms?: number | null }
+  | { status: 'ok'; kind: 'cf4'; distance_pc: number; lo_pc: number | null; hi_pc: number | null; members?: number }
   | { status: 'ok'; kind: 'sdss_z'; z_helio: number }
   | { status: 'abstain'; reason: string }
   | { status: 'error'; message: string }
@@ -276,12 +283,16 @@ export function regressorDistance(result: RegressorResult, raDeg: number, decDeg
     if (!z) return null
     d = regressorFields(z.distLy, z.uncertaintyLy, 'redshift', `z = ${result.z_helio.toFixed(5).replace('.', ',')} z widma SDSS, cz_CMB = ${Math.round(z.czCmb)} km/s, H₀ = 70`)
   } else {
-    if (![result.distance_pc, result.lo_pc, result.hi_pc].every(Number.isFinite) || result.distance_pc <= 0) return null
+    if (!Number.isFinite(result.distance_pc) || result.distance_pc <= 0) return null
     if (result.kind === 'group' && result.members < 5) return null
-    const sigma = (result.hi_pc - result.lo_pc) / 2 * LY_PER_PC
+    const hasBounds = result.lo_pc !== null && result.hi_pc !== null && Number.isFinite(result.lo_pc) && Number.isFinite(result.hi_pc) && result.hi_pc >= result.lo_pc
+    const sigma = hasBounds ? (result.hi_pc! - result.lo_pc!) / 2 * LY_PER_PC : null
+    const cf4Method = (result.members ?? 1) > 1
+      ? `moduł odległości grupy Cosmicflows-4 (${result.members} galaktyk)`
+      : 'moduł odległości Cosmicflows-4 (dopasowanie ≤ 15″)'
     d = result.kind === 'group'
       ? regressorFields(result.distance_pc * LY_PER_PC, sigma, 'population', `grupa ${result.members} gwiazd Gaia DR3 (HDBSCAN 5D + MLE paralaks${result.sigma_vt_kms ? `, σv ${result.sigma_vt_kms.toFixed(1).replace('.', ',')} km/s` : ''}), stożek ${result.cone_deg.toFixed(2).replace('.', ',')}°`)
-      : regressorFields(result.distance_pc * LY_PER_PC, sigma, 'object', 'moduł odległości Cosmicflows-4 (dopasowanie ≤ 15″)')
+      : regressorFields(result.distance_pc * LY_PER_PC, sigma, (result.members ?? 1) > 1 ? 'population' : 'object', cf4Method)
   }
   return hasDistance(d) ? d : null
 }

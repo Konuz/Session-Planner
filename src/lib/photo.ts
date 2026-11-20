@@ -110,6 +110,7 @@ function migrateCut(cut: StoredCut): PhotoCut {
 export function migratePhotoProject(stored: unknown): PhotoProject | null {
   if (!stored || typeof stored !== 'object') return null
   const project = stored as Omit<PhotoProject, 'version' | 'stars' | 'cuts'> & { version: unknown; stars?: unknown; cuts: StoredCut[] }
+  if (typeof project.id !== 'string' || !project.id || typeof project.width !== 'number' || !Number.isFinite(project.width) || project.width <= 0 || typeof project.height !== 'number' || !Number.isFinite(project.height) || project.height <= 0 || !project.astrometry || typeof project.astrometry !== 'object' || !Array.isArray(project.cuts)) return null
   const stars = project.version !== 1 && project.stars && Array.isArray((project.stars as PhotoStars).stars) ? project.stars as PhotoStars : null
   if (project.version === 1 || project.version === 2) return { ...project, version: 3, stars, cuts: project.cuts.map(migrateCut) }
   if (project.version === 3) return { ...project, version: 3, stars, cuts: project.cuts as PhotoCut[] }

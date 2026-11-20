@@ -1,23 +1,48 @@
+import contextlib
+import hashlib
+import json
+import logging
+import os
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
-import hashlib, json, logging, os, re, sys as _sys, warnings
-import astropy.units as u, numpy as np, pandas as pd, pyvo, requests
+from datetime import UTC, datetime
+from io import StringIO
+
+import astropy.units as u
+import astroquery.exceptions as aq_exc
+import numpy as np
+import pandas as pd
+import pyvo
+import requests
 from astropy import log as _astropy_log
 from astropy.coordinates import SkyCoord, match_coordinates_sky
 from astroquery.sdss import SDSS
 from rich.console import Console
-from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 from zero_point import zpt
 
-warnings.filterwarnings("ignore")
 _astropy_log.setLevel("ERROR")
 for _lg in ("astroquery", "pyvo"):
     logging.getLogger(_lg).setLevel(logging.ERROR)
-with open(os.devnull, "w") as _devnull:
-    _old_stdout, _sys.stdout = _sys.stdout, _devnull
-    from astroquery.gaia import Gaia
-    _sys.stdout = _old_stdout
 
+TAP_ERRORS = (
+    requests.RequestException,
+    pyvo.dal.DALAccessError,
+    aq_exc.RemoteServiceError,
+    aq_exc.TimeoutError,
+    aq_exc.TableParseError,
+    ValueError,
+    KeyError,
+    RuntimeError,
+    OSError,
+)
 EXTENDED_OTYPES = {"HIIReg", "HII", "OpenCluster", "OpC", "Cl*", "Ass*", "Neb", "RfNeb", "RefNeb", "RNe", "GalNeb", "GNe", "EmissionNeb", "DarkNeb", "DNe", "Glb", "Globule", "MolCld", "MoC", "Cloud", "StarFormingReg", "SFR", "SNR", "PN"}
 DARK_CLOUD_OTYPES = {"DarkNeb", "DNe", "Glb", "Globule", "MolCld", "MoC", "Cloud", "StarFormingReg", "SFR"}
 EXTENDED_PREFIXES = ("LDN ", "BARNARD ", "CB ", "BHR ", "DC ", "SH2-", "IC ", "NGC ")
@@ -48,7 +73,7 @@ PARAM_GROUPS = [
 def normalize_target_key(name: str) -> str:
     s = re.sub(r"\s+", " ", (name or "").strip())
     for pat, rep in ((r"^[Bb](?:arnard)?\s*(\d+)$", r"BARNARD \1"), (r"^[Ll](?:[Dd][Nn])?\s*(\d+)$", r"LDN \1"), (r"^[Ii][Cc]\s*(\d+)$", r"IC \1")):
-        s = re.sub(pat, rep, s, flags=re.I)
+        s = re.sub(pat, rep, s, flags=re.IGNORECASE)
     return CURATED_ALIASES.get(s.upper(), s.upper())
 
 def is_extended_target(obj_type: str, name: str = "", canonical_name: str = "") -> bool:
@@ -69,7 +94,7 @@ def lookup_literature_distance(name: str, canonical_name: str = "", ra: float | 
 
 def resolve_name(name: str) -> dict:
     norm_key = normalize_target_key(name)
-    prov = {"service": "MAST.Name.Lookup+VizieR_VII_7A_J_A+A_633_A51", "version": "2026.11-DR3", "timestamp_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "query_sha256": hashlib.sha256(norm_key.encode()).hexdigest()[:12]}
+    prov = {"service": "MAST.Name.Lookup+VizieR_VII_7A_J_A+A_633_A51", "version": "2026.11-DR3", "timestamp_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"), "query_sha256": hashlib.sha256(norm_key.encode()).hexdigest()[:12]}
     if (c := CURATED_CLOUDS.get(norm_key)) is not None:
         return {"ra": c["ra"], "dec": c["dec"], "input_name": name, "canonical_name": c["canonical_name"], "object_type": c["object_type"], "is_extended": True, "resolver": "Curated_VizieR_SIMBAD", "radius_deg": c["radius_deg"], "opacity_class": c["opacity_class"], "v_lsr_kms": c["v_lsr_kms"], "ppv_components": c["ppv_components"], "mask_id": c["mask_id"], "provenance": prov}
     q_str = norm_key.title() if norm_key.startswith("BARNARD ") else name
@@ -111,21 +136,36 @@ def compute_nicer_extinction(df: pd.DataFrame, r_on_deg: float | None = None) ->
     return np.clip(np.where(w_tot > 0.0, num / np.where(w_tot > 0.0, w_tot, 1.0), np.nan), 0.0, 35.0)
 
 def feature_covariance(df: pd.DataFrame, columns: list[str]) -> np.ndarray:
-    total = np.hypot(df["pmra"], df["pmdec"]).replace(0, np.nan).to_numpy()
+    n = len(df)
+    pmra = df["pmra"].to_numpy(dtype=float) if "pmra" in df else np.full(n, np.nan)
+    pmdec = df["pmdec"].to_numpy(dtype=float) if "pmdec" in df else np.full(n, np.nan)
+    total = np.hypot(pmra, pmdec)
+    lum = df["lum_flame"].to_numpy(dtype=float) if "lum_flame" in df else np.full(n, np.nan)
+    rad = df["radius_gspphot"].to_numpy(dtype=float) if "radius_gspphot" in df else np.full(n, np.nan)
+    d_lum, d_rad, d_pmra, d_pmdec = np.full(n, np.nan), np.full(n, np.nan), np.full(n, np.nan), np.full(n, np.nan)
+    ok_lum, ok_rad, ok_pm = lum > 1e-4, rad > 1e-2, np.isfinite(total) & (total > 0)
+    d_lum[ok_lum] = 1.0 / (lum[ok_lum] * np.log(10))
+    d_rad[ok_rad] = 1.0 / (rad[ok_rad] * np.log(10))
+    d_pmra[ok_pm], d_pmdec[ok_pm] = pmra[ok_pm] / total[ok_pm], pmdec[ok_pm] / total[ok_pm]
     derived = {
-        "j_k": {"j_m": 1, "k_m": -1}, "g_k": {"phot_g_mean_mag": 1, "k_m": -1}, "w1_w2": {"w1mpro": 1, "w2mpro": -1}, "bp_rp": {"phot_bp_mean_mag": 1, "phot_rp_mean_mag": -1},
-        "log_lum_flame": {"lum_flame": 1 / (df["lum_flame"].to_numpy(dtype=float) * np.log(10))},
-        "log_rad_gsp": {"radius_gspphot": 1 / (df["radius_gspphot"].to_numpy(dtype=float) * np.log(10))},
-        "pm_tot": {"pmra": df["pmra"].to_numpy() / total, "pmdec": df["pmdec"].to_numpy() / total},
+        "j_k": {"j_m": 1, "k_m": -1}, "g_k": {"phot_g_mean_mag": 1, "k_m": -1},
+        "w1_w2": {"w1mpro": 1, "w2mpro": -1}, "bp_rp": {"phot_bp_mean_mag": 1, "phot_rp_mean_mag": -1},
+        "log_lum_flame": {"lum_flame": d_lum}, "log_rad_gsp": {"radius_gspphot": d_rad},
+        "pm_tot": {"pmra": d_pmra, "pmdec": d_pmdec},
     }
     basis = list(dict.fromkeys([c for c in columns if c not in derived] + [c for terms in derived.values() for c in terms]))
-    n, d = len(df), len(basis)
+    d = len(basis)
     errors = np.column_stack([df[f"{c}_error"].to_numpy(dtype=float) if f"{c}_error" in df else np.full(n, np.nan) for c in basis])
+    dec_rad = np.deg2rad(df["dec"].to_numpy(dtype=float)) if "dec" in df else np.zeros(n)
     for j, col in enumerate(basis):
         if col in {"ra", "dec"}:
-            errors[:, j] /= 3.6e6 * (np.cos(np.deg2rad(df["dec"].to_numpy())) if col == "ra" else 1.0)
+            scale = np.cos(dec_rad) if col == "ra" else 1.0
+            errors[:, j] /= 3.6e6 * np.where(np.abs(scale) > 1e-6, scale, np.nan)
         if col.startswith("phot_") and col.endswith("_mag") and (ratio := col.removesuffix("_mag") + "_flux_over_error") in df:
-            errors[:, j] = np.where(df[ratio] > 0, 2.5 / np.log(10) / df[ratio], np.nan)
+            r_vals = df[ratio].to_numpy(dtype=float)
+            ok_r = np.isfinite(r_vals) & (r_vals > 0)
+            errors[ok_r, j] = 2.5 / np.log(10) / r_vals[ok_r]
+            errors[~ok_r, j] = np.nan
     errors = np.where(np.isfinite(errors) & (errors >= 0), errors, np.nan)
     covariance = np.zeros((n, d, d))
     covariance[:, np.arange(d), np.arange(d)] = np.nan_to_num(errors) ** 2
@@ -140,11 +180,39 @@ def feature_covariance(df: pd.DataFrame, columns: list[str]) -> np.ndarray:
     for j, col in enumerate(columns):
         for term, deriv in derived.get(col, {col: 1}).items():
             idx = basis.index(term)
-            jacobian[:, j, idx] = np.nan_to_num(deriv)
-            known[:, j] &= np.isfinite(errors[:, idx]) & np.isfinite(deriv)
+            deriv_arr = np.broadcast_to(np.asarray(deriv, dtype=float), n)
+            jacobian[:, j, idx] = np.nan_to_num(deriv_arr, nan=0.0, posinf=0.0, neginf=0.0)
+            known[:, j] &= np.isfinite(errors[:, idx]) & np.isfinite(deriv_arr)
+    jacobian = np.where(known[:, :, None], jacobian, 0.0)
     transformed, diag = jacobian @ covariance @ jacobian.swapaxes(1, 2), np.arange(len(columns))
     transformed[:, diag, diag] = np.where(known, transformed[:, diag, diag], np.nan)
     return transformed
+
+def _derive_features(df: pd.DataFrame) -> pd.DataFrame:
+    optional = {c for _, cols, _ in PARAM_GROUPS for c in cols} | {
+        "j_m", "h_m", "k_m", "w1mpro", "w2mpro", "lum_flame", "radius_gspphot",
+        "phot_bp_mean_mag", "phot_rp_mean_mag", "distance_gspphot", "distance_gspphot_lower",
+        "distance_gspphot_upper", "r_lo_photogeo", "r_hi_photogeo", "sh_dist_pc", "sh_lo_pc", "sh_hi_pc",
+    }
+    col = lambda name: df[name].to_numpy(dtype=float) if name in df else np.full(len(df), np.nan)
+    plx_vals = col("parallax_corr" if "parallax_corr" in df else "parallax")
+    d_naive = np.full(len(df), np.nan)
+    ok_plx = np.isfinite(plx_vals) & (plx_vals > 0.2)
+    d_naive[ok_plx] = 1000.0 / plx_vals[ok_plx]
+    lum, rad = col("lum_flame"), col("radius_gspphot")
+    derived = {
+        "d_naive_pc": d_naive,
+        "pm_tot": np.hypot(col("pmra"), col("pmdec")),
+        "j_k": col("j_m") - col("k_m"),
+        "g_k": col("phot_g_mean_mag") - col("k_m"),
+        "w1_w2": col("w1mpro") - col("w2mpro"),
+        "log_lum_flame": np.log10(np.clip(lum, 1e-4, None)),
+        "log_rad_gsp": np.log10(np.clip(rad, 1e-2, None)),
+        "av_nicer": compute_nicer_extinction(df),
+    }
+    missing_cols = {c: np.nan for c in sorted(optional.difference(df.columns)) if c not in derived}
+    base = df.drop(columns=[c for c in derived if c in df])
+    return pd.concat([base, pd.DataFrame({**missing_cols, **derived}, index=df.index)], axis=1)
 
 def load_multicatalog_dataset(csv_path: str = "data/ic434_multicatalog.csv", filter_ruwe: bool = True) -> pd.DataFrame:
     raw_df = pd.read_csv(csv_path, dtype={"source_id": "Int64"})
@@ -156,34 +224,33 @@ def load_multicatalog_dataset(csv_path: str = "data/ic434_multicatalog.csv", fil
         sidecar = pd.read_csv(sidecar_path, dtype={"source_id": "Int64"}).drop_duplicates("source_id")
         raw_df = raw_df.merge(sidecar[[c for c in sidecar.columns if c == "source_id" or c not in raw_df.columns]], on="source_id", how="left")
     raw_df = apply_gaia_calibration(raw_df)
-    optional = {c for _, cols, _ in PARAM_GROUPS for c in cols} | {"j_m", "h_m", "k_m", "w1mpro", "w2mpro", "lum_flame", "radius_gspphot", "distance_gspphot", "distance_gspphot_lower", "distance_gspphot_upper", "r_lo_photogeo", "r_hi_photogeo", "sh_dist_pc", "sh_lo_pc", "sh_hi_pc"}
-    for column in optional.difference(raw_df.columns):
-        raw_df[column] = np.nan
     ruwe_ok = (raw_df["ruwe"].isna() | (raw_df["ruwe"] < 1.4)) if (filter_ruwe and "ruwe" in raw_df) else True
     df = raw_df[raw_df["r_med_photogeo"].between(50.0001, 2199.9999) & ruwe_ok].copy().reset_index(drop=True)
     for c in [c for c in df.columns if c not in {"source_id", "ra", "dec", "l", "b", "ecl_lat", "zp_applied", "zp_status", "sh_provenance"} and pd.api.types.is_numeric_dtype(df[c]) and not c.endswith("_corr")]:
-        df[c] = np.where((vals := pd.to_numeric(df[c], errors="coerce")) < -90.0, np.nan, vals)
-    plx_col = "parallax_corr" if "parallax_corr" in df else "parallax"
-    df["d_naive_pc"], df["pm_tot"] = np.where(df[plx_col] > 0.2, 1000.0 / df[plx_col], np.nan), np.hypot(df["pmra"], df["pmdec"])
-    df["j_k"], df["g_k"], df["w1_w2"] = df["j_m"] - df["k_m"], df["phot_g_mean_mag"] - df["k_m"], df["w1mpro"] - df["w2mpro"]
-    df["log_lum_flame"], df["log_rad_gsp"], df["av_nicer"] = np.log10(np.clip(df["lum_flame"], 1e-4, None)), np.log10(np.clip(df["radius_gspphot"], 1e-2, None)), compute_nicer_extinction(df)
+        vals = pd.to_numeric(df[c], errors="coerce")
+        df[c] = np.where(vals < -90.0, np.nan, vals)
+    df = _derive_features(df)
     genuine_sh = df.get("sh_provenance", pd.Series("unavailable", index=df.index)).eq("VizieR:I/354/starhorse2021")
     df.loc[~genuine_sh, ["sh_dist_pc", "sh_lo_pc", "sh_hi_pc"]] = np.nan
     df["sh_provenance"] = np.where(genuine_sh & df["sh_dist_pc"].notna(), "VizieR:I/354/starhorse2021", "unavailable")
     return df
 
 def fetch_all_catalogs(ra: float, dec: float, cone_deg: float, max_stars: int, show_progress: bool = True) -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
+    with contextlib.redirect_stdout(StringIO()):
+        from astroquery.gaia import Gaia
+    c_fn = lambda r_c, d_c: f"1=CONTAINS(POINT('ICRS', {r_c}, {d_c}), CIRCLE('ICRS', {ra}, {dec}, {cone_deg}))"
     def q_gaia(sql):
+        last_err = None
         for fn in (Gaia.launch_job, Gaia.launch_job_async):
             try:
                 return fn(sql).get_results().to_pandas()
-            except Exception:
-                continue
-        return Gaia.launch_job_async(sql).get_results().to_pandas()
+            except TAP_ERRORS as err:
+                last_err = err
+        raise last_err
     def q_irsa(sql):
         try:
             return pyvo.dal.TAPService("https://irsa.ipac.caltech.edu/TAP").search(sql).to_table().to_pandas()
-        except Exception:
+        except TAP_ERRORS:
             fallback_sql = f"SELECT ra, dec, j_m, j_msigcom AS j_m_error, h_m, h_msigcom AS h_m_error, ks_m AS k_m, ks_msigcom AS k_m_error FROM gaiadr1.tmass_original_valid WHERE {c_fn('ra', 'dec')}" if "fp_psc" in sql else f"SELECT ra, dec, w1mpro, w1mpro_error, w2mpro, w2mpro_error, w3mpro, w3mpro_error, w4mpro, w4mpro_error FROM gaiadr1.allwise_original_valid WHERE {c_fn('ra', 'dec')}"
             return q_gaia(fallback_sql)
     q_sdss = lambda: (tbl.to_pandas() if (tbl := SDSS.query_region(SkyCoord(ra=ra * u.deg, dec=dec * u.deg), radius=min(cone_deg * 60.0, 2.9) * u.arcmin, specobj_fields=["ra", "dec", "z", "zErr", "class"])) is not None else pd.DataFrame())
@@ -193,10 +260,10 @@ def fetch_all_catalogs(ra: float, dec: float, cone_deg: float, max_stars: int, s
             response = requests.post("https://tapvizier.cds.unistra.fr/TAPVizieR/tap/sync", data={"REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": "csv", "QUERY": sql}, timeout=6)
             response.raise_for_status()
             if not response.text.lstrip().startswith("<"):
-                frame = pd.read_csv(pd.io.common.StringIO(response.text), dtype={"source_id": "Int64"})
+                frame = pd.read_csv(StringIO(response.text), dtype={"source_id": "Int64"})
                 if ({"source_id", "sh_dist_pc", "sh_lo_pc", "sh_hi_pc"} if is_sh else {"ra", "dec", "dm_cf4", "e_dm"}).issubset(frame.columns):
-                    return frame
-        except Exception:
+                    return frame.drop_duplicates("source_id") if is_sh else frame
+        except TAP_ERRORS:
             pass
         source, cols, max_rows = ("I/354/starhorse2021", "Source,RA_ICRS,DE_ICRS,dist16,dist50,dist84,AV50", "800") if is_sh else ("J/ApJ/944/94/table2", "PGC,RAJ2000,DEJ2000,Vcmb,DM,e_DM", "50")
         for mirror in ("https://vizier.cds.unistra.fr/viz-bin/asu-tsv", "https://vizier.cfa.harvard.edu/viz-bin/asu-tsv", "https://vizier.idia.ac.za/viz-bin/asu-tsv"):
@@ -205,18 +272,19 @@ def fetch_all_catalogs(ra: float, dec: float, cone_deg: float, max_stars: int, s
                 r.raise_for_status()
                 lines = [ln for ln in r.text.splitlines() if ln.strip() and not ln.startswith("#")]
                 if len(lines) < 4:
+                    if f"#Name: {source}" not in r.text:
+                        raise ValueError(f"Incomplete VizieR response from {mirror}")
                     return pd.DataFrame(columns=["source_id", "ra", "dec", "sh_dist_pc", "sh_lo_pc", "sh_hi_pc", "sh_av"] if is_sh else ["PGC", "ra", "dec", "v_cmb_kms", "dm_cf4", "e_dm"])
-                raw = pd.read_csv(pd.io.common.StringIO("\n".join([lines[0]] + [ln for ln in lines[3:] if not set(ln.strip()) <= {"-", "\t", " "}])), sep="\t", skipinitialspace=True)
+                raw = pd.read_csv(StringIO("\n".join([lines[0]] + [ln for ln in lines[3:] if not set(ln.strip()) <= {"-", "\t", " "}])), sep="\t", skipinitialspace=True)
                 if is_sh:
                     return pd.DataFrame({"source_id": pd.to_numeric(raw["Source"], errors="coerce").astype("Int64"), "ra": pd.to_numeric(raw["RA_ICRS"], errors="coerce"), "dec": pd.to_numeric(raw["DE_ICRS"], errors="coerce"), "sh_dist_pc": pd.to_numeric(raw["dist50"], errors="coerce") * 1000.0, "sh_lo_pc": pd.to_numeric(raw["dist16"], errors="coerce") * 1000.0, "sh_hi_pc": pd.to_numeric(raw["dist84"], errors="coerce") * 1000.0, "sh_av": pd.to_numeric(raw["AV50"], errors="coerce")}).dropna(subset=["source_id", "sh_dist_pc"]).drop_duplicates("source_id")
                 return pd.DataFrame({"PGC": pd.to_numeric(raw["PGC"], errors="coerce"), "ra": pd.to_numeric(raw["RAJ2000"], errors="coerce"), "dec": pd.to_numeric(raw["DEJ2000"], errors="coerce"), "v_cmb_kms": pd.to_numeric(raw["Vcmb"], errors="coerce"), "dm_cf4": pd.to_numeric(raw["DM"], errors="coerce"), "e_dm": pd.to_numeric(raw["e_DM"], errors="coerce")}).dropna(subset=["ra", "dec", "dm_cf4"])
-            except Exception as err:
+            except TAP_ERRORS as err:
                 last_err = err
         raise last_err
-    c_fn = lambda r_c, d_c: f"1=CONTAINS(POINT('ICRS', {r_c}, {d_c}), CIRCLE('ICRS', {ra}, {dec}, {cone_deg}))"
     cg, irsa_c = c_fn("g.ra", "g.dec"), f"CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', {ra}, {dec}, {cone_deg})) = 1"
     gaia_queries = {
-        "base": f"SELECT TOP {max_stars} g.source_id, g.ra, g.dec, g.l, g.b, g.ecl_lat, g.parallax, g.parallax_error, g.pmra, g.pmdec, g.pmra_error, g.pmdec_error, g.parallax_pmra_corr, g.parallax_pmdec_corr, g.pmra_pmdec_corr, g.radial_velocity, g.radial_velocity_error, g.ruwe, g.astrometric_params_solved, g.nu_eff_used_in_astrometry, g.pseudocolour, g.phot_g_mean_mag, g.phot_bp_mean_mag, g.phot_rp_mean_mag, g.bp_rp, g.teff_gspphot, g.logg_gspphot, g.mh_gspphot, g.azero_gspphot, g.ebpminrp_gspphot, g.distance_gspphot, g.distance_gspphot_lower, g.distance_gspphot_upper, d.r_med_geo, d.r_lo_geo, d.r_hi_geo, d.r_med_photogeo, d.r_lo_photogeo, d.r_hi_photogeo, DISTANCE(POINT('ICRS', g.ra, g.dec), POINT('ICRS', {ra}, {dec})) * 3600.0 AS sep_arcsec FROM gaiadr3.gaia_source AS g JOIN external.gaiaedr3_distance AS d USING (source_id) WHERE {cg} AND g.parallax IS NOT NULL AND g.parallax_over_error > 1.5 AND (g.ruwe < 1.4 OR g.ruwe IS NULL) ORDER BY g.parallax_over_error DESC",
+        "base": f"SELECT TOP {max_stars} g.source_id, g.ra, g.dec, g.ra_error, g.dec_error, g.l, g.b, g.ecl_lat, g.parallax, g.parallax_error, g.pmra, g.pmdec, g.pmra_error, g.pmdec_error, g.parallax_pmra_corr, g.parallax_pmdec_corr, g.pmra_pmdec_corr, g.radial_velocity, g.radial_velocity_error, g.ruwe, g.astrometric_params_solved, g.nu_eff_used_in_astrometry, g.pseudocolour, g.phot_g_mean_mag, g.phot_g_mean_flux_over_error, g.phot_bp_mean_mag, g.phot_bp_mean_flux_over_error, g.phot_rp_mean_mag, g.phot_rp_mean_flux_over_error, g.bp_rp, g.teff_gspphot, g.logg_gspphot, g.mh_gspphot, g.azero_gspphot, g.ebpminrp_gspphot, g.distance_gspphot, g.distance_gspphot_lower, g.distance_gspphot_upper, d.r_med_geo, d.r_lo_geo, d.r_hi_geo, d.r_med_photogeo, d.r_lo_photogeo, d.r_hi_photogeo, DISTANCE(POINT('ICRS', g.ra, g.dec), POINT('ICRS', {ra}, {dec})) * 3600.0 AS sep_arcsec FROM gaiadr3.gaia_source AS g JOIN external.gaiaedr3_distance AS d USING (source_id) WHERE {cg} AND g.parallax IS NOT NULL AND g.parallax_over_error > 1.5 AND (g.ruwe < 1.4 OR g.ruwe IS NULL) ORDER BY g.parallax_over_error DESC",
         "flame": f"SELECT TOP 2000 g.source_id, ap.radius_gspphot, ap.lum_flame, ap.radius_flame, ap.mass_flame, ap.age_flame, ap.distance_msc, ap.distance_msc_lower, ap.distance_msc_upper FROM gaiadr3.gaia_source AS g JOIN gaiadr3.astrophysical_parameters AS ap USING (source_id) WHERE {cg}",
         "gspc": f"SELECT TOP 2000 g.source_id, sp.v_jkc_mag, sp.b_jkc_mag, sp.i_jkc_mag, sp.g_sdss_mag, sp.r_sdss_mag, sp.i_sdss_mag FROM gaiadr3.gaia_source AS g JOIN gaiadr3.synthetic_photometry_gspc AS sp USING (source_id) WHERE {cg}",
         "catwise": f"SELECT TOP 2500 ra_icrs AS ra, de_icrs AS dec, w1mpro_pm, w2mpro_pm, pm_ra AS cw_pmra, pm_de AS cw_pmdec FROM external.catwise2020 WHERE {c_fn('ra_icrs', 'de_icrs')}",
@@ -226,8 +294,14 @@ def fetch_all_catalogs(ra: float, dec: float, cone_deg: float, max_stars: int, s
         "tycho2": f"SELECT ra_deg AS ra, de_deg AS dec, bt_mag, vt_mag FROM public.tycho2 WHERE {c_fn('ra_deg', 'de_deg')}",
         "hipparcos2": f"SELECT hip, ra, dec, plx AS hip_plx, e_plx AS hip_e_plx, hp_mag, b_v AS hip_bv, DISTANCE(POINT('ICRS', ra, dec), POINT('ICRS', {ra}, {dec})) * 3600.0 AS sep_arcsec FROM public.hipparcos_newreduction WHERE {c_fn('ra', 'dec')} ORDER BY sep_arcsec ASC",
     }
-    irsa_queries = {"tmass": f"SELECT ra, dec, j_m, h_m, k_m FROM fp_psc WHERE {irsa_c}", "allwise": f"SELECT ra, dec, w1mpro, w2mpro, w3mpro, w4mpro FROM allwise_p3as_psd WHERE {irsa_c}"}
-    viz_queries = {"starhorse": f"SELECT TOP 1000 Source AS source_id, RA_ICRS AS ra, DE_ICRS AS dec, dist50 * 1000.0 AS sh_dist_pc, dist16 * 1000.0 AS sh_lo_pc, dist84 * 1000.0 AS sh_hi_pc, AV50 AS sh_av FROM \"I/354/starhorse2021\" WHERE {c_fn('RA_ICRS', 'DE_ICRS')}", "cosmicflows4": f"SELECT TOP 50 PGC, RAJ2000 AS ra, DEJ2000 AS dec, DM AS dm_cf4, e_DM AS e_dm, Vcmb AS v_cmb_kms FROM \"J/ApJ/944/94/table2\" WHERE {c_fn('RAJ2000', 'DEJ2000')}"}
+    irsa_queries = {
+        "tmass": f"SELECT ra, dec, j_m, j_msigcom AS j_m_error, h_m, h_msigcom AS h_m_error, k_m, k_msigcom AS k_m_error FROM fp_psc WHERE {irsa_c}",
+        "allwise": f"SELECT ra, dec, w1mpro, w1sigmpro AS w1mpro_error, w2mpro, w2sigmpro AS w2mpro_error, w3mpro, w3sigmpro AS w3mpro_error, w4mpro, w4sigmpro AS w4mpro_error FROM allwise_p3as_psd WHERE {irsa_c}",
+    }
+    viz_queries = {
+        "starhorse": f"SELECT TOP 1000 Source AS source_id, RA_ICRS AS ra, DE_ICRS AS dec, dist50 * 1000.0 AS sh_dist_pc, dist16 * 1000.0 AS sh_lo_pc, dist84 * 1000.0 AS sh_hi_pc, AV50 AS sh_av FROM \"I/354/starhorse2021\" WHERE {c_fn('RA_ICRS', 'DE_ICRS')}",
+        "cosmicflows4": f"SELECT TOP 50 PGC, RAJ2000 AS ra, DEJ2000 AS dec, DM AS dm_cf4, e_DM AS e_dm, Vcmb AS v_cmb_kms FROM \"J/ApJ/944/94/table2\" WHERE {c_fn('RAJ2000', 'DEJ2000')}",
+    }
     with ThreadPoolExecutor(max_workers=14) as ex:
         futs = {**{k: ex.submit(q_gaia, sql) for k, sql in gaia_queries.items()}, **{k: ex.submit(q_irsa, sql) for k, sql in irsa_queries.items()}, **{k: ex.submit(q_vizier, sql) for k, sql in viz_queries.items()}, "sdss_spec": ex.submit(q_sdss)}
         fut_to_key, tables, statuses = {f: k for k, f in futs.items()}, {}, []
@@ -236,9 +310,12 @@ def fetch_all_catalogs(ra: float, dec: float, cone_deg: float, max_stars: int, s
             for f in as_completed(fut_to_key):
                 k, ex_err = fut_to_key[f], f.exception()
                 tables[k] = f.result() if ex_err is None else pd.DataFrame()
-                statuses.append({"catalog": k, "status": "error" if ex_err else ("ok" if len(tables[k]) else "empty"), "rows": len(tables[k]), "error": str(ex_err) if ex_err else "", "query_sha256": hashlib.sha256(({**gaia_queries, **irsa_queries, **viz_queries}.get(k, "SDSS.query_region")).encode()).hexdigest(), "timestamp_utc": datetime.now(timezone.utc).isoformat()})
+                status = "error" if ex_err else "empty"
+                if not ex_err and len(tables[k]):
+                    status = "ok"
+                statuses.append({"catalog": k, "status": status, "rows": len(tables[k]), "error": str(ex_err) if ex_err else "", "query_sha256": hashlib.sha256(({**gaia_queries, **irsa_queries, **viz_queries}.get(k, "SDSS.query_region")).encode()).hexdigest(), "timestamp_utc": datetime.now(UTC).isoformat()})
                 prog.update(task, advance=1, description=f"Querying 14 catalogs [dim]({k})[/dim]")
-    tables["provenance"] = pd.DataFrame([{"service": "Gaia_TAP_DR3+IRSA_TAP+SDSS_DR17+VizieR_TAP", "version": "GaiaDR3_BailerJones2021_StarHorse2021_CF4", "query_sha256": hashlib.sha256(gaia_queries["base"].encode()).hexdigest()[:12], "timestamp_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}])
+    tables["provenance"] = pd.DataFrame([{"service": "Gaia_TAP_DR3+IRSA_TAP+SDSS_DR17+VizieR_TAP", "version": "GaiaDR3_BailerJones2021_StarHorse2021_CF4", "query_sha256": hashlib.sha256(gaia_queries["base"].encode()).hexdigest()[:12], "timestamp_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")}])
     tables["query_status"] = pd.DataFrame(statuses)
     if len(df := tables["base"]) == 0:
         return df, tables
@@ -247,13 +324,22 @@ def fetch_all_catalogs(ra: float, dec: float, cone_deg: float, max_stars: int, s
     df = apply_gaia_calibration(df)
     for aux in ("flame", "gspc", "starhorse"):
         if aux in tables and len(tables[aux]) > 0 and "source_id" in tables[aux]:
-            df = df.merge(tables[aux].drop(columns=[c for c in ("ra", "dec") if c in tables[aux]]), on="source_id", how="left", validate="one_to_one")
+            df = df.merge(tables[aux].drop(columns=[c for c in ("ra", "dec") if c in tables[aux]]).drop_duplicates("source_id"), on="source_id", how="left", validate="one_to_one")
     for column in ("sh_dist_pc", "sh_lo_pc", "sh_hi_pc"):
         if column not in df:
             df[column] = np.nan
     df["sh_provenance"] = np.where(df["sh_dist_pc"].notna(), "VizieR:I/354/starhorse2021", "unavailable")
     base_sc = SkyCoord(ra=df["ra"].to_numpy() * u.deg, dec=df["dec"].to_numpy() * u.deg)
-    ext_specs = [("tmass", ["j_m", "h_m", "k_m"], "", 2.0), ("allwise", ["w1mpro", "w2mpro", "w3mpro", "w4mpro"], "", 2.0), ("catwise", ["w1mpro_pm", "w2mpro_pm", "cw_pmra", "cw_pmdec"], "", 2.0), ("apass", ["vmag", "bmag", "b_v", "g_mag", "r_mag", "i_mag"], "apass_", 2.0), ("sdss_phot", ["sdss_u", "sdss_g", "sdss_r", "sdss_i", "sdss_z"], "", 2.0), ("lamost", ["lamost_z", "mag_ps_g", "mag_ps_r", "mag_ps_i", "mag_ps_z", "mag_ps_y"], "", 2.0), ("tycho2", ["bt_mag", "vt_mag"], "", 2.0), ("hipparcos2", ["hip_plx", "hip_e_plx", "hp_mag", "hip_bv"], "", 5.0)]
+    ext_specs = [
+        ("tmass", ["j_m", "j_m_error", "h_m", "h_m_error", "k_m", "k_m_error"], "", 2.0),
+        ("allwise", ["w1mpro", "w1mpro_error", "w2mpro", "w2mpro_error", "w3mpro", "w3mpro_error", "w4mpro", "w4mpro_error"], "", 2.0),
+        ("catwise", ["w1mpro_pm", "w2mpro_pm", "cw_pmra", "cw_pmdec"], "", 2.0),
+        ("apass", ["vmag", "bmag", "b_v", "g_mag", "r_mag", "i_mag"], "apass_", 2.0),
+        ("sdss_phot", ["sdss_u", "sdss_g", "sdss_r", "sdss_i", "sdss_z"], "", 2.0),
+        ("lamost", ["lamost_z", "mag_ps_g", "mag_ps_r", "mag_ps_i", "mag_ps_z", "mag_ps_y"], "", 2.0),
+        ("tycho2", ["bt_mag", "vt_mag"], "", 2.0),
+        ("hipparcos2", ["hip_plx", "hip_e_plx", "hp_mag", "hip_bv"], "", 5.0),
+    ]
     for tbl_k, cols, pref, max_sep in ext_specs:
         ref_df, df[[pref + c for c in cols]] = tables.get(tbl_k, pd.DataFrame()), np.nan
         if len(ref_df) > 0 and "ra" in ref_df:
@@ -262,8 +348,7 @@ def fetch_all_catalogs(ra: float, dec: float, cone_deg: float, max_stars: int, s
             for c in [c for c in cols if c in ref_df]:
                 vals = pd.to_numeric(ref_df[c], errors="coerce").to_numpy()[idx]
                 df[pref + c] = np.where(ok & (vals >= -90.0), vals, np.nan)
-    df["av_nicer"] = compute_nicer_extinction(df)
-    return df, tables
+    return _derive_features(df), tables
 
 
 if __name__ == "__main__":

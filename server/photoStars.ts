@@ -106,9 +106,20 @@ function propagate(row: Record<string, string>): [number, number] {
   const ra = num(row.ra)!, dec = num(row.dec)!
   const pmra = num(row.pmra), pmdec = num(row.pmdec)
   if (pmra === null || pmdec === null) return [ra, dec]
-  // Ruch własny w mas/rok; pmra zawiera już cos δ. Liniowo wystarcza na dziewięć lat.
-  const nextDec = dec + pmdec * EPOCH_YEARS / 3.6e6
-  return [((ra + pmra * EPOCH_YEARS / 3.6e6 / Math.cos(dec * Math.PI / 180)) % 360 + 360) % 360, nextDec]
+  const deg = Math.PI / 180
+  const a = ra * deg, d = dec * deg
+  const da = (pmra * EPOCH_YEARS / 3.6e6) * deg
+  const dd = (pmdec * EPOCH_YEARS / 3.6e6) * deg
+  const theta = Math.hypot(da, dd)
+  if (theta === 0) return [ra, dec]
+  const cosD = Math.cos(d), sinD = Math.sin(d), cosA = Math.cos(a), sinA = Math.sin(a)
+  const ux = cosD * cosA, uy = cosD * sinA, uz = sinD
+  const tx = -da * sinA - dd * sinD * cosA
+  const ty = da * cosA - dd * sinD * sinA
+  const tz = dd * cosD
+  const c = Math.cos(theta), s = Math.sin(theta) / theta
+  const nx = c * ux + s * tx, ny = c * uy + s * ty, nz = c * uz + s * tz
+  return [((Math.atan2(ny, nx) / deg) % 360 + 360) % 360, Math.atan2(nz, Math.hypot(nx, ny)) / deg]
 }
 
 export function photoStar(row: Record<string, string>, [raDeg, decDeg]: [number, number], [x, y]: [number, number]): PhotoStar {

@@ -1,297 +1,42 @@
-// Stan aplikacji (Zustand). Preferencje, sprzęt, horyzont i plan zapisują się w localStorage.
 import { create } from 'zustand'
-import { persist, type PersistStorage } from 'zustand/middleware'
-import { EMPTY_FILTER, type CatalogFilter, type ObjectType, SKY_GROUPS, type SkyGroup } from '../lib/catalog'
-import type { Mosaic } from '../lib/framing'
+import { persist } from 'zustand/middleware'
+import { EMPTY_FILTER, SKY_GROUPS, type CatalogFilter, type SkyGroup } from '../lib/catalog'
 import type { HorizonPoint } from '../lib/horizon'
 import { nightDateOf } from '../lib/night'
-import { isDomeStyle, type DomeStyle } from '../lib/space3d'
-import { isSkyLook, type SkyLook } from '../lib/hipsSky'
-import { isThumbSource, type ThumbSource } from '../lib/thumbs'
-import { planExposures, type Exposure } from '../lib/exposures'
-import { DEFAULT_WEATHER_PROVIDER, normalizeWeatherProvider, type WeatherProviderId } from '../lib/services'
-import type { Levels } from '../lib/stretch'
+import { isDomeStyle } from '../lib/space3d'
+import { isSkyLook } from '../lib/hipsSky'
+import { isThumbSource } from '../lib/thumbs'
+import { planExposures } from '../lib/exposures'
+import { DEFAULT_WEATHER_PROVIDER, isValidTimeZone, normalizeWeatherProvider } from '../lib/services'
+import {
+  DEFAULT_EQUIPMENT,
+  DEFAULT_EQUIPMENT_SET,
+  HOME,
+  createPersistStorage,
+  normalizeSkyObjectDensity,
+  sanitizeEquipment,
+  sanitizeFilter,
+  sanitizeLocation,
+  updateEquipment,
+  type EquipmentSet,
+  type Location,
+  type State,
+} from './storeHelpers'
 
-export interface Location {
-  name: string
-  region: string
-  latDeg: number
-  lonDeg: number
-  elevationM: number
-  timeZone: string
-}
-
-export const HOME: Location = {
-  name: 'Chrząstawa Wielka',
-  region: 'Dolny Śląsk, Polska',
-  latDeg: 51.09,
-  lonDeg: 17.29,
-  elevationM: 130,
-  timeZone: 'Europe/Warsaw',
-}
-
-export interface Equipment {
-  telescopeId: string
-  telescopeName: string
-  apertureMm: number
-  focalLengthMm: number
-  reducer: number
-  cameraId: string
-  cameraName: string
-  widthPx: number
-  heightPx: number
-  pixelUm: number
-  binning: number
-  mono: boolean
-  seeingArcsec: number
-}
-
-interface EquipmentSet {
-  id: string
-  name: string
-  equipment: Equipment
-}
-
-interface SavedTelescope {
-  id: string
-  name: string
-  apertureMm: number
-  focalLengthMm: number
-  reducer: number
-}
-
-interface SavedCamera {
-  id: string
-  name: string
-  widthPx: number
-  heightPx: number
-  pixelUm: number
-  binning: number
-  mono: boolean
-}
-
-export const DEFAULT_EQUIPMENT: Equipment = {
-  telescopeId: 'william-optics-redcat-51',
-  telescopeName: 'William Optics RedCat 51',
-  apertureMm: 51,
-  focalLengthMm: 250,
-  reducer: 1,
-  cameraId: 'player-one-ares-m-pro',
-  cameraName: 'Player One Ares-M Pro',
-  widthPx: 3008,
-  heightPx: 3008,
-  pixelUm: 3.76,
-  binning: 1,
-  mono: true,
-  seeingArcsec: 2.5,
-}
-
-const DEFAULT_EQUIPMENT_SET: EquipmentSet = { id: '1', name: 'Zestaw 1', equipment: DEFAULT_EQUIPMENT }
-
-export interface Framing {
-  /** Środek kadru J2000 (null = środek obiektu). */
-  raDeg: number | null
-  decDeg: number | null
-  paDeg: number
-  /** Siatka paneli; brak = jeden kadr. */
-  mosaic?: Mosaic
-}
-
-export type FramingLayer = 'red' | 'color' | 'ps1' | 'nsns' | 'nsnsRgb'
-
-export interface FramingViewState {
-  layer: FramingLayer
-  zoom: number
-  comparisonOpen: boolean
-  /** null = aktywny zestaw sprzętu. */
-  comparedSetIds: string[] | null
-  candidateId: string
-  frameVisible: boolean
-  photoCenter: { objectIndex: number; raDeg: number; decDeg: number } | null
-}
-
-export interface PlanItem {
-  key: string
-  objectIndex: number
-  objectId: string
-  /** Ręczne okno [ms]; null = okno wyliczone automatycznie. */
-  startMs: number | null
-  endMs: number | null
-  framing: Framing
-  filters: string
-  exposures?: Exposure[]
-  note: string
-}
-
-export type Tab = 'sky' | 'catalog' | 'planner' | 'equipment' | 'horizon'
-export type CenterMode = 'dome' | 'framing'
-
-interface State {
-  tab: Tab
-  catalogPlanMode: 'single' | 'multiple' | null
-  centerMode: CenterMode
-  /** Okno „Pozycja 3D” (modal nad Niebem); bez zapisu. */
-  space3DOpen: boolean
-  location: Location
-  savedLocations: Location[]
-  weatherProvider: WeatherProviderId
-  nightDate: string
-  /** Kursor czasu [ms UTC]; null = środek nocy / teraz. */
-  timeMs: number | null
-  selectedIndex: number | null
-  /** Historia wybranych obiektów w tej sesji (bez zapisu) i pozycja w niej dla strzałek ‹ ›. */
-  history: number[]
-  historyPos: number
-  /** Parametry aktywnego zestawu używane przez kadrowanie i planer. */
-  equipment: Equipment
-  equipmentSets: EquipmentSet[]
-  activeEquipmentSetId: string
-  savedTelescopes: SavedTelescope[]
-  savedCameras: SavedCamera[]
-  minAltDeg: number
-  horizon: HorizonPoint[]
-  framing: Framing
-  framingView: FramingViewState
-  /** Rozciągnięcie zdjęcia kadru (poziomy) osobno dla każdej warstwy; brak wpisu = bez zmian. */
-  framingStretch: Record<string, Levels>
-  plan: PlanItem[]
-  favoriteIds: string[]
-  /** Własne zdjęcia obiektów (rekordy w IndexedDB): identyfikator zdjęcia i wybór moje/domyślne. */
-  ownPhotos: Record<string, { photoId: string; shown: boolean }>
-  filter: CatalogFilter
-  sortBy: 'best' | 'alt' | 'hours' | 'mag' | 'size' | 'name'
-  onlyVisible: boolean
-  minVisibleMinutes: number | 'night'
-  showDecLabels: boolean
-  showLines: boolean
-  showTracks: boolean
-  showArt: boolean
-  showOutlines: boolean
-  /** Krycie konturów mgławic na kopule (0,1–1). */
-  outlinesOpacity: number
-  /** Własne zdjęcia z wyborem „moje” na kopule i krycie tej warstwy (0,1–1). */
-  showOwnPhotos: boolean
-  ownPhotosOpacity: number
-  /** Elipsy obiektów katalogu (wymiary i kąt pozycyjny) na kopule. */
-  showEllipses: boolean
-  showObjectMarkers: boolean
-  /** Grupy katalogów widoczne na kopule (znaczniki, elipsy i kontury). */
-  skyGroups: Record<SkyGroup, boolean>
-  skyObjectDensity: number
-  /** Rodziny katalogów z grupy „Inne” ukryte na kopule (EXTRA_CATALOGS w lib/catalog). */
-  skyExtraHidden: string[]
-  showLabels: boolean
-  showAnnotations: boolean
-  /** Podpisy obiektów tła w widoku 3D (domyślnie wyłączone). */
-  show3DAnnotations: boolean
-  showGalaxyRegions: boolean
-  /** Wygląd kopuł odległości Wszechświata lokalnego w oknie „Pozycja 3D”. */
-  domeStyle: DomeStyle
-  /** Krycie kopuł odległości (0,1–1), mnożone przez wygaszanie warstw. */
-  domeOpacity: number
-  /** Wygląd nieba na kopule widoku Niebo: domyślny albo NSNS true-color. */
-  skyLook: SkyLook
-  /** Źródło miniatur obiektów; NSNS tylko dla dużych pól w pokryciu (`thumbImageOptions`). */
-  thumbSource: ThumbSource
-  annotationColors: Partial<Record<ObjectType, string>>
-  /** Licznik „znajdź obiekt”: zmiana uruchamia animację na kopule. */
-  findPulse: number
-
-  setTab(tab: Tab, catalogPlanMode?: State['catalogPlanMode']): void
-  setCenterMode(mode: CenterMode): void
-  setSpace3DOpen(open: boolean): void
-  setLocation(loc: Location): void
-  saveLocation(loc: Location): void
-  removeLocation(name: string): void
-  setWeatherProvider(provider: WeatherProviderId): void
-  setNightDate(date: string): void
-  setTime(t: number | null): void
-  select(index: number | null, find?: boolean): void
-  /** Poprzedni (-1) albo następny (+1) obiekt z historii, z animacją „znajdź obiekt”. */
-  stepHistory(delta: number): void
-  addEquipmentSet(): void
-  removeEquipmentSet(): void
-  selectEquipmentSet(id: string): void
-  renameEquipmentSet(name: string): void
-  setEquipment(patch: Partial<Equipment>): void
-  addTelescope(): void
-  removeTelescope(): void
-  addCamera(): void
-  removeCamera(): void
-  setMinAlt(v: number): void
-  setMinVisibleMinutes(v: number | 'night'): void
-  setHorizon(points: HorizonPoint[]): void
-  setFraming(patch: Partial<Framing>): void
-  setFramingView(patch: Partial<FramingViewState>): void
-  /** null przywraca domyślne poziomy warstwy. */
-  setFramingStretch(layer: string, levels: Levels | null): void
-  addToPlan(index: number, id: string): void
-  updatePlan(key: string, patch: Partial<PlanItem>): void
-  removeFromPlan(key: string): void
-  movePlan(key: string, delta: number): void
-  toggleFavorite(id: string): void
-  setOwnPhoto(objectId: string, photoId: string): void
-  toggleOwnPhotoShown(objectId: string): void
-  removeOwnPhoto(objectId: string): void
-  clearFavorites(): void
-  setFilter(patch: Partial<CatalogFilter>): void
-  setSort(s: State['sortBy']): void
-  toggleSkyGroup(group: SkyGroup): void
-  setSkyObjectDensity(value: number): void
-  toggleSkyExtra(id: string): void
-  setAnnotationColor(type: ObjectType, color: string): void
-  resetAnnotationColors(): void
-  setOwnPhotosOpacity(value: number): void
-  setOutlinesOpacity(value: number): void
-  setDomeStyle(style: DomeStyle): void
-  setDomeOpacity(value: number): void
-  setSkyLook(look: SkyLook): void
-  setThumbSource(source: ThumbSource): void
-  toggle(key: 'showDecLabels' | 'showLines' | 'showTracks' | 'showArt' | 'showOutlines' | 'showOwnPhotos' | 'showEllipses' | 'showObjectMarkers' | 'showLabels' | 'showAnnotations' | 'show3DAnnotations' | 'showGalaxyRegions' | 'onlyVisible'): void
-}
-
-function normalizeSkyObjectDensity(value: unknown): number {
-  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(100, Math.round(value))) : 100
-}
-
-function updateEquipment(s: State, patch: Partial<Equipment>, removedModel?: 'telescopeId' | 'cameraId') {
-  const equipment = { ...s.equipment, ...patch }
-  return {
-    equipment,
-    equipmentSets: s.equipmentSets.map((item) => {
-      if (item.id === s.activeEquipmentSetId) return { ...item, equipment }
-      if (removedModel && item.equipment[removedModel] === s.equipment[removedModel]) {
-        return { ...item, equipment: { ...item.equipment, ...patch } }
-      }
-      return item
-    }),
-  }
-}
-
-// Porównanie pól przed JSON.stringify: zmiany czasu i kadru nie serializują planu w każdej klatce.
-let lastSaved: Partial<State> | null = null
-const storage: PersistStorage<Partial<State>> = {
-  getItem(name) {
-    try {
-      const raw = localStorage.getItem(name)
-      return raw ? JSON.parse(raw) : null
-    } catch { return null }
-  },
-  setItem(name, value) {
-    const keys = Object.keys(value.state) as (keyof State)[]
-    if (lastSaved && keys.every((k) => Object.is(lastSaved![k], value.state[k]))) return
-    lastSaved = value.state
-    try { localStorage.setItem(name, JSON.stringify(value)) } catch {
-      // Stan pozostaje w pamięci. Bez wyzerowania porównanie wyżej pominęłoby ponowienie tego samego stanu (C18).
-      lastSaved = null
-      console.warn('Nie udało się zapisać ustawień w localStorage (brak miejsca?).')
-    }
-  },
-  removeItem(name) {
-    lastSaved = null
-    try { localStorage.removeItem(name) } catch { /* Magazyn może być niedostępny. */ }
-  },
-}
+export {
+  DEFAULT_EQUIPMENT,
+  HOME,
+  type CenterMode,
+  type Equipment,
+  type EquipmentSet,
+  type Framing,
+  type FramingLayer,
+  type FramingViewState,
+  type Location,
+  type PlanItem,
+  type State,
+  type Tab,
+} from './storeHelpers'
 
 export const useStore = create<State>()(
   persist(
@@ -331,7 +76,6 @@ export const useStore = create<State>()(
       ownPhotos: {},
       filter: EMPTY_FILTER,
       sortBy: 'best',
-      onlyVisible: false,
       minVisibleMinutes: 0,
       showDecLabels: true,
       showLines: true,
@@ -361,14 +105,20 @@ export const useStore = create<State>()(
       setCenterMode: (centerMode) => set({ centerMode }),
       setSpace3DOpen: (space3DOpen) => set({ space3DOpen }),
       setLocation: (location) => set({ location, nightDate: nightDateOf(Date.now(), location.timeZone), timeMs: null }),
-      saveLocation: (loc) => set((s) => ({ savedLocations: [loc, ...s.savedLocations.filter((l) => l.name !== loc.name)].slice(0, 12) })),
-      removeLocation: (name) => set((s) => ({ savedLocations: s.savedLocations.filter((l) => l.name !== name) })),
+      saveLocation: (loc) => set((s) => {
+        const key = `${loc.name}:${loc.latDeg.toFixed(4)}:${loc.lonDeg.toFixed(4)}`
+        return { savedLocations: [loc, ...s.savedLocations.filter((l) => `${l.name}:${l.latDeg.toFixed(4)}:${l.lonDeg.toFixed(4)}` !== key)].slice(0, 12) }
+      }),
+      removeLocation: (target) => set((s) => ({
+        savedLocations: s.savedLocations.filter((l) => typeof target === 'string'
+          ? l.name !== target
+          : `${l.name}:${l.latDeg.toFixed(4)}:${l.lonDeg.toFixed(4)}` !== `${target.name}:${target.latDeg.toFixed(4)}:${target.lonDeg.toFixed(4)}`),
+      })),
       setWeatherProvider: (weatherProvider) => set({ weatherProvider: normalizeWeatherProvider(weatherProvider) }),
       setNightDate: (nightDate) => set({ nightDate, timeMs: null }),
       setTime: (timeMs) => set({ timeMs }),
       select: (selectedIndex, find = true) =>
         set((s) => {
-          // Nowy wybór ucina historię „do przodu” jak w przeglądarce; obiekt zapisany z poprzedniej wizyty otwiera historię.
           let history = s.history.slice(0, s.historyPos + 1)
           if (!history.length && s.selectedIndex !== null) history = [s.selectedIndex]
           if (selectedIndex !== null && history[history.length - 1] !== selectedIndex) history = [...history, selectedIndex]
@@ -376,7 +126,7 @@ export const useStore = create<State>()(
             selectedIndex,
             history,
             historyPos: history.length - 1,
-            framing: selectedIndex === s.selectedIndex ? s.framing : { ...s.framing, raDeg: null, decDeg: null },
+            framing: selectedIndex === s.selectedIndex ? s.framing : { ...s.framing, raDeg: null, decDeg: null, mosaic: undefined },
             findPulse: find ? s.findPulse + 1 : s.findPulse,
           }
         }),
@@ -387,12 +137,13 @@ export const useStore = create<State>()(
           return {
             historyPos,
             selectedIndex: s.history[historyPos],
-            framing: { ...s.framing, raDeg: null, decDeg: null },
+            framing: { ...s.framing, raDeg: null, decDeg: null, mosaic: undefined },
             findPulse: s.findPulse + 1,
           }
         }),
       addEquipmentSet: () => set((s) => {
-        const id = String(Math.max(...s.equipmentSets.map((item) => Number(item.id))) + 1)
+        const numericIds = s.equipmentSets.map((item) => Number(item.id)).filter(Number.isFinite)
+        const id = String(Math.max(0, ...numericIds) + 1)
         const names = new Set(s.equipmentSets.map((item) => item.name))
         let number = s.equipmentSets.length + 1
         while (names.has(`Zestaw ${number}`)) number++
@@ -461,7 +212,7 @@ export const useStore = create<State>()(
         ...updateEquipment(s, { cameraId: 'custom' }, 'cameraId'),
       })),
       setMinAlt: (minAltDeg) => set({ minAltDeg }),
-      setMinVisibleMinutes: (minVisibleMinutes) => set({ minVisibleMinutes, onlyVisible: true }),
+      setMinVisibleMinutes: (minVisibleMinutes) => set({ minVisibleMinutes }),
       setHorizon: (horizon) => set({ horizon }),
       setFraming: (patch) => set((s) => ({ framing: { ...s.framing, ...patch } })),
       setFramingView: (patch) => set((s) => ({ framingView: { ...s.framingView, ...patch } })),
@@ -514,7 +265,6 @@ export const useStore = create<State>()(
         const { [objectId]: _removed, ...rest } = s.ownPhotos
         return { ownPhotos: rest }
       }),
-      // Bez zmiany wartości zostaje ten sam obiekt: katalog nie przelicza listy i nie przewija jej na górę.
       setFilter: (patch) => set((s) => (Object.keys(patch) as (keyof CatalogFilter)[]).every((k) => Object.is(s.filter[k], patch[k])) ? s : { filter: { ...s.filter, ...patch } }),
       setSort: (sortBy) => set({ sortBy }),
       toggleSkyGroup: (group) => set((s) => ({ skyGroups: { ...s.skyGroups, [group]: !s.skyGroups[group] } })),
@@ -532,9 +282,8 @@ export const useStore = create<State>()(
     }),
     {
       name: 'konuzastro-tracker',
-      storage,
+      storage: createPersistStorage(),
       version: 1,
-      // Bez migrate zustand porzuca zapisany stan (plan, ulubione) po podbiciu wersji. Uzupełnianie pól robi merge.
       migrate: (persisted) => persisted as Partial<State>,
       partialize: (s) => ({
         location: s.location,
@@ -553,7 +302,6 @@ export const useStore = create<State>()(
         ownPhotos: s.ownPhotos,
         filter: s.filter,
         sortBy: s.sortBy,
-        onlyVisible: s.onlyVisible,
         minVisibleMinutes: s.minVisibleMinutes,
         showDecLabels: s.showDecLabels,
         showLines: s.showLines,
@@ -578,22 +326,49 @@ export const useStore = create<State>()(
         thumbSource: s.thumbSource,
         annotationColors: s.annotationColors,
       }),
-      // Grupy katalogów dopisane po zapisie stanu startują włączone; stan sprzed poziomów kadru dostaje pusty obiekt.
       merge: (persisted, current) => {
-        const p = persisted as Partial<State> | undefined
-        const equipmentSets = p?.equipmentSets?.length ? p.equipmentSets : [{
+        const p = (persisted && typeof persisted === 'object' ? persisted : undefined) as Partial<State> | undefined
+        const location = sanitizeLocation(p?.location, HOME) ?? HOME
+        const savedLocations = Array.isArray(p?.savedLocations)
+          ? p.savedLocations.map((l) => sanitizeLocation(l, HOME)).filter((l): l is Location => l !== null)
+          : current.savedLocations
+        const rawSets = Array.isArray(p?.equipmentSets)
+          ? p.equipmentSets
+            .filter((item): item is EquipmentSet => !!item && typeof item === 'object' && typeof item.id === 'string' && item.id.length > 0 && typeof item.name === 'string')
+            .map((item) => ({ ...item, equipment: sanitizeEquipment(item.equipment, DEFAULT_EQUIPMENT) }))
+          : []
+        const equipmentSets = rawSets.length ? rawSets : [{
           ...DEFAULT_EQUIPMENT_SET,
-          equipment: { ...DEFAULT_EQUIPMENT, ...p?.equipment },
+          equipment: sanitizeEquipment(p?.equipment, DEFAULT_EQUIPMENT),
         }]
         const activeSet = equipmentSets.find((item) => item.id === p?.activeEquipmentSetId) ?? equipmentSets[0]
-        // Krycie warstw z zapisu przycięte do 10–100% (wartość nieliczbowa = 100%).
         const opacity = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0.1, Math.min(1, v)) : 1)
+        const minAltDeg = typeof p?.minAltDeg === 'number' && Number.isFinite(p.minAltDeg) ? Math.max(0, Math.min(89, p.minAltDeg)) : current.minAltDeg
+        const skyGroupsRaw = p?.skyGroups && typeof p.skyGroups === 'object' ? p.skyGroups : {}
+        const skyGroups = Object.fromEntries(SKY_GROUPS.map((g) => [g, typeof (skyGroupsRaw as Record<string, unknown>)[g] === 'boolean' ? (skyGroupsRaw as Record<string, boolean>)[g] : current.skyGroups[g]])) as Record<SkyGroup, boolean>
+        const sortBy = typeof p?.sortBy === 'string' && ['best', 'alt', 'hours', 'mag', 'size', 'name'].includes(p.sortBy) ? p.sortBy : current.sortBy
+        const minVisibleMinutes = p?.minVisibleMinutes === 'night' || (typeof p?.minVisibleMinutes === 'number' && Number.isFinite(p.minVisibleMinutes) && p.minVisibleMinutes >= 0)
+          ? p.minVisibleMinutes
+          : current.minVisibleMinutes
         return {
-          ...current, ...p, skyGroups: { ...current.skyGroups, ...p?.skyGroups }, framingStretch: { ...p?.framingStretch }, ownPhotos: { ...p?.ownPhotos },
+          ...current, ...p,
+          location,
+          savedLocations: savedLocations.length ? savedLocations : [location],
+          nightDate: nightDateOf(Date.now(), location.timeZone),
+          filter: sanitizeFilter(p?.filter),
+          sortBy,
+          minVisibleMinutes,
+          minAltDeg,
+          horizon: Array.isArray(p?.horizon) ? p.horizon.filter((pt): pt is HorizonPoint => !!pt && typeof pt.azDeg === 'number' && Number.isFinite(pt.azDeg) && typeof pt.altDeg === 'number' && Number.isFinite(pt.altDeg)) : current.horizon,
+          favoriteIds: Array.isArray(p?.favoriteIds) ? p.favoriteIds.filter((id): id is string => typeof id === 'string') : current.favoriteIds,
+          skyGroups,
+          framingStretch: p?.framingStretch && typeof p.framingStretch === 'object' ? p.framingStretch : {},
+          ownPhotos: p?.ownPhotos && typeof p.ownPhotos === 'object' ? p.ownPhotos : {},
           equipmentSets, activeEquipmentSetId: activeSet.id, equipment: activeSet.equipment,
           weatherProvider: normalizeWeatherProvider(p?.weatherProvider),
           skyObjectDensity: normalizeSkyObjectDensity(p?.skyObjectDensity),
           skyExtraHidden: Array.isArray(p?.skyExtraHidden) ? p.skyExtraHidden.filter((id): id is string => typeof id === 'string') : current.skyExtraHidden,
+          showGalaxyRegions: typeof p?.showGalaxyRegions === 'boolean' ? p.showGalaxyRegions : current.showGalaxyRegions,
           ownPhotosOpacity: opacity(p?.ownPhotosOpacity), outlinesOpacity: opacity(p?.outlinesOpacity),
           domeStyle: isDomeStyle(p?.domeStyle) ? p.domeStyle : current.domeStyle,
           domeOpacity: opacity(p?.domeOpacity),
@@ -601,18 +376,10 @@ export const useStore = create<State>()(
           thumbSource: isThumbSource(p?.thumbSource) ? p.thumbSource : current.thumbSource,
         }
       },
-      // Noc zawsze startuje od bieżącej daty w strefie zapisanej lokalizacji.
       onRehydrateStorage: () => (state) => {
         if (state) queueMicrotask(() => {
-          let tz = 'Europe/Warsaw'
-          try {
-            if (state.location?.timeZone) {
-              new Intl.DateTimeFormat('en-US', { timeZone: state.location.timeZone })
-              tz = state.location.timeZone
-            }
-          } catch { /* nieprawidłowa strefa z localStorage wraca do domyślnej */ }
+          const tz = isValidTimeZone(state.location?.timeZone) ? state.location.timeZone : 'Europe/Warsaw'
           useStore.setState({ nightDate: nightDateOf(Date.now(), tz) })
-          // Dawny suwak głębi powyżej 0 oznaczał widoczne elipsy.
           if ((state as { annotationDepth?: number }).annotationDepth) useStore.setState({ showEllipses: true })
           if (state.equipment.telescopeId === 'gso-newton-150-600') useStore.getState().setEquipment({
             telescopeId: DEFAULT_EQUIPMENT.telescopeId,

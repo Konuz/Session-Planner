@@ -4,7 +4,7 @@ export interface AstroBinPhoto {
   title: string
 }
 
-function isAstroBinUrl(value: unknown): value is string {
+export function isAstroBinUrl(value: unknown): value is string {
   if (typeof value !== 'string') return false
   try {
     const url = new URL(value)

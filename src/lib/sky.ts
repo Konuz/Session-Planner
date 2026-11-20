@@ -37,6 +37,10 @@ export function loadSky(): Promise<SkyData> {
         byAbbr: new Map(data.constellations.map((c) => [c.abbr, c])),
       }
     })
+    .catch((err) => {
+      pending = null
+      throw err
+    })
   return pending
 }
 
@@ -50,7 +54,7 @@ export interface MilkyWay {
 let pendingMw: Promise<MilkyWay> | null = null
 
 export function loadMilkyWay(): Promise<MilkyWay> {
-  pendingMw ??= new Promise((resolve, reject) => {
+  pendingMw ??= new Promise<MilkyWay>((resolve, reject) => {
     const img = new Image()
     img.onload = () => {
       const c = document.createElement('canvas')
@@ -66,6 +70,9 @@ export function loadMilkyWay(): Promise<MilkyWay> {
     }
     img.onerror = () => reject(new Error('Nie udało się wczytać mapy Drogi Mlecznej'))
     img.src = '/data/milkyway.png'
+  }).catch((err) => {
+    pendingMw = null
+    throw err
   })
   return pendingMw
 }

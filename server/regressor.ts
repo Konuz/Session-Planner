@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url'
 import { REGRESSOR_TYPES, type RegressorResult } from '../src/lib/distance.ts'
 
 /** Wersja wrappera i poprawek regresora: zmiana unieważnia zapamiętane wyniki. */
-export const REGRESSOR_VERSION = 2
+export const REGRESSOR_VERSION = 3
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
 /** Galaktyki: SDSS i CF4 równolegle, CF4 z trzema lustrami VizieR (każde zapytanie ma własny limit). */
 const RUN_MS = 2 * 60_000
@@ -94,10 +94,26 @@ export function workerRunner(spec: WorkerCommand, { startupMs = STARTUP_MS, idle
       const lines = (buffer + chunk).split(/\r?\n/)
       buffer = lines.pop() ?? ''
       for (const line of lines) {
+        if (!line.trim()) continue
         let message: { ready?: unknown; id?: unknown; result?: unknown }
-        try { message = JSON.parse(line) } catch { continue }
+        try {
+          message = JSON.parse(line)
+        } catch {
+          const msg = 'Niepoprawna odpowiedź procesu regresora.'
+          clearTimeout(startup)
+          failStart(new Error(msg))
+          stop(worker, msg)
+          return
+        }
         if (message.ready === true) { clearTimeout(startup); markReady() }
         else if (typeof message.id === 'number') worker.pending.get(message.id)?.(checkResult(message.result))
+        else {
+          const msg = 'Nieoczekiwana odpowiedź procesu regresora.'
+          clearTimeout(startup)
+          failStart(new Error(msg))
+          stop(worker, msg)
+          return
+        }
       }
     })
     child.stderr!.resume()
@@ -220,39 +236,62 @@ export function createRegressorService({ runner, cacheDir, ready }: { runner: Re
   }
 }
 
-let defaultService: RegressorService | null = null
-/** Usługa z pixi i katalogiem regresora obok repozytorium (REGRESSOR_DIR, PIXI); gotowość sprawdzana raz. */
+const services = new Map<string, RegressorService>()
 export function regressorService(env: RegressorEnv): RegressorService {
-  if (defaultService) return defaultService
   const dir = resolve(env.REGRESSOR_DIR ?? join(ROOT, 'astro-regressor-main'))
+  const command = env.PIXI ?? 'pixi'
+  const key = `${dir}\0${command}`
+  const cached = services.get(key)
+  if (cached) return cached
   let available: Promise<boolean> | null = null
   const wrapper = join(ROOT, 'scripts', 'regressor', 'cut_distance.py')
-  defaultService = createRegressorService({
-    runner: workerRunner({ command: env.PIXI ?? 'pixi', args: ['run', '--manifest-path', join(dir, 'pixi.toml'), 'python', wrapper, '--serve'], cwd: ROOT, env: { ...process.env, REGRESSOR_DIR: dir } }),
+  const service = createRegressorService({
+    runner: workerRunner({ command, args: ['run', '--manifest-path', join(dir, 'pixi.toml'), 'python', wrapper, '--serve'], cwd: ROOT, env: { ...process.env, REGRESSOR_DIR: dir } }),
     cacheDir: join(ROOT, 'scripts', '.cache', 'regressor'),
-    // `pixi --version` asynchronicznie: zimny start pixi trwał do 10 s i blokował cały serwer (audyt C09).
     ready: () => available ??= !existsSync(join(dir, 'pixi.toml')) || !existsSync(wrapper)
       ? Promise.resolve(false)
       : new Promise<boolean>((done) => {
-        const child = spawn(env.PIXI ?? 'pixi', ['--version'], { windowsHide: true, stdio: 'ignore' })
+        const child = spawn(command, ['--version'], { windowsHide: true, stdio: 'ignore' })
         const timer = setTimeout(() => { child.kill(); done(false) }, 10_000)
         child.on('error', () => { clearTimeout(timer); done(false) })
         child.on('close', (code) => { clearTimeout(timer); done(code === 0) })
       }),
   })
-  return defaultService
+  services.set(key, service)
+  return service
 }
 
-function readBody(req: IncomingMessage): Promise<string | null> {
+function readBody(req: IncomingMessage): Promise<Buffer | 408 | 413 | null> {
   return new Promise((done) => {
-    let body = ''
-    req.on('data', (chunk: Buffer) => { body += chunk; if (body.length > MAX_BODY) { req.pause(); done(null) } })
-    req.on('end', () => done(body))
-    req.on('error', () => done(null))
+    const chunks: Buffer[] = []
+    let size = 0
+    const finish = (result: Buffer | 408 | 413 | null) => {
+      clearTimeout(idle)
+      clearTimeout(deadline)
+      req.off('data', onData)
+      req.off('end', onEnd)
+      req.off('close', onClose)
+      req.off('error', onClose)
+      if (typeof result === 'number') req.pause()
+      done(result)
+    }
+    const idle = setTimeout(() => finish(408), 15_000)
+    const deadline = setTimeout(() => finish(408), 30_000)
+    const onData = (chunk: Buffer) => {
+      size += chunk.length
+      if (size > MAX_BODY) { finish(413); return }
+      chunks.push(chunk)
+      idle.refresh()
+    }
+    const onEnd = () => finish(Buffer.concat(chunks, size))
+    const onClose = () => finish(null)
+    req.once('end', onEnd)
+    req.once('close', onClose)
+    req.once('error', onClose)
+    req.on('data', onData)
   })
 }
 
-/** GET ?keys=a,b: gotowość i stan zadań; POST {targets}: zgłoszenie wycinków (wyniki zapamiętane od razu). */
 export async function regressorApi(req: IncomingMessage, res: ServerResponse, service: RegressorService) {
   const json = (status: number, value: unknown) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }).end(JSON.stringify(value)) }
   const url = new URL(req.url ?? '/', 'http://localhost')
@@ -264,9 +303,14 @@ export async function regressorApi(req: IncomingMessage, res: ServerResponse, se
   if (req.method !== 'POST') { res.setHeader('Allow', 'GET, POST'); json(405, { error: 'Wymagane zapytanie GET lub POST.' }); return }
   if (req.headers['content-type']?.split(';')[0] !== 'application/json') { json(415, { error: 'Wymagany JSON z listą wycinków.' }); return }
   const body = await readBody(req)
-  if (body === null) { json(413, { error: 'Zbyt duże zapytanie.' }); return }
+  if (body === null || res.destroyed) return
+  if (typeof body === 'number') {
+    res.setHeader('Connection', 'close')
+    json(body, { error: body === 408 ? 'Przekroczono czas zapytania.' : 'Zbyt duże zapytanie.' })
+    return
+  }
   let targets: unknown, group: unknown
-  try { ({ targets, group } = JSON.parse(body) as { targets?: unknown; group?: unknown }) } catch { json(400, { error: 'Niepoprawny JSON.' }); return }
+  try { ({ targets, group } = JSON.parse(body.toString('utf8')) as { targets?: unknown; group?: unknown }) } catch { json(400, { error: 'Niepoprawny JSON.' }); return }
   if (!Array.isArray(targets) || !targets.length || targets.length > MAX_TARGETS || !targets.every(validTarget)) { json(400, { error: 'Niepoprawna lista wycinków.' }); return }
   if (group !== undefined && (typeof group !== 'string' || !group || group.length > 128)) { json(400, { error: 'Niepoprawny identyfikator zdjęcia.' }); return }
   if (!(await service.ready())) { json(503, { error: 'Regresor jest niedostępny na tym serwerze.' }); return }

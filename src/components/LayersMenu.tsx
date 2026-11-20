@@ -99,7 +99,7 @@ export function LayersMenu({ threeD = false, settings, typeCounts = [], defaultO
   const ref = useRef<HTMLDivElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
   const close = useCallback(() => setOpen(false), [])
-  useOutside(ref, close)
+  useOutside(ref, close, open)
   useLayoutEffect(() => {
     const anchor = ref.current
     const popover = popoverRef.current

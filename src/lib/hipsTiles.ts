@@ -46,17 +46,25 @@ async function tryMirror(url: string, timeoutMs: number): Promise<Blob | 'missin
 async function load(survey: Survey, order: number, npix: number, key: string, ready: (blob: Blob) => void): Promise<void> {
   const hit = await cache.get(key)
   if (hit) return ready(hit)
+  let sawMissing = false
+  let sawFailed = false
   for (const mirror of mirrorOrder(survey)) {
     const result = await tryMirror(tileUrl(mirror, order, npix), survey.timeoutMs ?? TILE_TIMEOUT_MS)
-    if (result === 'missing') continue
+    if (result === 'missing') {
+      sawMissing = true
+      continue
+    }
     if (result === 'failed') {
+      sawFailed = true
       demote(survey, mirror)
       continue
     }
     ready(result)
     return cache.put(key, result)
   }
-  throw new Error('brak kafelka')
+  throw sawMissing && !sawFailed
+    ? Object.assign(new Error('brak kafelka'), { missing: true })
+    : new Error('brak kafelka')
 }
 
 export function fetchTile(survey: Survey, order: number, npix: number): Promise<Blob> {

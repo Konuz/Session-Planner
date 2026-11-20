@@ -29,6 +29,8 @@ export default function HorizonView() {
   const [message, setMessage] = useState('')
   const [draft, setDraft] = useState<HorizonPoint[] | null>(null)
   const [panorama, setPanorama] = useState<Awaited<ReturnType<typeof readHorizonPanorama>> | null>(null)
+  const [leftAzDraft, setLeftAzDraft] = useState<string | null>(null)
+  const [fovDraft, setFovDraft] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
   const [guideY, setGuideY] = useState<number | null>(null)
   const projected = useMemo(() => panorama && normalizeHorizon(panorama.outline.map((p) => fromPanoramaPoint(p, panorama.calibration))), [panorama])
@@ -130,6 +132,8 @@ export default function HorizonView() {
               setImporting(true)
               try {
                 setPanorama(await readHorizonPanorama(file))
+                setLeftAzDraft(null)
+                setFovDraft(null)
                 setMessage('')
               } catch {
                 setMessage('Nie udało się odczytać panoramy. Wybierz zdjęcie JPG, PNG lub WebP.')
@@ -144,15 +148,23 @@ export default function HorizonView() {
             accept=".hrz,.txt,.csv"
             hidden
             onChange={async (e) => {
-              const f = e.target.files?.[0]
+              const f = e.currentTarget.files?.[0]
+              e.currentTarget.value = ''
               if (!f) return
-              const parsed = parseHorizon(await f.text())
-              if (parsed.error) setMessage(parsed.error)
-              else {
-                setHorizon(parsed.points)
-                setMessage(`Wczytano ${parsed.points.length} punktów${parsed.rejected.length ? `, pominięto linie: ${parsed.rejected.join(', ')}` : ''}.`)
+              if (f.size > 1_048_576) {
+                setMessage('Plik horyzontu przekracza limit 1 MB.')
+                return
               }
-              e.target.value = ''
+              try {
+                const parsed = parseHorizon(await f.text())
+                if (parsed.error) setMessage(parsed.error)
+                else {
+                  setHorizon(parsed.points)
+                  setMessage(`Wczytano ${parsed.points.length} punktów${parsed.rejected.length ? `, pominięto linie: ${parsed.rejected.join(', ')}` : ''}.`)
+                }
+              } catch {
+                setMessage('Nie udało się odczytać pliku horyzontu.')
+              }
             }}
           />
         </div>
@@ -160,17 +172,41 @@ export default function HorizonView() {
           <div style={{ display: 'flex', alignItems: 'end', gap: '8px 12px', flexWrap: 'wrap', marginBottom: 12 }}>
             <label className="field">
               <span className="label">Azymut lewej krawędzi (°)</span>
-              <input className="control" style={{ minHeight: 28 }} type="number" min="0" max="359.9" step="0.1" value={panorama.calibration.leftAz} onChange={(e) => {
-                const value = e.currentTarget.valueAsNumber
-                if (value >= 0 && value < 360) calibrate({ leftAz: value })
-              }} />
+              <input
+                className="control"
+                style={{ minHeight: 28 }}
+                type="number"
+                min="0"
+                max="359.9"
+                step="0.1"
+                value={leftAzDraft ?? String(panorama.calibration.leftAz)}
+                onChange={(e) => {
+                  const raw = e.currentTarget.value
+                  setLeftAzDraft(raw)
+                  const value = Number(raw)
+                  if (raw.trim() !== '' && Number.isFinite(value) && value >= 0 && value < 360) calibrate({ leftAz: value })
+                }}
+                onBlur={() => setLeftAzDraft(null)}
+              />
             </label>
             <label className="field">
               <span className="label">Pionowe pole widzenia (°)</span>
-              <input className="control" style={{ minHeight: 28 }} type="number" min="1" max="180" step="1" value={panorama.calibration.verticalFov} onChange={(e) => {
-                const value = e.currentTarget.valueAsNumber
-                if (value >= 1 && value <= 180) calibrate({ verticalFov: value })
-              }} />
+              <input
+                className="control"
+                style={{ minHeight: 28 }}
+                type="number"
+                min="1"
+                max="180"
+                step="1"
+                value={fovDraft ?? String(panorama.calibration.verticalFov)}
+                onChange={(e) => {
+                  const raw = e.currentTarget.value
+                  setFovDraft(raw)
+                  const value = Number(raw)
+                  if (raw.trim() !== '' && Number.isFinite(value) && value >= 1 && value <= 180) calibrate({ verticalFov: value })
+                }}
+                onBlur={() => setFovDraft(null)}
+              />
             </label>
             <button className="button small active" disabled={activeHorizon.length < 2} onClick={() => {
               setHorizon(activeHorizon.map((p) => ({ ...p, altDeg: Math.max(ALT_MIN, Math.min(ALT_MAX, p.altDeg)) })))

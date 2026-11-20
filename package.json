@@ -1,5 +1,14 @@
 {
   "name": "konuzastro-tracker",
+  "description": "KONUZASTRO Tracker — astrophotography night session planner, 2D/3D sky dome, framing & mosaic simulator, and plate-solved object distance inspector",
+  "license": "MIT AND SEE LICENSE IN LICENSE-ASSETS",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Konuz/Session-Planner.git"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -10,6 +19,8 @@
     "test": "vitest run",
     "preview": "vite preview",
     "start": "node --env-file-if-exists=.env.local server/index.ts",
+    "up": "node scripts/up.ts",
+    "up:dev": "node scripts/up.ts --dev",
     "build:data": "node scripts/build-data.ts",
     "setup:skyshot": "node scripts/setup-skyshot.mjs"
   },

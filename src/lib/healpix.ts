@@ -14,7 +14,7 @@ export function healpixFaceXY(order: number, raDeg: number, decDeg: number): [nu
     const jm = Math.floor(t1 + t2)
     const ifp = Math.floor(jp / nside)
     const ifm = Math.floor(jm / nside)
-    const face = ifp === ifm ? ifp | 4 : ifp < ifm ? ifp : ifm + 8
+    const face = ifp === ifm ? (ifp & 3) + 4 : ifp < ifm ? ifp & 3 : (ifm & 3) + 8
     return [face, jm % nside, nside - (jp % nside) - 1]
   }
   const ntt = Math.min(3, Math.floor(tt))
