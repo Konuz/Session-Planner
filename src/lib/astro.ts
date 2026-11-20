@@ -159,12 +159,12 @@ export function angularDistanceDeg(a: Equatorial, b: Equatorial): number {
 
 const observer = (site: Site) => new Observer(site.latDeg, site.lonDeg, site.elevationM)
 
-export function bodyAltAz(body: 'sun' | 'moon', timeMs: number, site: Site): Horizontal & Equatorial {
+export function bodyAltAz(body: 'sun' | 'moon', timeMs: number, site: Site): Horizontal {
   const date = new Date(timeMs)
   const obs = observer(site)
   const eq = Equator(body === 'sun' ? Body.Sun : Body.Moon, date, obs, true, true)
   const hor = Horizon(date, obs, eq.ra, eq.dec)
-  return { altDeg: hor.altitude, azDeg: hor.azimuth, raDeg: eq.ra * 15, decDeg: eq.dec }
+  return { altDeg: hor.altitude, azDeg: hor.azimuth }
 }
 
 /** Pozycja J2000 Księżyca (topocentryczna), do odległości kątowej od obiektów katalogu. */

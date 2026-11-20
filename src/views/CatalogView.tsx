@@ -8,6 +8,7 @@ import { Select } from '../components/Select'
 import { ScrambleText } from '../components/ScrambleText'
 import { Thumb } from '../components/Thumb'
 import { FavoriteButton } from '../components/FavoriteButton'
+import { useOutside } from '../components/TopBar'
 import { CATALOGS, DEFAULT_ANNOTATION_COLORS, EXTRA_CATALOGS, displayName, matchesFilter, searchScore, TYPE_INFO, EMPTY_FILTER, type DSO, type ObjectType } from '../lib/catalog'
 import { CONSTELLATION_PL } from '../lib/constellations'
 import { fmtDuration, fmtNum, fmtSize, fmtTime } from '../lib/format'
@@ -37,12 +38,14 @@ const designationKey = (id: string) => {
 
 function AnnotationColorSettings() {
   const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useOutside(ref, () => setOpen(false), open)
   const colors = useStore((s) => s.annotationColors)
   const setColor = useStore((s) => s.setAnnotationColor)
   const resetColors = useStore((s) => s.resetAnnotationColors)
 
   return (
-    <div className="annotation-color-settings">
+    <div ref={ref} className="annotation-color-settings">
       <button className="button ghost icon-button" title="Ustaw kolory adnotacji" aria-label="Ustaw kolory adnotacji" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
         <Palette size={13} />
       </button>
@@ -76,11 +79,13 @@ const EXTRA_TOTAL = '__extra'
 /** Przycisk „Inne”: lista rodzin katalogów spoza głównej listy (gromady HR23, odkrycia amatorów, Ced/RCW/Gum, Arp, HCG, WR). */
 function ExtraCatalogFilter({ selected, counts, onChange }: { selected: string[]; counts: Record<string, number>; onChange: (catalogs: string[]) => void }) {
   const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLSpanElement>(null)
+  useOutside(ref, () => setOpen(false), open)
   const chosen = EXTRA_IDS.filter((id) => selected.includes(id))
   const all = chosen.length === EXTRA_IDS.length
   const toggle = (id: string) => onChange(selected.includes(id) ? selected.filter((c) => c !== id) : [...selected, id])
   return (
-    <span className="annotation-color-settings" style={{ margin: 0 }}>
+    <span ref={ref} className="annotation-color-settings" style={{ margin: 0 }}>
       <button className={`toggle-chip${chosen.length ? ' on' : ''}`} title="Katalogi spoza głównej listy" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
         Inne <span className="faint">{chosen.length && !all ? `${chosen.length}/${EXTRA_IDS.length}` : `(${counts[EXTRA_TOTAL] ?? 0})`}</span>
       </button>

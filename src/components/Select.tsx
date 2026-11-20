@@ -1,5 +1,5 @@
 import { ChevronDown } from 'lucide-react'
-import { Fragment, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { Fragment, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { useOutside } from './TopBar'
 
 export interface SelectOption {
@@ -41,12 +41,10 @@ export function Select({
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const selectedOptionRef = useRef<HTMLButtonElement | null>(null)
   useOutside(ref, () => setOpen(false), open)
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+  useLayoutEffect(() => {
+    if (open) selectedOptionRef.current?.scrollIntoView({ block: 'nearest' })
   }, [open])
   const selected = options.find((o) => o.value === value)
   let lastGroup: string | undefined
@@ -86,7 +84,7 @@ export function Select({
                   disabled={o.disabled}
                   aria-selected={o.value === value}
                   className={o.value === value ? 'on' : ''}
-                  ref={o.value === value ? (el) => el?.scrollIntoView({ block: 'nearest' }) : undefined}
+                  ref={o.value === value ? selectedOptionRef : undefined}
                   onClick={() => { onChange(o.value); setOpen(false) }}
                 >
                   {o.label}

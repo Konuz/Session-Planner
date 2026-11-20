@@ -1,8 +1,13 @@
 [workspace]
-authors = ["Kacper Kania <kacper@cantina.ai>"]
+authors = ["Kacper Kania <kacperkan@users.noreply.github.com>"]
 channels = ["conda-forge"]
+description = "Astronomical distance estimation and multi-catalog regression from sky coordinates, astrometry, and photometry."
+license = "MIT"
+license-file = "LICENSE"
 name = "astro-regressor"
 platforms = ["osx-arm64", "win-64", "linux-64"]
+readme = "README.md"
+repository = "https://github.com/kacperkan/astro-regressor"
 version = "0.1.0"
 
 [tasks]

@@ -13,12 +13,16 @@ venv/
 .ipynb_checkpoints/
 
 # data & artifacts
-data/
+data/*
 models/
 reports/
 *.csv
 *.fits
 *.parquet
+!data/
+!data/ic434_multicatalog.csv
+!data/ic434_uncertainties_starhorse.csv
+!data/cosmicflows4_benchmarks.csv
 
 # caches
 .pytest_cache/

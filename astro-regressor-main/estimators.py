@@ -1,20 +1,57 @@
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
-import astropy.units as u, numpy as np, pandas as pd
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import astropy.units as u
+import numpy as np
+import pandas as pd
 from astropy.coordinates import SkyCoord
 from astropy.cosmology import Planck18 as cosmo
+from catalogs import (
+    DARK_CLOUD_OTYPES,
+    EXTENDED_OTYPES,
+    OPACITY_AV,
+    PARAM_GROUPS,
+    compute_nicer_extinction,
+    feature_covariance,
+    fetch_all_catalogs,
+    gaia_zeropoint_mas,
+    is_extended_target,
+    load_multicatalog_dataset,
+    lookup_literature_distance,
+    normalize_target_key,
+    resolve_name,
+)
 from loguru import logger
 from rich.console import Console
-from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 from scipy.optimize import minimize
 from scipy.special import logsumexp
 from scipy.stats import gaussian_kde
 from sklearn.cluster import HDBSCAN, KMeans
 from sklearn.decomposition import PCA
-from catalogs import CURATED_ALIASES, CURATED_CLOUDS, DARK_CLOUD_OTYPES, EXTENDED_OTYPES, EXTENDED_PREFIXES, OPACITY_AV, PARAM_GROUPS, apply_gaia_calibration, compute_nicer_extinction, feature_covariance, fetch_all_catalogs, gaia_zeropoint_mas, is_extended_target, load_multicatalog_dataset, lookup_literature_distance, normalize_target_key, resolve_name
+
+__all__ = ["GALAXY_OTYPES", "MAX_GROUP_VT_KMS", "evaluate_knn_abstention", "fetch_all_catalogs", "fit_extinction_breakpoint", "fmt_val", "gaia_zeropoint_mas", "gaussian_kl_bits", "helio_to_cmb_z", "is_extended_target", "kde_peaks", "load_multicatalog_dataset", "lookup_literature_distance", "predict_knn_subspace", "predict_xd_gmm", "prepare_regression_state", "resolve_name", "run_progressive_ablation", "synthesize_region_distance", "synthesize_target_distance", "upmask_membership", "upmask_spatial_stat", "xd_posterior"]
+MAX_GROUP_VT_KMS = 5.0
+GALAXY_OTYPES = {"G", "Galaxy", "GiG", "GiP", "GiC", "BiC", "IG", "PaG", "SBG", "SyG", "Sy1", "Sy2", "Seyfert", "Seyfert1", "Seyfert2", "AGN", "LIN", "LINER", "QSO", "EmG", "EmissionG", "H2G", "LSB", "LSB_G", "bCG", "rG", "GinPair", "GinGroup", "GinCl", "PartofG", "BClG", "BlueCompG", "StarburstG", "RadioG", "HIIG", "GroupG", "GrG", "CGG", "ClG", "PairG", "IGroupG", "G?", "AG?"}
 
 def fmt_val(val, fmt=".2f", suffix=""):
     return "[dim]—[/dim]" if (val is None or (isinstance(val, (float, np.floating)) and np.isnan(val))) else f"{val:{fmt}}{suffix}"
+
+def _abstain(reason: str, method: str | None = None, **extra) -> dict:
+    return {"mode": "abstain", "method": method or f"ABSTAIN ({reason})", "distance_pc": np.nan, "lo_pc": np.nan, "hi_pc": np.nan, "abstain_reason": reason, **extra}
+
+def _sky_offsets(ra_deg: np.ndarray, dec_deg: np.ndarray) -> np.ndarray:
+    coords = SkyCoord(ra_deg * u.deg, dec_deg * u.deg)
+    xyz = np.mean(coords.cartesian.xyz, axis=1)
+    offsets = coords.transform_to(SkyCoord(x=xyz[0], y=xyz[1], z=xyz[2], representation_type="cartesian").icrs.skyoffset_frame())
+    return np.column_stack((offsets.lon.deg, offsets.lat.deg))
 
 def helio_to_cmb_z(z_helio: float, ra_deg: float, dec_deg: float) -> float:
     sc, dip = SkyCoord(ra=ra_deg * u.deg, dec=dec_deg * u.deg, frame="icrs"), SkyCoord(l=264.021 * u.deg, b=48.253 * u.deg, frame="galactic").icrs
@@ -48,7 +85,7 @@ def fit_extinction_breakpoint(df: pd.DataFrame, r_on_deg: float | None = None, o
     n_fg_opt, n_bg_opt = int((fg_mat[bi] & opt_on).sum()), int((~fg_mat[bi] & opt_on & (a0_on > a_fg + 0.12)).sum())
     d_max_opt = float(10.0 * (10.0 ** ((20.7 - 6.5 - 0.789 * max(dj, OPACITY_AV.get(int(opacity_class), 1.5) if opacity_class is not None else dj)) / 5.0)))
     opt_ok = bool((n_fg_opt >= 5) and (n_bg_opt >= 5) and (d_max_opt >= d_c) and (delta_bic >= 10.0) and (dj >= 0.25))
-    return {"d_cloud_pc": d_c, "a0_fg": a_fg, "a0_bg": a_bg, "delta_a0": dj, "delta_bic": round(delta_bic, 2), "n_stars": len(sub), "n_on": int(len(d_on)), "n_fg_on": n_fg_opt, "n_bg_on": n_bg_opt, "n_nicer_rescued": int((~opt_valid).sum()), "d_max_opt_pc": round(d_max_opt, 1), "optical_range_confirmed": opt_ok, "ppv_overlap_flag": bool(ppv_components > 1)}
+    return {"d_cloud_pc": d_c, "a0_fg": a_fg, "a0_bg": a_bg, "delta_a0": dj, "delta_bic": round(delta_bic, 2), "n_stars": len(sub), "n_on": len(d_on), "n_fg_on": n_fg_opt, "n_bg_on": n_bg_opt, "n_nicer_rescued": int((~opt_valid).sum()), "d_max_opt_pc": round(d_max_opt, 1), "optical_range_confirmed": opt_ok, "ppv_overlap_flag": bool(ppv_components > 1)}
 
 def upmask_spatial_stat(positions, grid):
     p = np.asarray(positions, dtype=float)
@@ -69,10 +106,7 @@ def upmask_membership(df, plx_col):
             noise[:, a, b] = noise[:, b, a] = df[col].fillna(0).to_numpy() * errors[:, a] * errors[:, b]
     if not np.isfinite(noise).all() or np.min(np.linalg.eigvalsh(noise)) < -1e-10:
         raise ValueError("UPMASK requires finite positive-semidefinite measured astrometric covariance")
-    coords = SkyCoord(df["ra"].to_numpy() * u.deg, df["dec"].to_numpy() * u.deg)
-    xyz = np.mean(coords.cartesian.xyz, axis=1)
-    offsets = coords.transform_to(SkyCoord(x=xyz[0], y=xyz[1], z=xyz[2], representation_type="cartesian").icrs.skyoffset_frame())
-    positions = np.column_stack((offsets.lon.deg, offsets.lat.deg))
+    positions = _sky_offsets(df["ra"].to_numpy(dtype=float), df["dec"].to_numpy(dtype=float))
     if np.any((upper := positions.max(axis=0)) <= (lower := positions.min(axis=0))):
         raise ValueError("UPMASK requires nondegenerate sky footprint")
     grid = np.column_stack([ax.ravel() for ax in np.meshgrid(*[np.linspace(a, b, 15) for a, b in zip(lower, upper)])])
@@ -100,7 +134,6 @@ def upmask_membership(df, plx_col):
     return votes / n_outer
 
 def kde_peaks(log_d: np.ndarray, min_stars: int = 8) -> list[float]:
-    """Lokalne maksima KDE log10(d) z co najmniej min_stars gwiazdami w ±0,08 dex, od najbliższego."""
     if np.ptp(log_d) <= 1e-10:
         return [float(log_d[0])]
     grid = np.linspace(log_d.min(), log_d.max(), 500)
@@ -108,10 +141,6 @@ def kde_peaks(log_d: np.ndarray, min_stars: int = 8) -> list[float]:
     idx = [i for i in range(1, len(grid) - 1) if dens[i] >= dens[i - 1] and dens[i] > dens[i + 1]]
     peaks = [float(grid[i]) for i in idx if (np.abs(log_d - grid[i]) < 0.08).sum() >= min_stars]
     return sorted(peaks) or [float(grid[np.argmax(dens)])]
-
-# Dyspersja prędkości poprzecznej grupy: gromady i asocjacje ≤ kilka km/s, populacja pola przy tej samej odległości
-# kilkanaście–kilkadziesiąt km/s (pilotaż: IC 1990 i LBN 774 dostały grupy tła 1139 i 846–1167 pc).
-MAX_GROUP_VT_KMS = 5.0
 
 def synthesize_region_distance(df: pd.DataFrame, cone_deg: float, use_5d: bool = True, use_hier_plx: bool = True, use_zp_corr: bool = True, cluster_mode: str = "hdbscan", prefer_nearest: bool = False) -> tuple[dict, pd.DataFrame]:
     max_vt = MAX_GROUP_VT_KMS if prefer_nearest else None
@@ -134,11 +163,16 @@ def _synthesize_region_distance(df: pd.DataFrame, cone_deg: float, use_5d: bool 
         return {"mode": "region_kde", "method": f"Gaia DR3 Fallback Median ({len(d)} stars in r={cone_deg:.2f}°)", "distance_pc": float(np.median(d)), "lo_pc": float(np.percentile(d, 16)), "hi_pc": float(np.percentile(d, 84))}, df.assign(membership_probability=1.0)
     log_d = np.log10(sub["r_med_photogeo"].to_numpy(dtype=float))
     grid = np.linspace(log_d.min(), log_d.max(), 500)
-    peak = peak_override if peak_override is not None else float(grid[np.argmax(gaussian_kde(log_d, bw_method=0.12)(grid))]) if np.ptp(log_d) > 1e-10 else float(log_d[0])
+    kde_peak = float(grid[np.argmax(gaussian_kde(log_d, bw_method=0.12)(grid))]) if np.ptp(log_d) > 1e-10 else float(log_d[0])
+    peak = kde_peak if peak_override is None else peak_override
     kde_mask, plx_col = np.abs(log_d - peak) < 0.08, ("parallax_corr" if use_zp_corr and "parallax_corr" in sub else "parallax")
     probability, reason = kde_mask.astype(float), "NO_SUPPORTED_CLUSTER"
     if use_5d:
-        feat = sub[["ra", "dec", "pmra", "pmdec", plx_col]].to_numpy(dtype=float)
+        ra_vals, dec_vals = sub["ra"].to_numpy(dtype=float), sub["dec"].to_numpy(dtype=float)
+        ok_sky, pos = np.isfinite(ra_vals) & np.isfinite(dec_vals), np.full((len(sub), 2), np.nan)
+        if ok_sky.any():
+            pos[ok_sky] = _sky_offsets(ra_vals[ok_sky], dec_vals[ok_sky])
+        feat = np.column_stack((pos, sub["pmra"].to_numpy(dtype=float), sub["pmdec"].to_numpy(dtype=float), sub[plx_col].to_numpy(dtype=float)))
         cand, probability = np.isfinite(feat).all(axis=1) & kde_mask, np.zeros(len(sub))
         if cand.sum() >= 5:
             med = np.median(feat[cand], axis=0)
@@ -147,7 +181,7 @@ def _synthesize_region_distance(df: pd.DataFrame, cone_deg: float, use_5d: bool 
             if cluster_mode == "mad":
                 probability = mad_inlier.astype(float)
             elif cluster_mode == "hdbscan" and mad_inlier.sum() >= 5:
-                model = HDBSCAN(min_cluster_size=5, min_samples=3).fit(standardized[mad_inlier])
+                model = HDBSCAN(min_cluster_size=5, min_samples=3, copy=True).fit(standardized[mad_inlier])
                 labels, counts = np.unique(model.labels_[model.labels_ >= 0], return_counts=True)
                 if len(labels):
                     sel_idx = np.where(mad_inlier)[0][model.labels_ == (sel := labels[np.argmax(counts)])]
@@ -167,7 +201,7 @@ def _synthesize_region_distance(df: pd.DataFrame, cone_deg: float, use_5d: bool 
                 else:
                     reason = "MISSING_UPMASK_MEASUREMENT_ERRORS"
     if len(members := sub.assign(membership_probability=probability)[probability >= 0.5].copy()) < 3:
-        return {"mode": "abstain", "method": f"ABSTAIN ({cluster_mode.upper()}: {reason})", "distance_pc": np.nan, "lo_pc": np.nan, "hi_pc": np.nan, "abstain_reason": reason}, members
+        return _abstain(reason, f"ABSTAIN ({cluster_mode.upper()}: {reason})"), members
     mem_d = members["r_med_photogeo"].to_numpy(dtype=float)
     distance = float(np.median(mem_d))
     if use_hier_plx:
@@ -184,11 +218,9 @@ def _synthesize_region_distance(df: pd.DataFrame, cone_deg: float, use_5d: bool 
         mad = lambda x: 1.4826 * float(np.median(np.abs(x - np.median(x))))
         sigma_vt = 4.74 * float(np.hypot(mad(members["pmra"].to_numpy(dtype=float)), mad(members["pmdec"].to_numpy(dtype=float)))) / np.sqrt(2) * distance / 1000.0
         if not np.isfinite(sigma_vt) or sigma_vt > max_vt_kms:
-            return {"mode": "abstain", "method": f"ABSTAIN (FIELD_POPULATION_KINEMATICS: sigma_vt={sigma_vt:.1f} km/s)", "distance_pc": np.nan, "lo_pc": np.nan, "hi_pc": np.nan, "abstain_reason": "FIELD_POPULATION_KINEMATICS", "sigma_vt_kms": sigma_vt}, members
+            return _abstain("FIELD_POPULATION_KINEMATICS", f"ABSTAIN (FIELD_POPULATION_KINEMATICS: sigma_vt={sigma_vt:.1f} km/s)", sigma_vt_kms=sigma_vt), members
     n_corr = int(members["zp_applied"].sum()) if use_zp_corr and "zp_applied" in members else 0
     return {"mode": "region_kde", "method": f"{cluster_mode.upper() if use_5d else 'KDE'} + {'Parallax MLE' if use_hier_plx else 'Median'} ({len(members)}/{len(sub)} members; ZP applied {n_corr}/{len(members)})", "distance_pc": distance, "lo_pc": float(np.percentile(mem_d, 16)), "hi_pc": float(np.percentile(mem_d, 84)), **({"sigma_vt_kms": sigma_vt} if sigma_vt is not None else {})}, members
-
-GALAXY_OTYPES = {"G", "Galaxy", "GiG", "GiP", "GiC", "BiC", "IG", "PaG", "SBG", "SyG", "Sy1", "Sy2", "Seyfert", "Seyfert1", "Seyfert2", "AGN", "LIN", "LINER", "QSO", "EmG", "EmissionG", "H2G", "LSB", "LSB_G", "bCG", "rG", "GinPair", "GinGroup", "GinCl", "PartofG", "BClG", "BlueCompG", "StarburstG", "RadioG", "HIIG", "GroupG", "GrG", "CGG", "ClG", "PairG", "IGroupG", "G?", "AG?"}
 
 def synthesize_target_distance(meta: dict, df: pd.DataFrame, tables: dict[str, pd.DataFrame], cone_deg: float, point_radius_arcsec: float = 15.0, use_cmb_z: bool = True, use_registry: bool = True, prefer_nearest: bool = False) -> tuple[dict, pd.Series | None, pd.DataFrame]:
     ra, dec, obj_type, canon, inp_name = meta["ra"], meta["dec"], meta["object_type"], meta.get("canonical_name", ""), meta.get("input_name", meta.get("canonical_name", ""))
@@ -203,7 +235,7 @@ def synthesize_target_distance(meta: dict, df: pd.DataFrame, tables: dict[str, p
         sdss_spec = sdss_spec[(sdss_spec["separation"] <= point_radius_arcsec) & (sdss_spec["zErr"] >= 0)]
     else:
         sdss_spec = pd.DataFrame()
-    primary, point_row, cluster_members, cf4_hit = None, None, df, None
+    primary, point_row, cluster_members, cf4_hit = None, None, df.iloc[0:0].copy(), None
     if is_galaxy and len(cf4) and {"ra", "dec", "dm_cf4"}.issubset(cf4.columns):
         cf4 = cf4.assign(**{c: pd.to_numeric(cf4[c], errors="coerce") for c in ("ra", "dec", "dm_cf4", "e_dm") if c in cf4})
         cf4 = cf4[np.isfinite(cf4[["ra", "dec", "dm_cf4"]].to_numpy(dtype=float)).all(axis=1)].copy()
@@ -211,16 +243,16 @@ def synthesize_target_distance(meta: dict, df: pd.DataFrame, tables: dict[str, p
             cf4_hit = {**(r := matched.iloc[0].to_dict()), "d_cf4_mpc": float(10 ** ((r["dm_cf4"] - 25) / 5))}
     if is_galaxy and len(sdss_spec) > 0 and len(valid_z := sdss_spec[sdss_spec["z"] > 0.0005]) > 0:
         z_helio, z_err, z_cmb = float(valid_z.iloc[0]["z"]), float(valid_z.iloc[0]["zErr"]), helio_to_cmb_z(float(valid_z.iloc[0]["z"]), ra, dec)
-        z_eff = max(1e-4, (z_cmb if z_helio < 0.05 else z_helio) if use_cmb_z else z_helio)
+        z_eff = max(1e-4, z_cmb if (use_cmb_z and z_helio < 0.05) else z_helio)
         d_comov, d_lum, d_ang = [float(fn(z_eff).to_value(u.Mpc)) for fn in (cosmo.comoving_distance, cosmo.luminosity_distance, cosmo.angular_diameter_distance)]
         cf4_tag = f", CF4={cf4_hit['d_cf4_mpc']:.1f} Mpc [DM={cf4_hit['dm_cf4']:.2f}]" if cf4_hit else ""
         primary = {"mode": "extragalactic", "method": f"SDSS DR17 Redshift (z_helio={z_helio:.5f}, z_CMB={z_cmb:.5f} ± {z_err:.5f}, Planck18{cf4_tag})", "distance_pc": d_comov * 1e6, "lo_pc": d_comov * 1e6 * max(0.95, 1.0 - z_err / max(z_eff, 1e-5)), "hi_pc": d_comov * 1e6 * (1.0 + z_err / max(z_eff, 1e-5)), "d_comov_mpc": d_comov, "d_lum_mpc": d_lum, "d_ang_mpc": d_ang, "z": z_eff, "t_lookback_gyr": float(cosmo.lookback_time(z_eff).to_value(u.Gyr)), "d_cf4_mpc": cf4_hit["d_cf4_mpc"] if cf4_hit else np.nan}
     if is_galaxy and cf4_hit is not None:
         dm, error = cf4_hit["dm_cf4"], (float(e) if pd.notna(e := cf4_hit.get("e_dm", np.nan)) and e >= 0 else np.nan)
         primary = primary or {c: np.nan for c in ("d_comov_mpc", "d_lum_mpc", "d_ang_mpc", "z", "t_lookback_gyr")}
-        primary.update({"mode": "extragalactic", "method": f"Cosmicflows-4 matched distance modulus (DM={dm:.3f}); Planck18 redshift cross-check when available", "distance_kind": "distance_modulus", "distance_pc": cf4_hit["d_cf4_mpc"] * 1e6, "lo_pc": float(10 ** ((dm - error + 5) / 5)), "hi_pc": float(10 ** ((dm + error + 5) / 5)), "d_cf4_mpc": cf4_hit["d_cf4_mpc"], "dm_cf4": dm, "cf4_provenance": "matched cosmicflows4 table; live schema verification pending"})
+        primary.update({"mode": "extragalactic", "method": f"Cosmicflows-4 matched distance modulus (DM={dm:.3f}); Planck18 redshift cross-check when available", "distance_kind": "distance_modulus", "distance_pc": cf4_hit["d_cf4_mpc"] * 1e6, "lo_pc": float(10 ** ((dm - error + 5) / 5)), "hi_pc": float(10 ** ((dm + error + 5) / 5)), "d_cf4_mpc": cf4_hit["d_cf4_mpc"], "dm_cf4": dm, "cf4_provenance": "VizieR:J/ApJ/944/94/table2"})
     if primary is None and is_galaxy:
-        primary = {"mode": "abstain", "method": "ABSTAIN (NO_MATCHED_EXTRAGALACTIC_DISTANCE)", "distance_pc": np.nan, "lo_pc": np.nan, "hi_pc": np.nan, "abstain_reason": "NO_MATCHED_EXTRAGALACTIC_DISTANCE"}
+        primary = _abstain("NO_MATCHED_EXTRAGALACTIC_DISTANCE")
     if primary is None and not is_extended:
         if len(near_gaia := (df[df["sep_arcsec"] <= point_radius_arcsec].sort_values("sep_arcsec") if len(df) > 0 and "sep_arcsec" in df else pd.DataFrame())) > 0:
             point_row = near_gaia.iloc[0]
@@ -233,16 +265,16 @@ def synthesize_target_distance(meta: dict, df: pd.DataFrame, tables: dict[str, p
     if primary is None and is_dark_cloud:
         ext = fit_extinction_breakpoint(df, r_on_deg=meta.get("radius_deg"), opacity_class=meta.get("opacity_class"), ppv_components=int(meta.get("ppv_components", 1)))
         if ext is not None and ext["optical_range_confirmed"] and not ext["ppv_overlap_flag"]:
-            primary, cluster_members = synthesize_region_distance(df, cone_deg)
-            primary.update({"mode": "region_kde", "distance_pc": ext["d_cloud_pc"], "lo_pc": ext["d_cloud_pc"] * 0.93, "hi_pc": ext["d_cloud_pc"] * 1.07, "method": f"Validated On-Cloud 3D Dust Breakpoint (ΔA0=+{ext['delta_a0']:.2f} mag, ΔBIC={ext['delta_bic']:.1f}, n_on={ext['n_on']})"})
+            primary = {"mode": "region_kde", "distance_pc": ext["d_cloud_pc"], "lo_pc": ext["d_cloud_pc"] * 0.93, "hi_pc": ext["d_cloud_pc"] * 1.07, "method": f"Validated On-Cloud 3D Dust Breakpoint (ΔA0=+{ext['delta_a0']:.2f} mag, ΔBIC={ext['delta_bic']:.1f}, n_on={ext['n_on']})"}
         elif use_registry and (lit := lookup_literature_distance(inp_name, canon, ra, dec, meta.get("v_lsr_kms"))) is not None:
             primary = lit
         else:
-            reason = "UNRESOLVED_PPV_OVERLAP" if (ext and ext["ppv_overlap_flag"]) else ("DUST_CENSORED_BACKGROUND" if (ext and not ext["optical_range_confirmed"]) else "UNPROVEN_ASSOCIATION_NEEDS_PPV_MASK")
-            primary = {"mode": "abstain", "method": f"ABSTAIN ({reason})", "distance_pc": np.nan, "lo_pc": np.nan, "hi_pc": np.nan, "abstain_reason": reason}
-    return primary or {"mode": "abstain", "method": "ABSTAIN (EMPTY_SIGHTLINE)", "distance_pc": np.nan, "lo_pc": np.nan, "hi_pc": np.nan, "abstain_reason": "EMPTY_SIGHTLINE"}, point_row, cluster_members
+            primary = _abstain(next((r for cond, r in ((ext and ext["ppv_overlap_flag"], "UNRESOLVED_PPV_OVERLAP"), (ext and not ext["optical_range_confirmed"], "DUST_CENSORED_BACKGROUND")) if cond), "UNPROVEN_ASSOCIATION_NEEDS_PPV_MASK"))
+    return primary or _abstain("EMPTY_SIGHTLINE"), point_row, cluster_members
 
 def prepare_regression_state(df: pd.DataFrame, seed: int = 42, train_frac: float = 0.65) -> dict:
+    if len(df) < 4:
+        raise ValueError("prepare_regression_state requires at least 4 stars")
     perm = np.random.default_rng(seed).permutation(len(df))
     train_idx, test_idx = perm[:(n_tr := int(train_frac * len(df)))], perm[n_tr:]
     y_all, all_cols = np.log10(df["r_med_photogeo"].to_numpy(dtype=float)), [c for _, cols, _ in PARAM_GROUPS for c in cols]
@@ -258,7 +290,7 @@ def gaussian_kl_bits(mean, std, prior_mean, prior_std):
 
 def predict_knn_subspace(state: dict, active_cols: list[str], k: int = 12, use_inv_var: bool = True, use_plx_ll: bool = True, use_zp_corr: bool = True, weight_mode: str = "cardinality", imputation: str = "subspace") -> tuple[float, float, float, np.ndarray, np.ndarray, float]:
     df, train_idx, test_idx, y_all, idxs = state["df"], state["train_idx"], state["test_idx"], state["y_all"], [state["col_idx_map"][c] for c in active_cols]
-    w_map = state["col_weights_card"] if weight_mode == "cardinality" else (state["col_weights_raw"] if weight_mode == "raw_group" else state["col_weights_unif"])
+    w_map = {"cardinality": state["col_weights_card"], "raw_group": state["col_weights_raw"]}.get(weight_mode, state["col_weights_unif"])
     w_vec = np.array([w_map[c] for c in active_cols], dtype=float)
     X_tr, X_te, S_tr, S_te = state["X_norm"][train_idx][:, idxs], state["X_norm"][test_idx][:, idxs], state["X_err"][train_idx][:, idxs], state["X_err"][test_idx][:, idxs]
     if imputation == "zero_impute":
@@ -293,7 +325,8 @@ def xd_posterior(values, noise, weights, means, covariances):
                 total, delta = cov[np.ix_(obs, obs)] + noise[i][np.ix_(obs, obs)], values[i, obs] - means[j, obs]
                 factor = np.linalg.cholesky(total)
                 solved = np.linalg.solve(factor.T, np.linalg.solve(factor, delta))
-                moments[i, j], posterior_cov[i, j] = means[j] + cov[:, obs] @ solved, cov - np.linalg.solve(total, cov[obs]).T @ cov[obs]
+                cho_cov = np.linalg.solve(factor, cov[obs])
+                moments[i, j], posterior_cov[i, j] = means[j] + cov[:, obs] @ solved, cov - cho_cov.T @ cho_cov
                 log_prob[i, j] = np.log(weights[j]) - 0.5 * (len(obs) * np.log(2 * np.pi) + 2 * np.log(np.diag(factor)).sum() + delta @ solved)
     normalization = logsumexp(log_prob, axis=1)
     return np.exp(log_prob - normalization[:, None]), moments, posterior_cov, float(normalization.sum())
@@ -325,7 +358,7 @@ def predict_xd_gmm(state: dict, active_cols: list[str], n_components: int = 6, m
         eigvals, eigvecs = np.linalg.eigh((next_cov + next_cov.swapaxes(1, 2)) / 2)
         next_cov = (eigvecs * np.maximum(eigvals, 1e-8)[:, None, :]) @ eigvecs.swapaxes(1, 2)
         next_r, next_moments, next_cond_cov, next_ll = xd_posterior(values[train], noise[train], next_weights, next_means, next_cov)
-        if (improvement := next_ll - likelihood) < -1e-7 * (1 + abs(likelihood)):
+        if (improvement := next_ll - likelihood) < -1e-5 * (1 + abs(likelihood)):
             raise ArithmeticError("XD observed-data likelihood decreased")
         weights, means, covariances, responsibilities, moments, conditional_cov, likelihood = next_weights, next_means, next_cov, next_r, next_moments, next_cond_cov, next_ll
         history.append(likelihood)
@@ -352,7 +385,7 @@ def evaluate_knn_abstention(state: dict, active_cols: list[str] | None = None, k
     abstain_mask, abs_err = (w_non_coord <= 0.0) | (n_eff < 3.0) | (pred_std > sigma_max), np.abs(y_te - pred_logd)
     order, rows, covs, risks = np.argsort(np.where(w_non_coord > 0.0, pred_std, np.inf)), [], [], []
     for target_cov in (1.0, 0.9, 0.8, 0.7, 0.5):
-        sel = order[:max(1, int(round(target_cov * len(test_idx))))]
+        sel = order[:max(1, round(target_cov * len(test_idx)))]
         sel, act_cov = sel[w_non_coord[sel] > 0.0], len(sel[w_non_coord[sel] > 0.0]) / len(test_idx)
         sel_mae, sel_rmse = (float(np.mean(abs_err[sel])), float(np.sqrt(np.mean(abs_err[sel] ** 2)))) if len(sel) > 0 else (np.nan, np.nan)
         sel_rel = float(np.median(np.abs(10.0 ** pred_logd[sel] - 10.0 ** y_te[sel]) / (10.0 ** y_te[sel])) * 100.0) if len(sel) > 0 else np.nan
@@ -365,35 +398,36 @@ def run_progressive_ablation(state: dict, k: int = 12, **kwargs) -> tuple[pd.Dat
     df, test_idx, y_all, all_cols = state["df"], state["test_idx"], state["y_all"], state["all_cols"]
     _, base_rmse, _, base_pred, _, _ = predict_knn_subspace(state, all_cols, k=k, **kwargs)
     group_stats = [None] * len(PARAM_GROUPS)
-    with Progress(SpinnerColumn("dots"), TextColumn("[bold cyan]{task.description}"), BarColumn(bar_width=28), MofNCompleteColumn(), TimeElapsedColumn(), transient=True) as prog:
+    with Progress(SpinnerColumn("dots"), TextColumn("[bold cyan]{task.description}"), BarColumn(bar_width=28), MofNCompleteColumn(), TimeElapsedColumn(), transient=True) as prog, ThreadPoolExecutor(max_workers=8) as ex:
         task_imp = prog.add_task("Leave-one-group-out importance", total=len(PARAM_GROUPS))
-        with ThreadPoolExecutor(max_workers=8) as ex:
-            futs = {ex.submit(predict_knn_subspace, state, [c for c in all_cols if c not in cols] if len(cols) < len(all_cols) else all_cols, k, **kwargs): (i, name, cols) for i, (name, cols, _) in enumerate(PARAM_GROUPS)}
-            for f in as_completed(futs):
-                i, name, cols = futs[f]
-                _, _, _, pred_wo, _, _ = f.result()
-                absent_pct, present = float(df[cols].isna().all(axis=1).mean() * 100.0), (~df.loc[test_idx, cols].isna().all(axis=1)).to_numpy()
-                gain = float(max(0.0, np.mean(np.abs(y_all[test_idx][present] - pred_wo[present])) - np.mean(np.abs(y_all[test_idx][present] - base_pred[present])))) if present.sum() > 0 else 0.0
-                group_stats[i] = {"Parameter_Group": name, "Cols": cols, "Absent_%": round(absent_pct, 1), "Absence_Tier": 0 if absent_pct >= 50 else (1 if absent_pct >= 15 else (2 if absent_pct >= 1 else 3)), "Marginal_Importance_dex": round(gain, 4)}
-                prog.update(task_imp, advance=1, description=f"Leave-one-group-out [dim]({name})[/dim]")
+        futs = {ex.submit(predict_knn_subspace, state, [c for c in all_cols if c not in cols] if len(cols) < len(all_cols) else all_cols, k, **kwargs): (i, name, cols) for i, (name, cols, _) in enumerate(PARAM_GROUPS)}
+        for f in as_completed(futs):
+            i, name, cols = futs[f]
+            _, _, _, pred_wo, _, _ = f.result()
+            absent_pct, present = float(df[cols].isna().all(axis=1).mean() * 100.0), (~df.loc[test_idx, cols].isna().all(axis=1)).to_numpy()
+            gain = float(max(0.0, np.mean(np.abs(y_all[test_idx][present] - pred_wo[present])) - np.mean(np.abs(y_all[test_idx][present] - base_pred[present])))) if present.sum() > 0 else 0.0
+            group_stats[i] = {"Parameter_Group": name, "Cols": cols, "Absent_%": round(absent_pct, 1), "Absence_Tier": sum(absent_pct < t for t in (50, 15, 1)), "Marginal_Importance_dex": round(gain, 4)}
+            prog.update(task_imp, advance=1, description=f"Leave-one-group-out [dim]({name})[/dim]")
         stats_df = pd.DataFrame(group_stats)
         ordered_df = pd.concat([stats_df[stats_df["Parameter_Group"] != "Sky Coordinates (RA, Dec)"].sort_values(by=["Absence_Tier", "Marginal_Importance_dex", "Absent_%"], ascending=[True, True, False]), stats_df[stats_df["Parameter_Group"] == "Sky Coordinates (RA, Dec)"]], ignore_index=True)
         task_abl, records = prog.add_task("15-step progressive catalog pruning", total=len(ordered_df)), list(ordered_df.to_dict("records"))
         rows = [None] * len(records)
-        with ThreadPoolExecutor(max_workers=8) as ex:
-            futs = {ex.submit(predict_knn_subspace, state, [c for g in records[s:] for c in g["Cols"]], k, **kwargs): (s, len(records[s:]), "None (Full 15-group / 12-catalog vector)" if s == 0 else records[s - 1]["Parameter_Group"], 0.0 if s == 0 else records[s - 1]["Absent_%"]) for s in range(len(records))}
-            for f in as_completed(futs):
-                s, n_rem, last_name, last_absent = futs[f]
-                mae, rmse, med_rel, _, _, kl_mean = f.result()
-                rows[s] = {"Step": s, "Groups_Remaining": n_rem, "Removed_Parameter_Group": last_name, "Removed_Absent_%": last_absent, "MAE_dex": round(mae, 4), "RMSE_dex": round(rmse, 4), "Median_Rel_Error_%": round(med_rel, 2), "Info_Lost_bits": round(float(max(0.0, 0.5 * np.log2((rmse ** 2) / (base_rmse ** 2)))), 3), "KL_Info_Gain_bits": kl_mean}
-                prog.update(task_abl, advance=1, description=f"Progressive pruning [dim](step {s}/14)[/dim]")
+        futs = {ex.submit(predict_knn_subspace, state, [c for g in records[s:] for c in g["Cols"]], k, **kwargs): (s, len(records[s:]), "None (Full 15-group / 14-catalog vector)" if s == 0 else records[s - 1]["Parameter_Group"], 0.0 if s == 0 else records[s - 1]["Absent_%"]) for s in range(len(records))}
+        for f in as_completed(futs):
+            s, n_rem, last_name, last_absent = futs[f]
+            mae, rmse, med_rel, _, _, kl_mean = f.result()
+            rows[s] = {"Step": s, "Groups_Remaining": n_rem, "Removed_Parameter_Group": last_name, "Removed_Absent_%": last_absent, "MAE_dex": round(mae, 4), "RMSE_dex": round(rmse, 4), "Median_Rel_Error_%": round(med_rel, 2), "Info_Lost_bits": round(float(max(0.0, 0.5 * np.log2((rmse ** 2) / (base_rmse ** 2)))), 3), "KL_Info_Gain_bits": kl_mean}
+            prog.update(task_abl, advance=1, description=f"Progressive pruning [dim](step {s}/14)[/dim]")
     return (result := pd.DataFrame(rows)).assign(KL_Change_bits=result["KL_Info_Gain_bits"].diff()), ordered_df
 
 if __name__ == "__main__":
-    if os.path.exists("data/ic434_multicatalog.csv"):
-        df_ic = load_multicatalog_dataset("data/ic434_multicatalog.csv")
-        reg, mem = synthesize_region_distance(df_ic, 0.35)
-        ext, st = fit_extinction_breakpoint(df_ic), prepare_regression_state(df_ic)
-        mae, rmse, rel, _, _, kl = predict_knn_subspace(st, st["all_cols"])
-        abst, _, aurc = evaluate_knn_abstention(st)
-        Console().print(f"[bold green]estimators.py smoke test OK[/bold green] | IC 434 cluster d={reg['distance_pc']:.1f} pc (n={len(mem)}) | cloud d={ext['d_cloud_pc']:.1f} pc (ΔBIC={ext['delta_bic']:.1f}) | k-NN MAE={mae:.4f} dex ({rel:.1f}%), AURC={aurc:.4f} dex")
+    assert helio_to_cmb_z(0.00428, 187.7059, 12.3911) > 0.00428
+    assert np.allclose(gaussian_kl_bits(np.array([0.0, 1.0]), np.ones(2), 0.0, 1.0), [0.0, 0.5 / np.log(2)])
+    _p, _m, _c, _ = xd_posterior(np.array([[3.0, np.nan], [np.nan, np.nan]]), np.array([[[1.0, 0.0], [0.0, 0.0]], [[0.0, 0.0], [0.0, 0.0]]]), np.ones(1), np.array([[1.0, 2.0]]), np.array([[[4.0, 1.0], [1.0, 9.0]]]))
+    assert np.allclose(_p, 1.0) and np.allclose(_m[:, 0, 1], [2.4, 2.0]) and np.allclose(_c[:, 0, 1, 1], [8.8, 9.0])
+    df_ic = load_multicatalog_dataset(os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "ic434_multicatalog.csv"))
+    reg, mem = synthesize_region_distance(df_ic, 0.35)
+    ext, st = fit_extinction_breakpoint(df_ic), prepare_regression_state(df_ic)
+    mae, _, rel, _, _, _ = predict_knn_subspace(st, st["all_cols"])
+    _, _, aurc = evaluate_knn_abstention(st)
+    Console().print(f"[bold green]estimators.py smoke test OK[/bold green] | IC 434 cluster d={reg['distance_pc']:.1f} pc (n={len(mem)}) | cloud d={ext['d_cloud_pc']:.1f} pc (ΔBIC={ext['delta_bic']:.1f}) | k-NN MAE={mae:.4f} dex ({rel:.1f}%), AURC={aurc:.4f} dex")

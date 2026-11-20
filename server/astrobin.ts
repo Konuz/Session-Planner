@@ -1,16 +1,9 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { isAstroBinUrl } from '../src/lib/astrobin.ts'
 import { readResponseText } from './readResponseText.ts'
 
 export interface AstroBinEnv { ASTROBIN_API_KEY?: string; ASTROBIN_API_SECRET?: string }
 const maxResponseBytes = 1024 * 1024
-
-function astroBinUrl(value: unknown): value is string {
-  if (typeof value !== 'string') return false
-  try {
-    const url = new URL(value)
-    return url.protocol === 'https:' && (url.hostname === 'astrobin.com' || url.hostname.endsWith('.astrobin.com'))
-  } catch { return false }
-}
 
 interface Photo { imageUrl: string; galleryUrl: string; title: string }
 /** Wynik dla obiektu: zdjęcie albo jego brak (null). Awarie (502) nie są zapamiętywane. */
@@ -33,7 +26,7 @@ async function lookup(subject: string, env: Required<AstroBinEnv>, fetchImpl: ty
     try {
       const response = await fetchImpl(url, { headers: { 'User-Agent': 'KONUZASTRO Tracker (AstroBin API)' }, signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]) })
       const data = JSON.parse(await readResponseText(response, maxResponseBytes)) as { objects?: Array<{ url_regular?: unknown; url_thumb?: unknown; url_gallery?: unknown; title?: unknown }> }
-      const image = data.objects?.find((item) => astroBinUrl(item.url_regular ?? item.url_thumb) && astroBinUrl(item.url_gallery))
+      const image = data.objects?.find((item) => isAstroBinUrl(item.url_regular ?? item.url_thumb) && isAstroBinUrl(item.url_gallery))
       if (!image) continue
       return { photo: { imageUrl: (image.url_regular ?? image.url_thumb) as string, galleryUrl: image.url_gallery as string, title: typeof image.title === 'string' ? image.title : subject } }
     } catch { return { failed: true } }

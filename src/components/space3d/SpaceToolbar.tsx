@@ -1,6 +1,6 @@
 // Pasek narzędzi okna „Pozycja 3D”: przełącznik skal, wybór gwiazdozbioru 3D, opis skali i warstwy.
 import { Camera } from 'lucide-react'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { TYPE_INFO, type DSO, type ObjectType } from '../../lib/catalog'
 import { CONSTELLATION_PL } from '../../lib/constellations'
 import { fmtDistance } from '../../lib/format'
@@ -8,6 +8,7 @@ import { GALACTIC_LIMIT_LY, type SpaceScale } from '../../lib/space3d'
 import { useCatalog } from '../../state/data'
 import { ConstellationPicker } from '../ConstellationPicker'
 import { LayersMenu } from '../LayersMenu'
+import { useOutside } from '../TopBar'
 import type { SpaceSettingsState } from './spaceSettings'
 
 const SCALES: { id: SpaceScale; label: string }[] = [{ id: 'galaxy', label: 'Droga Mleczna' }, { id: 'universe', label: 'Wszechświat lokalny' }]
@@ -27,6 +28,8 @@ export function SpaceToolbar({ o, settings, onScale, onConstellationView, crumb,
   const { scale, showConstellations, constellations } = settings
   const { catalog } = useCatalog()
   const [infoOpen, setInfoOpen] = useState(false)
+  const infoRef = useRef<HTMLDivElement>(null)
+  useOutside(infoRef, () => setInfoOpen(false), infoOpen)
   useEffect(() => {
     if (!infoOpen) return
     const timeout = window.setTimeout(() => setInfoOpen(false), 10_000)
@@ -59,7 +62,7 @@ export function SpaceToolbar({ o, settings, onScale, onConstellationView, crumb,
       {children}
       <span className="obs-spacer" />
       {!crumb && <div className="space-toolbar-end">
-      <div className="scale-info-control">
+      <div ref={infoRef} className="scale-info-control">
         <button className="scale-info-button" title="Informacje o skali" aria-label="Informacje o skali" aria-expanded={infoOpen} aria-controls="scale-info-popover" onClick={() => setInfoOpen((open) => !open)}>i</button>
         {infoOpen && (
           <div id="scale-info-popover" className="scale-info-popover" role="note" aria-label="Opis skali i źródła danych">

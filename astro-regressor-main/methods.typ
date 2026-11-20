@@ -29,6 +29,8 @@
     astro-regressor: Metody, Równania i Praktyka Astronomiczna \
     Methods, Equations & Standard Practice in Astronomy
   ]
+  #v(0.25em)
+  #text(size: 9.5pt)[Kacper Kania (#link("https://github.com/kacperkan")[`kacperkan`])]
 ]
 
 #v(0.2em)

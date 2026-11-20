@@ -67,10 +67,24 @@ export default function PlannerView() {
     [rows, darkStart, darkEnd],
   )
   const autoByKey = useMemo(() => new Map(auto.map((slot) => [slot.key, slot])), [auto])
+  const clampNight = (t: number) => Math.max(night.startMs, Math.min(night.endMs, t))
   const inNight = (t: number | null) => t !== null && t >= night.startMs && t <= night.endMs
   const slots = rows.map((r) => {
     const { startMs, endMs } = r.item
-    if (inNight(startMs) && inNight(endMs)) return { key: r.item.key, startMs: startMs!, endMs: endMs!, manual: true }
+    if (startMs !== null && endMs !== null) {
+      if (night.polarDay) return null
+      if (inNight(startMs) && inNight(endMs)) return { key: r.item.key, startMs, endMs, manual: true }
+      if (endMs > night.startMs && startMs < night.endMs) {
+        return { key: r.item.key, startMs: clampNight(startMs), endMs: clampNight(endMs), manual: true }
+      }
+      const anchoredStart = localTimeToMs(night.date, fmtTime(startMs, tz), tz)
+      const anchoredEnd = localTimeToMs(night.date, fmtTime(endMs, tz), tz)
+      if (anchoredStart !== null && anchoredEnd !== null) {
+        const cStart = clampNight(anchoredStart)
+        const cEnd = clampNight(anchoredEnd)
+        if (cEnd > cStart) return { key: r.item.key, startMs: cStart, endMs: cEnd, manual: true }
+      }
+    }
     const a = autoByKey.get(r.item.key)
     return a ? { ...a, manual: false } : null
   })
@@ -222,7 +236,7 @@ export default function PlannerView() {
                   <p className="planner-help">Czas samego naświetlania. Zostaw zapas na odczyt, zmianę filtrów, ustawianie ostrości i dithering.</p>
                   <button className="button small ghost" onClick={() => updatePlan(r.item.key, { startMs: null, endMs: null })} disabled={!s?.manual}>Przywróć okno automatyczne</button>
                   <dl className="planner-facts"><div><dt>Maks. wysokość</dt><dd>{fmtDeg(r.vis.maxAlt)}</dd></div><div><dt>Górowanie</dt><dd>{fmtTime(r.vis.transitMs, tz)}</dd></div><div><dt>Od Księżyca</dt><dd className={moonSep !== null && moonSep < 30 ? 'planner-warn' : ''}>{moonSep !== null ? fmtDeg(moonSep) : '-'}</dd></div><div><dt>Kąt kadru</dt><dd>{r.item.framing.paDeg}°</dd></div></dl>
-                  <button className="button small" onClick={() => { select(r.o.i, false); useStore.getState().setFraming(r.item.framing); setMode('framing'); setTab('sky') }}>Ustaw kadr</button>
+                  <button className="button small" onClick={() => { select(r.o.i, false); useStore.getState().setFraming({ ...r.item.framing, mosaic: r.item.framing.mosaic ?? undefined }); setMode('framing'); setTab('sky') }}>Ustaw kadr</button>
                 </div>
                 <div className="planner-exposures">
                   <div className="planner-section-head"><h3>Filtry i ekspozycje</h3><button className="button small ghost" disabled={seconds <= 0 || available <= 0 || r.exposures.some((e) => !validExposure(e))} title="Przelicz liczbę klatek proporcjonalnie, wypełniając całe okno bez zapasu na obsługę sprzętu" onClick={() => saveExposures(r, fitExposures(r.exposures, available))}>Dopasuj klatki do okna</button></div>
@@ -258,7 +272,7 @@ export default function PlannerView() {
           onChange={(v) => setExportFormat(v)}
         /></label><button className="button primary" disabled={!rows.length || (exportFormat === 'exposures' && (invalidExposures || invalidWindows))} onClick={exportCsv}>Pobierz CSV</button><button className="button" disabled={!rows.length || invalidExposures || invalidWindows} onClick={exportText}>Plan nocy TXT</button></div>
         <p className="planner-help">{exportFormat === 'nina' ? 'Importuj cele w prostym sekwencerze NINA (Import targets). Plik zawiera nazwę, RA/Dec J2000 i obrót kadru. Ekspozycje pochodzą z szablonu NINA; do zaawansowanego sekwencera przenieś plan w NINA.' : exportFormat === 'scheduler' ? 'W Target Scheduler wybierz profil → Import Targets. Plik zawiera typ, nazwę, RA/Dec J2000, obrót i ROI 100%. Ekspozycje przypisz przez szablon celu w tej wtyczce.' : 'Jeden wiersz na filtr: klatki, sekundy, integracja, kadr, okno UTC, strefa i notatka. To wykaz do arkusza lub ręcznego przeniesienia ustawień, nie plik importu sekwencji NINA.'}</p>
-        <details className="planner-export-help"><summary>Co przenosi się do NINA?</summary><p>Nie istnieje wspólny CSV pełnej sesji dla wszystkich modułów. Importery celów nie odczytują liczby klatek ani czasów ekspozycji z dodatkowych kolumn. Pobierz też wykaz ekspozycji lub TXT, aby zachować te ustawienia. Okna z planera są wskazówką; pliki celów ich nie wymuszają.</p><a href="https://tcpalmer.github.io/nina-scheduler/target-management/targets.html" target="_blank" rel="noreferrer">Dokumentacja Target Scheduler</a><span> · </span><a href="https://github.com/isbeorn/nina/blob/develop/NINA/ViewModel/Sequencer/SimpleSequence/SimpleSequenceVM.cs" target="_blank" rel="noreferrer">Importer NINA</a></details>
+        <details className="planner-export-help"><summary>Co przenosi się do NINA?</summary><p>Nie istnieje wspólny CSV pełnej sesji dla wszystkich modułów. Importery celów nie odczytują liczby klatek ani czasów ekspozycji z dodatkowych kolumn. Pobierz też wykaz ekspozycji lub TXT, aby zachować te ustawienia. Okna z planera są wskazówką; pliki celów ich nie wymuszają.</p><a href="https://tcpalmer.github.io/nina-scheduler/target-management/targets.html" target="_blank" rel="noopener noreferrer">Dokumentacja Target Scheduler</a><span> · </span><a href="https://github.com/isbeorn/nina/blob/develop/NINA/ViewModel/Sequencer/SimpleSequence/SimpleSequenceVM.cs" target="_blank" rel="noopener noreferrer">Importer NINA</a></details>
       </section>
     </div>
   )

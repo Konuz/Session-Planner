@@ -4,7 +4,7 @@
 import { galactic } from '../src/lib/astro.ts'
 import { hasDistance } from '../src/lib/distance.ts'
 import { parseVizierTsv, separationDeg, type Choice, type Entry } from './catalogDistances.ts'
-import { kinematicDistance, type Kda } from './kinematicDistance.ts'
+import { isOuterSolarCircle, kinematicDistance, type Kda } from './kinematicDistance.ts'
 
 const LY_PER_KPC = 3261.56
 /** Największa odległość środka regionu WISE od obiektu przy dopasowaniu po pozycji. */
@@ -146,7 +146,10 @@ function kinematicChoice(e: Entry, region: WiseRegion | null, fb: FbRegion | und
   if (!velocity) return null
   const { lDeg, bDeg } = galactic({ raDeg: e.raDeg, decDeg: e.decDeg })
   if (lDeg < GALACTIC_CENTER_EXCLUSION_DEG || lDeg > 360 - GALACTIC_CENTER_EXCLUSION_DEG) return null
-  const d = kinematicDistance({ seed: e.designations[0], lDeg, bDeg, vlsr: velocity.vlsr, kda: region?.kda ?? null })
+  if (Math.abs(lDeg - 180) < GALACTIC_CENTER_EXCLUSION_DEG || Math.abs(bDeg) > GALACTIC_CENTER_EXCLUSION_DEG) return null
+  const kda = region?.kda ?? null
+  if (Math.cos(lDeg * Math.PI / 180) > 0 && kda === null && !isOuterSolarCircle(lDeg, bDeg, velocity.vlsr)) return null
+  const d = kinematicDistance({ seed: e.designations[0], lDeg, bDeg, vlsr: velocity.vlsr, kda })
   if (!d) return null
   return {
     ly: d.kpc * LY_PER_KPC, sigmaLy: d.sigmaKpc * LY_PER_KPC,

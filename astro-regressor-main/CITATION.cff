@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+title: "astro-regressor: Astronomical Distance Estimation and Multi-Catalog Regression"
+message: "If you use astro-regressor in your work, please cite it using this metadata."
+type: software
+authors:
+  - family-names: Kania
+    given-names: Kacper
+    alias: kacperkan
+repository-code: "https://github.com/kacperkan/astro-regressor"
+license: MIT
+version: "0.1.0"

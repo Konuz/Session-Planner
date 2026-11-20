@@ -1,6 +1,35 @@
-/* KONUZASTRO Tracker: tokeny i style zgodne z konuzastro.pl:
-   czarne tło, karty #0B0D17, ramki #15192B/#232942, cyjan #00E0FF, kwadratowe narożniki z klamrami L,
-   krój systemowy mono dla etykiet i liczb, systemowy bezszeryfowy dla tekstu (bez pobierania fontów). */
+@font-face {
+  font-family: 'Exo 2';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('/fonts/exo2-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Exo 2';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('/fonts/exo2-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('/fonts/inter-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('/fonts/inter-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
 
 :root {
   --bg: #000;
@@ -60,7 +89,6 @@ a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 button, input, select, textarea { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-select:focus-visible { outline: none; }
 select { color-scheme: dark; }
 select option, select optgroup { background-color: var(--card-solid); color: var(--text); }
 ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -96,9 +124,6 @@ select option, select optgroup { background-color: var(--card-solid); color: var
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
 }
-/* Elementy klikalne: ramka space-800 → cyjan w 500 ms (karta galerii). */
-.hover-frame { border: 1px solid var(--border); transition: border-color 0.5s; }
-.hover-frame:hover, .hover-frame:focus-visible { border-color: var(--accent); }
 
 .panel-title {
   display: flex;
@@ -413,7 +438,7 @@ input[type='checkbox']:checked::after {
 .date-popover-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 .popover.annotation-color-popover { width: 260px; max-height: none; overflow: visible; padding: 10px 12px; color: var(--text); letter-spacing: 0; }
 .annotation-color-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
-.annotation-color-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 27px; font-size: 8px; font-family: var(--sans); font-weight: 400; color: var(--text-2); }
+.annotation-color-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 27px; font-size: 12px; font-family: var(--sans); font-weight: 400; color: var(--text-2); }
 .annotation-color-row input { width: 32px; height: 20px; padding: 0; border: 0; background: transparent; cursor: pointer; }
 .type-filter label { display: flex; align-items: center; gap: 8px; padding: 3px 0; cursor: pointer; }
 .type-filter label:first-child { padding-bottom: 6px; margin-bottom: 4px; border-bottom: 1px solid var(--border); }
@@ -614,11 +639,8 @@ input[type='checkbox']:checked::after {
   padding: 10px 12px;
   border-top: 1px solid var(--border);
 }
-.sky-toolbar .spacer { flex: 1; }
 /* Przyciski na obrazie kopuły: półprzezroczyste czarne tło w spoczynku, po najechaniu pełny cyjan. */
 .sky-hud .button:not(:hover):not(.active) { background: rgba(0, 0, 0, 0.6); }
-/* Przełączniki warstw w osobnym wierszu pod przyciskami trybów. */
-.toolbar-group { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; flex-basis: 100%; }
 .sky-toolbar .button:not(.icon-button) { padding: 0 10px; letter-spacing: 0.04em; }
 .sky-toolbar .switch { font: 10px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; gap: 6px; }
 .sky-toolbar .switch .track { width: 30px; height: 16px; }
@@ -655,12 +677,8 @@ input[type='checkbox']:checked::after {
 .layers-choice .layers-galaxy-range { color: var(--accent); }
 .layers-choice .layers-galaxy-range svg { flex: none; }
 .layers-note { flex-basis: 100%; font: 10px var(--mono); color: var(--text-dim); }
-.layers-choice select.control { flex-basis: 100%; min-height: 28px; height: 28px; font: 11px var(--mono); }
 .layers-sub { padding-left: 18px; display: grid; gap: 6px; }
 .layers-types { display: grid; gap: 2px; padding-top: 6px; border-top: 1px solid var(--border); font-size: 11px; letter-spacing: 0; color: var(--text); }
-.depth-slider { display: inline-flex; align-items: center; gap: 6px; font: 10px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-2); cursor: pointer; }
-.depth-slider input { width: 64px; accent-color: var(--accent); }
-.depth-slider b { min-width: 1ch; color: var(--accent); font-weight: 600; }
 /* Pinezka wybranego obiektu w widoku 3D (jak znacznik celu na mapie nieba konuzastro.pl). */
 .pin { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; z-index: 2; }
 .pin > span { position: absolute; left: 0; top: 0; border-radius: 50%; translate: -50% -50%; }
@@ -885,7 +903,6 @@ input[type='checkbox']:checked::after {
 @keyframes drawer-in { from { transform: translateX(40px); opacity: 0; } }
 
 .empty { padding: 40px 20px; text-align: center; color: var(--text-dim); }
-.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 60; padding: 10px 16px; background: var(--card-solid); border: 1px solid var(--accent); color: var(--accent); font: 12px var(--mono); animation: pop-in 0.3s var(--ease); }
 .boot { position: fixed; inset: 0; display: grid; place-items: center; background: #000; z-index: 100; transition: opacity 0.6s; }
 .boot.done { opacity: 0; pointer-events: none; }
 .boot-lines { font: 12px var(--mono); color: var(--text-dim); letter-spacing: 0.08em; min-width: 320px; }

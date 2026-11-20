@@ -70,6 +70,10 @@ export function loadOutlines(): Promise<Outline[]> {
         rings: o.rings.map((ring, i) => prepareRing(ring, o.holes?.[i])),
       })),
     )
+    .catch((err) => {
+      pending = null
+      throw err
+    })
   return pending
 }
 

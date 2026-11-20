@@ -1,4 +1,3 @@
-// Polskie nazwy gwiazdozbiorów (z tłumaczenia Stellarium), generowane przez scripts/build-data.ts.
 export const CONSTELLATION_PL: Record<string, string> = {
  Aql: "Orzeł",
  And: "Andromeda",

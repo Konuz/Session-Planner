@@ -87,6 +87,8 @@ def fetch_stellar_cone(ra, dec, cone):
         except (requests.RequestException, ValueError) as error:
             status = error.response.status_code if isinstance(error, requests.HTTPError) and error.response is not None else None
             codes.append(str(status) if status is not None else type(error).__name__)
+    if stars is not None:
+        return apply_gaia_calibration(stars)
     raise RuntimeError(f"Gaia chwilowo niedostępna ({', '.join(codes)})")
 
 
@@ -156,6 +158,80 @@ def finite(x):
     return x is not None and isinstance(x, (int, float)) and math.isfinite(x)
 
 
+def clean_num(x):
+    return float(x) if finite(x) else None
+
+
+def angular_sep_deg(ra1, dec1, ra2, dec2):
+    import numpy as np
+
+    r = math.pi / 180.0
+    da = (ra2 - ra1) * r
+    dd = (dec2 - dec1) * r
+    s = np.sin(dd / 2.0) ** 2 + math.cos(dec1 * r) * np.cos(dec2 * r) * np.sin(da / 2.0) ** 2
+    return 2.0 * np.arcsin(np.minimum(1.0, np.sqrt(np.maximum(0.0, s)))) / r
+
+
+def group_extragalactic_fallback(tables, ra, dec, r_on):
+    import numpy as np
+    import pandas as pd
+
+    group_deg = min(max(r_on, 0.05), 0.25)
+    cf4 = tables.get("cosmicflows4")
+    if cf4 is not None and len(cf4) > 0 and {"ra", "dec", "dm_cf4"}.issubset(cf4.columns):
+        rows = cf4.assign(
+            ra=pd.to_numeric(cf4["ra"], errors="coerce"),
+            dec=pd.to_numeric(cf4["dec"], errors="coerce"),
+            dm_cf4=pd.to_numeric(cf4["dm_cf4"], errors="coerce"),
+            e_dm=pd.to_numeric(cf4["e_dm"], errors="coerce") if "e_dm" in cf4 else np.nan,
+        ).dropna(subset=["ra", "dec", "dm_cf4"])
+        if len(rows) > 0:
+            sep = angular_sep_deg(ra, dec, rows["ra"].to_numpy(dtype=float), rows["dec"].to_numpy(dtype=float))
+            matched = rows[sep <= group_deg]
+            if len(matched) > 0:
+                dms = matched["dm_cf4"].to_numpy(dtype=float)
+                med = float(np.median(dms))
+                if len(dms) >= 3:
+                    keep = np.abs(dms - med) <= 1.0
+                    if keep.sum() >= 2:
+                        matched = matched[keep]
+                        dms = matched["dm_cf4"].to_numpy(dtype=float)
+                        med = float(np.median(dms))
+                d_pc = (10.0 ** ((med - 25.0) / 5.0)) * 1e6
+                errs = matched["e_dm"].to_numpy(dtype=float)
+                valid_errs = errs[np.isfinite(errs) & (errs > 0)]
+                if len(dms) >= 2:
+                    lo_dm = min(float(np.percentile(dms, 16)), med)
+                    hi_dm = max(float(np.percentile(dms, 84)), med)
+                    if len(valid_errs) > 0:
+                        e_med = float(np.median(valid_errs)) / math.sqrt(len(valid_errs))
+                        lo_dm = min(lo_dm, med - e_med)
+                        hi_dm = max(hi_dm, med + e_med)
+                    lo_pc = (10.0 ** ((lo_dm - 25.0) / 5.0)) * 1e6
+                    hi_pc = (10.0 ** ((hi_dm - 25.0) / 5.0)) * 1e6
+                elif len(valid_errs) > 0:
+                    e = float(valid_errs[0])
+                    lo_pc = (10.0 ** ((med - e - 25.0) / 5.0)) * 1e6
+                    hi_pc = (10.0 ** ((med + e - 25.0) / 5.0)) * 1e6
+                else:
+                    lo_pc, hi_pc = None, None
+                return {"status": "ok", "kind": "cf4", "members": int(len(matched)), "distance_pc": clean_num(d_pc), "lo_pc": clean_num(lo_pc), "hi_pc": clean_num(hi_pc)}
+    sdss = tables.get("sdss_spec")
+    if sdss is not None and len(sdss) > 0 and {"ra", "dec", "z", "zErr"}.issubset(sdss.columns):
+        rows = sdss.assign(
+            ra=pd.to_numeric(sdss["ra"], errors="coerce"),
+            dec=pd.to_numeric(sdss["dec"], errors="coerce"),
+            z=pd.to_numeric(sdss["z"], errors="coerce"),
+            zErr=pd.to_numeric(sdss["zErr"], errors="coerce"),
+        ).dropna(subset=["ra", "dec", "z", "zErr"])
+        if len(rows) > 0:
+            sep = angular_sep_deg(ra, dec, rows["ra"].to_numpy(dtype=float), rows["dec"].to_numpy(dtype=float))
+            valid = rows[(sep <= group_deg) & (rows["z"] > 0.0005) & (rows["zErr"] >= 0)]
+            if len(valid) > 0:
+                return {"status": "ok", "kind": "sdss_z", "z_helio": float(np.median(valid["z"].to_numpy(dtype=float)))}
+    return None
+
+
 def run(ra, dec, radius, app_type):
     from estimators import synthesize_target_distance
 
@@ -174,17 +250,27 @@ def run(ra, dec, radius, app_type):
         df = pd.DataFrame()
     else:
         df, tables = fetch_stellar_cone(ra, dec, cone), {}
-    primary, _, members = synthesize_target_distance(meta, df, tables, cone, use_registry=False, prefer_nearest=app_type in NEBULAE)
+        if app_type == "GC" and len(df) > 0 and "parallax" in df.columns:
+            df = df[df["parallax"] < 0.8]
+    point_radius_arcsec = min(max(r_on * 3600.0, 90.0), 900.0) if app_type == "GG" else 15.0
+    primary, _, members = synthesize_target_distance(meta, df, tables, cone, point_radius_arcsec=point_radius_arcsec, use_registry=False, prefer_nearest=app_type in NEBULAE)
     mode, method = primary.get("mode"), str(primary.get("method", ""))
-    d, lo, hi = primary.get("distance_pc"), primary.get("lo_pc"), primary.get("hi_pc")
+    d, lo, hi = clean_num(primary.get("distance_pc")), clean_num(primary.get("lo_pc")), clean_num(primary.get("hi_pc"))
     base = {"cone_deg": round(cone, 3), "stars": int(len(df)), "regressor_method": method}
-    if mode == "abstain" or not finite(d):
+    if app_type == "GG" and (mode == "abstain" or (tables.get("cosmicflows4") is not None and len(tables["cosmicflows4"]) > 1)):
+        gg = group_extragalactic_fallback(tables, ra, dec, r_on)
+        if gg is not None:
+            return {**base, **gg}
+    if mode == "abstain" or d is None or d <= 0:
         return {**base, "status": "abstain", "reason": primary.get("abstain_reason") or method}
     if mode == "region_kde":
         if method.startswith("Gaia DR3 Fallback Median"):
             return {**base, "status": "abstain", "reason": "TOO_FEW_STARS"}
         n = int((members["membership_probability"] >= 0.5).sum()) if "membership_probability" in members else len(members)
-        return {**base, "status": "ok", "kind": "group", "members": n, "distance_pc": d, "lo_pc": lo, "hi_pc": hi, "sigma_vt_kms": primary.get("sigma_vt_kms")}
+        svt = clean_num(primary.get("sigma_vt_kms"))
+        if app_type == "GC" and (d < 1800.0 or n < 20 or svt is None or svt > 45.0 or lo is None or hi is None or (hi - lo) / (2.0 * d) > 0.25):
+            return {**base, "status": "abstain", "reason": "GC_BEYOND_GAIA_CONE"}
+        return {**base, "status": "ok", "kind": "group", "members": n, "distance_pc": d, "lo_pc": lo, "hi_pc": hi, "sigma_vt_kms": svt}
     if mode == "extragalactic":
         if finite(primary.get("dm_cf4")):
             return {**base, "status": "ok", "kind": "cf4", "distance_pc": d, "lo_pc": lo, "hi_pc": hi}
@@ -204,7 +290,7 @@ def safe_run(ra, dec, radius, app_type):
 
 
 def send(out, message):
-    out.write(json.dumps(message, default=float) + "\n")
+    out.write(json.dumps(message, default=float, allow_nan=False) + "\n")
     out.flush()
 
 

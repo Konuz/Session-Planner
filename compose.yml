@@ -1,0 +1,14 @@
+services:
+  tracker:
+    build: .
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${PORT:-4173}:4173"
+    env_file:
+      - path: .env.local
+        required: false
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "4173"
+    volumes:
+      - ./scripts/.cache:/app/scripts/.cache
+    restart: unless-stopped

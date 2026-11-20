@@ -1,0 +1,3 @@
+target,PGC,ra,dec,v_cmb_kms,dm_cf4,e_dm,provenance
+M87,41361,187.7058,12.3912,1608.0,31.134,0.04,VizieR:J/ApJ/944/94/table2@vizier.idia.ac.za
+NGC 4889,44715,195.0336,27.977,6719.0,35.126,0.46,VizieR:J/ApJ/944/94/table2@vizier.idia.ac.za

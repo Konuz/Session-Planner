@@ -4,15 +4,10 @@
 //   linie widzenia Zucker i in. 2020, pozostałości po supernowych: Ranasinghe & Leahy 2022, na końcu Wikidata
 //   (niezweryfikowane). Gwiazda oświetlająca (van den Bergh 1966)
 //   trafia do katalogu tylko jako pozycja: odległość daje dopiero gwiazda Gaia z pola zdjęcia.
-import { hasDistance, redshiftDistance, simbadId, type DistanceScope } from '../src/lib/distance.ts'
+import { hasDistance, redshiftDistance, separationDeg, simbadId, type DistanceScope } from '../src/lib/distance.ts'
 
 const LY_PER_PC = 3.26156
-const DEG = Math.PI / 180
-
-export function separationDeg(ra1: number, dec1: number, ra2: number, dec2: number): number {
-  const s = Math.sin((dec2 - dec1) * DEG / 2) ** 2 + Math.cos(dec1 * DEG) * Math.cos(dec2 * DEG) * Math.sin((ra2 - ra1) * DEG / 2) ** 2
-  return 2 * Math.asin(Math.min(1, Math.sqrt(s))) / DEG
-}
+export { separationDeg }
 
 /** Tabela VizieR w formacie asu-tsv: komentarze „#”, nagłówek, jednostki, kreski, dane. */
 export function parseVizierTsv(text: string): Record<string, string>[] {
@@ -47,12 +42,19 @@ export function parseSimbadIdents(json: string): Map<string, SimbadObject> {
   const body = JSON.parse(json) as { metadata: { name: string }[]; data: unknown[][] }
   const names = body.metadata.map((m) => m.name)
   const get = (row: unknown[], name: string) => row[names.indexOf(name)]
-  return new Map(body.data.map((row) => [simbadKey(String(get(row, 'id'))), {
-    mainId: String(get(row, 'main_id')).replace(/\s+/g, ' ').trim(), otype: String(get(row, 'otype') ?? ''),
-    raDeg: Number(get(row, 'ra')), decDeg: Number(get(row, 'dec')),
-    z: typeof get(row, 'rvz_redshift') === 'number' ? get(row, 'rvz_redshift') as number : null, zQual: String(get(row, 'rvz_qual') ?? ''),
-    nbref: Number(get(row, 'nbref') ?? 0),
-  }]))
+  const map = new Map<string, SimbadObject>()
+  for (const row of body.data) {
+    const key = simbadKey(String(get(row, 'id')))
+    const obj: SimbadObject = {
+      mainId: String(get(row, 'main_id')).replace(/\s+/g, ' ').trim(), otype: String(get(row, 'otype') ?? ''),
+      raDeg: Number(get(row, 'ra')), decDeg: Number(get(row, 'dec')),
+      z: typeof get(row, 'rvz_redshift') === 'number' ? get(row, 'rvz_redshift') as number : null, zQual: String(get(row, 'rvz_qual') ?? ''),
+      nbref: Number(get(row, 'nbref') ?? 0),
+    }
+    const prev = map.get(key)
+    if (!prev || obj.nbref > prev.nbref || (obj.nbref === prev.nbref && obj.mainId < prev.mainId)) map.set(key, obj)
+  }
+  return map
 }
 
 /** Odległość kątowa pozycji katalogu od pozycji SIMBAD, powyżej której tożsamość jest nierozstrzygnięta
@@ -236,10 +238,24 @@ export function matchCf4(entries: Entry[], galaxies: Cf4Galaxy[]): Map<number, C
   const pairs: { i: number; g: Cf4Galaxy; sep: number }[] = []
   entries.forEach((e, i) => {
     if (e.type !== 'G') return
-    for (let dr = -1; dr <= 1; dr++) for (let dd = -1; dd <= 1; dd++) {
-      for (const g of cells.get(cell((e.raDeg + dr + 360) % 360, e.decDeg + dd)) ?? []) {
-        const sep = separationDeg(e.raDeg, e.decDeg, g.raDeg, g.decDeg)
-        if (sep <= CF4_MATCH_DEG) pairs.push({ i, g, sep })
+    const nearPole = Math.abs(e.decDeg) > 88
+    const decCell = Math.floor(e.decDeg)
+    const raCell = Math.floor(e.raDeg)
+    for (let dd = -1; dd <= 1; dd++) {
+      if (nearPole) {
+        for (let ra = 0; ra < 360; ra++) {
+          for (const g of cells.get(cell(ra, decCell + dd)) ?? []) {
+            const sep = separationDeg(e.raDeg, e.decDeg, g.raDeg, g.decDeg)
+            if (sep <= CF4_MATCH_DEG) pairs.push({ i, g, sep })
+          }
+        }
+      } else {
+        for (let dr = -1; dr <= 1; dr++) {
+          for (const g of cells.get(cell((raCell + dr + 360) % 360, decCell + dd)) ?? []) {
+            const sep = separationDeg(e.raDeg, e.decDeg, g.raDeg, g.decDeg)
+            if (sep <= CF4_MATCH_DEG) pairs.push({ i, g, sep })
+          }
+        }
       }
     }
   })

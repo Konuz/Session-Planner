@@ -39,23 +39,28 @@ const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').match
 /** Najdłuższy bok tekstury płaszczyzny zdjęcia w scenie. */
 const PLANE_TEXTURE_PX = 2048
 
-function thumbnail(image: HTMLImageElement, item: ObservatoryItem): string {
+function thumbnail(image: HTMLImageElement, item: ObservatoryItem): string | null {
+  if (!image.naturalWidth || !image.naturalHeight) return null
   const canvas = document.createElement('canvas')
   canvas.width = canvas.height = 96
   const radius = item.kind === 'star' ? Math.max(24, image.naturalWidth * 0.012) : item.radius
   const { x, y, side } = photoCropSquare({ x: item.x, y: item.y, radius }, image.naturalWidth, image.naturalHeight)
+  if (side <= 0) return null
   canvas.getContext('2d')!.drawImage(image, x, y, side, side, 0, 0, 96, 96)
   return canvas.toDataURL('image/jpeg', 0.85)
+}
+
+interface DecodedPhoto {
+  src: string
+  img: HTMLImageElement
+  plane: ImageBitmap | null
 }
 
 export default function Observatory({ project, slots, stars, onRetryStars, diving, hidden, onScene }: Props) {
   const colors = useStore((s) => s.annotationColors)
   const hostRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<ObservatoryScene | null>(null)
-  const [image, setImage] = useState<HTMLImageElement | null>(null)
-  // Płaszczyzna zdjęcia: pomniejszona bitmapa przygotowana poza głównym wątkiem (wysyłka pełnych kilku megapikseli
-  // na GPU trwała ponad 100 ms w jednej klatce).
-  const [plane, setPlane] = useState<ImageBitmap | null>(null)
+  const [decoded, setDecoded] = useState<DecodedPhoto | null>(null)
   const [progress, setProgress] = useState(1)
   const [playing, setPlaying] = useState(false)
   const [view, setView] = useState<ObservatoryView>('structure')
@@ -79,52 +84,53 @@ export default function Observatory({ project, slots, stars, onRetryStars, divin
   const withDistance = visibleItems
   const active = items.find((item) => item.id === selected) ?? null
   const fov = fieldOfView(project.astrometry.wcs, project.width, project.height)
-  const thumb = useMemo(() => image && active ? thumbnail(image, active) : null, [image, active])
+  const readyDecoded = decoded?.src === project.image ? decoded : null
+  const thumb = useMemo(() => readyDecoded && active ? thumbnail(readyDecoded.img, active) : null, [readyDecoded, active])
 
   useEffect(() => {
-    // Dekodowanie poza głównym wątkiem: inaczej robi je pierwsze rysowanie wycinków (klatka setek ms).
     let live = true
+    const src = project.image
+    setDecoded((prev) => (prev?.src === src ? prev : null))
     const img = new Image()
-    img.src = project.image
-    img.decode().catch(() => {}).then(async () => {
+    img.src = src
+    void img.decode().catch(() => {}).then(async () => {
+      if (!live || !img.naturalWidth || !img.naturalHeight) return
       const scale = Math.min(1, PLANE_TEXTURE_PX / Math.max(img.naturalWidth, img.naturalHeight))
-      // Z obiektu Blob dekodowanie i zmniejszenie idą poza głównym wątkiem (z elementu <img> nie).
-      const blob = await fetch(project.image).then((r) => r.blob()).catch(() => null)
+      const blob = await fetch(src).then((r) => r.blob()).catch(() => null)
       const bitmap = await createImageBitmap(blob ?? img, { resizeWidth: Math.max(1, Math.round(img.naturalWidth * scale)), resizeHeight: Math.max(1, Math.round(img.naturalHeight * scale)), resizeQuality: 'high', imageOrientation: 'flipY' }).catch(() => null)
       if (!live) { bitmap?.close(); return }
-      setPlane(bitmap)
-      setImage(img)
+      setDecoded({ src, img, plane: bitmap })
     })
     return () => { live = false }
   }, [project.image])
-  // Poprzednia bitmapa płaszczyzny (ok. 16 MB) zwalniana jawnie przy zmianie zdjęcia i odmontowaniu (C19).
-  useEffect(() => () => plane?.close(), [plane])
+  useEffect(() => () => decoded?.plane?.close(), [decoded])
 
-  // Scena powstaje po wczytaniu obrazu i odtwarza się, gdy zmieni się zestaw obiektów (np. po pobraniu gwiazd).
   const idleRef = useRef(diving || hidden)
   idleRef.current = diving || hidden
   const onSceneRef = useRef(onScene)
   onSceneRef.current = onScene
-  // Jedna scena (i jeden kontekst WebGL) na czas życia komponentu: nowe dane podmieniają zawartość.
-  // Sprzątanie w fazie układu, póki DOM jest podłączony: OrbitControls szuka document przez getRootNode() (audyt C01).
   useLayoutEffect(() => () => {
     onSceneRef.current?.(null)
     sceneRef.current?.dispose()
     sceneRef.current = null
   }, [])
+  const framedIdRef = useRef<string | null>(null)
   useEffect(() => {
-    if (!image || !hostRef.current) return
+    if (!readyDecoded || !hostRef.current) return
     sceneRef.current ??= new ObservatoryScene(hostRef.current, { reducedMotion: reducedMotion(), onSelect: setSelected, external: idleRef.current })
-    sceneRef.current.setData(image, { width: project.width, height: project.height }, items, domain, plane, colors)
+    sceneRef.current.setData(readyDecoded.img, { width: project.width, height: project.height }, items, domain, readyDecoded.plane, colors)
     onSceneRef.current?.(sceneRef.current)
-  }, [image, plane, items, domain, project.width, project.height, colors])
+  }, [readyDecoded, items, domain, project.width, project.height, colors])
 
-  useEffect(() => { sceneRef.current?.setProgress(progress) }, [progress, image, items])
-  useEffect(() => { sceneRef.current?.setVisible(new Set(visibleItems.map((item) => item.id))) }, [visibleItems, image, colors])
-  useEffect(() => { sceneRef.current?.setSelected(selected) }, [selected, image, items])
-  // Widok ustawiamy po zbudowaniu sceny bez animacji, przy zmianie zakładki z przelotem.
+  useEffect(() => { sceneRef.current?.setProgress(progress) }, [progress, readyDecoded, items])
+  useEffect(() => { sceneRef.current?.setVisible(new Set(visibleItems.map((item) => item.id))) }, [visibleItems, readyDecoded, colors])
+  useEffect(() => { sceneRef.current?.setSelected(selected) }, [selected, readyDecoded, items])
   const viewRef = useRef(view)
-  useEffect(() => { sceneRef.current?.setView(viewRef.current, false) }, [image, items])
+  useEffect(() => {
+    if (!readyDecoded || !sceneRef.current || framedIdRef.current === project.id) return
+    framedIdRef.current = project.id
+    sceneRef.current.setView(viewRef.current, false)
+  }, [readyDecoded, project.id])
   useEffect(() => { if (viewRef.current !== view) { viewRef.current = view; sceneRef.current?.setView(view) } }, [view])
 
   useEffect(() => {
@@ -206,7 +212,7 @@ export default function Observatory({ project, slots, stars, onRetryStars, divin
           <button type="button" className="button small" onClick={() => sceneRef.current?.flyTo(active.id)}>Leć do zaznaczenia</button>
           <details>
             <summary>Źródło i niepewność</summary>
-            <p>{[active.method, active.source].filter(Boolean).join(' · ')}{active.ref && <> · <a href={adsUrl(active.ref)} target="_blank" rel="noreferrer">ADS ↗</a></>}</p>
+            <p>{[active.method, active.source].filter(Boolean).join(' · ')}{active.ref && <> · <a href={adsUrl(active.ref)} target="_blank" rel="noopener noreferrer">ADS ↗</a></>}</p>
             {active.kind === 'star' && <p className="figures">G = {fmtNum(active.gMag ?? 0, 2)}{active.bpRp !== null && ` · BP−RP = ${fmtNum(active.bpRp, 2)}`}{active.parallaxOverError !== null && ` · ϖ/σ = ${fmtNum(active.parallaxOverError, 1)}`}<br />Odległość podajemy przy ϖ/σ ≥ 5; przedział to 16. i 84. percentyl.</p>}
           </details>
         </>}

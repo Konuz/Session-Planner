@@ -54,7 +54,7 @@ export function skyMesh(grid: PhotoGrid): SkyMesh | null {
     }
   }
   const sum = dirs.reduce<Vec3>((s, d) => [s[0] + d[0], s[1] + d[1], s[2] + d[2]], [0, 0, 0])
-  const len = Math.hypot(...sum)
+  const len = Math.hypot(...sum) || 1
   const centre: Vec3 = [sum[0] / len, sum[1] / len, sum[2] / len]
   const radiusDeg = Math.max(...dirs.map((d) => Math.acos(Math.max(-1, Math.min(1, d[0] * centre[0] + d[1] * centre[1] + d[2] * centre[2]))) / DEG))
   return { cols, rows, dirs, uv, indices, centre, radiusDeg }
@@ -62,10 +62,13 @@ export function skyMesh(grid: PhotoGrid): SkyMesh | null {
 
 /** Punkty ekranu i krycie wierzchołków; `null`, gdy zdjęcia nie ma czego rysować w tym widoku. */
 export function projectMesh(mesh: SkyMesh, proj: Projector, horMatrix: Mat3, horizon: readonly HorizonPoint[], width: number, height: number): ProjectedMesh | null {
-  const c = proj.eq(mesh.centre)
-  if (!c) return null
-  const r = mesh.radiusDeg * proj.scale * DEG
-  if (c[0] < -2 * r || c[1] < -2 * r || c[0] > width + 2 * r || c[1] > height + 2 * r) return null
+  const viewRadDeg = Math.hypot(width, height) / (2 * proj.scale * DEG)
+  if (mesh.radiusDeg + viewRadDeg <= 90) {
+    const c = proj.eq(mesh.centre)
+    if (!c) return null
+    const r = mesh.radiusDeg * proj.scale * DEG
+    if (c[0] < -2 * r || c[1] < -2 * r || c[0] > width + 2 * r || c[1] > height + 2 * r) return null
+  }
   const n = mesh.dirs.length
   const xy = new Float32Array(2 * n)
   const alpha = new Float32Array(n)

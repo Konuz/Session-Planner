@@ -26,13 +26,21 @@ const sky = (raDeg: number, decDeg: number) => toScene(galacticVector({ raDeg, d
 
 interface Astrometry { raDeg: number; decDeg: number; wcs: unknown }
 
+export function readValidCd(wcs: unknown): [[number, number], [number, number]] | null {
+  const cd = (wcs as { cd?: unknown } | null)?.cd
+  if (!Array.isArray(cd) || cd.length !== 2) return null
+  if (cd.some((row) => !Array.isArray(row) || row.length !== 2 || row.some((v) => typeof v !== 'number' || !Number.isFinite(v)))) return null
+  const m = cd as [[number, number], [number, number]]
+  const det = m[0][0] * m[1][1] - m[0][1] * m[1][0]
+  return Math.abs(det) > 0 ? m : null
+}
+
 /** Baza z zapisanego WCS (piksele od 0, oś y w dół, jak wycinki i gwiazdy projektu); null bez poprawnej macierzy CD. */
 export function frameBasis(astrometry: Astrometry, width: number, height: number): FrameBasis | null {
   const wcs = astrometry.wcs as { cd?: number[][]; crpix?: number[] } | null
-  const cd = wcs?.cd
-  if (!Array.isArray(cd) || cd.length !== 2 || cd.some((row) => !Array.isArray(row) || row.length !== 2 || row.some((v) => !Number.isFinite(v)))) return null
+  const cd = readValidCd(wcs)
+  if (!cd) return null
   const det = cd[0][0] * cd[1][1] - cd[0][1] * cd[1][0]
-  if (!(Math.abs(det) > 0)) return null
   const { raDeg, decDeg } = astrometry
   const center = sky(raDeg, decDeg)
   // Wschód i północ w punkcie środka: pochodne wektora jednostkowego po RA i Dec (to też kierunki na sferze).

@@ -19,8 +19,8 @@ async function change(apply: (store: IDBObjectStore) => void): Promise<void> {
       const transaction = db.transaction(STORE, 'readwrite')
       apply(transaction.objectStore(STORE))
       transaction.oncomplete = () => resolve()
-      transaction.onerror = () => reject(transaction.error)
-      transaction.onabort = () => reject(transaction.error)
+      transaction.onerror = () => reject(transaction.error ?? new Error('IndexedDB transaction failed'))
+      transaction.onabort = () => reject(transaction.error ?? new Error('IndexedDB transaction aborted'))
     })
   } finally { db.close() }
 }

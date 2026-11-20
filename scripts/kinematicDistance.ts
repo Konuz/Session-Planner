@@ -109,6 +109,56 @@ export function solveKinematic(lDeg: number, bDeg: number, vlsr: number, m: Rota
 
 export type Kda = 'N' | 'F' | 'T' | null
 
+interface KinematicRoots {
+  near: number | null
+  far: number | null
+  tangent: number | null
+  nearOut: 'low' | 'high' | null
+  farOut: 'low' | 'high' | null
+}
+
+function extremumDistance(model: (d: number) => number, hi: number, sign: number): number {
+  const phi = (Math.sqrt(5) - 1) / 2
+  let a = 0.001, b = Math.min(MAX_DISTANCE_KPC, Math.max(0.05, hi))
+  let c = b - phi * (b - a), d = a + phi * (b - a)
+  let fc = sign * model(c), fd = sign * model(d)
+  for (let i = 0; i < 32; i++) {
+    if (fc < fd) {
+      a = c; c = d; fc = fd
+      d = a + phi * (b - a); fd = sign * model(d)
+    } else {
+      b = d; d = c; fd = fc
+      c = b - phi * (b - a); fc = sign * model(c)
+    }
+  }
+  return (a + b) / 2
+}
+
+function solveKinematicRoots(lDeg: number, bDeg: number, vlsr: number, m: RotationModel): KinematicRoots | null {
+  const cosL = Math.cos(lDeg * DEG), sinL = Math.sin(lDeg * DEG), cosB = Math.cos(bDeg * DEG)
+  const s = Math.sign(sinL)
+  if (!s || cosB < 1e-6) return null
+  const model = sightline(lDeg, bDeg, m)
+  const f = (d: number) => model(d) - vlsr
+  if (cosL <= 0) {
+    const d = bisect(f, 0.001, MAX_DISTANCE_KPC)
+    if (d !== null) return { near: d, far: null, tangent: null, nearOut: null, farOut: null }
+    return { near: null, far: null, tangent: null, nearOut: s * f(0.001) < 0 ? 'low' : 'high', farOut: null }
+  }
+  const dExt = extremumDistance(model, m.R0 * cosL / cosB + 1.5, s)
+  if (s * f(dExt) < 0) {
+    return Math.abs(f(dExt)) <= 8 ? { near: dExt, far: dExt, tangent: dExt, nearOut: null, farOut: null } : null
+  }
+  const near = bisect(f, 0.001, dExt), far = bisect(f, dExt, MAX_DISTANCE_KPC)
+  return {
+    near,
+    far,
+    tangent: dExt,
+    nearOut: near === null && s * f(0.001) < 0 ? 'low' : null,
+    farOut: far === null && s * f(MAX_DISTANCE_KPC) >= 0 ? 'high' : null,
+  }
+}
+
 /** Generator mulberry32 z ziarnem z hasza FNV-1a: ten sam obiekt daje te same próbki w każdej budowie. */
 function random(seed: string): () => number {
   let h = 0x811c9dc5
@@ -123,27 +173,45 @@ function random(seed: string): () => number {
   }
 }
 
-/**
- * Odległość kinematyczna z niepewnością: mediana i połowa przedziału 16–84 % z próbek Monte Carlo (parametry modelu
- * i prędkość obiektu losowane z rozkładów normalnych). KDA „F”: dalsze rozwiązanie, inaczej bliższe. Gdy ponad połowa
- * próbek nie ma rozwiązania: null.
- */
+export function isOuterSolarCircle(lDeg: number, bDeg: number, vlsr: number): boolean {
+  return Math.cos(lDeg * DEG) > 0 && Math.sign(Math.sin(lDeg * DEG)) * (modelVlsr(lDeg, bDeg, 0.001, REID19_A5) - vlsr) > 0
+}
+
 export function kinematicDistance(o: { seed: string; lDeg: number; bDeg: number; vlsr: number; kda: Kda }, samples = 2000): { kpc: number; sigmaKpc: number } | null {
+  if (o.lDeg < 15 || o.lDeg > 345 || Math.abs(o.lDeg - 180) < 15 || Math.abs(o.bDeg) > 15) return null
+  const effectiveKda: Kda = o.kda ?? (isOuterSolarCircle(o.lDeg, o.bDeg, o.vlsr) ? 'F' : null)
   const uniform = random(o.seed)
   const normal = () => Math.sqrt(-2 * Math.log(1 - uniform())) * Math.cos(2 * Math.PI * uniform())
   const draw = (key: keyof RotationModel, z = normal()) => REID19_A5[key] + REID19_A5_SIGMA[key] * z
   const distances: number[] = []
+  let finiteCount = 0
   for (let i = 0; i < samples; i++) {
     const z1 = normal(), z2 = normal()
     const m: RotationModel = {
       R0: draw('R0'), Usun: draw('Usun'), Vsun: draw('Vsun', z1), Wsun: draw('Wsun'), Us: draw('Us'),
       Vs: draw('Vs', VSUN_VS_CORRELATION * z1 + Math.sqrt(1 - VSUN_VS_CORRELATION ** 2) * z2), a2: draw('a2'), a3: draw('a3'),
     }
-    const solution = solveKinematic(o.lDeg, o.bDeg, o.vlsr + VELOCITY_SIGMA_KMS * normal(), m)
-    if (solution) distances.push(o.kda === 'F' ? solution.far ?? solution.near : solution.near)
+    const sol = solveKinematicRoots(o.lDeg, o.bDeg, o.vlsr + VELOCITY_SIGMA_KMS * normal(), m)
+    if (!sol) continue
+    if (effectiveKda === 'T') {
+      if (sol.tangent !== null) { finiteCount++; distances.push(sol.tangent) }
+    } else if (effectiveKda === 'F') {
+      if (sol.far !== null) { finiteCount++; distances.push(sol.far) }
+      else if (sol.farOut === 'high') distances.push(Infinity)
+    } else {
+      if (sol.near !== null) { finiteCount++; distances.push(sol.near) }
+      else if (sol.nearOut === 'high') distances.push(Infinity)
+      else if (sol.nearOut === 'low') distances.push(0)
+    }
   }
-  if (distances.length < samples / 2) return null
+  if (finiteCount < samples / 2 || distances.length < samples / 2) return null
   distances.sort((a, b) => a - b)
   const quantile = (q: number) => distances[Math.round(q * (distances.length - 1))]
-  return { kpc: quantile(0.5), sigmaKpc: (quantile(0.84) - quantile(0.16)) / 2 }
+  const kpc = quantile(0.5), p16 = quantile(0.16), p84 = quantile(0.84)
+  const sigmaKpc = (p84 - p16) / 2
+  if (!Number.isFinite(kpc) || !Number.isFinite(sigmaKpc) || kpc <= 0) return null
+  const cosB = Math.cos(o.bDeg * DEG), sinB = Math.sin(o.bDeg * DEG)
+  const rGc = Math.hypot(kpc * cosB * Math.cos(o.lDeg * DEG) - REID19_A5.R0, kpc * cosB * Math.sin(o.lDeg * DEG))
+  if (Math.abs(kpc * sinB) > 1.0 || rGc > 16.0) return null
+  return { kpc, sigmaKpc }
 }

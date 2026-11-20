@@ -27,6 +27,8 @@ const maxRasterPixels = 64_000_000
 const ownPhotoGrid = 17
 const uploadIdleMs = 15_000
 const uploadDeadlineMs = 120_000
+const maxConcurrentUploads = 2
+let activeUploads = 0
 let busy = false
 const catalogPath = fileURLToPath(new URL('../public/data/catalog.json', import.meta.url))
 const blackBorderWorker = new URL('./blackBorderWorker.ts', import.meta.url)
@@ -194,14 +196,22 @@ export async function photoApi(req: IncomingMessage, res: ServerResponse, env: P
   if (!await Promise.all([access(binary), access(index)]).then(() => true, () => false)) { json(503, { error: 'Astrometria jest niedostępna na tym serwerze. Wymaga lokalnej instalacji Skyshota.' }); return }
   if (req.destroyed || res.destroyed) return
   if (busy) { json(409, { error: 'Trwa rozwiązywanie innego zdjęcia. Spróbuj ponownie za chwilę.' }); return }
+  if (activeUploads >= maxConcurrentUploads) { json(429, { error: 'Zbyt wiele przesyłanych zdjęć naraz. Spróbuj ponownie za chwilę.' }); return }
+  activeUploads++
+  let input: Buffer | 408 | 413 | null
+  try {
+    input = await receivePhoto(req)
+  } finally {
+    activeUploads--
+  }
+  if (input === null || res.destroyed) return
+  if (typeof input === 'number') { rejectUpload(input); return }
+  if (busy) { json(409, { error: 'Trwa rozwiązywanie innego zdjęcia. Spróbuj ponownie za chwilę.' }); return }
   busy = true
   const abort = new AbortController()
   res.once('close', () => { if (!res.writableEnded) abort.abort() })
   let temp: string | undefined
   try {
-    let input = await receivePhoto(req)
-    if (input === null || res.destroyed) return
-    if (typeof input === 'number') { rejectUpload(input); return }
     temp = await mkdtemp(join(tmpdir(), 'tracker-photo-'))
     abort.signal.throwIfAborted()
     if (input.subarray(0, 9).toString() === 'SIMPLE  =') {
