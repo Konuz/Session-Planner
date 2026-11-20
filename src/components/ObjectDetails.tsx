@@ -95,7 +95,6 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
           <Thumb object={o} className="thumb" style={{ aspectRatio: '16 / 9' }} fovDeg={Math.min(4, Math.max(0.3, (Math.max(o.majArcmin, 3) * 2.6) / 60))} sizePx={560} preferAstroBin />
           <CloseButton onClick={onClose} style={{ position: 'absolute', top: 16, right: 16, zIndex: 4 }} />
         </div>
-        <p className="faint" style={{ fontSize: 10, margin: '7px 22px 0' }}>This product uses the AstroBin API but is not endorsed or certified by AstroBin.</p>
         <div style={{ padding: 22 }}>
           <h2 className="object-name" style={{ margin: 0, width: 'fit-content', fontWeight: 400 }}>
             <span className="id">{o.id}</span>

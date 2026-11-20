@@ -85,9 +85,12 @@ void main() {
   vec2 clip = vec2(p.x / u_res.x * 2.0 - 1.0, p.y / u_res.y * 2.0 - 1.0);
   gl_Position = vec4(clip, 0.0, 1.0);
   float m = u_magLimit - a_magbv.x;
-  v_glow = u_glow * 0.6 * (1.0 - smoothstep(0.5, 4.5, a_magbv.x));
-  gl_PointSize = clamp(2.4 + m * 1.45, 2.4, 15.0) * u_dpr * (1.0 + v_glow);
+  v_glow = u_glow * (1.0 - smoothstep(0.5, 4.5, a_magbv.x));
+  gl_PointSize = clamp(2.4 + m * 1.45, 2.4, 15.0) * u_dpr * (1.0 + 1.5 * v_glow);
   v_color = bvColor(a_magbv.y);
+  // W obrazie RGB jasne chłodne gwiazdy są błękitne, a ciepłe mają łososiowy odcień.
+  v_color.g -= 0.08 * v_glow * smoothstep(0.6, 1.5, a_magbv.y);
+  v_color.b += 0.15 * v_glow * smoothstep(0.6, 1.5, a_magbv.y);
   v_alpha = clamp(0.5 + m * 0.18, 0.45, 1.0) * smoothstep(-0.03, 0.01, alt) * u_bright;
 }`
 
@@ -103,14 +106,16 @@ void main() {
   if (r > 1.0) discard;
   // Większy punkt mieści poświatę, a jasny rdzeń zachowuje swój rozmiar.
   float radius = sqrt(r);
-  float scale = 1.0 + v_glow;
+  float scale = 1.0 + 1.5 * v_glow;
   r *= scale * scale;
   float d = radius * scale;
   float a = 1.0 - smoothstep(0.0, 1.0, d);
   float halo = (exp(-r * 3.2) - exp(-r * 16.0)) * 0.18;
   float core = (a * a * 0.75 + exp(-r * 18.0) * 0.5 + halo) * step(r, 1.0);
-  float glow = v_glow * 0.25 * (1.0 - smoothstep(0.0, 1.0, radius));
-  a = (core + glow) * v_alpha;
+  // Profil Moffata daje jasnym gwiazdom miękki rdzeń i powoli zanikającą otoczkę.
+  float profile = 1.0 + 1.9 * r;
+  float photographic = 0.78 / (profile * profile) * (1.0 - smoothstep(0.7, 1.0, radius));
+  a = mix(core, photographic, v_glow) * v_alpha;
   outColor = vec4(v_color * a, a);
 }`
 
