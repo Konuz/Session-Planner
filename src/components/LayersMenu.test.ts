@@ -90,13 +90,13 @@ describe('LayersMenu', () => {
 describe('SpaceToolbar', () => {
   it('nie trzyma suwaka liczby galaktyk ani przełącznika „Gwiazdozbiory 3D” na pasku narzędzi', () => {
     const universeHtml = renderToString(
-      createElement(SpaceToolbar, { o: null, settings: makeSettings({ scale: 'universe' }), onScale: vi.fn() }),
+      createElement(SpaceToolbar, { settings: makeSettings({ scale: 'universe' }), onScale: vi.fn() }),
     )
     expect(universeHtml).not.toContain('space-galaxy-level')
     expect(universeHtml).not.toContain('aria-label="Liczba galaktyk"')
 
     const galaxyOffHtml = renderToString(
-      createElement(SpaceToolbar, { o: null, settings: makeSettings({ scale: 'galaxy', showConstellations: false }), onScale: vi.fn() }),
+      createElement(SpaceToolbar, { settings: makeSettings({ scale: 'galaxy', showConstellations: false }), onScale: vi.fn() }),
     )
     expect(galaxyOffHtml).not.toContain('Gwiazdozbiory 3D')
     expect(galaxyOffHtml).not.toContain('Nazwy gwiazd')
@@ -106,7 +106,7 @@ describe('SpaceToolbar', () => {
 
   it('gdy gwiazdozbiory 3D są włączone w Drodze Mlecznej, zostawia na pasku wybór gwiazdozbioru i kamerę z Ziemi', () => {
     const galaxyOnHtml = renderToString(
-      createElement(SpaceToolbar, { o: null, settings: makeSettings({ scale: 'galaxy', showConstellations: true }), onScale: vi.fn(), onConstellationView: vi.fn() }),
+      createElement(SpaceToolbar, { settings: makeSettings({ scale: 'galaxy', showConstellations: true }), onScale: vi.fn(), onConstellationView: vi.fn() }),
     )
     expect(galaxyOnHtml).toContain('aria-label="Gwiazdozbiór w przestrzeni 3D"')
     expect(galaxyOnHtml).toContain('aria-label="Pokaż gwiazdozbiór z Ziemi"')

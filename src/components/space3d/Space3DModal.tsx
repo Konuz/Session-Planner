@@ -20,10 +20,6 @@ import { useSpaceSettings } from './spaceSettings'
 import { SpaceToolbar } from './SpaceToolbar'
 import { SpaceWindow } from './SpaceWindow'
 
-const SUBTITLE: Record<SpaceScale, string> = {
-  galaxy: 'Droga Mleczna · skala liniowa, 1 j. = 1000 lś',
-  universe: 'Wszechświat lokalny · odległości w skali logarytmicznej',
-}
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches
 
 /** scale: skala bez Obserwatorium; in/out: nurkowanie do zdjęcia i z powrotem; photo: stan zdjęcia. */
@@ -272,15 +268,15 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
     label={showPhoto ? 'Obserwatorium 3D zdjęcia' : 'Pozycja 3D'}
     kicker={showPhoto ? 'KONUZASTRO / Obserwatorium 3D' : 'KONUZASTRO / Pozycja 3D'}
     title={activePhoto ? activePhoto.name : o ? `${o.id}${o.namePl ? ` · ${o.namePl}` : ''}` : 'Wybierz obiekt'}
-    subtitle={showPhoto ? 'Obiekty zdjęcia wzdłuż linii widzenia' : SUBTITLE[settings.scale]}
+    subtitle={showPhoto ? 'Obiekty zdjęcia wzdłuż linii widzenia' : undefined}
     summaryRef={setSummary}
-    summary={!showPhoto && !activePhoto && o ? <strong>{dist !== null ? `Odległość ≈ ${fmtDistance(dist)}` : 'Odległość nieznana'}</strong> : null}
+    summary={!showPhoto && o ? <strong>{activePhoto && `${o.id} · `}{dist !== null ? `Od Ziemi ≈ ${fmtDistance(dist)}` : 'Odległość od Ziemi nieznana'}</strong> : null}
     className={`space-window ${panels ? 'is-photo' : 'is-scale'}${diving ? ' is-diving' : ''}${editing ? ' is-editing' : ''}`}
     // Panele wsuwają się i zwijają przez całą fazę wejścia danego kierunku (naprzód dłużej niż wstecz).
     style={diving ? { '--dive-enter': `${DIVE_PHASE_MS[mode].enter}ms` } as CSSProperties : undefined}
     onClose={close}
   >
-    <SpaceToolbar o={o} settings={pendingScale ? { ...settings, scale: pendingScale } : settings} onScale={chooseScale} crumb={showPhoto ? activePhoto.name : undefined}
+    <SpaceToolbar settings={pendingScale ? { ...settings, scale: pendingScale } : settings} onScale={chooseScale} crumb={showPhoto ? activePhoto.name : undefined}
       onConstellationView={handle && mode === 'scale' && !editing ? handle.viewConstellation : undefined}>
       {showPhoto && <div ref={setToolbarSlot} className="space-toolbar-slot" />}
       {regressing > 0 && <div className="photo-regressor-progress">

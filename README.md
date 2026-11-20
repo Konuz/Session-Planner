@@ -29,13 +29,13 @@
 
 ## Key Features
 
-* **Sky Dome (`Niebo`)** — stereographic projection (North up, East left) with WebGL2 stars and plate-solved user photos, narrowband NSNS background layers (`DR0.1` true-color and `DR0.2` continuum / without Hα), Milky Way contours, constellation lines and hover artwork, multi-level bright and dark nebula outlines, target night tracks, Sun/Moon positions, and a custom horizon silhouette.
-* **Object Catalog (`Katalog`)** — virtualized search and filtering across **19,000+ DSOs** (`M`, `NGC`, `IC`, `Sh2`, `LBN`, `LDN`, `B`, `vdB`, `SNR`, plus the `Other` group covering clusters, amateur PN discoveries, `Ced`, `RCW`, `Gum`, `Arp`, `HCG`, and `WR`), object types, constellations, magnitude, angular size, and nightly visibility. Displays HiPS survey thumbnails (`DSS2`, `NSNS`), AstroBin gallery images (`Konuz`), and Wikipedia summaries.
+* **Sky Dome (`Niebo`)** — stereographic projection (North up, East left) with WebGL2 stars, plate-solved user photos, and NSNS backgrounds (DR0.1 true color and DR0.2 continuum, OHS, and SHO). OHS and SHO support order-6 detail and share the same local tiles for fast switching. The dome also shows Milky Way contours, constellation lines and artwork, multi-level nebula outlines, target night tracks, Sun/Moon positions, and a custom horizon silhouette.
+* **Object Catalog (`Katalog`)** — virtualized search and filtering across **20,500+ DSOs**, including **2,924 planetary nebulae** with PN G designations and aliases. Filter by catalog, object type, constellation, magnitude, angular size, and nightly visibility. Entries show HiPS thumbnails, AstroBin gallery images, and Wikipedia summaries. The [planetary nebula audit](docs/audits/pncat.md) documents sources and identification corrections.
 * **Framing & Equipment (`Sprzęt`)** — telescope, camera, and reducer/flattener profiles with interactive sensor framing and rotation over a Web Worker HiPS mosaic (TAN gnomonic projection), plus compositing plate-solved user astrophotographs directly onto both the sky dome and the framing canvas.
 * **Altitude, Night Phases & Weather** — target altitude and Moon separation curves, automatic darkest-window detection (handling summer white nights, polar day, and polar night), meridian transit timing, and multi-model forecasts from Open-Meteo (Auto, ECMWF IFS, DWD ICON, NOAA GFS, UK Met Office, CMC GEM) and MET Norway with atmospheric seeing estimates ($C_n^2$ profiles or 250 hPa jet-stream wind).
-* **Session Planner (`Planer`)** — multi-target session ordering, automatic time-slot allocation (`autoSchedule`), 7-night weather outlook, and CSV exports for **N.I.N.A.** (Telescopius and Target Scheduler formats).
+* **Session Planner (`Planer`)** — multi-target session ordering, automatic time-slot allocation (`autoSchedule`), a 7-night weather outlook, import of saved plans, and CSV exports for **N.I.N.A.** (Telescopius and Target Scheduler formats).
 * **Custom Horizon (`Horyzont`)** — interactive 360° horizon obstruction editor with file import/export and panorama calibration.
-* **3D Position & Photo 3D Observatory** — explores target distances across both the **Milky Way** (linear up to 150,000 ly) and the **Local Universe** (logarithmic scale with morphological galaxy models). Uploading a photo (JPEG, PNG, WebP, TIFF, or FITS) solves its WCS locally via Skyshot, queries up to 1,000 brightest **Gaia DR3** field stars (Bailer-Jones distances) alongside deep extragalactic catalogs (`PGC`, `SDSS DR16Q` quasars, `ACO`/`ACOS` clusters), and flies smoothly from our Galaxy into the unfolded 3D photograph with interactive distance histograms and live SIMBAD/NED/catalog/ML lookups.
+* **3D Position & Photo 3D Observatory** — explores target distances across the **Milky Way** (linear up to 150,000 ly) and the **Local Universe** (logarithmic scale with morphological galaxy models). The selected object’s catalog distance from Earth appears in the header and next to its marker when the scene can place it. The scale switcher and layer controls sit below the scene. Uploading a photo (JPEG, PNG, WebP, TIFF, or FITS) solves its WCS locally via Skyshot, queries up to 1,000 brightest **Gaia DR3** field stars (Bailer-Jones distances) alongside deep extragalactic catalogs (`PGC`, `SDSS DR16Q` quasars, `ACO`/`ACOS` clusters), and flies smoothly into the unfolded 3D photograph with distance histograms and SIMBAD/NED/catalog/ML lookups.
 
 ---
 
@@ -142,12 +142,14 @@ Over HTTP the server exposes only `dist/`, while Node.js reads the following pat
 4. **`public/data/catalog.json`** — catalog lookup loaded by `server/photo.ts`,
 5. **`package.json`**, **`package-lock.json`**, and production **`node_modules/`** (`sharp`, `fast-xml-parser`),
 6. **Skyshot executable & cached regressor results** — `scripts/.cache/regressor/*.json` pre-warmed results are tracked in Git; `scripts/.cache/skyshot-build/` is gitignored, so build `tracker-skyshot` locally via `npm run setup:skyshot` (if you extract `skyshot-data.tar` *before* running `npm run setup:skyshot`, `setup:skyshot` compiles the native binary without re-downloading the 842 MB star index),
-7. **Large Release Archives (`v0.1.0`)** — extract the astrometric index (`skyshot-data.tar`, ~842 MB) and pre-mirrored NSNS HiPS surveys (`hips-proxy-nsns-tc8.tar`, ~882 MB; `hips-proxy-nsns-rgb8.tar`, ~604 MB) from GitHub Releases into `scripts/.cache/`:
+7. **Large Release Archives** — download the astrometric index and the NSNS tile mirrors from [GitHub Release v0.1.0](https://github.com/Konuz/Session-Planner/releases/tag/v0.1.0). Extract both OHS/SHO archives in the order shown. The second archive contains the marker that tells the server the mirror is complete.
    ```bash
-   tar -xf skyshot-data.tar -C scripts/.cache
    mkdir -p scripts/.cache/hips-proxy
+   tar -xf skyshot-data.tar -C scripts/.cache
    tar -xf hips-proxy-nsns-tc8.tar -C scripts/.cache/hips-proxy
    tar -xf hips-proxy-nsns-rgb8.tar -C scripts/.cache/hips-proxy
+   tar -xf hips-proxy-nsns-ohs8-part1.tar -C scripts/.cache/hips-proxy
+   tar -xf hips-proxy-nsns-ohs8-part2.tar -C scripts/.cache/hips-proxy
    ```
    *(PowerShell: use `mkdir -Force scripts/.cache/hips-proxy`.)*
 
@@ -309,7 +311,9 @@ Thumbnails, framing mosaics, and sky-dome photography stream from **HiPS (IVOA)*
 | :--- | :--- | :--- |
 | **DSS2 Color** (mirrors: ESA ESASky, STScI/MAST, CSIRO CASDA, CDS Alasky) | **STScI / NASA / ESA / POSS-II / UKSTU / AAO / Caltech / ROE** | Educational, research, and non-commercial use with attribution to **ESA/MAST/STScI** ([STScI DSS copyright](https://archive.stsci.edu/dss/copyright.html)) |
 | **Pan-STARRS DR1 Color (i-r-g)** (mirrors: STScI/MAST, CDS Alasky) | **Pan-STARRS1 Science Consortium / IfA UH / STScI MAST** | **CC BY 4.0** / open MAST access |
-| **Northern Sky Narrowband Survey (NSNS)** — `DR0.1 true-color` (`tc8`) and `DR0.2 without Hα` (`rgb8`) | **Stefan Ziegenbalg** ([www.simg.de](https://www.simg.de/nebulae3/)) | **CC BY-NC-SA 4.0**. Marked `clonable`; cached and JPEG-transcoded by `server/hipsProxy.ts` under the same **CC BY-NC-SA 4.0** license with on-screen credit. |
+| **Northern Sky Narrowband Survey (NSNS)** — DR0.1 true color (`tc8`), DR0.2 continuum without Hα (`rgb8`), and DR0.2 OHS/SHO (`ohs8`, up to order 6 or 6.4″/px) | **Stefan Ziegenbalg** ([www.simg.de](https://www.simg.de/nebulae3/)) | **CC BY-NC-SA 4.0**. Marked `clonable`; cached and JPEG-transcoded by `server/hipsProxy.ts` under the same license with on-screen credit. |
+
+OHS maps [O III], Hα, and [S II] to red, green, and blue, respectively. SHO swaps red and blue to make [S II] structures more prominent. Both palettes are available on the sky dome and framing canvas and use the same `nsns-ohs8` mirror.
 
 ### 6. Astrometry, Field Stars, and Deep Catalogs (3D Observatory)
 

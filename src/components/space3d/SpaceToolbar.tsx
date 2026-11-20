@@ -1,20 +1,17 @@
-// Pasek narzędzi okna „Pozycja 3D”: przełącznik skal, wybór gwiazdozbioru 3D, opis skali i warstwy.
+// Pasek narzędzi okna „Pozycja 3D”: przełącznik skal, wybór gwiazdozbioru 3D i warstwy.
 import { Camera } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { TYPE_INFO, type DSO, type ObjectType } from '../../lib/catalog'
+import { useMemo, type ReactNode } from 'react'
+import { TYPE_INFO, type ObjectType } from '../../lib/catalog'
 import { CONSTELLATION_PL } from '../../lib/constellations'
-import { fmtDistance } from '../../lib/format'
 import { GALACTIC_LIMIT_LY, type SpaceScale } from '../../lib/space3d'
 import { useCatalog } from '../../state/data'
 import { ConstellationPicker } from '../ConstellationPicker'
 import { LayersMenu } from '../LayersMenu'
-import { useOutside } from '../TopBar'
 import type { SpaceSettingsState } from './spaceSettings'
 
 const SCALES: { id: SpaceScale; label: string }[] = [{ id: 'galaxy', label: 'Droga Mleczna' }, { id: 'universe', label: 'Wszechświat lokalny' }]
 
 interface Props {
-  o: DSO | null
   settings: SpaceSettingsState
   /** Wybór skali z paska (w stanie zdjęcia „Droga Mleczna” wraca nurkowaniem). */
   onScale(scale: SpaceScale): void
@@ -24,17 +21,9 @@ interface Props {
   children?: ReactNode
 }
 
-export function SpaceToolbar({ o, settings, onScale, onConstellationView, crumb, children }: Props) {
+export function SpaceToolbar({ settings, onScale, onConstellationView, crumb, children }: Props) {
   const { scale, showConstellations, constellations } = settings
   const { catalog } = useCatalog()
-  const [infoOpen, setInfoOpen] = useState(false)
-  const infoRef = useRef<HTMLDivElement>(null)
-  useOutside(infoRef, () => setInfoOpen(false), infoOpen)
-  useEffect(() => {
-    if (!infoOpen) return
-    const timeout = window.setTimeout(() => setInfoOpen(false), 10_000)
-    return () => window.clearTimeout(timeout)
-  }, [infoOpen])
   const withDistance = useMemo(() => (catalog ? catalog.filter((c) => c.distLy !== null) : []), [catalog])
   // Liczba obiektów tła skali Drogi Mlecznej według rodzaju (tylko rodzaje obecne w tej skali).
   const typeCounts = useMemo(() => {
@@ -42,8 +31,6 @@ export function SpaceToolbar({ o, settings, onScale, onConstellationView, crumb,
     for (const c of withDistance) if (c.distLy! < GALACTIC_LIMIT_LY) counts.set(c.type, (counts.get(c.type) ?? 0) + 1)
     return (Object.keys(TYPE_INFO) as ObjectType[]).filter((t) => counts.has(t)).map((t) => ({ type: t, count: counts.get(t)! }))
   }, [withDistance])
-  const dist = o?.distLy ?? null
-  const outOfScale = scale === 'galaxy' && dist !== null && dist > GALACTIC_LIMIT_LY
 
   return (
     <div className="obs-toolbar space-toolbar">
@@ -61,25 +48,7 @@ export function SpaceToolbar({ o, settings, onScale, onConstellationView, crumb,
       </div>}
       {children}
       <span className="obs-spacer" />
-      {!crumb && <div className="space-toolbar-end">
-      <div ref={infoRef} className="scale-info-control">
-        <button className="scale-info-button" title="Informacje o skali" aria-label="Informacje o skali" aria-expanded={infoOpen} aria-controls="scale-info-popover" onClick={() => setInfoOpen((open) => !open)}>i</button>
-        {infoOpen && (
-          <div id="scale-info-popover" className="scale-info-popover" role="note" aria-label="Opis skali i źródła danych">
-            <p>{dist === null
-              ? 'Wikidata nie podaje odległości tego obiektu - pokazany jest tylko kierunek ze Słońca.'
-              : outOfScale
-                ? `Obiekt (${fmtDistance(dist)}) leży poza zasięgiem tej skali - pokazany jest tylko kierunek ze Słońca. Jego położenie: Wszechświat lokalny.`
-                : scale === 'galaxy'
-                  ? `Skala liniowa, 1 j. = 1000 lś. Punkty: ${withDistance.filter((c) => c.distLy! < GALACTIC_LIMIT_LY).length} obiektów katalogu z odległością.`
-                  : 'Skala odległości logarytmiczna. Modele Grupy Lokalnej zachowują proporcje rozmiarów względem Drogi Mlecznej; pozostałe galaktyki to punkty w kolorach typów obiektów.'}</p>
-            <p>Odległości: Wikidata (mediana wartości). Morfologia: NED, NASA, NAOJ. Modele poglądowe.{scale === 'galaxy' && ' Ziemia poza skalą; orientacja osi J2000, obrót poglądowy.'}</p>
-            {scale === 'galaxy' && showConstellations && <p>Cyjanowe linie: gwiazdozbiory (Stellarium). Odległości gwiazd: szacunki z paralaks Hipparcosa (CDS I/239); brak dodatniej paralaksy przerywa linię.</p>}
-          </div>
-        )}
-      </div>
-      <LayersMenu threeD settings={settings} typeCounts={typeCounts} />
-      </div>}
+      {!crumb && <LayersMenu threeD settings={settings} typeCounts={typeCounts} />}
     </div>
   )
 }

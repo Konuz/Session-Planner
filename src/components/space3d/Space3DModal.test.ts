@@ -66,7 +66,8 @@ it('we Wszechświecie lokalnym używa tego samego paska przycisków co w Drodze 
     astrometry: { raDeg: 149, decDeg: 69, rmsPx: 1, matches: 20, edgeMatches: 5, edgeRmsPx: 1, totalMs: 1, wcs: null },
   }
   const html = renderToString(createElement(Space3DModal))
-  expect(html).toContain('Wszechświat lokalny · odległości w skali logarytmicznej')
+  expect(html).not.toContain('odległości w skali logarytmicznej')
+  expect(html).not.toContain('Informacje o skali')
   expect(html).not.toContain('M 81 · Galaktyka Bodego')
   expect(html).toContain('Galaktyki')
   expect(html).not.toContain('Oś odległości')
@@ -88,10 +89,11 @@ it('w Drodze Mlecznej również pokazuje okno obiektów zdjęcia (OBIEKTY ZDJĘC
     astrometry: { raDeg: 344.2, decDeg: 62.1, rmsPx: 1, matches: 20, edgeMatches: 5, edgeRmsPx: 1, totalMs: 1, wcs: null },
   }
   const plain = renderToString(createElement(Space3DModal)).replace(/<!-- -->/g, '')
-  expect(plain).toContain('Droga Mleczna · skala liniowa, 1 j. = 1000 lś')
+  expect(plain).not.toContain('skala liniowa')
+  expect(plain).not.toContain('Informacje o skali')
   expect(plain).toContain('Droga Mleczna - test')
   expect(plain).not.toContain('M 81 · Galaktyka Bodego')
-  expect(plain).not.toContain('Odległość ≈')
+  expect(plain).toContain('M 81 · Od Ziemi ≈ 12 mln lś')
   expect(plain).toContain('aria-label="Obiekty zdjęcia w przestrzeni"')
   expect(plain).toContain('OBIEKTY ZDJĘCIA')
   expect(plain).toContain('1 obiekt w przestrzeni')
@@ -103,7 +105,7 @@ it('bez załadowanego zdjęcia pokazuje w nagłówku wybrany obiekt i jego odleg
   sessionState.project = null
   const plain = renderToString(createElement(Space3DModal)).replace(/<!-- -->/g, '')
   expect(plain).toContain('M 81 · Galaktyka Bodego')
-  expect(plain).toContain('Odległość ≈ 12 mln lś')
+  expect(plain).toContain('Od Ziemi ≈ 12 mln lś')
 })
 
 it('w edytorze pokazuje powód zakończenia próby przy wybranym wycinku', () => {

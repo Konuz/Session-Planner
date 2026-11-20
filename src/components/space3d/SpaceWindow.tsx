@@ -9,7 +9,7 @@ interface Props {
   label: string
   kicker: string
   title: string
-  subtitle: string
+  subtitle?: string
   /** Miejsce na podsumowanie w nagłówku (Obserwatorium wstawia tam liczby obiektów). */
   summaryRef?: Ref<HTMLDivElement>
   summary?: ReactNode
@@ -45,7 +45,7 @@ export function SpaceWindow({ label, kicker, title, subtitle, summaryRef, summar
         <div>
           <div className="kicker">{kicker}</div>
           <div className="obs-title" title={title}>{title}</div>
-          <div className="dim">{subtitle}</div>
+          {subtitle && <div className="dim">{subtitle}</div>}
         </div>
         <div ref={summaryRef} className="obs-summary figures">{summary}</div>
         <div className="obs-header-actions">

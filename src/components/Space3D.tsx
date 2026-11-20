@@ -9,6 +9,7 @@ import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js'
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js'
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
 import { galacticVector, type Vec3 } from '../lib/astro'
+import { fmtDistance } from '../lib/format'
 import { measureSince, perfNow } from '../lib/perf'
 import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO, type DSO, type ObjectType } from '../lib/catalog'
 import { useCatalog, useSelected } from '../state/data'
@@ -486,7 +487,10 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
         // który w obu skalach pokazuje wysokość nad dyskiem i kierunek w jego płaszczyźnie.
         const foot = new THREE.Vector3(target.x, sunPos.y, target.z)
         const drop = new THREE.Line(new THREE.BufferGeometry().setFromPoints([target, foot, sunPos]), new THREE.LineBasicMaterial({ color: 0x00e0ff, transparent: true, opacity: tab === 'universe' ? 0.6 : 0.35 }))
-        objectGuide.add(line, drop, label(object.id, '#00e0ff', target, 26))
+        objectGuide.add(line, drop,
+          label(object.id, '#00e0ff', target, 26),
+          label(`Od Ziemi ≈ ${fmtDistance(dist)}`, '#00e0ff', target, 42),
+        )
       } else {
         // Tylko kierunek ze Słońca. Ta sama informacja w obu skalach: obiekt Galaktyki leży w Drodze Mlecznej
         // (promień kończy się na jej krawędzi), galaktyka poza nią (promień wychodzi poza Drogę Mleczną).
