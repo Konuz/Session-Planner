@@ -13,10 +13,24 @@ import { useStore } from '../state/store'
 const SHOWCASE = ['M 31', 'M 42', 'NGC 7000', 'M 33', 'M 51', 'M 27', 'M 13', 'NGC 6888']
 
 function NumField({ label, value, onChange, step = 1, min = 0, unit }: { label: string; value: number; onChange: (v: number) => void; step?: number; min?: number; unit?: string }) {
+  const [draft, setDraft] = useState<string | null>(null)
   return (
     <label className="field">
       <span className="label">{label}{unit ? ` [${unit}]` : ''}</span>
-      <input className="control figures" type="number" step={step} min={min} value={value} onChange={(e) => Number(e.target.value) > 0 && onChange(Number(e.target.value))} />
+      <input
+        className="control figures"
+        type="number"
+        step={step}
+        min={min}
+        value={draft ?? String(value)}
+        onChange={(e) => {
+          const raw = e.target.value
+          setDraft(raw)
+          const n = Number(raw)
+          if (raw.trim() !== '' && Number.isFinite(n) && n > 0) onChange(n)
+        }}
+        onBlur={() => setDraft(null)}
+      />
     </label>
   )
 }

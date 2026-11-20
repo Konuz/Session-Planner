@@ -29,23 +29,45 @@ async function installDirectory(destination, prepare) {
 }
 
 const minute = 60_000
-if (!existsSync(source)) {
-  await installDirectory(source, (destination) => runCommand('git', ['clone', 'https://github.com/ashtree74/skyshot-solver.git', destination], { timeoutMs: 10 * minute }))
-}
-await runCommand('git', ['checkout', '--detach', revision], { cwd: source, timeoutMs: minute })
-const mingw = resolve(cache, 'mingw/mingw64/bin')
-const gnu = process.platform === 'win32' && existsSync(resolve(mingw, 'gcc.exe'))
-const env = gnu ? { ...process.env, PATH: `${mingw};${process.env.PATH}`, CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER: resolve(mingw, 'gcc.exe') } : process.env
-await runCommand('cargo', [...(gnu ? ['+stable-x86_64-pc-windows-gnu'] : []), 'build', '--release', '--locked', '--manifest-path', resolve(scripts, 'skyshot-bridge/Cargo.toml'), '--target-dir', resolve(cache, 'skyshot-build')], { env, timeoutMs: 30 * minute })
-if (gnu) for (const name of ['libwinpthread-1.dll', 'libgcc_s_seh-1.dll']) {
-  if (existsSync(resolve(mingw, name))) copyFileSync(resolve(mingw, name), resolve(cache, 'skyshot-build/release', name))
-}
+const bridgeOnly = process.argv.includes('--bridge-only')
+const dataOnly = process.argv.includes('--data-only')
+const customBridge = process.env.SKYSHOT_BRIDGE
+const bridge = customBridge ?? resolve(cache, 'skyshot-build/release', process.platform === 'win32' ? 'tracker-skyshot.exe' : 'tracker-skyshot')
+const needBuild = !dataOnly && !(bridgeOnly && existsSync(bridge)) && !(customBridge && existsSync(customBridge))
 const data = resolve(cache, 'skyshot-data')
-if (existsSync(join(data, '.incomplete'))) throw new Error(`Niepełna instalacja Skyshota: ${data}. Przenieś ją przed ponowieniem.`)
-if (!existsSync(join(data, 'index'))) {
-  const python = process.platform === 'win32'
-    ? execFileSync('py', ['-X', 'utf8', '-c', 'import sys; print(sys.executable)'], { encoding: 'utf8', timeout: 15_000, killSignal: 'SIGKILL', windowsHide: true }).trim()
-    : 'python3'
+if (!bridgeOnly && existsSync(join(data, '.incomplete'))) throw new Error(`Niepełna instalacja Skyshota: ${data}. Przenieś ją przed ponowieniem.`)
+const needData = !bridgeOnly && !existsSync(join(data, 'index'))
+
+if (needBuild) {
+  const mingw = resolve(cache, 'mingw/mingw64/bin')
+  const gnu = process.platform === 'win32' && existsSync(resolve(mingw, 'gcc.exe'))
+  const env = gnu ? { ...process.env, PATH: `${mingw};${process.env.PATH}`, CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER: resolve(mingw, 'gcc.exe') } : process.env
+  await runCommand('cargo', [...(gnu ? ['+stable-x86_64-pc-windows-gnu'] : []), 'build', '--release', '--locked', '--manifest-path', resolve(scripts, 'skyshot-bridge/Cargo.toml'), '--target-dir', resolve(cache, 'skyshot-build')], { env, timeoutMs: 30 * minute })
+  if (gnu) for (const name of ['libwinpthread-1.dll', 'libgcc_s_seh-1.dll']) {
+    if (existsSync(resolve(mingw, name))) copyFileSync(resolve(mingw, name), resolve(cache, 'skyshot-build/release', name))
+  }
+}
+
+if (needData) {
+  if (!existsSync(source)) {
+    await installDirectory(source, (destination) => runCommand('git', ['clone', 'https://github.com/ashtree74/skyshot-solver.git', destination], { timeoutMs: 10 * minute }))
+  }
+  let hasRevision = false
+  try {
+    execFileSync('git', ['cat-file', '-e', `${revision}^{commit}`], { cwd: source, stdio: 'ignore' })
+    hasRevision = true
+  } catch {}
+  if (!hasRevision) await runCommand('git', ['fetch', 'origin', revision], { cwd: source, timeoutMs: 5 * minute })
+  await runCommand('git', ['checkout', '--detach', revision], { cwd: source, timeoutMs: minute })
+  const resolveWinPython = () => {
+    for (const cmd of ['py', 'python3', 'python']) {
+      try {
+        return execFileSync(cmd, ['-X', 'utf8', '-c', 'import sys; print(sys.executable)'], { encoding: 'utf8', timeout: 15_000, killSignal: 'SIGKILL', windowsHide: true }).trim()
+      } catch {}
+    }
+    throw new Error('Brak Pythona 3 (py, python3, python) w PATH.')
+  }
+  const python = process.platform === 'win32' ? resolveWinPython() : 'python3'
   const downloads = resolve(cache, 'skyshot-download-cache')
   const lock = join(downloads, '.download.lock')
   await installDirectory(data, async (destination) => {
@@ -59,4 +81,4 @@ if (!existsSync(join(data, 'index'))) {
     }
   })
 }
-console.log('Skyshot jest gotowy. Zdjęcia są rozwiązywane lokalnie, bez wysyłania do zewnętrznych usług.')
+console.log(bridgeOnly ? 'Skyshot (most) jest gotowy.' : 'Skyshot jest gotowy. Zdjęcia są rozwiązywane lokalnie, bez wysyłania do zewnętrznych usług.')

@@ -24,6 +24,7 @@ fn project(request: &Path) -> Result<()> {
     let wcs: Wcs = serde_json::from_value(body["wcs"].clone()).context("Niepoprawny WCS")?;
     let width = body["width"].as_f64().context("Brak szerokości")?;
     let height = body["height"].as_f64().context("Brak wysokości")?;
+    ensure!(width.is_finite() && width > 0.0 && height.is_finite() && height > 0.0, "Niepoprawne wymiary obrazu");
     let (center, radius) = field(&wcs, width, height);
     let empty = vec![];
     let pixels: Vec<Value> = body["stars"].as_array().unwrap_or(&empty).iter().map(|star| {
@@ -46,9 +47,10 @@ fn grid(request: &Path) -> Result<()> {
     let wcs: Wcs = serde_json::from_value(body["wcs"].clone()).context("Niepoprawny WCS")?;
     let width = body["width"].as_f64().context("Brak szerokości")?;
     let height = body["height"].as_f64().context("Brak wysokości")?;
+    ensure!(width.is_finite() && width > 0.0 && height.is_finite() && height > 0.0, "Niepoprawne wymiary obrazu");
     let cols = body["cols"].as_u64().context("Brak liczby kolumn")?;
     let rows = body["rows"].as_u64().context("Brak liczby wierszy")?;
-    ensure!(cols >= 2 && rows >= 2 && cols * rows <= 10_000, "Niepoprawny rozmiar siatki");
+    ensure!(cols >= 2 && rows >= 2 && cols.saturating_mul(rows) <= 10_000, "Niepoprawny rozmiar siatki");
     let sky: Vec<Value> = (0..rows).flat_map(|j| (0..cols).map(move |i| (i, j))).map(|(i, j)| {
         let p = wcs.pixel_to_sky(i as f64 * width / (cols - 1) as f64, j as f64 * height / (rows - 1) as f64);
         json!([p[0], p[1]])

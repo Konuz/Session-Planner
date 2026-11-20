@@ -50,6 +50,7 @@ export function ninaCsv(targets: readonly NinaTarget[]): string {
 }
 
 const csvCell = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`
+const safeCsvText = (value: string) => (/^[ \t\r]*[=+\-@]/.test(value) ? `'${value}` : value)
 
 /** Osobny format importera Target Scheduler; ekspozycje ustawia się w jego szablonie. */
 export function schedulerCsv(targets: readonly (NinaTarget & { type: string })[]): string {
@@ -69,11 +70,11 @@ export interface ExposureTarget extends NinaTarget {
 export function exposureCsv(targets: readonly ExposureTarget[], timeZone: string): string {
   const rows = targets.flatMap((t, i) => t.exposures.map((e) => {
     if (!validExposure(e)) throw new Error('Uzupełnij poprawnie filtry, liczbę klatek i czas ekspozycji.')
-    return [i + 1, t.name, formatRa(t.raDeg), formatDec(t.decDeg), formatPa(t.paDeg), e.filter,
+    return [i + 1, safeCsvText(t.name), formatRa(t.raDeg), formatDec(t.decDeg), formatPa(t.paDeg), safeCsvText(e.filter),
       e.count, e.seconds, e.count * e.seconds, t.startMs === null ? '' : new Date(t.startMs).toISOString(),
-      t.endMs === null ? '' : new Date(t.endMs).toISOString(), timeZone, t.note].map(csvCell).join(',')
+      t.endMs === null ? '' : new Date(t.endMs).toISOString(), timeZone, safeCsvText(t.note)].map(csvCell).join(',')
   }))
-  return ['Order,Target,RA J2000,DEC J2000,PA East deg,Filter,Frames,Exposure seconds,Integration seconds,Start UTC,End UTC,Time zone,Note',
+  return '\uFEFF' + ['Order,Target,RA J2000,DEC J2000,PA East deg,Filter,Frames,Exposure seconds,Integration seconds,Start UTC,End UTC,Time zone,Note',
     ...rows].join('\r\n') + '\r\n'
 }
 

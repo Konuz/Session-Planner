@@ -154,8 +154,19 @@ export function AltitudeChart({ object, slot, title = 'Widoczność obiektu', to
   // Kursor czasu najwyżej raz na klatkę: każda zmiana czasu przerysowuje całą kopułę (audyt C02).
   const pendingPointer = useRef<{ t: number; commit: boolean } | null>(null)
   const pointerFrame = useRef(0)
+  const insideRef = useRef(false)
   useEffect(() => () => cancelAnimationFrame(pointerFrame.current), [])
+  const clearHover = () => {
+    insideRef.current = false
+    if (!pendingPointer.current?.commit) {
+      cancelAnimationFrame(pointerFrame.current)
+      pointerFrame.current = 0
+      pendingPointer.current = null
+    }
+    setHoverT(null)
+  }
   const onPointer = (e: React.PointerEvent<SVGSVGElement>, commit: boolean) => {
+    insideRef.current = true
     const rect = e.currentTarget.getBoundingClientRect()
     const px = ((e.clientX - rect.left) / rect.width) * width
     const t = Math.max(night.startMs, Math.min(night.endMs, tAt(px)))
@@ -166,7 +177,7 @@ export function AltitudeChart({ object, slot, title = 'Widoczność obiektu', to
       const p = pendingPointer.current
       pendingPointer.current = null
       if (!p) return
-      setHoverT(p.t)
+      if (insideRef.current || dragging.current) setHoverT(p.t)
       if (p.commit) setTime(Math.round(p.t / 60_000) * 60_000)
     })
   }
@@ -185,6 +196,7 @@ export function AltitudeChart({ object, slot, title = 'Widoczność obiektu', to
         <svg
           viewBox={`0 0 ${width} ${H}`}
           height={H}
+          onPointerEnter={() => { insideRef.current = true }}
           onPointerMove={(e) => onPointer(e, dragging.current)}
           onPointerDown={(e) => {
             dragging.current = true
@@ -192,15 +204,13 @@ export function AltitudeChart({ object, slot, title = 'Widoczność obiektu', to
             onPointer(e, true)
           }}
           onPointerUp={() => (dragging.current = false)}
+          onPointerCancel={() => {
+            dragging.current = false
+            clearHover()
+          }}
           onPointerLeave={() => {
             if (dragging.current) return
-            // Zaległa klatka kursora nie może przywrócić podglądu po wyjściu wskaźnika.
-            if (!pendingPointer.current?.commit) {
-              cancelAnimationFrame(pointerFrame.current)
-              pointerFrame.current = 0
-              pendingPointer.current = null
-            }
-            setHoverT(null)
+            clearHover()
           }}
           style={{ cursor: 'col-resize', touchAction: 'none' }}
           role="img"

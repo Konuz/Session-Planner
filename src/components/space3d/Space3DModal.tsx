@@ -41,11 +41,18 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
   const project = session.project
   const [photoActive, setPhotoActive] = useState(true)
   const [photoProjectId, setPhotoProjectId] = useState(project?.id)
+  const [obsAlive, setObsAlive] = useState(false)
+  const [obsVisible, setObsVisible] = useState(false)
+  const [obsProject, setObsProject] = useState(project)
+  const [pendingScale, setPendingScale] = useState<SpaceScale | null>(null)
   const projectChanged = photoProjectId !== project?.id
-  // Nowo wczytane lub zmienione zdjęcie od razu staje się aktywne w scenie 3D.
   if (projectChanged) {
     setPhotoProjectId(project?.id)
     setPhotoActive(true)
+    setObsAlive(false)
+    setObsVisible(false)
+    setObsProject(project)
+    setPendingScale(null)
   }
   const active = projectChanged || photoActive
   const activePhoto = active ? project : null
@@ -59,8 +66,9 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
   useCutDistances(session)
   const inputRef = useRef<HTMLInputElement>(null)
   const [handle, setHandle] = useState<Space3DHandle | null>(null)
+  const handleRef = useRef(handle)
+  handleRef.current = handle
   const [mode, setMode] = useState<Mode>('scale')
-  // Układ stanu zdjęcia (panele Obserwatorium); w nurkowaniu zmienia się na początku fazy wejścia.
   const [panels, setPanels] = useState(false)
   const diveRef = useRef<SpaceDive | null>(null)
   const entry = useRef<{ scale: SpaceScale; pose: SpaceDive['spacePose'] } | null>(null)
@@ -70,20 +78,21 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
   const [summary, setSummary] = useState<HTMLDivElement | null>(null)
   const galaxy = settings.scale === 'galaxy'
   const diving = mode === 'in' || mode === 'out'
-  // Obserwatorium powstaje przy pierwszym nurkowaniu i zostaje (ukryte, wstrzymane) do zmiany zdjęcia lub skali:
-  // ponowne tworzenie i niszczenie kontekstu WebGL dawało białą klatkę na końcu powrotu.
-  const [obsAlive, setObsAlive] = useState(false)
-  const [obsVisible, setObsVisible] = useState(false)
   const { stars, retry } = useGaiaStars(session, !!activePhoto && (galaxy || session.editing || obsAlive || mode !== 'scale'))
   const regressorJobs = useRegressor(session, stars.status === 'error')
   const regressing = [...regressorJobs.values()].filter((job) => job.status === 'queued' || job.status === 'running').length
-  // Scena Obserwatorium zależy tylko od zdjęcia: zmiana zakładki (jedna scena 3D dla obu) jej nie przebudowuje,
-  // więc odtworzenie kontekstu WebGL nie wypada w trakcie przelotu zakładek.
-  useEffect(() => { setObsAlive(false); setObsVisible(false) }, [project?.id])
-  // Dane Obserwatorium: w stanie zdjęcia na bieżąco, poza nim dopiero przy nurkowaniu (edycja wycinków nie przebudowuje
-  // ukrytej sceny); gwiazdy Gaia, które przyjdą w trakcie przejścia, trafiają do niego po nim.
-  const [obsProject, setObsProject] = useState(project)
-  // Edycja wycinków nie przebudowuje ukrytej sceny przy każdym przesunięciu okręgu: dane dochodzą po jej zakończeniu.
+  useEffect(() => {
+    if (diveRef.current) {
+      if (handleRef.current) restoreSpace(handleRef.current, guideRef.current, entry.current?.pose ?? null)
+      diveRef.current.cancel()
+      diveRef.current = null
+    }
+    entry.current = null
+    setObsAlive(false)
+    setObsVisible(false)
+    setMode('scale')
+    setPanels(false)
+  }, [project?.id])
   useEffect(() => { if (mode === 'photo' || (mode === 'scale' && !session.editing)) setObsProject(project) }, [project, mode, session.editing])
   // Scena Obserwatorium powstaje z wyprzedzeniem, w bezczynności po pokazaniu zdjęcia: dekodowanie,
   // wysyłka tekstur i kompilacja shaderów nie przypadają na start nurkowania.
@@ -186,9 +195,6 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
     session.setEditing(false)
     startDive('in')
   }
-  // Przed powrotem ze zdjęcia czekamy na przewodnik wybranej skali. Przy przerwaniu trwającego nurkowania
-  // oczekująca zakładka przełącza się po zakończeniu ruchu.
-  const [pendingScale, setPendingScale] = useState<SpaceScale | null>(null)
   // Scena 3D montowana po pierwszym malowaniu okna (rAF, potem zadanie po klatce): budowa sceny (punkty, kontekst WebGL,
   // shadery) nie opóźnia pojawienia się okna, a przelot startowy rusza z jej pierwszą klatką.
   const [sceneMounted, setSceneMounted] = useState(false)
@@ -295,7 +301,7 @@ function Space3DWindow({ session }: { session: PhotoSession }) {
       </>}
     </div>
     {editing && <PhotoCutEditor session={session} regressorJobs={regressorJobs} />}
-    {(obsAlive || mode !== 'scale') && obsProject && stage && summary && <Observatory project={obsProject} slots={{ stage, toolbar: showPhoto ? toolbarSlot : null, summary: showPhoto ? summary : null }}
+    {(obsAlive || mode !== 'scale') && obsProject && obsProject.id === project?.id && stage && summary && <Observatory key={obsProject.id} project={obsProject} slots={{ stage, toolbar: showPhoto ? toolbarSlot : null, summary: showPhoto ? summary : null }}
       stars={stars} onRetryStars={retry} diving={diving} hidden={mode === 'scale' || (mode === 'in' && !obsVisible)} onScene={(scene) => { obsScene.current = scene }} />}
   </SpaceWindow>
 }

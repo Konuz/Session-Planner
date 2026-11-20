@@ -1,7 +1,8 @@
 // Wstępna kompresja dist/ po vite build: obok plików tekstowych powyżej 1 KB powstają .br i .gz, które serwer
 // produkcyjny (server/index.ts) podaje według Accept-Encoding. Bez tego każdy start pobiera dane w pełnym rozmiarze.
+import { realpathSync } from 'node:fs'
 import { readdir, readFile, stat, writeFile } from 'node:fs/promises'
-import { extname, join } from 'node:path'
+import { extname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { brotliCompress, constants, gzip } from 'node:zlib'
 import { promisify } from 'node:util'
@@ -36,7 +37,7 @@ export async function compressDist(dir: string): Promise<{ files: number; rawByt
   return { files: count, rawBytes, brBytes }
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (import.meta.main || (Boolean(process.argv[1]) && realpathSync(fileURLToPath(import.meta.url)) === realpathSync(resolve(process.argv[1])))) {
   const dir = fileURLToPath(new URL('../dist/', import.meta.url))
   const { files: n, rawBytes, brBytes } = await compressDist(dir)
   console.log(`compress-dist: ${n} plików, ${(rawBytes / 1048576).toFixed(2)} MB → ${(brBytes / 1048576).toFixed(2)} MB (brotli)`)

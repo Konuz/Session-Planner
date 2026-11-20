@@ -58,7 +58,6 @@ function cutTexture(image: HTMLImageElement, item: ObservatoryItem, color: strin
   g.fillStyle = '#060b14'
   g.fillRect(0, 0, size, size)
   if (isGalactic(item)) g.filter = 'brightness(1.45)'
-  // Canvas skraca także prostokąt docelowy, gdy obszar źródłowy wychodzi poza zdjęcie.
   const { x, y, side } = photoCropSquare(item, image.naturalWidth, image.naturalHeight)
   g.drawImage(image, x, y, side, side, 0, 0, size, size)
   g.restore()
@@ -105,10 +104,10 @@ void main() {
   vAlpha = alpha;
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
   gl_Position = projectionMatrix * mv;
-  // Z daleka punkty maleją (do 30 %) i tracą poświatę, żeby gęste pola się nie zlewały.
   vScale = clamp(refDistance / max(-mv.z, 1.0), 0.3, 1.0);
   gl_PointSize = max(1.5, size * vScale) * pixelRatio;
 }`
+
 const starFragment = `
 varying vec3 vTint;
 varying float vAlpha;
@@ -249,7 +248,8 @@ export class ObservatoryScene {
     this.resizeObserver.observe(host)
     this.resize()
     this.external = options.external ?? false
-    if (!this.external) this.loop(performance.now())
+    if (this.external) this.setInteractive(false)
+    else this.loop(performance.now())
   }
 
   private label(className: string, text: string): HTMLDivElement {
@@ -414,6 +414,8 @@ export class ObservatoryScene {
 
   /** Usunięcie danych poprzedniego zdjęcia (obiekty, zasoby, podpisy); renderer i kontekst zostają. */
   private clearData() {
+    this.flight?.resolve?.()
+    this.flight = null
     this.closeFans()
     for (const badge of this.badges) badge.el.remove()
     this.badges = []

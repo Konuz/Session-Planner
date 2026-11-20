@@ -3,6 +3,7 @@
 import { DEG } from './astro'
 import { gnomonic, tangentToPixel } from './framing'
 import type { PhotoProject } from './photo'
+import { affineFrom3 } from './projection'
 
 /** Punkty wierszami; punkt (i, j) leży w pikselu (i·width/(cols−1), j·height/(rows−1)); [raDeg, decDeg]. */
 export interface PhotoGrid { cols: number; rows: number; sky: [number, number][] }
@@ -61,14 +62,7 @@ export function warpTriangles(grid: PhotoGrid, width: number, height: number, vi
 
 /** Przekształcenie src → dst w kolejności `setTransform(a, b, c, d, e, f)`: x′ = a·x + c·y + e, y′ = b·x + d·y + f. */
 export function affineFromTriangles(src: [Pt, Pt, Pt], dst: [Pt, Pt, Pt]): [number, number, number, number, number, number] {
-  const [[x0, y0], [x1, y1], [x2, y2]] = src
-  const [[u0, v0], [u1, v1], [u2, v2]] = dst
-  const det = (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0)
-  const a = ((u1 - u0) * (y2 - y0) - (u2 - u0) * (y1 - y0)) / det
-  const c = ((u2 - u0) * (x1 - x0) - (u1 - u0) * (x2 - x0)) / det
-  const b = ((v1 - v0) * (y2 - y0) - (v2 - v0) * (y1 - y0)) / det
-  const d = ((v2 - v0) * (x1 - x0) - (v1 - v0) * (x2 - x0)) / det
-  return [a, b, c, d, u0 - a * x0 - c * y0, v0 - b * x0 - d * y0]
+  return affineFrom3(src, dst) ?? [0, 0, 0, 0, 0, 0]
 }
 
 /** Każdy wierzchołek odsunięty od środka ciężkości o `px`: zakładka zasłania szwy między trójkątami. */

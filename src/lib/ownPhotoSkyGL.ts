@@ -6,6 +6,7 @@ import type { HorizonPoint } from './horizon'
 import type { OwnPhotoRecord } from './ownPhoto'
 import { drawOrder, evictionOrder, projectMesh, skyPhotos, textureBytes, textureLevel, TEXTURE_BUDGET_BYTES, type ProjectedMesh, type SkyPhoto } from './ownPhotoSky'
 import type { Projector } from './projection'
+import { compileProgram } from './webgl'
 
 export interface SkyPhotoFrame {
   proj: Projector
@@ -91,25 +92,9 @@ interface Entry {
   failed: boolean
 }
 
-function program(gl: WebGL2RenderingContext, vs: string, fs: string): WebGLProgram {
-  const p = gl.createProgram()!
-  const shaders = [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]].map(([type, src]) => {
-    const s = gl.createShader(type as number)!
-    gl.shaderSource(s, src as string)
-    gl.compileShader(s)
-    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) ?? 'shader')
-    gl.attachShader(p, s)
-    return s
-  })
-  gl.linkProgram(p)
-  shaders.forEach((s) => { gl.detachShader(p, s); gl.deleteShader(s) })
-  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p) ?? 'program')
-  return p
-}
-
 export function createSkyPhotoLayer(gl: WebGL2RenderingContext, onLoaded: () => void): SkyPhotoLayer {
-  const photoProg = program(gl, PHOTO_VS, PHOTO_FS)
-  const composeProg = program(gl, COMPOSE_VS, COMPOSE_FS)
+  const photoProg = compileProgram(gl, PHOTO_VS, PHOTO_FS)
+  const composeProg = compileProgram(gl, COMPOSE_VS, COMPOSE_FS)
   const uRes = gl.getUniformLocation(photoProg, 'u_res')
   const uOpacity = gl.getUniformLocation(composeProg, 'u_opacity')
   gl.useProgram(photoProg)

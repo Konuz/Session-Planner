@@ -5,6 +5,7 @@ import { angularDistanceDeg, galactic, isCircumpolar, moonInfo, moonJ2000 } from
 import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO } from '../lib/catalog'
 import { CONSTELLATION_PL } from '../lib/constellations'
 import { fmtDec, fmtDeg, fmtDistance, fmtDuration, fmtNum, fmtRa, fmtSize, fmtTime } from '../lib/format'
+import { lockRootInert } from '../lib/modalInert'
 import { altitudeTrack, nightGrid, visibility } from '../lib/night'
 import { astrobinSearchUrl, fetchWikiSummary, type WikiSummary } from '../lib/services'
 import { useNight, useOwnPhotoKey, useSelected, useSite } from '../state/data'
@@ -30,9 +31,13 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
   const [astrobin, setAstrobin] = useState<{ key: number; url: string } | null>(null)
 
   useEffect(() => {
+    const release = lockRootInert()
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    return () => {
+      release()
+      document.removeEventListener('keydown', onKey)
+    }
   }, [onClose])
 
   useEffect(() => {
@@ -113,7 +118,7 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
             <button className="button" onClick={() => { addToPlan(o.i, o.id); onClose(); setTab('planner') }}>Do planu</button>
             <OwnPhotoActions key={photoKey} objectId={photoKey} />
             {astrobin?.key === o.i && (
-              <a className="button" href={astrobin.url} target="_blank" rel="noreferrer" title="Zdjęcia z AstroBin wyróżnione jako IOTD lub Top Pick">
+              <a className="button" href={astrobin.url} target="_blank" rel="noopener noreferrer" title="Zdjęcia z AstroBin wyróżnione jako IOTD lub Top Pick">
                 AstroBin
               </a>
             )}
@@ -123,8 +128,8 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
           <p style={{ color: 'var(--text-2)', lineHeight: 1.65, fontSize: 14 }}>
             {w === undefined ? <span className="dim">Pobieranie opisu z Wikipedii…</span> : w ? w.extract : <span className="dim">Brak artykułu w Wikipedii dla tego obiektu.</span>}
           </p>
-          {w && (
-            <a href={w.url} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>
+          {w?.url && (
+            <a href={w.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12 }}>
               Wikipedia ({w.lang === 'pl' ? 'polska' : 'angielska'}): {w.title} <ExternalLink size={11} />
             </a>
           )}
@@ -152,8 +157,8 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
             </tbody>
           </table>
           <div style={{ display: 'flex', gap: 14, marginTop: 14, fontSize: 12 }}>
-            <a href={simbad} target="_blank" rel="noreferrer">SIMBAD <ExternalLink size={11} /></a>
-            <a href={aladin} target="_blank" rel="noreferrer">Aladin Lite <ExternalLink size={11} /></a>
+            <a href={simbad} target="_blank" rel="noopener noreferrer">SIMBAD <ExternalLink size={11} /></a>
+            <a href={aladin} target="_blank" rel="noopener noreferrer">Aladin Lite <ExternalLink size={11} /></a>
           </div>
           <p className="faint" style={{ fontSize: 11, marginTop: 18 }}>
             Dane: OpenNGC (CC BY-SA 4.0), kontury mgławic: OpenNGC outlines (CC BY-SA 4.0, obrysy na DSS2 w Aladin, CDS), mgławic ciemnych: mapy Planck 857 GHz (ESA, NASA SkyView) dopasowane SAM 3 (Meta) do zdjęć z AstroBin, katalogi VizieR/CDS, odległości i artykuły: Wikidata (CC0), opisy: Wikipedia (CC BY-SA), zdjęcia: AstroBin API użytkownika Konuz lub kafelki HiPS (ESA ESASky, MAST/STScI): Digitized Sky Survey (STScI/NASA; Palomar Observatory/Caltech, UK Schmidt Telescope/AAO) i Pan-STARRS1 (PS1 Surveys).

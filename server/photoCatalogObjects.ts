@@ -9,7 +9,7 @@ const vizierMirrors = [
   { url: 'https://vizier.cfa.harvard.edu/viz-bin/asu-tsv', timeoutMs: 7_000 },
   { url: 'https://vizier.cds.unistra.fr/viz-bin/asu-tsv', timeoutMs: 5_000 },
   { url: 'https://vizier.idia.ac.za/viz-bin/asu-tsv', timeoutMs: 6_000 },
-  { url: 'http://vizier.china-vo.org/viz-bin/asu-tsv', timeoutMs: 12_000 },
+  { url: 'https://vizier.china-vo.org/viz-bin/asu-tsv', timeoutMs: 12_000 },
 ]
 const limit = 300
 const sources = [

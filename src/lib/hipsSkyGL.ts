@@ -7,6 +7,7 @@ import { allskyUvRect, ALLSKY_ORDER, detailOrder, detailOrderScale, NSNS_EDGE_DE
 import type { Survey } from './hips'
 import { fetchTile } from './hipsTiles'
 import { imageCache } from './imageCache'
+import { compileProgram } from './webgl'
 
 export interface HipsSkyFrame {
   eqToView: Mat3
@@ -87,26 +88,11 @@ interface Tile {
   shown: boolean
   lastDrawn: number
   failedAt: number | null
-}
-
-function compile(gl: WebGL2RenderingContext): WebGLProgram {
-  const p = gl.createProgram()!
-  const shaders = ([[gl.VERTEX_SHADER, VS], [gl.FRAGMENT_SHADER, FS]] as const).map(([type, src]) => {
-    const s = gl.createShader(type)!
-    gl.shaderSource(s, src)
-    gl.compileShader(s)
-    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) ?? 'shader')
-    gl.attachShader(p, s)
-    return s
-  })
-  gl.linkProgram(p)
-  shaders.forEach((s) => { gl.detachShader(p, s); gl.deleteShader(s) })
-  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p) ?? 'program')
-  return p
+  missing?: boolean
 }
 
 export function createHipsSkyLayer(gl: WebGL2RenderingContext, survey: Survey, onLoaded: () => void): HipsSkyLayer {
-  const prog = compile(gl)
+  const prog = compileProgram(gl, VS, FS)
   const u = (name: string) => gl.getUniformLocation(prog, name)
   const uM = u('u_m'), uZen = u('u_zen'), uScale = u('u_scale'), uCenter = u('u_center'), uRes = u('u_res'), uBright = u('u_bright'), uEdge = u('u_edge')
   const base = survey.mirrors[0]
@@ -227,7 +213,11 @@ export function createHipsSkyLayer(gl: WebGL2RenderingContext, survey: Survey, o
         bitmap.close()
         tile.image = { tex, mesh: mesh(tileMesh(order, npix, segmentsFor(order))) }
       })
-      .catch(() => { if (!disposed) { tile.failedAt = performance.now(); retryLater() } })
+      .catch((err: unknown) => {
+        if (disposed) return
+        if ((err as { missing?: boolean } | null)?.missing === true) tile.missing = true
+        else { tile.failedAt = performance.now(); retryLater() }
+      })
       // Także po porażce: zwolnione miejsce w kolejce pozwala pobrać następne kafelki bez ruchu widoku.
       .finally(() => { loading--; scheduleDraw() })
   }
@@ -306,8 +296,8 @@ export function createHipsSkyLayer(gl: WebGL2RenderingContext, survey: Survey, o
           if (tile?.image) {
             hasNewImage ||= changedOrder || !tile.shown
           } else {
-            waiting ||= tile?.failedAt == null
-            const canRequest = !tile || (tile.failedAt !== null && now - tile.failedAt > RETRY_MS)
+            waiting ||= !tile?.missing && tile?.failedAt == null
+            const canRequest = !tile || (!tile.missing && tile.failedAt !== null && now - tile.failedAt > RETRY_MS)
             if (canRequest && f.allowDecode && loading < MAX_LOADING) request(order, p, key)
           }
         }

@@ -1,23 +1,19 @@
 import { PRESSURE_LEVELS, classifySeeing, computeProfileSeeing, type PressureLevelSample, type SeeingQuality } from './seeing'
 
-// Usługi sieciowe bez klucza API: pogoda i geokodowanie (Open-Meteo), opisy (Wikipedia REST).
-// Odpowiedzi trzymane w localStorage z czasem ważności, żeby wolne łącze nie blokowało widoku; zapytania w locie
-// są wspólne dla komponentów.
-
-/** undefined: brak ważnego wpisu. Zapisany wynik null (np. brak artykułu) jest trafieniem (audyt C13). */
 function readCache<T>(key: string, maxAgeMs: number): T | undefined {
   try {
     const raw = localStorage.getItem(key)
     if (!raw) return undefined
     const { at, data } = JSON.parse(raw) as { at: number; data: T }
-    return Date.now() - at < maxAgeMs ? data : undefined
+    const now = Date.now()
+    return typeof at === 'number' && Number.isFinite(at) && at <= now && now - at < maxAgeMs ? data : undefined
   } catch {
     return undefined
   }
 }
 
-/** Jedno zapytanie w locie na klucz: komponenty montowane razem dostają ten sam wynik (audyt C14). */
 const inFlight = new Map<string, Promise<unknown>>()
+
 function once<T>(key: string, load: () => Promise<T>): Promise<T> {
   const running = inFlight.get(key) as Promise<T> | undefined
   if (running) return running
@@ -38,23 +34,17 @@ function writeCache(key: string, data: unknown) {
       }
       localStorage.setItem(key, payload)
     } catch {
-      // Pełny magazyn: dane i tak są w pamięci.
     }
   }
 }
-
-// ---------- Pogoda ----------
 
 export type WeatherProviderId = 'openmeteo' | 'ecmwf' | 'icon' | 'gfs' | 'ukmo' | 'gem' | 'metno'
 
 export interface WeatherProviderInfo {
   id: WeatherProviderId
   label: string
-  /** Krótka etykieta do stopki wykresu i podsumowań. */
   shortLabel: string
-  /** Nazwa modelu dla Open-Meteo; brak oznacza zewnętrzne API innego dostawcy. */
   openMeteoModel?: string
-  /** Czy źródło dostarcza profil pionowy do estymacji seeingu. */
   hasUpperAir: boolean
 }
 
@@ -90,17 +80,11 @@ export interface WeatherHour {
   temp: number
   dew: number
   wind: number
-  /** Widzialność [km]; null, gdy model lub dostawca jej nie publikuje. */
   visibilityKm: number | null
-  /** Najsilniejszy wiatr na 300/250/200 hPa (prąd strumieniowy) [km/h]; null, gdy model go nie podał. */
   jetKmh: number | null
-  /** Seeing wyliczony z profilu pionowego C_n^2 ["]; null przy braku danych izobarycznych. */
   seeingArcsec?: number | null
-  /** Składowa warstwy granicznej seeingu ["]; null przy braku profilu. */
   seeingBlArcsec?: number | null
-  /** Składowa swobodnej atmosfery seeingu ["]; null przy braku profilu. */
   seeingFaArcsec?: number | null
-  /** Wysokość warstwy granicznej [m AGL]; null, gdy model jej nie podał. */
   pblM?: number | null
 }
 
@@ -128,7 +112,6 @@ const PRESSURE_VARS = PRESSURE_LEVELS.flatMap((p) => [
   `wind_direction_${p}hPa`,
   `geopotential_height_${p}hPa`,
 ])
-// Do południa planer może pokazywać noc rozpoczętą w poprzedniej dobie UTC.
 const OPEN_METEO_PAST_DAYS = 1
 
 export async function fetchWeather(lat: number, lon: number, provider: WeatherProviderId = DEFAULT_WEATHER_PROVIDER): Promise<WeatherHour[]> {
@@ -149,8 +132,6 @@ async function loadWeather(key: string, info: WeatherProviderInfo, lat: number, 
 }
 
 async function loadOpenMeteo(model: string, lat: number, lon: number): Promise<WeatherHour[]> {
-  // Widzialność, warstwy chmur, zmienne PBL i profile izobaryczne są opcjonalne:
-  // ich brak w części modeli (np. ECMWF IFS, GEM) nie może odrzucać całej godziny.
   const hourlyVars = [...REQUIRED_SURFACE_VARS, ...OPTIONAL_SURFACE_VARS, ...BL_VARS, ...PRESSURE_VARS].join(',')
   const modelParam = model && model !== 'best_match' ? `&models=${encodeURIComponent(model)}` : ''
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}${modelParam}&hourly=${hourlyVars}&forecast_days=8&past_days=${OPEN_METEO_PAST_DAYS}&timezone=UTC&timeformat=unixtime`
@@ -254,8 +235,6 @@ async function loadMetNo(lat: number, lon: number): Promise<WeatherHour[]> {
     }]
   })
 
-  // Po ~60 h MET Norway przechodzi z kroku 1 h na 6 h; zagęszczamy ten odcinek liniowo do co 1 h,
-  // aby suwak czasu (±30 min w weatherAt) i podsumowanie 7 nocy działały na każdej nocy.
   const hourly: WeatherHour[] = []
   for (let i = 0; i < raw.length; i++) {
     const cur = raw[i]
@@ -296,10 +275,6 @@ export function weatherAt(hours: readonly WeatherHour[], t: number): WeatherHour
   return validWeatherHour(best) && Math.abs(best.t - t) <= 1_800_000 ? best : null
 }
 
-/**
- * Ocena warunków (wyliczona, nie pomiar przejrzystości): zachmurzenie ma wagę główną, wysoka wilgotność
- * i mała różnica temperatury i punktu rosy obniżają ocenę. Brak widzialności nie obniża wyniku.
- */
 export function skyRating(h: WeatherHour): { label: string; score: number } | null {
   if (!validWeatherHour(h)) return null
   let score = 100 - h.cloud
@@ -312,12 +287,6 @@ export function skyRating(h: WeatherHour): { label: string; score: number } | nu
   return { label, score }
 }
 
-/**
- * Ocena siły wiatru dla astrofotografii (prowadzenie montażu):
- * ≤ 15 km/h (~9 mph) akceptowalny (≤ 8 km/h praktycznie bezwietrznie),
- * 16–24 km/h (10–15 mph) umiarkowany / ryzykowny przy długiej ogniskowej i bez osłony,
- * > 24 km/h (> 15 mph) za silny do stabilnych długich ekspozycji.
- */
 export function windRating(windKmh: number): { label: 'dobry' | 'średni' | 'zły'; note: string } | null {
   if (!finiteNumber(windKmh) || windKmh < 0) return null
   const kmh = Math.round(windKmh)
@@ -327,10 +296,6 @@ export function windRating(windKmh: number): { label: 'dobry' | 'średni' | 'zł
   return { label: 'zły', note: 'Wiatr za silny (> 24 km/h) — drgania tuby i duże błędy prowadzenia przy długich ekspozycjach' }
 }
 
-/**
- * Szacunek seeingu z prądu strumieniowego (heurystyka, nie pomiar): silny wiatr na wysokości 9–12 km
- * oznacza turbulencję i rozmyte gwiazdy. Progi w km/h do dostrojenia z obserwacji.
- */
 export function seeingEstimate(jetKmh: number | null): { arcsec: number; label: 'dobry' | 'średni' | 'zły' } | null {
   if (jetKmh === null || !finiteNumber(jetKmh)) return null
   const arcsec = 0.8 + 0.015 * jetKmh
@@ -347,10 +312,6 @@ export interface WeatherSeeingResult {
   pblM: number | null
 }
 
-/**
- * Zwraca szacowany seeing dla godziny prognozy: preferuje pełny profil pionowy C_n^2 (warstwa
- * graniczna + swobodna atmosfera), a przy jego braku wraca do heurystyki prądu strumieniowego.
- */
 export function weatherSeeing(h: WeatherHour | null | undefined): WeatherSeeingResult | null {
   if (!h) return null
   if (finiteNumber(h.seeingArcsec)) {
@@ -368,7 +329,15 @@ export function weatherSeeing(h: WeatherHour | null | undefined): WeatherSeeingR
   return { ...fallback, source: 'jet', blArcsec: null, faArcsec: null, pblM: finiteNumber(h.pblM) ? h.pblM : null }
 }
 
-// ---------- Geokodowanie ----------
+export function isValidTimeZone(tz: unknown): tz is string {
+  if (typeof tz !== 'string' || !tz) return false
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz })
+    return true
+  } catch {
+    return false
+  }
+}
 
 export interface Place {
   name: string
@@ -389,20 +358,20 @@ export async function searchPlaces(query: string, signal?: AbortSignal): Promise
     region: [r.admin2, r.admin1, r.country].filter(Boolean).join(', '),
     latDeg: Number(r.latitude),
     lonDeg: Number(r.longitude),
-    elevationM: Number(r.elevation ?? 0),
-    timeZone: String(r.timezone ?? 'UTC'),
+    elevationM: finiteNumber(Number(r.elevation ?? 0)) ? Number(r.elevation ?? 0) : 0,
+    timeZone: isValidTimeZone(r.timezone) ? r.timezone : 'UTC',
   }))
 }
 
-/** Strefa czasowa i wysokość dla współrzędnych (np. z geolokalizacji przeglądarki). */
 export async function placeForCoords(lat: number, lon: number): Promise<Pick<Place, 'timeZone' | 'elevationM'>> {
   const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&timezone=auto&forecast_days=1&current=temperature_2m`)
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   const j = await res.json()
-  return { timeZone: j.timezone ?? 'UTC', elevationM: j.elevation ?? 0 }
+  return {
+    timeZone: isValidTimeZone(j.timezone) ? j.timezone : 'UTC',
+    elevationM: finiteNumber(j.elevation) ? j.elevation : 0,
+  }
 }
-
-// ---------- Wikipedia ----------
 
 export interface WikiSummary {
   title: string
@@ -411,16 +380,17 @@ export interface WikiSummary {
   lang: 'pl' | 'en'
 }
 
+const isWikiUrl = (u: unknown): u is string => typeof u === 'string' && /^https:\/\/(pl|en)\.wikipedia\.org\//.test(u)
+
 export async function fetchWikiSummary(titlePl: string, titleEn: string, fallbackQuery: string): Promise<WikiSummary | null> {
   const key = `wiki:${titlePl || titleEn || fallbackQuery}`
   const cached = readCache<WikiSummary | null>(key, 14 * 86_400_000)
-  if (cached !== undefined) return cached
+  if (cached === null) return null
+  if (cached !== undefined && typeof cached.title === 'string' && typeof cached.extract === 'string' && (cached.url === '' || isWikiUrl(cached.url))) return cached
   return once(key, () => loadWikiSummary(key, titlePl, titleEn, fallbackQuery))
 }
 
 async function loadWikiSummary(key: string, titlePl: string, titleEn: string, fallbackQuery: string): Promise<WikiSummary | null> {
-  // Brak artykułu (4xx, ujednoznacznienie) jest pewną odpowiedzią i trafia do pamięci; błąd sieci lub serwera nie,
-  // inaczej chwilowy brak łącza ukryłby opis na 14 dni.
   let failed = false
   const tryTitle = async (lang: 'pl' | 'en', title: string): Promise<WikiSummary | null> => {
     if (!title) return null
@@ -432,7 +402,8 @@ async function loadWikiSummary(key: string, titlePl: string, titleEn: string, fa
       }
       const j = await res.json()
       if (j.type === 'disambiguation' || !j.extract) return null
-      return { title: j.title, extract: j.extract, url: j.content_urls?.desktop?.page ?? '', lang }
+      const pageUrl = j.content_urls?.desktop?.page
+      return { title: j.title, extract: j.extract, url: isWikiUrl(pageUrl) ? pageUrl : '', lang }
     } catch {
       failed = true
       return null
@@ -443,11 +414,6 @@ async function loadWikiSummary(key: string, titlePl: string, titleEn: string, fa
   return result
 }
 
-/**
- * Adres wyszukiwania AstroBin dla obiektu z filtrem nagród IOTD i Top Pick. Nowa wyszukiwarka (app.astrobin.com)
- * trzyma filtry w parametrze `p`: ciąg `klucz=JSON` zakodowany jak w adresie, zapisany jako napis msgpack,
- * skompresowany zlib (deflate) i w base64; tak robi ich `compressQueryString`.
- */
 export async function astrobinSearchUrl(subject: string): Promise<string> {
   const query = [
     ['text', { value: '', matchType: 'ALL', onlySearchInTitlesAndDescriptions: false }],

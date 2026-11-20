@@ -58,8 +58,8 @@ export async function readPhoto(): Promise<PhotoProject | null> {
       const projectRequest = store.get(PROJECT_KEY)
       const imageRequest = store.get(IMAGE_KEY)
       transaction.oncomplete = () => { record = projectRequest.result; image = imageRequest.result; resolve() }
-      transaction.onerror = () => reject(transaction.error)
-      transaction.onabort = () => reject(transaction.error)
+      transaction.onerror = () => reject(transaction.error ?? new Error('IndexedDB transaction failed'))
+      transaction.onabort = () => reject(transaction.error ?? new Error('IndexedDB transaction aborted'))
     })
   } finally { db.close() }
   if (unsavedPhoto) return (unsavedPhoto as { project: PhotoProject | null }).project
@@ -67,7 +67,9 @@ export async function readPhoto(): Promise<PhotoProject | null> {
   if (!stored) return null
   if (stored.image) {
     // Zapis sprzed C06: obraz w rekordzie. Przeniesienie do osobnego klucza przy najbliższym zapisie.
-    const project = { ...stored, image: await photoImageUrl(stored.image) }
+    const url = await photoImageUrl(stored.image)
+    if (unsavedPhoto) return (unsavedPhoto as { project: PhotoProject | null }).project
+    const project = { ...stored, image: url }
     storedImage = null
     void writePhoto(project).catch(() => {})
     return project
@@ -114,8 +116,8 @@ async function persistPhoto(project: PhotoProject | null): Promise<void> {
         if (project) hydrated = { id: project.id, url: project.image }
         resolve()
       }
-      transaction.onerror = () => reject(transaction.error)
-      transaction.onabort = () => reject(transaction.error)
+      transaction.onerror = () => reject(transaction.error ?? new Error('IndexedDB transaction failed'))
+      transaction.onabort = () => reject(transaction.error ?? new Error('IndexedDB transaction aborted'))
     })
   } finally { db.close() }
 }

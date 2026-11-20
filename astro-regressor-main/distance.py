@@ -1,8 +1,26 @@
+import html
+import json
+import os
+import re
+import sys
+import warnings
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-import html, json, os, re, sys, warnings
-import astropy.units as u, numpy as np, pandas as pd, tyro
+
+import astropy.units as u
+import numpy as np
+import pandas as pd
+import tyro
 from astropy.coordinates import SkyCoord
+from estimators import (
+    fetch_all_catalogs,
+    fit_extinction_breakpoint,
+    fmt_val,
+    is_extended_target,
+    lookup_literature_distance,
+    resolve_name,
+    synthesize_target_distance,
+)
 from loguru import logger
 from rich.columns import Columns
 from rich.console import Console
@@ -10,9 +28,7 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.table import Table
 from tyro.conf import Positional
-from estimators import fetch_all_catalogs, fit_extinction_breakpoint, fmt_val, is_extended_target, lookup_literature_distance, resolve_name, synthesize_target_distance
 
-warnings.filterwarnings("ignore")
 console = Console()
 
 
@@ -36,7 +52,7 @@ def write_html_report(out_path: str, target_name: str, meta: dict, primary: dict
         g_val = float(r["phot_g_mean_mag"]) if pd.notna(r.get("phot_g_mean_mag")) else None
         stars.append({
             "id": str(sid), "ra": round(float(r["ra"]), 6), "dec": round(float(r["dec"]), 6),
-            "sep": round(float(r.get("sep_arcsec", 0.0)), 1), "d": round(d_val, 1) if d_val else None,
+            "sep": round(float(r.get("sep_arcsec", 0.0)), 1), "d": round(d_val, 1) if d_val is not None else None,
             "d_lo": round(float(r["r_lo_photogeo"]), 1) if pd.notna(r.get("r_lo_photogeo")) else None,
             "d_hi": round(float(r["r_hi_photogeo"]), 1) if pd.notna(r.get("r_hi_photogeo")) else None,
             "plx": round(float(r.get("parallax_corr", r.get("parallax", np.nan))), 3) if pd.notna(r.get("parallax")) else None,
@@ -45,7 +61,7 @@ def write_html_report(out_path: str, target_name: str, meta: dict, primary: dict
             "pmdec": round(float(r["pmdec"]), 2) if pd.notna(r.get("pmdec")) else None,
             "g": round(g_val, 2) if g_val is not None else None,
             "bprp": round(float(r["bp_rp"]), 2) if pd.notna(r.get("bp_rp")) else None,
-            "mg": round(g_val - 5.0 * np.log10(d_val / 10.0), 2) if (g_val is not None and d_val and d_val > 0) else None,
+            "mg": round(g_val - 5.0 * np.log10(d_val / 10.0), 2) if (g_val is not None and d_val is not None and d_val > 0) else None,
             "a0": round(float(r["azero_gspphot"]) if pd.notna(r.get("azero_gspphot")) else float(r.get("av_nicer", np.nan)), 2) if (pd.notna(r.get("azero_gspphot")) or pd.notna(r.get("av_nicer"))) else None,
             "teff": round(float(r["teff_gspphot"]), 0) if pd.notna(r.get("teff_gspphot")) else None,
             "member": sid in mem_ids,
@@ -55,7 +71,7 @@ def write_html_report(out_path: str, target_name: str, meta: dict, primary: dict
     prop_html = "".join(f"<tr><td>{html.escape(r[0])}</td><td>{html.escape(clean_tag(r[1]))}</td><td class='num'>{html.escape(r[2])}</td></tr>" for r in prop_rows)
     d_pc, lo_pc, hi_pc = primary.get("distance_pc", np.nan), primary.get("lo_pc", np.nan), primary.get("hi_pc", np.nan)
     d_banner = f"{d_pc:,.1f} pc <span class='ci'>(16–84% CI: {lo_pc:,.1f} – {hi_pc:,.1f} pc | {d_pc * 3.26156:,.0f} ly)</span>" if np.isfinite(d_pc) else f"ABSTAIN <span class='ci'>({html.escape(str(primary.get('abstain_reason', 'Unverified')))})</span>"
-    payload = json.dumps({"target": target_name, "canonical": meta["canonical_name"], "ra": meta["ra"], "dec": meta["dec"], "r_on_deg": r_on_deg, "cone_deg": cone_deg, "d_pc": float(d_pc) if np.isfinite(d_pc) else None, "lo_pc": float(lo_pc) if np.isfinite(lo_pc) else None, "hi_pc": float(hi_pc) if np.isfinite(hi_pc) else None, "ext": ext_break, "stars": stars, "est": [{"name": r[0], "d": float(r[1].replace(",", "")) if r[1].replace(",", "").replace(".", "").isdigit() else None, "ci": r[2]} for r in est_rows]})
+    payload = json.dumps({"target": target_name, "canonical": meta["canonical_name"], "ra": meta["ra"], "dec": meta["dec"], "r_on_deg": r_on_deg, "cone_deg": cone_deg, "d_pc": float(d_pc) if np.isfinite(d_pc) else None, "lo_pc": float(lo_pc) if np.isfinite(lo_pc) else None, "hi_pc": float(hi_pc) if np.isfinite(hi_pc) else None, "ext": ext_break, "stars": stars}).replace("</", "<\\/")
     doc = f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{html.escape(target_name)} ({html.escape(meta['canonical_name'])}) — Astro-Regressor Report</title>
@@ -115,9 +131,10 @@ td.num {{ text-align:right; font-variant-numeric:tabular-nums; font-weight:500; 
 <div class="card"><h2>Multi-Catalog Independent Distance Estimators</h2>
   <table><thead><tr><th>Catalog / Estimator</th><th style="text-align:right">Distance [pc]</th><th style="text-align:right">16–84% CI [pc]</th><th style="text-align:right">Distance [ly]</th><th style="text-align:right">Modulus μ [mag]</th><th>Notes / Coverage</th></tr></thead><tbody>{est_html}</tbody></table>
 </div>
-<div class="card"><h2>Cross-Matched 12-Catalog Astrometry, Photometry & Stellar Physics</h2>
+<div class="card"><h2>Cross-Matched 14-Catalog Astrometry, Photometry & Stellar Physics</h2>
   <table><thead><tr><th>Catalog / Domain</th><th>Measured Parameters (Target / Regional Median)</th><th style="text-align:right">Cone Coverage</th></tr></thead><tbody>{prop_html}</tbody></table>
 </div>
+<div style="text-align:center;color:var(--muted);font-size:0.8rem;padding:4px 0;">astro-regressor · <a href="https://github.com/kacperkan" style="color:var(--accent);text-decoration:none;">Kacper Kania (@kacperkan)</a></div>
 </div>
 <script>
 const DATA = {payload};
@@ -182,6 +199,7 @@ window.addEventListener('DOMContentLoaded', () => {{
 
 
 def main():
+    warnings.filterwarnings("ignore")
     logger.remove()
     logger.add(sys.stderr, format="<cyan>{time:HH:mm:ss}</cyan> | <level>{level: <7}</level> | {message}", level="INFO")
     cfg = tyro.cli(Config)
@@ -195,7 +213,7 @@ def main():
     r_on_deg = float(np.clip(meta["radius_deg"], 0.015, 0.45)) if meta["radius_deg"] else cfg.region_radius_deg
     cone_deg = float(np.clip(max(r_on_deg * 2.0, 0.15), 0.15, 0.45)) if meta["radius_deg"] else cfg.region_radius_deg
 
-    logger.info(f"Querying 12 astronomical catalogs in cone r={cone_deg:.2f}° (r_on={r_on_deg:.3f}°) around ({ra:.4f}°, {dec:.4f}°)...")
+    logger.info(f"Querying 14 astronomical catalogs in cone r={cone_deg:.2f}° (r_on={r_on_deg:.3f}°) around ({ra:.4f}°, {dec:.4f}°)...")
     df, tables = fetch_all_catalogs(ra, dec, cone_deg, cfg.max_cone_stars)
     for row in tables.get("query_status", pd.DataFrame()).to_dict("records"):
         if row["status"] != "ok":
@@ -205,12 +223,11 @@ def main():
     gal, ecl = sc.galactic, sc.barycentrictrueecliptic
     hip_tbl = tables.get("hipparcos2", pd.DataFrame())
     lit_match = lookup_literature_distance(target_name, meta["canonical_name"], ra, dec, meta.get("v_lsr_kms"))
-    with console.status("[bold green]Synthesizing multi-catalog distance & differential 3D dust breakpoint...", spinner="dots"):
-        with ThreadPoolExecutor(max_workers=2) as ex:
-            f_prim = ex.submit(synthesize_target_distance, meta, df, tables, cone_deg, cfg.point_radius_arcsec)
-            f_ext = ex.submit(fit_extinction_breakpoint, df, r_on_deg, meta.get("opacity_class"), int(meta.get("ppv_components", 1))) if len(df) > 0 else None
-            primary, point_row, cluster_members = f_prim.result()
-            ext_break = f_ext.result() if f_ext is not None else None
+    with console.status("[bold green]Synthesizing multi-catalog distance & differential 3D dust breakpoint...", spinner="dots"), ThreadPoolExecutor(max_workers=2) as ex:
+        f_prim = ex.submit(synthesize_target_distance, meta, df, tables, cone_deg, cfg.point_radius_arcsec)
+        f_ext = ex.submit(fit_extinction_breakpoint, df, r_on_deg, meta.get("opacity_class"), int(meta.get("ppv_components", 1))) if len(df) > 0 else None
+        primary, point_row, cluster_members = f_prim.result()
+        ext_break = f_ext.result() if f_ext is not None else None
 
     d_pc, lo_pc, hi_pc = primary["distance_pc"], primary["lo_pc"], primary["hi_pc"]
     has_d = bool(np.isfinite(d_pc) and d_pc > 0)
@@ -310,13 +327,20 @@ def main():
             d_hip, d_hip_lo, d_hip_hi = 1000.0 / float(h0["hip_plx"]), 1000.0 / (float(h0["hip_plx"]) + float(h0["hip_e_plx"])), 1000.0 / max(0.05, float(h0["hip_plx"]) - float(h0["hip_e_plx"]))
             add_est(f"Hipparcos-2 Cone Reference (HIP {int(h0['hip'])}, sep={h0['sep_arcsec']:.1f}'')", f"{d_hip:,.1f}", f"{d_hip_lo:,.1f} – {d_hip_hi:,.1f}", f"{d_hip * 3.26156:,.0f}", f"{5 * np.log10(d_hip / 10.0):.2f}", f"ϖ_Hip = {h0['hip_plx']:.2f} ± {h0['hip_e_plx']:.2f} mas, Hp={h0['hp_mag']:.2f}")
 
+    if primary["mode"] == "extragalactic" and np.isfinite(primary.get("d_cf4_mpc", np.nan)):
+        d_cf4_pc, dm_v = primary["d_cf4_mpc"] * 1e6, primary.get("dm_cf4", np.nan)
+        ci_cf4 = f"{primary['lo_pc']:,.0f} – {primary['hi_pc']:,.0f}" if np.isfinite(primary.get("lo_pc", np.nan)) and np.isfinite(primary.get("hi_pc", np.nan)) else "—"
+        mod_cf4 = f"{dm_v:.2f}" if np.isfinite(dm_v) else f"{5 * np.log10(d_cf4_pc / 10.0):.2f}"
+        note_cf4 = f"d_CF4={primary['d_cf4_mpc']:.2f} Mpc" + (f", DM={dm_v:.3f} mag" if np.isfinite(dm_v) else "")
+        add_est("Cosmicflows-4 Distance Modulus (J/ApJ/944/94)", f"{d_cf4_pc:,.0f}", ci_cf4, f"{d_cf4_pc * 3.26156:,.0f}", mod_cf4, note_cf4)
+
     if primary["mode"] == "extragalactic" and np.isfinite(primary["d_comov_mpc"]):
         add_est("SDSS Spectroscopic Cosmological (Planck18 CMB)", f"{primary['d_comov_mpc'] * 1e6:,.0f}", f"{primary['lo_pc']:,.0f} – {primary['hi_pc']:,.0f}" if primary.get("distance_kind") != "distance_modulus" else "—", f"{primary['d_comov_mpc'] * 3.26156e6:,.0f}", f"{5 * np.log10(primary['d_lum_mpc'] * 1e5):.2f}", f"d_C={primary['d_comov_mpc']:.2f} Mpc, d_L={primary['d_lum_mpc']:.2f} Mpc")
 
     console.print(est_table)
 
     if len(ref_df) > 0:
-        prop_table = Table(title="Cross-Matched 12-Catalog Astrometry, Photometry & Stellar Physics", header_style="bold cyan", expand=True)
+        prop_table = Table(title="Cross-Matched 14-Catalog Astrometry, Photometry & Stellar Physics", header_style="bold cyan", expand=True)
         prop_table.add_column("Catalog / Domain", style="bold yellow")
         prop_table.add_column("Measured Parameters (Target / Regional Median)", style="white")
         prop_table.add_column("Cone Coverage", justify="right", style="cyan")
@@ -350,6 +374,7 @@ def main():
             prop_table.add_row(cat_lbl, summary_txt, cov(cov_cols))
         console.print(prop_table)
 
+    if len(df) > 0:
         near_table = Table(title=f"Nearest / Brightest Cross-Matched Gaia DR3 + Bailer-Jones Sources around {target_name}", header_style="bold blue", expand=True)
         for col_name, kw in [("Gaia source_id", {"style": "cyan"}), ("Sep ['']", {"justify": "right"}), ("G [mag]", {"justify": "right"}), ("BP-RP", {"justify": "right"}), ("Ks (2MASS)", {"justify": "right"}), ("ϖ_corr [mas]", {"justify": "right"}), ("μ (RA, Dec) [mas/yr]", {"justify": "right"}), ("T_eff [K]", {"justify": "right"}), ("r_med_photogeo [pc] (16–84%)", {"justify": "right", "style": "bold green"})]:
             near_table.add_column(col_name, **kw)

@@ -39,9 +39,7 @@ export interface NightPhases {
 
 /** Północ lokalna strefy `timeZone` dla daty `date` (RRRR-MM-DD) jako ms UTC. */
 export function zonedMidnightMs(date: string, timeZone: string): number {
-  const [y, m, d] = date.split('-').map(Number)
-  const guess = Date.UTC(y, m - 1, d)
-  return guess - tzOffsetMs(guess, timeZone)
+  return zonedHourMs(date, 0, timeZone)
 }
 
 const tzFormatters = new Map<string, Intl.DateTimeFormat>()
@@ -123,11 +121,10 @@ export function nightPhases(date: string, site: Site, timeZone: string): NightPh
     endMs: sunrise !== null ? sunrise + HOUR_MS : nextNoon - 6 * HOUR_MS,
     sunset, civilDusk, nauticalDusk, astroDusk, astroDawn, nauticalDawn, civilDawn, sunrise, midnight, polarDay,
   }
-  if (sunset === null) {
-    // Noc polarna: wykres i siatka próbek muszą objąć całe ciemne okno (z godziną zapasu, jak przy zachodzie).
+  if (sunset === null || sunrise === null) {
     const [darkStart, darkEnd] = darkWindow(n)
-    n.startMs = Math.max(noon, Math.min(n.startMs, darkStart - HOUR_MS))
-    n.endMs = Math.min(nextNoon, Math.max(n.endMs, darkEnd + HOUR_MS))
+    if (sunset === null) n.startMs = Math.max(noon, Math.min(n.startMs, darkStart - HOUR_MS))
+    if (sunrise === null) n.endMs = Math.min(nextNoon, Math.max(n.endMs, darkEnd + HOUR_MS))
   }
   return n
 }
@@ -156,7 +153,7 @@ export function phaseAt(n: NightPhases, t: number): PhaseKind {
   if (before(n.civilDusk) || after(n.civilDawn)) return 'civil'
   if (before(n.nauticalDusk) || after(n.nauticalDawn)) return 'nautical'
   if (before(n.astroDusk) || after(n.astroDawn)) return 'astro'
-  if (n.astroDusk === null) return n.nauticalDusk === null ? (n.civilDusk === null ? 'day' : 'civil') : 'nautical'
+  if (n.astroDusk === null) return n.nauticalDusk === null ? (n.civilDusk === null ? (n.sunset !== null ? 'civil' : n.polarDay ? 'day' : 'night') : 'civil') : 'nautical'
   return 'night'
 }
 

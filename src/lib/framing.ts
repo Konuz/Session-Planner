@@ -11,6 +11,7 @@ export function gnomonic(center: Equatorial, p: Equatorial): TangentPoint {
   const d = p.decDeg * DEG
   const dRa = (p.raDeg - center.raDeg) * DEG
   const cosC = Math.sin(d0) * Math.sin(d) + Math.cos(d0) * Math.cos(d) * Math.cos(dRa)
+  if (cosC <= 1e-6) return { xi: NaN, eta: NaN }
   return {
     xi: (Math.cos(d) * Math.sin(dRa)) / cosC,
     eta: (Math.cos(d0) * Math.sin(d) - Math.sin(d0) * Math.cos(d) * Math.cos(dRa)) / cosC,

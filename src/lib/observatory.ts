@@ -2,6 +2,7 @@
 // Czysta logika bez three.js: pozycje, skala logarytmiczna odległości, histogram i filtry.
 import type { ObjectType } from './catalog'
 import type { DistanceScope } from './distance'
+import { readValidCd } from './frameBasis'
 import { cutsInThreeD, type PhotoCatalogKind, type PhotoProject } from './photo'
 
 export type ObservatoryCategory = 'stars' | 'nebulae' | 'galaxies'
@@ -296,10 +297,9 @@ export const MOON_DEG = 0.518
 
 /** Rozmiar pola z macierzy CD zapisanego WCS (skala w centrum, bez dystorsji). */
 export function fieldOfView(wcs: unknown, width: number, height: number): { widthDeg: number; heightDeg: number; moons: number } | null {
-  const cd = (wcs as { cd?: number[][] } | null)?.cd
-  if (!Array.isArray(cd) || cd.length !== 2 || cd.some((row) => !Array.isArray(row) || row.length !== 2 || row.some((v) => !Number.isFinite(v)))) return null
+  const cd = readValidCd(wcs)
+  if (!cd) return null
   const scale = Math.sqrt(Math.abs(cd[0][0] * cd[1][1] - cd[0][1] * cd[1][0]))
-  if (!(scale > 0)) return null
   const widthDeg = width * scale, heightDeg = height * scale
   return { widthDeg, heightDeg, moons: Math.max(widthDeg, heightDeg) / MOON_DEG }
 }

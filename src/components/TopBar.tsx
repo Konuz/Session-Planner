@@ -22,15 +22,23 @@ export function useOutside(ref: React.RefObject<HTMLElement | null>, close: () =
     const onDown = (e: PointerEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) closeRef.current()
     }
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && closeRef.current()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || !ref.current) return
+      e.preventDefault()
+      e.stopPropagation()
+      e.stopImmediatePropagation()
+      closeRef.current()
+    }
     document.addEventListener('pointerdown', onDown)
-    document.addEventListener('keydown', onKey)
+    document.addEventListener('keydown', onKey, true)
     return () => {
       document.removeEventListener('pointerdown', onDown)
-      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('keydown', onKey, true)
     }
   }, [ref, enabled])
 }
+
+const locKey = (l: Pick<Location, 'name' | 'latDeg' | 'lonDeg'>) => `${l.name}:${l.latDeg.toFixed(4)}:${l.lonDeg.toFixed(4)}`
 
 function LocationPicker() {
   const location = useStore((s) => s.location)
@@ -44,7 +52,14 @@ function LocationPicker() {
   const [status, setStatus] = useState('')
   const [manual, setManual] = useState({ lat: String(location.latDeg), lon: String(location.lonDeg) })
   const ref = useRef<HTMLDivElement>(null)
+  const geoReqRef = useRef(0)
   useOutside(ref, () => setOpen(false), open)
+
+  useEffect(() => {
+    if (open) setManual({ lat: String(location.latDeg), lon: String(location.lonDeg) })
+  }, [open, location.latDeg, location.lonDeg])
+
+  useEffect(() => () => { geoReqRef.current++ }, [])
 
   useEffect(() => {
     if (query.trim().length < 2) {
@@ -67,29 +82,34 @@ function LocationPicker() {
   }, [query])
 
   const choose = (loc: Location) => {
+    geoReqRef.current++
     setLocation(loc)
     saveLocation(loc)
     setOpen(false)
     setQuery('')
   }
 
-  const fromCoords = async (lat: number, lon: number, name: string) => {
+  const fromCoords = async (lat: number, lon: number, name: string, token = ++geoReqRef.current) => {
     setStatus('Ustalanie strefy czasowej…')
     try {
       const extra = await placeForCoords(lat, lon)
+      if (token !== geoReqRef.current) return
       choose({ name, region: `${lat.toFixed(3)}°, ${lon.toFixed(3)}°`, latDeg: lat, lonDeg: lon, ...extra })
       setStatus('')
     } catch (e) {
-      setStatus(`Nie udało się: ${(e as Error).message}`)
+      if (token === geoReqRef.current) setStatus(`Nie udało się: ${(e as Error).message}`)
     }
   }
 
   const geolocate = () => {
     if (!navigator.geolocation) return setStatus('Przeglądarka nie udostępnia położenia')
+    const token = ++geoReqRef.current
     setStatus('Ustalanie położenia…')
     navigator.geolocation.getCurrentPosition(
-      (p) => fromCoords(Math.round(p.coords.latitude * 1000) / 1000, Math.round(p.coords.longitude * 1000) / 1000, 'Moje położenie'),
-      (e) => setStatus(`Brak dostępu do położenia: ${e.message}`),
+      (p) => {
+        if (token === geoReqRef.current) void fromCoords(Math.round(p.coords.latitude * 1000) / 1000, Math.round(p.coords.longitude * 1000) / 1000, 'Moje położenie', token)
+      },
+      (e) => { if (token === geoReqRef.current) setStatus(`Brak dostępu do położenia: ${e.message}`) },
       { timeout: 10_000 },
     )
   }
@@ -132,10 +152,13 @@ function LocationPicker() {
             <button
               className="button small"
               onClick={() => {
-                const lat = Number(manual.lat.replace(',', '.'))
-                const lon = Number(manual.lon.replace(',', '.'))
-                if (Math.abs(lat) <= 90 && Math.abs(lon) <= 180) void fromCoords(lat, lon, `Punkt ${lat.toFixed(2)}, ${lon.toFixed(2)}`)
-                else setStatus('Szerokość −90…90, długość −180…180 (E dodatnia)')
+                const rawLat = manual.lat.trim()
+                const rawLon = manual.lon.trim()
+                const lat = Number(rawLat.replace(',', '.'))
+                const lon = Number(rawLon.replace(',', '.'))
+                if (rawLat !== '' && rawLon !== '' && Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {
+                  void fromCoords(lat, lon, `Punkt ${lat.toFixed(2)}, ${lon.toFixed(2)}`)
+                } else setStatus('Szerokość −90…90, długość −180…180 (E dodatnia)')
               }}
             >
               Ustaw
@@ -144,15 +167,15 @@ function LocationPicker() {
           {status && <div className="dim" style={{ fontSize: 12, marginTop: 8 }}>{status}</div>}
           <div className="label" style={{ margin: '14px 0 6px' }}>Zapisane</div>
           {saved.map((l) => (
-            <div key={l.name} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <button style={{ ...rowStyle, flex: 1, color: l.name === location.name ? 'var(--accent)' : undefined }} onClick={() => choose(l)}>
+            <div key={locKey(l)} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <button style={{ ...rowStyle, flex: 1, color: locKey(l) === locKey(location) ? 'var(--accent)' : undefined }} onClick={() => choose(l)}>
                 {l.name}
                 <span className="dim figures" style={{ marginLeft: 'auto', fontSize: 11 }}>
                   {l.latDeg.toFixed(2)}°, {l.lonDeg.toFixed(2)}°
                 </span>
               </button>
               {saved.length > 1 && (
-                <button className="button ghost small icon-button" title="Usuń" onClick={() => removeLocation(l.name)}>
+                <button className="button ghost small icon-button" title="Usuń" onClick={() => removeLocation(l)}>
                   <Trash2 size={13} />
                 </button>
               )}

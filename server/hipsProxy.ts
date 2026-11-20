@@ -87,7 +87,7 @@ export function createHipsStore(env: HipsProxyEnv = process.env as HipsProxyEnv,
   async function fetchTile(tile: HipsTilePath, rel: string): Promise<Buffer | null> {
     const file = join(dir, tile.set, `${rel}.jpg`)
     const cached = await readFile(file).catch(() => null)
-    if (cached) return cached
+    if (cached && cached.length > 0) return cached
     if (await access(join(dir, tile.set, MIRROR_MARKER)).then(() => true, () => false)) return null
     const release = await slot()
     let png: Buffer

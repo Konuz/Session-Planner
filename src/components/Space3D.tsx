@@ -18,9 +18,10 @@ import { GALACTIC_LIMIT_LY, LOG_UNIT, UNIVERSE_GALAXY_SCALE, UNIVERSE_MIN_SPAN, 
 import { constellationView, framePose, sideView, SPACE_FAR, SPACE_FOV, type CameraPose } from '../lib/spaceCamera'
 import { ease, lerpPose, zoomPose, type Pose } from '../lib/spaceDive'
 import {
-  GALACTIC_REGIONS, LOCAL_GROUP_SHAPES, MILKY_WAY_DIAMETER_LY, addStarNameLabels, dotTexture, fixedSizeTextSprite,
+  LOCAL_GROUP_SHAPES, MILKY_WAY_DIAMETER_LY, addStarNameLabels, dotTexture, fixedSizeTextSprite,
   galaxyTexture, localGroupGalaxy, milkyWay, position, textSprite, toThree, type StarNameLayout,
 } from './space3d/galaxyModels'
+import { buildBackgroundPoints, drawBackgroundLabels, hitBackgroundLabel, sameMatrix, showTypes, type BackgroundLabelHit, type BackgroundPoints } from './space3d/backgroundOverlay'
 import { GALAXY_LEVELS, type ConstellationStar, type SpaceSettings } from './space3d/spaceSettings'
 import { createDomeMaterial } from './space3d/domeMaterials'
 import { createEarthAssets, createEarthMesh, EARTH_FRAME_MS, type EarthRig } from './space3d/earthModel'
@@ -69,33 +70,6 @@ export interface Space3DHandle {
   /** Nadpisania nurkowania: kamera bez OrbitControls, krycie warstw tła i promień Ziemi w jednostkach sceny
    *  (earthBlend: 0 – znacznik do 7 px, 1 – earthRadius; pośrednie wartości dają płynną zmianę wielkości). */
   override: { camera: boolean; layerFade: number; labelFade: number; earthRadius: number | null; earthBlend: number }
-}
-
-/**
- * Ta sama klatka z dokładnością do niewidocznych zmian (1e-6 względnie, ok. 0,002 px). Tłumienie OrbitControls
- * przesuwa kamerę o coraz mniejsze ułamki jeszcze przez kilka sekund, więc dokładne `equals` nigdy nie odpoczywa.
- */
-function sameMatrix(a: THREE.Matrix4, b: THREE.Matrix4): boolean {
-  for (let i = 0; i < 16; i++) if (Math.abs(a.elements[i] - b.elements[i]) > 1e-6 * Math.max(1, Math.abs(b.elements[i]))) return false
-  return true
-}
-
-type BackgroundPoints = { geometry: THREE.BufferGeometry; material: THREE.PointsMaterial; counts: number[]; types: ObjectType[]; pos: Float32Array; col: Float32Array }
-
-/** Przepisuje do bufora tylko punkty niewyłączonych rodzajów i ogranicza do nich zakres rysowania. */
-function showTypes(bg: { geometry: THREE.BufferGeometry; types: ObjectType[]; pos: Float32Array; col: Float32Array }, hidden: ObjectType[]) {
-  const pos = bg.geometry.getAttribute('position') as THREE.BufferAttribute
-  const col = bg.geometry.getAttribute('color') as THREE.BufferAttribute
-  let n = 0
-  bg.types.forEach((t, i) => {
-    if (hidden.includes(t)) return
-    ;(pos.array as Float32Array).set(bg.pos.subarray(i * 3, i * 3 + 3), n * 3)
-    ;(col.array as Float32Array).set(bg.col.subarray(i * 3, i * 3 + 3), n * 3)
-    n++
-  })
-  pos.needsUpdate = true
-  col.needsUpdate = true
-  bg.geometry.setDrawRange(0, n)
 }
 
 const UP: Vec3 = [0, 1, 0]
@@ -148,6 +122,7 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
   const textLayoutDirty = useRef(true)
   /** Zmiana sceny poza pętlą (warstwy, filtry): następna klatka musi zostać wyrenderowana. */
   const sceneDirty = useRef(true)
+  const scheduleFrameRef = useRef<(() => void) | null>(null)
   const showAnnotations = useStore((s) => s.show3DAnnotations)
   const domeStyle = useStore((s) => s.domeStyle)
   const domeStyleRef = useRef(domeStyle)
@@ -239,29 +214,9 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
     const galactic = withDistance.filter((c) => c.distLy! < GALACTIC_LIMIT_LY).sort((a, b) => a.distLy! - b.distLy!)
     const extragalactic = withDistance.filter((c) => c.distLy! > GALACTIC_LIMIT_LY && !LOCAL_GROUP_SHAPES[c.id]).sort((a, b) => a.distLy! - b.distLy!)
     const localGroup = withDistance.filter((c) => LOCAL_GROUP_SHAPES[c.id])
-    const backgroundPoints = (list: DSO[], size: number, counts: number[]): BackgroundPoints => {
-      const pos = new Float32Array(list.length * 3)
-      const col = new Float32Array(list.length * 3)
-      const tmp = new THREE.Color()
-      list.forEach((c, i) => {
-        const p = position(c, c.distLy!)
-        pos.set([p.x, p.y, p.z], i * 3)
-        tmp.setHex(typeRGB[c.type])
-        col.set([tmp.r, tmp.g, tmp.b], i * 3)
-      })
-      const g = new THREE.BufferGeometry()
-      g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
-      g.setAttribute('color', new THREE.BufferAttribute(col, 3))
-      // Okrągłe kropki: tekstura koła zamiast domyślnego kwadratu.
-      const dot = dotTexture()
-      const m = new THREE.PointsMaterial({ size, sizeAttenuation: false, vertexColors: true, map: dot, transparent: true, opacity: 0.8, depthWrite: false })
-      scene.add(new THREE.Points(g, m))
-      disposables.push(g, m, dot)
-      return { geometry: g, material: m, counts, types: list.map((c) => c.type), pos: pos.slice(), col: col.slice() }
-    }
-    galacticRef.current = backgroundPoints(galactic, 5, GALAXY_LEVELS.map(() => galactic.length))
+    galacticRef.current = buildBackgroundPoints(scene, disposables, typeRGB, galactic, 5, GALAXY_LEVELS.map(() => galactic.length))
     showTypes(galacticRef.current, hiddenTypesRef.current)
-    extragalacticRef.current = backgroundPoints(extragalactic, 2.5, GALAXY_LEVELS.map(({ maxLy }) => extragalactic.filter((c) => c.distLy! <= maxLy).length))
+    extragalacticRef.current = buildBackgroundPoints(scene, disposables, typeRGB, extragalactic, 2.5, GALAXY_LEVELS.map(({ maxLy }) => extragalactic.filter((c) => c.distLy! <= maxLy).length))
     extragalacticRef.current.geometry.setDrawRange(0, extragalacticRef.current.counts[galaxyLevelRef.current])
     const galacticPoints = galacticRef.current
     const extragalacticPoints = extragalacticRef.current
@@ -388,7 +343,7 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
     let earth: THREE.Mesh
     let earthRig: EarthRig
     {
-      const assets = createEarthAssets(import.meta.env.BASE_URL, renderer.capabilities.getMaxAnisotropy(), () => { sceneDirty.current = true })
+      const assets = createEarthAssets(import.meta.env.BASE_URL, renderer.capabilities.getMaxAnisotropy(), () => { sceneDirty.current = true; scheduleFrameRef.current?.() })
       // Kula jednostkowa: promień w scenie ustawia skala (znacznik do 7 px, nie więcej niż earthCap).
       earthRig = createEarthMesh(1, assets)
       earth = earthRig.mesh
@@ -465,6 +420,7 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
       controls.target.set(...target)
       camera.lookAt(controls.target)
       sceneDirty.current = true
+      scheduleFrame()
       // Nowy przelot prowadzi pole widzenia i gwiazdozbiór od ich bieżących wartości.
       lens = null
       if (reduced) {
@@ -482,6 +438,7 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
     const settleLens = () => {
       if (lens || (camera.fov === SPACE_FOV && !skyView)) return
       lens = { start: null, fov: camera.fov, sky: skyView?.amount ?? 0 }
+      scheduleFrame()
     }
 
     // Wybrany obiekt: linia od Ziemi, pion do płaszczyzny Galaktyki i podpis. Zmiana obiektu przebudowuje tylko
@@ -571,12 +528,22 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
       sceneDirty.current = true
     }
     let raf = 0
+    let compiled = false
+    let disposed = false
+    let external = false
+    let wantsFrame = false
     let lastTick = performance.now()
     let animNow = 0
     const pressedKeys = new Set<string>()
     let rightLook: { pointerId: number; x: number; y: number; distance: number; yaw: number; pitch: number; position: THREE.Vector3 } | null = null
     const moveKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight'])
     let fast = false
+    const scheduleFrame = () => {
+      if (disposed || !compiled || raf || external || document.hidden) return
+      lastTick = performance.now()
+      raf = requestAnimationFrame(tick)
+    }
+    scheduleFrameRef.current = scheduleFrame
     const anchors: Space3DHandle['anchors'] = new Set()
     const origin = new THREE.Vector3()
     /** Odległość kamery od najbliższego obiektu sceny: Ziemi, wybranego obiektu, środka skali i punktów zdjęcia.
@@ -602,6 +569,7 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
       fast = e.shiftKey
       stopFly()
       controls.autoRotate = false
+      scheduleFrame()
     }
     const onKeyUp = (e: KeyboardEvent) => { pressedKeys.delete(e.code); fast = e.shiftKey }
     const clearPressedKeys = () => pressedKeys.clear()
@@ -620,7 +588,9 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
     controls.addEventListener('start', () => {
       stopFly()
       controls.autoRotate = false
+      scheduleFrame()
     })
+    controls.addEventListener('change', scheduleFrame)
     const moveForward = new THREE.Vector3()
     const moveRight = new THREE.Vector3()
     const moveDelta = new THREE.Vector3()
@@ -629,6 +599,9 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
     const labelProjMatrix = new THREE.Matrix4()
     const textCameraMatrix = new THREE.Matrix4()
     const textProjMatrix = new THREE.Matrix4()
+    const constCamMatrix = new THREE.Matrix4()
+    const constProjMatrix = new THREE.Matrix4()
+    let constW = 0, constH = 0, constTab: SpaceScale | null = null, constShow = false, constChoice = '', constSky = -1, constCount = -1, constRadiusPx = 7
     let lastTextWidth = 0, lastTextHeight = 0, lastTextGuideVisible = false
     let lastLabelW = 0, lastLabelH = 0, lastLabelAnnotations: boolean | null = null, lastLabelLevel = -1
     let lastRegionAlpha = -1
@@ -645,7 +618,6 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
     const calm = new Set<() => void>()
     const calmCamera = new THREE.Matrix4()
     const override: Space3DHandle['override'] = { camera: false, layerFade: 1, labelFade: 1, earthRadius: null, earthBlend: 0 }
-    let external = false
     let sizedW = mount.clientWidth, sizedH = mount.clientHeight
     const fitSize = () => {
       if (mount.clientWidth === sizedW && mount.clientHeight === sizedH) return
@@ -710,8 +682,8 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
           rightLook?.position.add(movement)
         }
       }
-      if (!rightLook && !override.camera) controls.update()
-      let earthInView = false
+      const controlsMoved = !rightLook && !override.camera && controls.update()
+      let earthSpinning = false
       if (photoRef.current) controls.autoRotate = false
       camera.updateMatrixWorld()
       applyFades(animNow)
@@ -733,15 +705,36 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
         const skyAmount = skyView?.amount ?? 0
         // Gwiazdozbiory 3D są tylko w zakładce Droga Mleczna: ukryte nie zmniejszają znacznika Ziemi.
         if (showConstellationsRef.current && tab === 'galaxy' && skyAmount < 1) {
-          for (const star of constellationPoints) {
-            if (!star.group.visible) continue
-            if (skyView?.group === star.group) starScreenPosition.set(...skyView.project(star.position.toArray() as Vec3))
-            else starScreenPosition.copy(star.position)
-            starScreenPosition.project(camera)
-            if (starScreenPosition.z < -1 || starScreenPosition.z > 1) continue
-            const gap = Math.hypot((starScreenPosition.x - earthScreenPosition.x) * width / 2, (starScreenPosition.y - earthScreenPosition.y) * height / 2)
-            radiusPixels = Math.min(radiusPixels, Math.max(0, gap - 7))
+          if (
+            constCount !== constellationPoints.length || constTab !== tab
+            || !constShow || constChoice !== constellationChoiceRef.current || constSky !== skyAmount
+            || constW !== width || constH !== height
+            || !sameMatrix(constCamMatrix, camera.matrixWorld) || !sameMatrix(constProjMatrix, camera.projectionMatrix)
+          ) {
+            constCamMatrix.copy(camera.matrixWorld)
+            constProjMatrix.copy(camera.projectionMatrix)
+            constW = width
+            constH = height
+            constTab = tab
+            constShow = true
+            constChoice = constellationChoiceRef.current
+            constSky = skyAmount
+            constCount = constellationPoints.length
+            let minR = 7
+            for (const star of constellationPoints) {
+              if (!star.group.visible) continue
+              if (skyView?.group === star.group) starScreenPosition.set(...skyView.project(star.position.toArray() as Vec3))
+              else starScreenPosition.copy(star.position)
+              starScreenPosition.project(camera)
+              if (starScreenPosition.z < -1 || starScreenPosition.z > 1) continue
+              const gap = Math.hypot((starScreenPosition.x - earthScreenPosition.x) * width / 2, (starScreenPosition.y - earthScreenPosition.y) * height / 2)
+              minR = Math.min(minR, Math.max(0, gap - 7))
+            }
+            constRadiusPx = minR
           }
+          radiusPixels = constRadiusPx
+        } else {
+          constShow = false
         }
         radiusPixels = THREE.MathUtils.lerp(radiusPixels, 8, skyAmount)
         // Z daleka (Wszechświat lokalny) znacznik Ziemi maleje do zera razem z warstwami Galaktyki.
@@ -750,9 +743,10 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
         earth.scale.setScalar(earthScale)
         if (!override.camera) earth.visible = earthScale > 1e-6
         const earthPx = depth > 0 ? earthScale / unitsPerPixel : 0
-        earthInView = earth.visible && earthPx > 0
+        const earthInView = earth.visible && earthPx > 0
           && Math.abs(earthScreenPosition.x) <= 1 + 2 * earthPx / Math.max(1, width)
           && Math.abs(earthScreenPosition.y) <= 1 + 2 * earthPx / height
+        earthSpinning = earthInView && earthPx >= 10 && !reduced
       }
       {
         const lyPerPixel = 2000 * camera.position.distanceTo(controls.target) * Math.tan(camera.getEffectiveFOV() * Math.PI / 360) / Math.max(1, sizedH)
@@ -843,7 +837,7 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
       const canvas = renderer.domElement
       if (sceneDirty.current || !sameMatrix(renderedCamera, camera.matrixWorld) || !sameMatrix(renderedProjection, camera.projectionMatrix)
         || canvas.width !== renderedWidth || canvas.height !== renderedHeight || objectGuide.visible !== renderedGuide
-        || (earthInView && !reduced && now - lastRender >= EARTH_FRAME_MS) || now - lastRender >= 1000) {
+        || (earthSpinning && now - lastRender >= EARTH_FRAME_MS)) {
         renderer.render(scene, camera)
         if (sceneStart !== null) {
           measureSince('space3d:scene→first-frame', sceneStart)
@@ -877,10 +871,21 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
         calm.clear()
         for (const callback of waiting) callback()
       }
+      wantsFrame = Boolean(
+        (flight && !override.camera)
+        || (lens && !override.camera)
+        || fadeBlend
+        || (!override.camera && (pressedKeys.size > 0 || rightLook !== null || controls.autoRotate || controlsMoved))
+        || sceneDirty.current
+        || !still
+        || calm.size > 0
+        || earthSpinning
+      )
     }
     const tick = (now = performance.now()) => {
+      raf = 0
       step(now)
-      raf = requestAnimationFrame(tick)
+      if (wantsFrame && !disposed && !external && !document.hidden) raf = requestAnimationFrame(tick)
     }
     // Podpisy obiektów tła (przełącznik „Opisy”): najbliższe kamerze najpierw, bez nakładania się.
     const labels = document.createElement('canvas')
@@ -898,8 +903,7 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
       labelCtx.setTransform(r, 0, 0, r, 0, 0)
     }
     sizeLabels()
-    // Obszary do kliknięcia: podpis z kropką albo sama kropka (gdy opisy wyłączone lub podpis pominięty).
-    let hits: { c: DSO; x: number; y: number; box: [number, number, number, number] | null }[] = []
+    let hits: BackgroundLabelHit[] = []
     function drawLabels() {
       const w = mount!.clientWidth
       const h = mount!.clientHeight
@@ -938,108 +942,35 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
       lastLabelPhoto = hasPhoto
       labelCameraMatrix.copy(camera.matrixWorld)
       labelProjMatrix.copy(camera.projectionMatrix)
-      labelCtx.clearRect(0, 0, w, h)
-      hits = []
-      const hidden = hiddenTypesRef.current
-      // Podpisy i kliknięcia warstwy bieżącej zakładki: obiekty Galaktyki albo galaktyki z Grupą Lokalną.
-      // Wygaszona warstwa (oddalenie z Drogi Mlecznej, zbliżenie we Wszechświecie) nie ma podpisów.
       const galaxy = tab === 'galaxy'
       const fade = galaxy ? fades.galactic : fades.extragalactic
-      const list = galaxy ? galactic : extragalactic
-      const listPos = galaxy ? galacticPos : extragalacticPos
-      const limit = fade === 0 ? 0 : galaxy ? galactic.length : extragalacticPoints.counts[galaxyLevelRef.current]
-      const candidates: { c: DSO; x: number; y: number; d: number; localGroup: boolean }[] = []
-      for (let i = 0; i < limit; i++) {
-        const c = list[i]
-        if ((!hasPhoto && c.i === current.i) || (galaxy && hidden.includes(c.type))) continue
-        projected.copy(listPos[i]).project(camera)
-        if (projected.z > 1 || Math.abs(projected.x) > 1 || Math.abs(projected.y) > 1) continue
-        candidates.push({ c, x: ((projected.x + 1) / 2) * w, y: ((1 - projected.y) / 2) * h, d: camera.position.distanceToSquared(listPos[i]), localGroup: false })
-      }
-      for (let i = 0; i < localGroup.length && !galaxy && fade > 0; i++) {
-        const c = localGroup[i]
-        if (!hasPhoto && c.i === current.i) continue
-        const p = localGroupPos[i]
-        projected.copy(p).project(camera)
-        if (projected.z > 1 || Math.abs(projected.x) > 1 || Math.abs(projected.y) > 1) continue
-        candidates.push({ c, x: ((projected.x + 1) / 2) * w, y: ((1 - projected.y) / 2) * h, d: camera.position.distanceToSquared(p), localGroup: true })
-      }
-      candidates.sort((a, b) => Number(b.localGroup) - Number(a.localGroup) || a.d - b.d)
-      for (const l of candidates) hits.push({ c: l.c, x: l.x, y: l.y, box: null })
-      labelCtx.globalAlpha = fade
-      labelCtx.font = '10px ui-monospace, Consolas, monospace'
-      labelCtx.lineJoin = 'round'
-      labelCtx.lineWidth = 3
-      const boxes: [number, number, number, number][] = []
-      for (const l of candidates) {
-        if (!annotationsRef.current) break
-        if (boxes.length >= 120) break
-        const tw = labelCtx.measureText(l.c.id).width
-        const boxAt = (x: number, y: number): [number, number, number, number] => [x - 2, y - 11, x + tw + 2, y + 3]
-        const overlaps = (b: [number, number, number, number]) => boxes.some((x) => b[0] < x[2] && b[2] > x[0] && b[1] < x[3] && b[3] > x[1])
-        let labelX = l.x + 6
-        let labelY = l.y + 3
-        let b = boxAt(labelX, labelY)
-        if (l.localGroup) {
-          const placements = [
-            [l.x + 7, l.y + 3], [l.x + 7, l.y - 12], [l.x + 7, l.y + 18],
-            [l.x - tw - 7, l.y + 3], [l.x - tw - 7, l.y - 12], [l.x - tw - 7, l.y + 18],
-            [l.x + 18, l.y - 25], [l.x + 18, l.y + 31],
-            [l.x - tw - 18, l.y - 25], [l.x - tw - 18, l.y + 31],
-          ]
-          const inBounds = ([x, y]: number[]) => {
-            const candidate = boxAt(x, y)
-            return candidate[0] >= 2 && candidate[1] >= 2 && candidate[2] <= w - 2 && candidate[3] <= h - 2
-          }
-          const placement = placements.find(([x, y]) => inBounds([x, y]) && !overlaps(boxAt(x, y))) ?? placements.find(inBounds)
-          if (placement) [labelX, labelY] = placement
-          b = boxAt(labelX, labelY)
-        } else if (overlaps(b)) continue
-        boxes.push(b)
-        hits.push({ c: l.c, x: l.x, y: l.y, box: [Math.min(l.x - 6, b[0]), b[1], Math.max(l.x + 6, b[2]), b[3]] })
-        labelCtx.strokeStyle = 'rgba(2, 5, 13, 0.85)'
-        labelCtx.strokeText(l.c.id, labelX, labelY)
-        labelCtx.fillStyle = `#${typeRGB[l.c.type].toString(16).padStart(6, '0')}c0`
-        labelCtx.fillText(l.c.id, labelX, labelY)
-      }
-      if (regionAlpha <= 0) return
-      // Pierwszeństwo mają obiekty oraz znaczniki zdjęcia. Napisy ramion nie tworzą pól klikalnych.
-      for (const p of [sunPos, ...(hasPhoto ? anchors : [target])]) {
-        projected.copy(p).project(camera)
-        if (Math.abs(projected.z) >= 1) continue
-        const x = (1 + projected.x) * w / 2, y = (1 - projected.y) * h / 2
-        boxes.push([x - 12, y - 13, x + 12, y + 13])
-      }
-      labelCtx.globalAlpha = regionAlpha
-      labelCtx.font = 'italic 13px system-ui, sans-serif'
-      labelCtx.strokeStyle = 'rgba(2, 5, 13, 0.85)'
-      labelCtx.fillStyle = '#d4d9e5'
-      for (const { name, anchor } of GALACTIC_REGIONS) {
-        projected.copy(anchor).project(camera)
-        if (Math.abs(projected.z) >= 1) continue
-        const x = (1 + projected.x) * w / 2, y = (1 - projected.y) * h / 2
-        const half = labelCtx.measureText(name).width / 2
-        if (x - half < 4 || x + half > w - 4 || y < 16 || y > h - 4) continue
-        if (boxes.some(([a, b, c, d]) => x + half + 4 > a && x - half - 4 < c && y + 4 > b && y - 14 < d)) continue
-        boxes.push([x - half, y - 14, x + half, y + 4])
-        labelCtx.strokeText(name, x - half, y)
-        labelCtx.fillText(name, x - half, y)
-      }
+      hits = drawBackgroundLabels({
+        ctx: labelCtx,
+        width: w,
+        height: h,
+        camera,
+        projected,
+        galaxy,
+        fade,
+        list: galaxy ? galactic : extragalactic,
+        listPos: galaxy ? galacticPos : extragalacticPos,
+        limit: fade === 0 ? 0 : galaxy ? galactic.length : extragalacticPoints.counts[galaxyLevelRef.current],
+        localGroup,
+        localGroupPos,
+        hasPhoto,
+        currentIndex: current.i,
+        hidden: hiddenTypesRef.current,
+        annotations: annotationsRef.current,
+        regionAlpha,
+        sunPos,
+        anchors,
+        target,
+        typeRGB,
+      })
     }
-    // Kliknięcie (bez przeciągania) w podpis lub kropkę wybiera obiekt.
     const hitAt = (e: PointerEvent) => {
       const r = renderer.domElement.getBoundingClientRect()
-      const x = e.clientX - r.left
-      const y = e.clientY - r.top
-      const label = hits.findLast((t) => t.box && x >= t.box[0] && x <= t.box[2] && y >= t.box[1] && y <= t.box[3])
-      if (label) return label.c
-      let best: DSO | null = null
-      let bestD = 8 * 8
-      for (const t of hits) {
-        const d = (t.x - x) ** 2 + (t.y - y) ** 2
-        if (d < bestD) [best, bestD] = [t.c, d]
-      }
-      return best
+      return hitBackgroundLabel(hits, e.clientX - r.left, e.clientY - r.top)
     }
     let down: [number, number] | null = null
     const onDown = (e: PointerEvent) => {
@@ -1089,6 +1020,7 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
         position: camera.position.clone(),
       }
       renderer.domElement.setPointerCapture(e.pointerId)
+      scheduleFrame()
     }
     const onRightLookMove = (e: PointerEvent) => {
       if (!rightLook || e.pointerId !== rightLook.pointerId) return
@@ -1102,6 +1034,7 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
       camera.position.copy(rightLook.position)
       camera.quaternion.setFromEuler(lookEuler)
       controls.target.copy(rightLook.position).addScaledVector(camera.getWorldDirection(lookDirection), rightLook.distance)
+      scheduleFrame()
     }
     const onRightLookEnd = (e: PointerEvent) => {
       if (!rightLook || e.pointerId !== rightLook.pointerId) return
@@ -1118,6 +1051,7 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
       controls.target.copy(look.position).addScaledVector(camera.getWorldDirection(lookDirection), look.distance)
       controls.update()
       controls.enableDamping = damping
+      scheduleFrame()
     }
     const onContextMenu = (e: MouseEvent) => e.preventDefault()
     const onMove = (e: PointerEvent) => (renderer.domElement.style.cursor = !e.buttons && (claimed(e, false) || hitAt(e)) ? 'pointer' : '')
@@ -1132,11 +1066,10 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
     showObject(current, INTRO_MS)
     // Shadery kompilowane równolegle (KHR_parallel_shader_compile) przed pierwszą klatką: kompilacja przy pierwszym
     // rysowaniu wstrzymywała otwarcie okna (ok. 150–220 ms). Do tego czasu scena jest pusta, a przelot czeka na zegar klatek.
-    let disposed = false
-    const start = () => { if (!disposed && !raf && !external && !document.hidden) tick() }
+    const start = () => { compiled = true; scheduleFrame() }
     void renderer.compileAsync(scene, camera).then(start, start)
     // Wstrzymana scena (klatki z zewnątrz) dopasowuje rozmiar dopiero w step(): panele okna zmieniają go co klatkę.
-    const ro = new ResizeObserver(() => { if (!external) fitSize() })
+    const ro = new ResizeObserver(() => { if (!external) { fitSize(); scheduleFrame() } })
     ro.observe(mount)
     // Inny monitor albo powiększenie strony zmienia devicePixelRatio bez zmiany rozmiaru CSS (ResizeObserver milczy).
     let dprQuery = matchMedia(`(resolution: ${devicePixelRatio}dppx)`)
@@ -1145,6 +1078,7 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
       sizeLabels()
       lastLabelW = 0
       sceneDirty.current = true
+      scheduleFrame()
       dprQuery.removeEventListener('change', onDpr)
       dprQuery = matchMedia(`(resolution: ${devicePixelRatio}dppx)`)
       dprQuery.addEventListener('change', onDpr)
@@ -1152,16 +1086,18 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
     dprQuery.addEventListener('change', onDpr)
     const onVis = () => {
       cancelAnimationFrame(raf)
-      if (!document.hidden && !external) tick()
+      raf = 0
+      if (!document.hidden && !external) scheduleFrame()
     }
     document.addEventListener('visibilitychange', onVis)
     onHandleRef.current?.({
       scene, camera, controls, renderer, mount, overlay: labels, sunPos, earth, hooks, claims, layout, anchors, override, step,
-      invalidate: () => { sceneDirty.current = true },
+      invalidate: () => { sceneDirty.current = true; scheduleFrame() },
       // Nurkowanie przejmuje kamerę: niedokończony powrót soczewki nie może dokończyć się skokiem po powrocie.
       stopIntro: () => { flight = null; lens = null; controls.autoRotate = false },
       afterFlight: (callback) => {
         calm.add(callback)
+        scheduleFrame()
         return () => { calm.delete(callback) }
       },
       flyTo: (pose, ms, zoom = false) => {
@@ -1236,16 +1172,19 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
         if (on === external) return
         external = on
         cancelAnimationFrame(raf)
-        if (!on && !document.hidden) tick()
+        raf = 0
+        if (!on && !document.hidden) scheduleFrame()
       },
     })
     return () => {
       disposed = true
+      scheduleFrameRef.current = null
       clearSkyView()
       addConstellationsRef.current = null
       onHandleRef.current?.(null)
       showObjectRef.current = null
       cancelAnimationFrame(raf)
+      raf = 0
       ro.disconnect()
       dprQuery.removeEventListener('change', onDpr)
       document.removeEventListener('visibilitychange', onVis)
@@ -1298,18 +1237,20 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
     if (o) showObjectRef.current?.(o, scale, hadPhoto && !hasPhoto)
   }, [o, scale, hasPhoto])
 
-  useEffect(() => { addConstellationsRef.current?.() }, [constellations])
+  useEffect(() => { addConstellationsRef.current?.(); scheduleFrameRef.current?.() }, [constellations])
 
   useEffect(() => {
     if (constellationGroupRef.current) constellationGroupRef.current.visible = showConstellations && scaleRef.current === 'galaxy'
     textLayoutDirty.current = true
     sceneDirty.current = true
+    scheduleFrameRef.current?.()
   }, [showConstellations])
 
   useEffect(() => {
     constellationGroupRef.current?.children.forEach((c) => { c.visible = constellationChoice === 'all' || constellationChoice === c.name })
     textLayoutDirty.current = true
     sceneDirty.current = true
+    scheduleFrameRef.current?.()
   }, [constellationChoice])
 
   useEffect(() => {
@@ -1326,12 +1267,14 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
     })
     textLayoutDirty.current = true
     sceneDirty.current = true
+    scheduleFrameRef.current?.()
   }, [showStarNames])
 
   useEffect(() => {
     const bg = extragalacticRef.current
     if (bg) bg.geometry.setDrawRange(0, bg.counts[galaxyLevel])
     sceneDirty.current = true
+    scheduleFrameRef.current?.()
   }, [galaxyLevel])
 
   useEffect(() => {
@@ -1342,17 +1285,25 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
       old.dispose()
     }
     sceneDirty.current = true
+    scheduleFrameRef.current?.()
   }, [domeStyle])
 
   useEffect(() => {
     for (const dome of domesRef.current) dome.material.uniforms.opacity.value = dome.userData.fade * domeOpacity
     sceneDirty.current = true
+    scheduleFrameRef.current?.()
   }, [domeOpacity])
 
   useEffect(() => {
     if (galacticRef.current) showTypes(galacticRef.current, hiddenTypes)
     sceneDirty.current = true
+    scheduleFrameRef.current?.()
   }, [hiddenTypes])
+
+  useEffect(() => {
+    sceneDirty.current = true
+    scheduleFrameRef.current?.()
+  }, [showAnnotations, showRegions])
 
   if (!o) return <div className="space-layer space-empty">Wybierz obiekt.</div>
   return (

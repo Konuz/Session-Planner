@@ -15,10 +15,22 @@ import { useStore, type CenterMode } from '../state/store'
 // 300 ms po nim, więc okno czekało tyle mimo pobranego modułu. Moduł zaczyna się ładować już przy wskazaniu przycisku.
 let Space3DModal: ComponentType | null = null
 let space3DLoading: Promise<void> | null = null
-const loadSpace3D = () => space3DLoading ??= import('../components/space3d/Space3DModal').then((m) => { Space3DModal = m.default }, (error: unknown) => {
-  // Jak odrzucony lazy(): okno rzuca błąd przy renderze, a pokazuje go ErrorBoundary.
-  Space3DModal = () => { throw error }
-})
+const loadSpace3D = () => space3DLoading ??= import('../components/space3d/Space3DModal').then(
+  (m) => { Space3DModal = m.default },
+  (error: unknown) => {
+    space3DLoading = null
+    Space3DModal = null
+    throw error
+  },
+)
+
+function hasWebGL2(): boolean {
+  try {
+    return !!document.createElement('canvas').getContext('webgl2')
+  } catch {
+    return false
+  }
+}
 
 const MODES: { id: CenterMode; label: string }[] = [
   { id: 'dome', label: 'Niebo' },
@@ -76,12 +88,25 @@ export function SkyView() {
   // Okno „Pozycja 3D” zasłania kopułę: odtwarzanie nocy nie powinno jej przerysowywać w tle.
   useEffect(() => { if (space3DOpen) setPlaying(false) }, [space3DOpen])
   const [space3DReady, setSpace3DReady] = useState(() => Space3DModal !== null)
+  const [space3DError, setSpace3DError] = useState(false)
+  const [space3DAttempt, setSpace3DAttempt] = useState(0)
   useEffect(() => {
     if (!space3DOpen || space3DReady) return
     let live = true
-    void loadSpace3D().then(() => { if (live) setSpace3DReady(true) })
+    setSpace3DError(false)
+    void loadSpace3D().then(
+      () => { if (live) setSpace3DReady(true) },
+      () => { if (live) setSpace3DError(true) },
+    )
     return () => { live = false }
-  }, [space3DOpen, space3DReady])
+  }, [space3DOpen, space3DReady, space3DAttempt])
+  const retrySpace3D = () => {
+    space3DLoading = null
+    if (space3DError) Space3DModal = null
+    setSpace3DError(false)
+    setSpace3DReady(Space3DModal !== null)
+    setSpace3DAttempt((n) => n + 1)
+  }
 
   // Pierwsze uruchomienie: M 51 jak w prototypie.
   useEffect(() => {
@@ -107,7 +132,7 @@ export function SkyView() {
                 {label}
               </button>
             ))}
-            <button className={`button small${space3DOpen ? ' active' : ''}`} data-space3d-opener onPointerEnter={() => void loadSpace3D()} onFocus={() => void loadSpace3D()} onClick={() => setSpace3DOpen(true)}>Pozycja 3D</button>
+            <button className={`button small${space3DOpen ? ' active' : ''}`} data-space3d-opener onPointerEnter={() => void loadSpace3D().catch(() => {})} onFocus={() => void loadSpace3D().catch(() => {})} onClick={() => setSpace3DOpen(true)}>Pozycja 3D</button>
             <PlaybackControls visible={mode === 'dome'} playing={playing} setPlaying={setPlaying} />
           </div>
         </section>
@@ -119,15 +144,31 @@ export function SkyView() {
       </div>
       {details && <ObjectDetails onClose={() => setDetails(false)} />}
       {space3DOpen && (
-        <ErrorBoundary fallback={() => (
-          <div className="observatory" role="alertdialog" aria-label="Pozycja 3D niedostępna">
-            <div className="empty">
-              Widok 3D nie działa w tej przeglądarce (wymaga WebGL).{' '}
-              <button className="button small" onClick={() => setSpace3DOpen(false)}>Zamknij</button>
+        <ErrorBoundary key={space3DAttempt} fallback={(error) => {
+          const noWebgl = !hasWebGL2() || /webgl/i.test(error.message)
+          return (
+            <div className="observatory" role="alertdialog" aria-label="Pozycja 3D niedostępna">
+              <div className="empty">
+                {noWebgl
+                  ? 'Widok 3D nie działa w tej przeglądarce (wymaga WebGL).'
+                  : 'Nie udało się uruchomić widoku 3D.'}{' '}
+                {!noWebgl && <button className="button small" onClick={retrySpace3D}>Ponów</button>}{' '}
+                <button className="button small" onClick={() => setSpace3DOpen(false)}>Zamknij</button>
+              </div>
             </div>
-          </div>
-        )}>
-          {space3DReady && Space3DModal && <Space3DModal />}
+          )
+        }}>
+          {space3DError ? (
+            <div className="observatory" role="alertdialog" aria-label="Błąd ładowania widoku 3D">
+              <div className="empty">
+                Nie udało się wczytać modułu widoku 3D.{' '}
+                <button className="button small" onClick={retrySpace3D}>Ponów</button>{' '}
+                <button className="button small" onClick={() => setSpace3DOpen(false)}>Zamknij</button>
+              </div>
+            </div>
+          ) : (
+            space3DReady && Space3DModal && <Space3DModal />
+          )}
         </ErrorBoundary>
       )}
     </>
