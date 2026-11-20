@@ -114,17 +114,17 @@ export function usePhotoSession(): PhotoSession {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: abort.signal,
       body: JSON.stringify({ wcs: astrometry.wcs, width, height }),
     }).then(async (response) => {
-      const result = await response.json() as PhotoCatalogResult & { error?: string }
+      const result = await response.json() as PhotoCatalogResult & { tablesVerified?: boolean; error?: string }
       retryable = response.status !== 422
       if (!response.ok) throw new Error(result.error || failure)
       const current = projectRef.current
       if (abort.signal.aborted || current?.id !== projectId || current.astrometry !== astrometry) return
       const cuts = mergePhotoCatalogCuts(current.cuts, result.cuts)
-      if (cuts !== current.cuts || result.complete) {
-        change({ ...current, cuts, ...(result.complete && { catalogObjects: { warnings: result.warnings } }) })
+      if (cuts !== current.cuts || result.tablesVerified) {
+        change({ ...current, cuts, ...(result.tablesVerified && { catalogObjects: { tablesVerified: true, warnings: result.warnings } }) })
       }
       if (!current.cuts.length && cuts.length) setActiveId((id) => id ?? cuts[0].id)
-      setCatalogSearch({ loading: false, retryable: !result.complete, warnings: result.warnings })
+      setCatalogSearch({ loading: false, retryable: !result.tablesVerified, warnings: result.warnings })
     }).catch((error) => {
       const current = projectRef.current
       if (!abort.signal.aborted && current?.id === projectId && current.astrometry === astrometry) {

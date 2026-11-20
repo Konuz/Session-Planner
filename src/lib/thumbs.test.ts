@@ -122,6 +122,16 @@ describe('miniatury', () => {
     await expect(getSkyImage(10, 20, 3, 800)).rejects.toThrow('brak kafelków')
   })
 
+  it('miniatury OHS i SHO używają wspólnych kafelków i różnych palet', async () => {
+    const { getThumb, thumbImageOptions } = await import('./thumbs')
+    const nebula = { raDeg: 314.7, decDeg: 44.3, majArcmin: 20 } as DSO
+    await getThumb(nebula, undefined, 'nsnsOhs')
+    await getThumb(nebula, undefined, 'nsnsSho')
+    expect(FakeWorker.posted[0]).toMatchObject({ survey: 'nsnsOhs', mode: 'color', coarser: 0 })
+    expect(FakeWorker.posted[1]).toMatchObject({ survey: 'nsnsOhs', mode: 'swap-rb', coarser: 0 })
+    expect(thumbImageOptions('nsnsSho', -15, 4, 224, 1)).toEqual({ survey: 'dss2', coarser: 1 })
+  })
+
   it('anulowanie jednego odbiorcy nie anuluje obrazu drugiemu i nie tworzy współdzielonych URL', async () => {
     FakeWorker.reply = () => 'never'
     const create = vi.spyOn(URL, 'createObjectURL')

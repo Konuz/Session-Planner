@@ -11,12 +11,16 @@ describe('parseHipsPath', () => {
     expect(parseHipsPath('/api/hips/nsns-tc8/Norder5/Dir0/Npix1000.jpg')).toEqual({ set: 'nsns-tc8', order: 5, npix: 1000 })
     expect(parseHipsPath('/nsns-rgb8/Norder5/Dir10000/Npix12287.jpg')).toEqual({ set: 'nsns-rgb8', order: 5, npix: 12287 })
     expect(parseHipsPath('/api/hips/nsns-tc8/Norder3/Allsky.jpg')).toEqual({ set: 'nsns-tc8', order: 3, npix: 'allsky' })
+    expect(parseHipsPath('/api/hips/nsns-ohs8/Norder6/Dir40000/Npix49151.jpg')).toEqual({ set: 'nsns-ohs8', order: 6, npix: 49151 })
   })
 
   it('odrzuca obce zestawy, rzędy i numery poza HEALPix, zły katalog i Allsky innego rzędu', () => {
     for (const path of [
       '/api/hips/dss2/Norder5/Dir0/Npix1.jpg',
       '/api/hips/nsns-tc8/Norder6/Dir0/Npix1.jpg',
+      '/api/hips/nsns-rgb8/Norder6/Dir0/Npix1.jpg',
+      '/api/hips/nsns-ohs8/Norder7/Dir0/Npix1.jpg',
+      '/api/hips/nsns-ohs8/Norder6/Dir40000/Npix49152.jpg',
       '/api/hips/nsns-tc8/Norder5/Dir10000/Npix12288.jpg',
       '/api/hips/nsns-tc8/Norder5/Dir0/Npix10000.jpg',
       '/api/hips/nsns-tc8/Norder2/Allsky.jpg',
@@ -85,15 +89,15 @@ describe('pośrednik kafelków', () => {
       return npix === 4 * 4 ** order ? new Response(new Uint8Array(body)) : new Response('', { status: 404 })
     })
     const store = createHipsStore({ HIPS_CACHE_DIR: dir }, upstream as typeof fetch)
-    const totals = await mirrorSet(store, 'nsns-tc8')
-    expect(totals).toEqual({ tiles: 6, missing: 11 + 5 * 3, failed: 0 })
-    // Allsky, 12 kafelków rzędu 0, po 4 dzieci na rzędach 1–5 i 2 ponowienia.
-    expect(upstream).toHaveBeenCalledTimes(1 + 12 + 5 * 4 + 2)
-    expect(JSON.parse(await readFile(join(dir, 'nsns-tc8', MIRROR_MARKER), 'utf8'))).toMatchObject({ tiles: 6, failed: 0 })
+    const totals = await mirrorSet(store, 'nsns-ohs8')
+    expect(totals).toEqual({ tiles: 7, missing: 11 + 6 * 3, failed: 0 })
+    // Allsky, 12 kafelków rzędu 0, po 4 dzieci na rzędach 1–6 i 2 ponowienia.
+    expect(upstream).toHaveBeenCalledTimes(1 + 12 + 6 * 4 + 2)
+    expect(JSON.parse(await readFile(join(dir, 'nsns-ohs8', MIRROR_MARKER), 'utf8'))).toMatchObject({ tiles: 7, failed: 0 })
     const offline = vi.fn(async () => new Response('', { status: 503 }))
     await withServer(offline as unknown as typeof fetch, async (get) => {
-      expect((await get('/api/hips/nsns-tc8/Norder5/Dir0/Npix4096.jpg')).status).toBe(200)
-      expect((await get('/api/hips/nsns-tc8/Norder5/Dir0/Npix4097.jpg')).status).toBe(404)
+      expect((await get('/api/hips/nsns-ohs8/Norder6/Dir10000/Npix16384.jpg')).status).toBe(200)
+      expect((await get('/api/hips/nsns-ohs8/Norder6/Dir10000/Npix16385.jpg')).status).toBe(404)
       expect(offline).not.toHaveBeenCalled()
     })
   })

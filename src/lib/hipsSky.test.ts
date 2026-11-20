@@ -51,6 +51,8 @@ describe('kopuła NSNS', () => {
     expect(detailOrder(256, 5)).toBe(1)
     expect(detailOrder(32, 5)).toBe(4)
     expect(detailOrder(5, 5)).toBe(5)
+    expect(detailOrder(13, 6)).toBe(5)
+    expect(detailOrder(12, 6)).toBe(6)
   })
 
   it('koło widoku: środek z trzeciego wiersza macierzy, promień z przekątnej ekranu, najwyżej 140°', () => {
@@ -72,6 +74,9 @@ describe('kopuła NSNS', () => {
   it('wygląd z zapisu', () => {
     expect(isSkyLook('nsns')).toBe(true)
     expect(isSkyLook('nsnsRgb')).toBe(true)
+    expect(isSkyLook('nsnsOhs')).toBe(true)
+    expect(isSkyLook('nsnsSho')).toBe(true)
+    expect(skyLookSurvey('nsnsSho')).toBe(skyLookSurvey('nsnsOhs'))
     expect([skyLookSurvey('default'), skyLookSurvey('nsns'), skyLookSurvey('nsnsRgb')]).toEqual([null, 'nsns', 'nsnsRgb'])
     expect(isSkyLook('dss2')).toBe(false)
     expect(nestToFaceXY(3, 767)).toEqual([11, 7, 7])

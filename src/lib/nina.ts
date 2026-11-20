@@ -40,12 +40,14 @@ export function formatPa(paDeg: number): string {
   return text.includes('.') ? text : `${text}.0`
 }
 
-const cleanName = (name: string) => name.replace(/[,"\r\n]/g, ' ').replace(/\s+/g, ' ').trim() || 'Cel'
+export const ninaName = (name: string) => name.replace(/[,"\r\n]/g, ' ').replace(/\s+/g, ' ').trim() || 'Cel'
 
 export const NINA_HEADER = 'Pane,RA,DEC,Position Angle (East)'
+export const SCHEDULER_HEADER = 'Type,Name,Ra,Dec,Rotation,ROI'
+export const EXPOSURE_HEADER = 'Order,Target,RA J2000,DEC J2000,PA East deg,Filter,Frames,Exposure seconds,Integration seconds,Start UTC,End UTC,Time zone,Note'
 
 export function ninaCsv(targets: readonly NinaTarget[]): string {
-  const rows = targets.map((t) => `${cleanName(t.name)},${formatRa(t.raDeg)},${formatDec(t.decDeg)},${formatPa(t.paDeg)}`)
+  const rows = targets.map((t) => `${ninaName(t.name)},${formatRa(t.raDeg)},${formatDec(t.decDeg)},${formatPa(t.paDeg)}`)
   return [NINA_HEADER, ...rows].join('\r\n') + '\r\n'
 }
 
@@ -54,7 +56,7 @@ const safeCsvText = (value: string) => (/^[ \t\r]*[=+\-@]/.test(value) ? `'${val
 
 /** Osobny format importera Target Scheduler; ekspozycje ustawia się w jego szablonie. */
 export function schedulerCsv(targets: readonly (NinaTarget & { type: string })[]): string {
-  return ['Type,Name,Ra,Dec,Rotation,ROI', ...targets.map((t) => [
+  return [SCHEDULER_HEADER, ...targets.map((t) => [
     t.type, t.name, formatRa(t.raDeg), formatDec(t.decDeg), formatPa(t.paDeg), 100,
   ].map(csvCell).join(','))].join('\r\n') + '\r\n'
 }
@@ -74,8 +76,7 @@ export function exposureCsv(targets: readonly ExposureTarget[], timeZone: string
       e.count, e.seconds, e.count * e.seconds, t.startMs === null ? '' : new Date(t.startMs).toISOString(),
       t.endMs === null ? '' : new Date(t.endMs).toISOString(), timeZone, safeCsvText(t.note)].map(csvCell).join(',')
   }))
-  return '\uFEFF' + ['Order,Target,RA J2000,DEC J2000,PA East deg,Filter,Frames,Exposure seconds,Integration seconds,Start UTC,End UTC,Time zone,Note',
-    ...rows].join('\r\n') + '\r\n'
+  return '\uFEFF' + [EXPOSURE_HEADER, ...rows].join('\r\n') + '\r\n'
 }
 
 export function download(filename: string, content: string, type = 'text/csv') {

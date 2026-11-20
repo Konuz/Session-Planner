@@ -4,8 +4,8 @@
 import { DEG, normDeg } from './astro'
 import { healpixFaceXY, nestIndex } from './healpix'
 
-export type SurveyId = 'dss2' | 'ps1' | 'nsns' | 'nsnsRgb'
-export type ImageMode = 'color' | 'red'
+export type SurveyId = 'dss2' | 'ps1' | 'nsns' | 'nsnsRgb' | 'nsnsOhs'
+export type ImageMode = 'color' | 'red' | 'swap-rb'
 
 export interface Survey {
   id: SurveyId
@@ -62,6 +62,15 @@ export const SURVEYS: Record<SurveyId, Survey> = {
     maxOrder: 5,
     minDecDeg: -16,
     mirrors: ['/api/hips/nsns-rgb8'],
+    timeoutMs: 20000,
+  },
+  nsnsOhs: {
+    id: 'nsnsOhs',
+    label: 'NSNS OHS',
+    credit: 'DR0.2 · S. Ziegenbalg · CC BY-NC-SA 4.0',
+    maxOrder: 6,
+    minDecDeg: -16,
+    mirrors: ['/api/hips/nsns-ohs8'],
     timeoutMs: 20000,
   },
 }
@@ -172,6 +181,8 @@ export function paintTan(layout: TanLayout, tiles: Map<number, TilePixels | null
   if (layout.tiles.length && layout.tiles.every((n) => !tiles.get(n))) return null
   const W = layout.sizePx
   const out = new Uint8ClampedArray(W * W * 4)
+  const redOffset = mode === 'swap-rb' ? 2 : 0
+  const blueOffset = 2 - redOffset
   for (let j = 0; j < W; j++) {
     for (let i = 0; i < W; i++) {
       const p = j * W + i
@@ -188,9 +199,9 @@ export function paintTan(layout: TanLayout, tiles: Map<number, TilePixels | null
         const v = Math.round((tile.data[s] - 128) * 1.15 + 128)
         out[o] = out[o + 1] = out[o + 2] = v
       } else {
-        out[o] = tile.data[s]
+        out[o] = tile.data[s + redOffset]
         out[o + 1] = tile.data[s + 1]
-        out[o + 2] = tile.data[s + 2]
+        out[o + 2] = tile.data[s + blueOffset]
       }
     }
   }

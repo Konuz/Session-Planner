@@ -12,7 +12,7 @@ import { useOutside } from '../components/TopBar'
 import { CATALOGS, DEFAULT_ANNOTATION_COLORS, EXTRA_CATALOGS, displayName, matchesFilter, searchScore, TYPE_INFO, EMPTY_FILTER, type DSO, type ObjectType } from '../lib/catalog'
 import { CONSTELLATION_PL } from '../lib/constellations'
 import { fmtDuration, fmtNum, fmtSize, fmtTime } from '../lib/format'
-import { SURVEYS } from '../lib/hips'
+import { thumbSourceInfo } from '../lib/thumbs'
 import { useCatalog, useCatalogVisibility } from '../state/data'
 import { useStore } from '../state/store'
 
@@ -116,6 +116,7 @@ export default function CatalogView() {
   const sortBy = useStore((s) => s.sortBy)
   const setSort = useStore((s) => s.setSort)
   const thumbSource = useStore((s) => s.thumbSource)
+  const thumbSurvey = thumbSourceInfo(thumbSource)
   const setThumbSource = useStore((s) => s.setThumbSource)
   const minVisibleMinutes = useStore((s) => s.minVisibleMinutes)
   const setMinVisibleMinutes = useStore((s) => s.setMinVisibleMinutes)
@@ -308,7 +309,7 @@ export default function CatalogView() {
           <b className="mono" style={{ fontSize: 15 }}>{catalog ? list.length.toLocaleString('pl-PL') : '…'}</b>
           <span className="dim" style={{ fontSize: 13 }}>z {catalog?.length.toLocaleString('pl-PL') ?? '…'}</span>
           {!vis && catalog && <span className="dim mono" style={{ fontSize: 11 }}>· liczenie widoczności…</span>}
-          {thumbSource !== 'dss2' && <span className="dim mono" style={{ fontSize: 11 }}>· miniatury {SURVEYS[thumbSource].label} {SURVEYS[thumbSource].credit}</span>}
+          {thumbSource !== 'dss2' && <span className="dim mono" style={{ fontSize: 11 }}>· miniatury {thumbSurvey.label} {thumbSurvey.credit}</span>}
           <span style={{ flex: 1 }} />
           {onlyFavorites && <button className="button ghost icon-button" style={{ color: 'var(--bad)' }} title="Wyczyść ulubione" aria-label="Wyczyść ulubione" disabled={favoriteIds.length === 0} onClick={() => clearDialogRef.current?.showModal()}><Trash2 size={17} aria-hidden="true" /></button>}
           <button className={`button small${onlyFavorites ? ' active' : ''}`} aria-pressed={onlyFavorites} onClick={() => setOnlyFavorites((value) => !value)}>
@@ -319,11 +320,13 @@ export default function CatalogView() {
             value={thumbSource}
             ariaLabel="Źródło miniatur"
             align="right"
-            title={thumbSource !== 'dss2' ? `${SURVEYS[thumbSource].label} · ${SURVEYS[thumbSource].credit}. Małe obiekty i niebo na południe od −16°: DSS2.` : 'Miniatury z DSS2 (ESA/MAST)'}
+            title={thumbSource !== 'dss2' ? `${thumbSurvey.label} · ${thumbSurvey.credit}. Małe obiekty i niebo na południe od −16°: DSS2.` : 'Miniatury z DSS2 (ESA/MAST)'}
             options={[
               { value: 'dss2', label: 'Miniatury: DSS2' },
               { value: 'nsns', label: 'Miniatury: NSNS true-color' },
               { value: 'nsnsRgb', label: 'Miniatury: NSNS bez Hα' },
+              { value: 'nsnsOhs', label: 'Miniatury: NSNS OHS' },
+              { value: 'nsnsSho', label: 'Miniatury: NSNS SHO' },
             ]}
             onChange={(v) => setThumbSource(v as typeof thumbSource)}
           />

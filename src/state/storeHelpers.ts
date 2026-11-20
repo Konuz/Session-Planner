@@ -92,7 +92,7 @@ export interface Framing {
   mosaic?: Mosaic
 }
 
-export type FramingLayer = 'red' | 'color' | 'ps1' | 'nsns' | 'nsnsRgb'
+export type FramingLayer = 'red' | 'color' | 'ps1' | 'nsns' | 'nsnsRgb' | 'nsnsOhs' | 'nsnsSho'
 
 export interface FramingViewState {
   layer: FramingLayer

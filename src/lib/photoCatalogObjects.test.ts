@@ -3,8 +3,8 @@ import { loadPhotoCatalogObjects } from '../../server/photoCatalogObjects'
 import type { ProjectStars } from '../../server/photoStars'
 import { mergePhotoCatalogCuts, type PhotoCut } from './photo'
 
-const tsv = (columns: string, ...rows: string[]) => new Response([
-  '#RESOURCE=fixture', columns, '\t'.repeat(columns.split('\t').length - 1),
+const tsv = (table: string, columns: string, ...rows: string[]) => new Response([
+  `#Name: ${table}`, columns, '\t'.repeat(columns.split('\t').length - 1),
   columns.split('\t').map(() => '-----').join('\t'), ...rows,
 ].join('\n'))
 
@@ -15,13 +15,13 @@ const project: ProjectStars = async (points) => ({
 })
 const fetchCatalogs = vi.fn<typeof fetch>(async (input) => {
   const source = new URL(String(input)).searchParams.get('-source')
-  if (source === 'VII/237/pgc') return tsv(`PGC\tOType\tlogD25\tANames\t${coordinates}`,
+  if (source === 'VII/237/pgc') return tsv(source, `PGC\tOType\tlogD25\tANames\t${coordinates}`,
     '123\tG\t1\tNGC 1234\t195.1\t28', '124\tG\t1\t\t195.5\t28', '125\tM\t1\t\t195.2\t28')
-  if (source === 'VII/289/dr16q') return tsv(`SDSS\tz\t${coordinates}`,
+  if (source === 'VII/289/dr16q') return tsv(source, `SDSS\tz\t${coordinates}`,
     '130000.00+280000.0\t2.1\t195\t28')
-  if (source === 'VII/110A/table3') return tsv(`ACO\tz\t${coordinates}`, '1656\t0.0231\t195\t28')
-  if (source === 'VII/110A/table4') return tsv(`ACO\tz\tu_z\t${coordinates}`, '3000\t0.1\t)\t195\t28', '3001\t0.1\t\t195\t28')
-  if (source === 'VII/110A/table5') return tsv(`ACOS\tz\tu_z\t${coordinates}`, '1\t\t\t195\t28')
+  if (source === 'VII/110A/table3') return tsv(source, `ACO\tz\t${coordinates}`, '1656\t0.0231\t195\t28')
+  if (source === 'VII/110A/table4') return tsv(source, `ACO\tz\tu_z\t${coordinates}`, '3000\t0.1\t)\t195\t28', '3001\t0.1\t\t195\t28')
+  if (source === 'VII/110A/table5') return tsv(source, `ACOS\tz\tu_z\t${coordinates}`, '1\t\t\t195\t28')
   return new Response(null, { status: 404 })
 })
 
@@ -69,13 +69,36 @@ describe('dodatkowe katalogi zdjęcia', () => {
     expect(retries.every((url) => url.search === new URL(String(fetchWithMirrors.mock.calls[0][0])).search)).toBe(true)
   })
 
+  it.each(['', 'VII/237', 'VII/237/pgc-other'])('ponawia puste zapytanie PGC, jeśli lustro podało nazwę „%s”', async (name) => {
+    const fetchMirror: typeof fetch = async (input, init) => {
+      const url = new URL(String(input))
+      if (url.searchParams.get('-source') === 'VII/237/pgc' && url.hostname === 'vizier.cfa.harvard.edu') {
+        return new Response(`#   VizieR Astronomical Server\n#RESOURCE=\n#Name: ${name}\n#Title:\n`)
+      }
+      return fetchCatalogs(input, init)
+    }
+    const result = await loadPhotoCatalogObjects(100, 100, project, new Map(), fetchMirror, new AbortController().signal)
+    expect(result.complete).toBe(true)
+    expect(result.cuts.map(cut => cut.id)).toContain('PGC 123')
+  })
+
+  it('przyjmuje puste pole potwierdzone nazwą żądanej tabeli bez ponawiania', async () => {
+    const fetchEmpty = vi.fn<typeof fetch>(async input => {
+      const table = new URL(String(input)).searchParams.get('-source')
+      return new Response(`#   VizieR Astronomical Server\r\n#Name: ${table}\r\n#Title: katalog\r\n`)
+    })
+    const result = await loadPhotoCatalogObjects(100, 100, project, new Map(), fetchEmpty, new AbortController().signal)
+    expect(result).toMatchObject({ cuts: [], warnings: [], complete: true })
+    expect(fetchEmpty).toHaveBeenCalledTimes(5)
+  })
+
   it('scala PGC po potwierdzonym oznaczeniu ESO i odrzuca sporny alias', async () => {
     const catalog = new Map([
       ['ESO 121-006', { id: 'ESO 121-006', type: 'G' as const, aliases: [], raDeg: 195.1, decDeg: 28 }],
       ['UGC 7', { id: 'UGC 7', type: 'G' as const, aliases: [], raDeg: 195.2, decDeg: 28 }],
     ])
     const fetchAliases: typeof fetch = (input, init) => String(input).includes('VII%2F237')
-      ? Promise.resolve(tsv(`PGC\tOType\tlogD25\tANames\t${coordinates}`,
+      ? Promise.resolve(tsv('VII/237/pgc', `PGC\tOType\tlogD25\tANames\t${coordinates}`,
         '18437\tG\t1\tESO121-6\t195.1\t28', '42\tG\t1\tUGC00007?\t195.2\t28'))
       : fetchCatalogs(input, init)
     const { cuts } = await loadPhotoCatalogObjects(100, 100, project, catalog, fetchAliases, new AbortController().signal)

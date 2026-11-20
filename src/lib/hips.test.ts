@@ -46,6 +46,9 @@ describe('HiPS', () => {
     expect([...red.slice(32, 36)]).toEqual([0x15, 0x19, 0x2b, 255]) // (8,0): pasek --border
     const color = paintTan(l, new Map([[5, tile]]), 'color')!
     expect([...color.slice(4, 8)]).toEqual([200, 50, 10, 255])
+    const sho = paintTan(l, new Map([[5, tile]]), 'swap-rb')!
+    expect([...sho.slice(4, 8)]).toEqual([10, 50, 200, 255])
+    expect(sho.slice(0, 4)).toEqual(color.slice(0, 4))
     expect(paintTan(l, new Map([[5, null]]), 'color')).toBeNull()
   })
   it('NSNS: rząd 5 (12,9″), malowanie w rozdzielczości kafelka tylko na najwyższym rzędzie', () => {
@@ -59,5 +62,8 @@ describe('HiPS', () => {
     expect(paintSizeFor(arcsecPerPixel(4, 800), 5, SURVEYS.nsns, 800)).toBe(800)
     expect(SURVEYS.nsns.mirrors).toEqual(['/api/hips/nsns-tc8'])
     expect(SURVEYS.nsnsRgb.mirrors).toEqual(['/api/hips/nsns-rgb8'])
+    expect(tileOrderFor(scale, SURVEYS.nsnsOhs.maxOrder)).toBe(6)
+    expect(tilePixelArcsec(6)).toBeCloseTo(6.44, 2)
+    expect(paintSizeFor(scale, 6, SURVEYS.nsnsOhs, 800)).toBe(559)
   })
 })

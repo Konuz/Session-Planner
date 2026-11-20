@@ -204,7 +204,7 @@ Further deployment notes (in Polish) are in [`docs/uruchomienie.md`](docs/urucho
 | `npm run typecheck` | Runs `tsc --noEmit` across `src`, `server`, and `scripts`. |
 | `npm run build:data` | Rebuilds `public/data/` and `src/lib/constellations.ts` from upstream catalogs cached in `scripts/.cache/` (single stage, e.g. `node scripts/build-data.ts sky`; stages: `catalog`, `sky`, `outlines`, `milkyway`, `hips`). |
 | `npm run setup:skyshot` | Clones and compiles `tracker-skyshot` and fetches Gaia DR3 astrometric indexes into `scripts/.cache/`. |
-| `node scripts/hips-mirror.ts` | Mirrors full NSNS HiPS sets (`nsns-tc8`, `nsns-rgb8`) to `HIPS_CACHE_DIR` (~0.9 GB JPEG per set) and writes `mirror-complete.json`. |
+| `node scripts/hips-mirror.ts` | Mirrors NSNS HiPS sets (`nsns-tc8`, `nsns-rgb8`, `nsns-ohs8`) to `HIPS_CACHE_DIR` and writes `mirror-complete.json`. OHS and SHO share `nsns-ohs8`. |
 
 ---
 
@@ -242,6 +242,7 @@ Further deployment notes (in Polish) are in [`docs/uruchomienie.md`](docs/urucho
 | **Barnard's Catalogue of 349 Dark Objects (B)** (`VII/220A`) | E. E. Barnard (1927), *Carnegie Inst. Washington Publ.* 247 · CDS VizieR | Public domain / **VizieR (CDS)** data |
 | **Catalogue of Galactic Supernova Remnants (SNR)** (`VII/297`) | D. A. Green (2025), *J. Astrophys. Astron.* / Cavendish Laboratory · CDS VizieR | **VizieR (CDS)** data — cite D. A. Green |
 | **Strasbourg-ESO Catalogue of Galactic Planetary Nebulae** (`V/84`) | A. Acker et al. (1992), ESO · CDS VizieR | **VizieR (CDS)** data — cite the catalog authors |
+| **GUVPNcat / PNcat v1** | Gómez-Muñoz, Bianchi & Manchado (2023), [MAST](https://archive.stsci.edu/hlsp/guvpncat), based on [HASH](https://doi.org/10.1088/1742-6596/728/3/032008) | **CC BY 4.0** — confirmed planetary nebulae and PN G aliases |
 | **Gaia DR3 Open & Globular Clusters** (`J/A+A/673/A114`) | E. L. Hunt, S. Reffert (2023), *A&A* 673, A114 · CDS VizieR | **VizieR (CDS)** / **CC BY 4.0** (*A&A* publication) |
 | **Amateur-Discovered Planetary Nebulae** (`J/A+A/666/A152`) | P. Le Dû et al. (2022), *A&A* 666, A152 · CDS VizieR | **VizieR (CDS)** / **CC BY 4.0** (*A&A* publication) |
 | **Cederblad Catalogue of Bright Diffuse Galactic Nebulae (Ced)** (`VII/231`) | S. Cederblad (1946), *Lund Medd. Astron. Obs.* Ser. II, 119 · CDS VizieR | **VizieR (CDS)** data — cite the catalog author |

@@ -202,7 +202,11 @@ let lastNormQuery = ''
 export function normalizeQuery(text: string): string {
   if (text === lastRawQuery) return lastNormQuery
   lastRawQuery = text
-  lastNormQuery = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/g, 'l').replace(/[\s_-]+/g, '')
+  lastNormQuery = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/g, 'l')
+    .replace(/\bpn\s*g\s*(\d{1,3})\.(\d)\s*([+−–-])\s*(\d{1,2})\.(\d)/g,
+      (_, longitude: string, l: string, sign: string, latitude: string, b: string) =>
+        `png${longitude.padStart(3, '0')}.${l}${sign}${latitude.padStart(2, '0')}.${b}`)
+    .replace(/[\s_−–-]+/g, '')
   return lastNormQuery
 }
 
@@ -265,7 +269,7 @@ export function matchesFilter(o: DSO, f: CatalogFilter): boolean {
 
 /** Ranking wyszukiwania: dokładne oznaczenie, początek oznaczenia, potem nazwa. */
 export function searchScore(o: DSO, query: string): number {
-  return scoreForQuery(o, normalizeQuery(query))
+  return scoreForQuery(o, normalizeQuery(query), query)
 }
 
 // Znormalizowane oznaczenie, aliasy i nazwa liczone raz na obiekt: wcześniej każde przeliczenie wyszukiwania
@@ -280,9 +284,11 @@ function normalizedFields(o: DSO) {
   return n
 }
 
-function scoreForQuery(o: DSO, q: string): number {
+const designationSpelling = (text: string) => text.toLowerCase().replace(/\s/g, '').replace(/[−–]/g, '-')
+
+function scoreForQuery(o: DSO, q: string, query: string): number {
   const { id, aliases, name } = normalizedFields(o)
-  if (id === q) return 0
+  if (id === q) return designationSpelling(o.id) === designationSpelling(query) ? 0 : 0.5
   if (aliases.includes(q)) return 1
   if (id.startsWith(q)) return 2 + id.length / 100
   if (name.startsWith(q)) return 3
@@ -296,7 +302,7 @@ export function quickSearch(catalog: readonly DSO[], query: string): DSO[] {
   const limit = 12
   for (const object of catalog) {
     if (object.photoPrimaryId || object.majArcmin < 0 || !object.search.includes(q)) continue
-    const score = scoreForQuery(object, q) + (object.mag ?? 15) / 100
+    const score = scoreForQuery(object, q, query) + (object.mag ?? 15) / 100
     let index = best.length
     while (index > 0 && best[index - 1].score > score) index--
     if (index === limit) continue

@@ -24,6 +24,8 @@ export interface HipsSkyFrame {
   bright: number
   /** Fałsz podczas odtwarzania nocy: bez nowych pobrań, rysowane tylko gotowe tekstury. */
   allowDecode: boolean
+  /** Paleta SHO używa tych samych tekstur co OHS. */
+  swapRedBlue?: boolean
 }
 
 export interface HipsSkyLayer {
@@ -63,11 +65,13 @@ in float v_alpha;
 in float v_z;
 uniform sampler2D u_tex;
 uniform float u_bright;
+uniform bool u_swapRedBlue;
 uniform vec2 u_edge;
 out vec4 outColor;
 void main() {
   float a = v_alpha * u_bright * smoothstep(u_edge.x, u_edge.y, v_z);
-  outColor = vec4(texture(u_tex, v_uv).rgb * a, a);
+  vec3 color = texture(u_tex, v_uv).rgb;
+  outColor = vec4((u_swapRedBlue ? color.bgr : color) * a, a);
 }`
 
 // Kafelek 512² RGBA z mipmapami zajmuje ok. 1,33 MiB. Budżet mieści bieżący poziom i sąsiednie fragmenty pola.
@@ -95,6 +99,7 @@ export function createHipsSkyLayer(gl: WebGL2RenderingContext, survey: Survey, o
   const prog = compileProgram(gl, VS, FS)
   const u = (name: string) => gl.getUniformLocation(prog, name)
   const uM = u('u_m'), uZen = u('u_zen'), uScale = u('u_scale'), uCenter = u('u_center'), uRes = u('u_res'), uBright = u('u_bright'), uEdge = u('u_edge')
+  const uSwapRedBlue = u('u_swapRedBlue')
   const base = survey.mirrors[0]
   const tiles = new Map<string, Tile>()
   const allskyMeshes = new Map<number, Mesh>()
@@ -322,6 +327,7 @@ export function createHipsSkyLayer(gl: WebGL2RenderingContext, survey: Survey, o
       gl.uniform2f(uCenter, f.cx * f.dpr, (f.height - f.cy) * f.dpr)
       gl.uniform2f(uRes, f.width * f.dpr, f.height * f.dpr)
       gl.uniform1f(uBright, f.bright)
+      gl.uniform1i(uSwapRedBlue, f.swapRedBlue ? 1 : 0)
       // Brzeg pokrycia wygaszany w pasie ±0,5° wokół granicy (sin δ).
       gl.uniform2f(uEdge, Math.sin((NSNS_EDGE_DEC - 0.5) * DEG), Math.sin((NSNS_EDGE_DEC + 0.5) * DEG))
       gl.activeTexture(gl.TEXTURE0)

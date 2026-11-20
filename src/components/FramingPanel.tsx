@@ -14,6 +14,7 @@ import { useStore, type FramingLayer as Layer } from '../state/store'
 import { Range } from './Range'
 import { Select } from './Select'
 import { StretchDialog } from './StretchDialog'
+import { useActionFeedback } from './useActionFeedback'
 import { useObjectUrl } from './useObjectUrl'
 
 const SIZE = 800
@@ -33,10 +34,13 @@ const LAYERS: Record<Layer, Required<Pick<SkyImageOptions, 'survey' | 'mode'>> &
   ps1: { survey: 'ps1', mode: 'color', label: 'PanSTARRS', caption: 'PanSTARRS' },
   nsns: { survey: 'nsns', mode: 'color', label: 'NSNS true-color (DR0.1)', caption: 'NSNS true-color' },
   nsnsRgb: { survey: 'nsnsRgb', mode: 'color', label: 'NSNS bez Hα (DR0.2)', caption: 'NSNS bez Hα' },
+  nsnsOhs: { survey: 'nsnsOhs', mode: 'color', label: 'NSNS OHS (DR0.2)', caption: 'NSNS OHS' },
+  nsnsSho: { survey: 'nsnsOhs', mode: 'swap-rb', label: 'NSNS SHO (DR0.2)', caption: 'NSNS SHO' },
 }
 
 export function FramingPanel() {
   const o = useSelected()
+  const { feedback, confirm } = useActionFeedback()
   const eq = useStore((s) => s.equipment)
   const equipmentSets = useStore((s) => s.equipmentSets)
   const activeEquipmentSetId = useStore((s) => s.activeEquipmentSetId)
@@ -205,6 +209,7 @@ export function FramingPanel() {
   const panelFont = panels.length ? Math.min(28, Math.max(10, shortSide(panels[0].corners) * 0.14)) : 0
   const setMosaic = (patch: Partial<Mosaic>) => setFraming({ mosaic: { ...mosaic, ...patch } })
   const planItem = plan.find((p) => p.objectId === o.id)
+  const frameSaved = planItem && feedback?.action === planItem.key
 
   const applyCoordinates = () => {
     const raDeg = parseRaCoordinate(coordinateInput.ra)
@@ -545,13 +550,17 @@ export function FramingPanel() {
           <>
             <button
               className="button primary"
+              data-confirmed={frameSaved || undefined}
               onClick={() => {
-                if (planItem) updatePlan(planItem.key, { framing })
-                else { addToPlan(o.i, o.id); setTab('planner') }
+                if (planItem) {
+                  updatePlan(planItem.key, { framing })
+                  confirm(planItem.key, 'Zapisano kadr w planie.')
+                } else { addToPlan(o.i, o.id); setTab('planner') }
               }}
             >
               {planItem ? 'Zapisz kadr w planie' : 'Dodaj do planu'}
             </button>
+            <span className="action-status" role="status">{frameSaved ? feedback.message : ''}</span>
             <p className="dim" style={{ fontSize: 11.5, margin: 0 }}>Przeciągnij prostokąt, aby przesunąć kadr, albo zdjęcie, aby przesunąć niebo pod kadrem. Uchwyt nad kadrem obraca go.</p>
           </>
         )}

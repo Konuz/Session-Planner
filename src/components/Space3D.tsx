@@ -883,9 +883,9 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
       )
     }
     const tick = (now = performance.now()) => {
-      raf = 0
+      // Podczas step() OrbitControls może zgłosić zmianę. Zajęty raf blokuje wtedy uruchomienie drugiej pętli.
       step(now)
-      if (wantsFrame && !disposed && !external && !document.hidden) raf = requestAnimationFrame(tick)
+      raf = wantsFrame && !disposed && !external && !document.hidden ? requestAnimationFrame(tick) : 0
     }
     // Podpisy obiektów tła (przełącznik „Opisy”): najbliższe kamerze najpierw, bez nakładania się.
     const labels = document.createElement('canvas')

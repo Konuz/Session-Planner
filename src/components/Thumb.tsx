@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { getAstroBinPhoto } from '../lib/astrobin'
-import { SURVEYS, type SurveyId } from '../lib/hips'
-import { getSkyImage, getThumb, thumbFovDeg, thumbImageOptions } from '../lib/thumbs'
+import { getSkyImage, getThumb, thumbFovDeg, thumbImageOptions, thumbSourceInfo, type ThumbSource } from '../lib/thumbs'
 import { getOwnSkyImage, OwnPhotoMissingError } from '../lib/ownPhotoImage'
 import { useOwnPhotoKey } from '../state/data'
 import { useStore } from '../state/store'
@@ -11,7 +10,7 @@ import { useObjectUrl } from './useObjectUrl'
 /** Miniatura (DSS2 kolor albo jeden z przeglądów NSNS według `thumbSource`; własne zdjęcie wpasowane w to tło) ładowana dopiero, gdy element pojawi się na ekranie. */
 export function Thumb({ object, className = 'thumb', style, fovDeg, sizePx, preferAstroBin = false }: { object: DSO; className?: string; style?: React.CSSProperties; fovDeg?: number; sizePx?: number; preferAstroBin?: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
-  const [src, setSrc] = useState<{ key: string; url?: string; blob?: Blob; own?: boolean; nsns?: SurveyId; astroBin?: { galleryUrl: string; title: string } } | null>(null)
+  const [src, setSrc] = useState<{ key: string; url?: string; blob?: Blob; own?: boolean; nsns?: ThumbSource; astroBin?: { galleryUrl: string; title: string } } | null>(null)
   const [failed, setFailed] = useState<string | null>(null)
   const photoKey = useOwnPhotoKey(object)
   const own = useStore((s) => s.ownPhotos[photoKey])
@@ -37,7 +36,7 @@ export function Thumb({ object, className = 'thumb', style, fovDeg, sizePx, pref
           try {
             const opts = thumbImageOptions(source, object.decDeg, view.fovDeg, view.sizePx, fovDeg ? 0 : 1)
             const blob = await getOwnSkyImage(photoKey, ownId, view, ctrl.signal, opts)
-            if (!ctrl.signal.aborted) setSrc({ key, blob, own: true, nsns: opts.survey === 'dss2' ? undefined : opts.survey })
+            if (!ctrl.signal.aborted) setSrc({ key, blob, own: true, nsns: opts.survey === 'dss2' ? undefined : source })
           } catch (e) {
             // Brak rekordu w IndexedDB: indeks wraca do domyślnego zdjęcia, efekt wczyta DSS2.
             if (e instanceof OwnPhotoMissingError) useStore.getState().removeOwnPhoto(photoKey)
@@ -59,7 +58,7 @@ export function Thumb({ object, className = 'thumb', style, fovDeg, sizePx, pref
         }
         const opts = fovDeg ? thumbImageOptions(source, object.decDeg, fovDeg, sizePx ?? 400) : thumbImageOptions(source, object.decDeg, thumbFovDeg(object), 224, 1)
         const blob = fovDeg ? await getSkyImage(object.raDeg, object.decDeg, fovDeg, sizePx ?? 400, ctrl.signal, opts) : await getThumb(object, ctrl.signal, source)
-        if (!ctrl.signal.aborted) setSrc({ key, blob, nsns: opts.survey === 'dss2' ? undefined : opts.survey })
+        if (!ctrl.signal.aborted) setSrc({ key, blob, nsns: opts.survey === 'dss2' ? undefined : source })
       }
       load().catch((e: Error) => e.name !== 'AbortError' && setFailed(key))
     }
@@ -72,7 +71,7 @@ export function Thumb({ object, className = 'thumb', style, fovDeg, sizePx, pref
   }, [object, key, fovDeg, sizePx, preferAstroBin, ownId, photoKey, source])
 
   const current = src?.key === key && failed !== key ? src.url ?? blobUrl : null
-  const nsnsSurvey = src?.nsns ? SURVEYS[src.nsns] : null
+  const nsnsSurvey = src?.nsns ? thumbSourceInfo(src.nsns) : null
   const background = nsnsSurvey ? `${nsnsSurvey.label} (${nsnsSurvey.credit})` : 'DSS2'
   return (
     <div ref={ref} className={className} style={style}>

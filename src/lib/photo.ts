@@ -62,7 +62,7 @@ export interface PhotoProject {
   createdAt: number
   cuts: PhotoCut[]
   /** Zapisane zdjęcia sprzed rozszerzenia katalogów są uzupełniane po otwarciu. */
-  catalogObjects?: { warnings: string[] }
+  catalogObjects?: { tablesVerified: true; warnings: string[] }
   astrometry: { raDeg: number; decDeg: number; rmsPx: number; matches: number; edgeMatches: number; edgeRmsPx: number | null; totalMs: number; wcs: unknown }
   /** null: gwiazd jeszcze nie pobrano (także po migracji z wersji 1). */
   stars: PhotoStars | null
@@ -113,7 +113,11 @@ export function migratePhotoProject(stored: unknown): PhotoProject | null {
   if (typeof project.id !== 'string' || !project.id || typeof project.width !== 'number' || !Number.isFinite(project.width) || project.width <= 0 || typeof project.height !== 'number' || !Number.isFinite(project.height) || project.height <= 0 || !project.astrometry || typeof project.astrometry !== 'object' || !Array.isArray(project.cuts)) return null
   const stars = project.version !== 1 && project.stars && Array.isArray((project.stars as PhotoStars).stars) ? project.stars as PhotoStars : null
   if (project.version === 1 || project.version === 2) return { ...project, version: 3, stars, cuts: project.cuts.map(migrateCut) }
-  if (project.version === 3) return { ...project, version: 3, stars, cuts: project.cuts as PhotoCut[] }
+  if (project.version === 3) {
+    // Dawny znacznik ukończenia mógł oznaczać pustą odpowiedź uszkodzonego lustra.
+    const catalogObjects = project.catalogObjects?.tablesVerified === true ? project.catalogObjects : undefined
+    return { ...project, version: 3, stars, cuts: project.cuts as PhotoCut[], catalogObjects }
+  }
   return null
 }
 

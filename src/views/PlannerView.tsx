@@ -1,9 +1,10 @@
 import { ArrowDown, ArrowUp, Trash2, AlertTriangle } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { AltitudeChart } from '../components/AltitudeChart'
 import { Select } from '../components/Select'
 import { Thumb } from '../components/Thumb'
+import { useActionFeedback } from '../components/useActionFeedback'
 import { angularDistanceDeg, computeOptics, moonJ2000 } from '../lib/astro'
 import { mosaicCenters } from '../lib/framing'
 import { displayName, TYPE_INFO, type DSO } from '../lib/catalog'
@@ -12,6 +13,7 @@ import { fmtDec, fmtDeg, fmtDuration, fmtRa, fmtTime } from '../lib/format'
 import { altitudeTrack, darkWindow, nightGrid, visibility, type AltSample, type Visibility } from '../lib/night'
 import { download, exposureCsv, ninaCsv, schedulerCsv } from '../lib/nina'
 import { autoSchedule, localTimeToMs, overlaps } from '../lib/planner'
+import { readSavedPlan } from '../lib/planImport'
 import { useCatalog, useNight, useSite } from '../state/data'
 import { useStore, type PlanItem } from '../state/store'
 
@@ -43,6 +45,10 @@ export default function PlannerView() {
   const tz = location.timeZone
   const [exportFormat, setExportFormat] = useState('nina')
   const [chartTargetKey, setChartTargetKey] = useState<string | null>(null)
+  const { feedback, confirm } = useActionFeedback()
+  const importInput = useRef<HTMLInputElement>(null)
+  const [importing, setImporting] = useState(false)
+  const [importMessage, setImportMessage] = useState<{ text: string; error: boolean } | null>(null)
   const [darkStart, darkEnd] = darkWindow(night)
   const grid = useMemo(() => nightGrid(night, site, 5), [night, site])
   const catalogById = useMemo(() => new Map((catalog ?? []).map((o) => [o.id, o])), [catalog])
@@ -113,6 +119,21 @@ export default function PlannerView() {
   const chartRow = rows[chartIndex]
   const chartSlot = slots[chartIndex]
   const saveExposures = (r: Row, exposures: Exposure[]) => updatePlan(r.item.key, { exposures, filters: exposures.map((e) => e.filter).join(', ') })
+  async function importPlan(file: File) {
+    if (!catalog) return
+    setImporting(true)
+    setImportMessage(null)
+    try {
+      const entries = readSavedPlan(await file.text(), catalog, equipment.mono ? 'L, R, G, B' : 'OSC')
+      const items = entries.map((entry) => ({ ...entry, key: crypto.randomUUID() }))
+      useStore.setState((state) => ({ plan: [...state.plan, ...items] }))
+      setImportMessage({ text: `Dodano cele z pliku: ${items.length}.`, error: false })
+    } catch (error) {
+      setImportMessage({ text: error instanceof Error ? error.message : 'Nie udało się wczytać planu.', error: true })
+    } finally {
+      setImporting(false)
+    }
+  }
   const exportCsv = () => {
     const optics = computeOptics({ apertureMm: equipment.apertureMm, focalLengthMm: equipment.focalLengthMm, reducer: equipment.reducer, widthPx: equipment.widthPx, heightPx: equipment.heightPx, pixelUm: equipment.pixelUm, binning: equipment.binning })
     // Mozaika: każdy panel to osobny cel („Panel k”) ze wspólnym PA, jak w planie mozaiki Telescopius.
@@ -136,6 +157,7 @@ export default function PlannerView() {
     const csv = exportFormat === 'exposures' ? exposureCsv(exportTargets, tz)
       : exportFormat === 'scheduler' ? schedulerCsv(exportTargets) : ninaCsv(exportTargets)
     download(`plan-${night.date}-${exportFormat}.csv`, csv)
+    confirm('csv', 'Rozpoczęto pobieranie pliku CSV.')
   }
   const exportText = () => {
     const lines = [
@@ -158,6 +180,7 @@ export default function PlannerView() {
       }),
     ]
     download(`plan-${night.date}.txt`, lines.join('\n') + '\n', 'text/plain')
+    confirm('txt', 'Rozpoczęto pobieranie pliku TXT.')
   }
 
   return (
@@ -168,8 +191,17 @@ export default function PlannerView() {
           <div className="planner-heading-actions">
             <button className="button" onClick={() => setTab('catalog', 'single')}>Dodaj jeden</button>
             <button className="button ghost" onClick={() => setTab('catalog', 'multiple')}>Dodaj kilka</button>
+            <button className="button ghost" disabled={!catalog || importing} onClick={() => importInput.current?.click()}>
+              {importing ? 'Wczytywanie…' : 'Wczytaj plan'}
+            </button>
+            <input ref={importInput} type="file" accept=".csv,.txt" hidden onChange={async (event) => {
+              const file = event.currentTarget.files?.[0]
+              event.currentTarget.value = ''
+              if (file) await importPlan(file)
+            }} />
           </div>
         </div>
+        {importMessage && <p className="planner-help" role={importMessage.error ? 'alert' : 'status'}>{importMessage.text}</p>}
         <div className="planner-stats">
           <div><span className="label">Cele w planie</span><strong>{rows.length.toString().padStart(2, '0')}</strong></div>
           <div><span className="label">Ciemne okno</span>{night.polarDay ? <><strong>brak</strong><small>dzień polarny</small></> : <strong>{fmtTime(darkStart, tz)} <span>–</span> {fmtTime(darkEnd, tz)}</strong>}</div>
@@ -270,7 +302,11 @@ export default function PlannerView() {
             { value: 'exposures', label: 'Wykaz ekspozycji - pełne dane' },
           ]}
           onChange={(v) => setExportFormat(v)}
-        /></label><button className="button primary" disabled={!rows.length || (exportFormat === 'exposures' && (invalidExposures || invalidWindows))} onClick={exportCsv}>Pobierz CSV</button><button className="button" disabled={!rows.length || invalidExposures || invalidWindows} onClick={exportText}>Plan nocy TXT</button></div>
+        /></label>
+          <button className="button primary" data-confirmed={feedback?.action === 'csv' || undefined} disabled={!rows.length || (exportFormat === 'exposures' && (invalidExposures || invalidWindows))} onClick={exportCsv}>Pobierz CSV</button>
+          <button className="button" data-confirmed={feedback?.action === 'txt' || undefined} disabled={!rows.length || invalidExposures || invalidWindows} onClick={exportText}>Plan nocy TXT</button>
+          <span className="action-status" role="status">{feedback?.message}</span>
+        </div>
         <p className="planner-help">{exportFormat === 'nina' ? 'Importuj cele w prostym sekwencerze NINA (Import targets). Plik zawiera nazwę, RA/Dec J2000 i obrót kadru. Ekspozycje pochodzą z szablonu NINA; do zaawansowanego sekwencera przenieś plan w NINA.' : exportFormat === 'scheduler' ? 'W Target Scheduler wybierz profil → Import Targets. Plik zawiera typ, nazwę, RA/Dec J2000, obrót i ROI 100%. Ekspozycje przypisz przez szablon celu w tej wtyczce.' : 'Jeden wiersz na filtr: klatki, sekundy, integracja, kadr, okno UTC, strefa i notatka. To wykaz do arkusza lub ręcznego przeniesienia ustawień, nie plik importu sekwencji NINA.'}</p>
         <details className="planner-export-help"><summary>Co przenosi się do NINA?</summary><p>Nie istnieje wspólny CSV pełnej sesji dla wszystkich modułów. Importery celów nie odczytują liczby klatek ani czasów ekspozycji z dodatkowych kolumn. Pobierz też wykaz ekspozycji lub TXT, aby zachować te ustawienia. Okna z planera są wskazówką; pliki celów ich nie wymuszają.</p><a href="https://tcpalmer.github.io/nina-scheduler/target-management/targets.html" target="_blank" rel="noopener noreferrer">Dokumentacja Target Scheduler</a><span> · </span><a href="https://github.com/isbeorn/nina/blob/develop/NINA/ViewModel/Sequencer/SimpleSequence/SimpleSequenceVM.cs" target="_blank" rel="noopener noreferrer">Importer NINA</a></details>
       </section>

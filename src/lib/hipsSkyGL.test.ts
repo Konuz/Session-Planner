@@ -43,7 +43,7 @@ const weighted = (keys: string[], weight = 1): Paint[] => keys.map((key) => [key
 const image = (tile: string) => new Blob([tile], { type: 'image/jpeg' })
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve))
 
-function setup() {
+function setup(survey = SURVEYS.nsns) {
   let now = 1000
   const blocked = new Map<string, (blob: Blob) => void>()
   const waiting = new Map<string, Promise<Blob>>()
@@ -62,7 +62,7 @@ function setup() {
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { nextFrame = callback; return 1 })
   vi.stubGlobal('cancelAnimationFrame', () => { nextFrame = undefined })
   const redraw = vi.fn()
-  const layer = createHipsSkyLayer(gl, SURVEYS.nsns, redraw)
+  const layer = createHipsSkyLayer(gl, survey, redraw)
   const details = () => paints.filter(([tile]) => tile !== 'Allsky')
   const tick = (elapsed: number) => {
     const callback = nextFrame
@@ -150,6 +150,31 @@ it('przybliżanie zachowuje poprzednie kafelki i wyostrza widoczne pole jednocze
     expect(sky.animate(100)).toEqual(weighted(order4))
   } finally {
     sky.release('4/1023')
+    await flush()
+    sky.layer.dispose()
+  }
+})
+
+it('NSNS OHS zachowuje rząd 5 do chwili gotowości rzędu 6 i wraca do zapisanych kafelków przy oddalaniu', async () => {
+  const sky = setup(SURVEYS.nsnsOhs)
+  const order5 = ['5/1023', '5/2047', '5/3071', '5/4095']
+  const order6 = ['6/4095', '6/8191', '6/12287', '6/16383']
+  try {
+    expect(await sky.show(16)).toEqual(weighted(order5))
+    sky.hold(order6[0])
+    sky.draw(10)
+    await flush()
+    expect(sky.draw(10)).toEqual(weighted(order5))
+    sky.release(order6[0])
+    await flush()
+    sky.draw(10)
+    expect(sky.animate(200)).toEqual(weighted(order6))
+    vi.mocked(fetchTile).mockClear()
+    sky.draw(16)
+    expect(sky.animate(200)).toEqual(weighted(order5))
+    expect(vi.mocked(fetchTile)).not.toHaveBeenCalled()
+  } finally {
+    sky.release(order6[0])
     await flush()
     sky.layer.dispose()
   }

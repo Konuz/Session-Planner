@@ -1,6 +1,15 @@
 // Obiekty dopisane ręcznie: odkrycia amatorów spoza katalogów w VizieR. Każdy ma źródło pozycji i rozmiaru
 // (sprawdzone 15.11.2026); odległość tylko tam, gdzie podaje ją publikacja.
 
+import type { CatalogRow } from '../src/lib/catalog.ts'
+
+// Na końcu katalogu, by zachować istniejące indeksy. Pozycja gwiazdy centralnej z SIMBAD
+// (MWP 1). Osie mgławicy w Hα: 14′45″ × 8′36″ (Rauch 1999, doi:10.1051/aas:1999185, tabela 1).
+export const MWP_1: CatalogRow = [
+  'MWP 1', 'PN G080.3-10.4|PK 080-10 1', '', 'Methuselah Nebula', 'PN',
+  319.2845, 34.2076, 14.8, 8.6, -1, 99, 99, 'Cyg', 0, '', '',
+]
+
 export interface ManualObject {
   primary: string
   aliases: string[]

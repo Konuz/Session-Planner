@@ -7,8 +7,8 @@ import { readResponseText } from './readResponseText.ts'
 
 const vizierMirrors = [
   { url: 'https://vizier.cfa.harvard.edu/viz-bin/asu-tsv', timeoutMs: 7_000 },
+  { url: 'https://vizier.idia.ac.za/viz-bin/asu-tsv', timeoutMs: 20_000 },
   { url: 'https://vizier.cds.unistra.fr/viz-bin/asu-tsv', timeoutMs: 5_000 },
-  { url: 'https://vizier.idia.ac.za/viz-bin/asu-tsv', timeoutMs: 6_000 },
   { url: 'https://vizier.china-vo.org/viz-bin/asu-tsv', timeoutMs: 12_000 },
 ]
 const limit = 300
@@ -47,8 +47,11 @@ async function vizierRows(source: Source, raDeg: number, decDeg: number, radiusD
 
 function parseVizierRows(text: string, source: Source) {
   if (/^#(?:ERROR\b|INFO\s+[^\n]*(?:QUERY_STATUS\s*=\s*ERROR|Error=))/im.test(text)) throw new Error('VizieR')
-  const lines = text.split(/\r?\n/).filter((line) => line.trim() && !line.startsWith('#'))
-  if (!lines.length && text.includes('VizieR Astronomical Server') && /^#(?:Name:|RESOURCE=)/m.test(text)) return []
+  const responseLines = text.split(/\r?\n/)
+  // Przy awarii lustro potrafi zwrócić HTTP 200 z pustym #Name: i bez wyników.
+  if (!responseLines.some(line => line.startsWith('#Name:') && line.slice(6).trim() === source.table)) throw new Error('VizieR')
+  const lines = responseLines.filter((line) => line.trim() && !line.startsWith('#'))
+  if (!lines.length) return []
   const columns = lines[0]?.split('\t').map((part) => part.trim()) ?? []
   if (![source.column, '_RAJ2000', '_DEJ2000', ...source.fields.split(',')].every((field) => columns.includes(field))) throw new Error('VizieR')
   // Po nagłówku są jednostki (czasem same spacje) i linia kresek.

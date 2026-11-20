@@ -10,11 +10,11 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import sharp from 'sharp'
 
-export const HIPS_SETS: Record<string, string> = {
-  'nsns-tc8': 'https://www.simg.de/nebulae3/dr0_1/tc8',
-  'nsns-rgb8': 'https://www.simg.de/nebulae3/dr0_2/rgb8',
+export const HIPS_SETS: Record<string, { url: string; maxOrder: number }> = {
+  'nsns-tc8': { url: 'https://www.simg.de/nebulae3/dr0_1/tc8', maxOrder: 5 },
+  'nsns-rgb8': { url: 'https://www.simg.de/nebulae3/dr0_2/rgb8', maxOrder: 5 },
+  'nsns-ohs8': { url: 'https://www.simg.de/nebulae3/dr0_2/ohs8', maxOrder: 6 },
 }
-const MAX_ORDER = 5
 /** Katalog bufora na dysku; domyślnie `scripts/.cache/hips-proxy` (poza git). */
 export type HipsProxyEnv = { HIPS_CACHE_DIR?: string }
 
@@ -30,11 +30,11 @@ export type HipsTilePath = { set: string; order: number; npix: number | 'allsky'
 /** Ścieżka kafelka (końcówka URL): `<zestaw>/Norder<k>/Dir<d>/Npix<n>.jpg` albo `<zestaw>/Norder3/Allsky.jpg`. */
 export function parseHipsPath(pathname: string): HipsTilePath | null {
   const m = /(?:^|\/)([a-z0-9-]+)\/Norder(\d)\/(?:Dir(\d+)\/Npix(\d+)|(Allsky))\.jpg$/.exec(pathname)
-  if (!m || !(m[1] in HIPS_SETS)) return null
+  if (!m || !Object.hasOwn(HIPS_SETS, m[1])) return null
   const order = Number(m[2])
   if (m[5]) return order === 3 ? { set: m[1], order, npix: 'allsky' } : null
   const npix = Number(m[4])
-  if (order > MAX_ORDER || npix >= 12 * 4 ** order || Number(m[3]) !== Math.floor(npix / 10000) * 10000) return null
+  if (order > HIPS_SETS[m[1]].maxOrder || npix >= 12 * 4 ** order || Number(m[3]) !== Math.floor(npix / 10000) * 10000) return null
   return { set: m[1], order, npix }
 }
 
@@ -92,7 +92,7 @@ export function createHipsStore(env: HipsProxyEnv = process.env as HipsProxyEnv,
     const release = await slot()
     let png: Buffer
     try {
-      const response = await fetchImpl(`${HIPS_SETS[tile.set]}/${rel}.png`, { signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) })
+      const response = await fetchImpl(`${HIPS_SETS[tile.set].url}/${rel}.png`, { signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) })
       if (response.status === 404) { void response.body?.cancel().catch(() => {}); return null }
       if (!response.ok) { void response.body?.cancel().catch(() => {}); throw new Error(`HTTP ${response.status}`) }
       png = await readBytes(response, MAX_UPSTREAM_BYTES)
@@ -129,6 +129,7 @@ export interface MirrorProgress { order: number | 'allsky'; done: number; total:
  * tylko bez porażek (ponowne uruchomienie dobiera brakujące, gotowe pliki czyta z dysku).
  */
 export async function mirrorSet(store: HipsStore, set: string, onProgress: (p: MirrorProgress) => void = () => {}): Promise<{ tiles: number; missing: number; failed: number }> {
+  const { url, maxOrder } = HIPS_SETS[set]
   const totals = { tiles: 0, missing: 0, failed: 0 }
   const fetchWithRetry = async (tile: HipsTilePath): Promise<Buffer | null | 'failed'> => {
     for (let attempt = 1; ; attempt++) {
@@ -139,7 +140,7 @@ export async function mirrorSet(store: HipsStore, set: string, onProgress: (p: M
   if (allsky === 'failed') totals.failed++
   onProgress({ order: 'allsky', done: 1, total: 1, ...totals })
   let level = Array.from({ length: 12 }, (_, i) => i)
-  for (let order = 0; order <= MAX_ORDER && level.length; order++) {
+  for (let order = 0; order <= maxOrder && level.length; order++) {
     const next: number[] = []
     let done = 0
     const counts = { tiles: 0, missing: 0, failed: 0 }
@@ -148,10 +149,10 @@ export async function mirrorSet(store: HipsStore, set: string, onProgress: (p: M
       if (result === 'failed') counts.failed++
       else if (result) {
         counts.tiles++
-        if (order < MAX_ORDER) next.push(npix * 4, npix * 4 + 1, npix * 4 + 2, npix * 4 + 3)
+        if (order < maxOrder) next.push(npix * 4, npix * 4 + 1, npix * 4 + 2, npix * 4 + 3)
       } else counts.missing++
       // Po porażce dzieci też próbujemy: nie wiemy, czy kafelek istnieje.
-      if (result === 'failed' && order < MAX_ORDER) next.push(npix * 4, npix * 4 + 1, npix * 4 + 2, npix * 4 + 3)
+      if (result === 'failed' && order < maxOrder) next.push(npix * 4, npix * 4 + 1, npix * 4 + 2, npix * 4 + 3)
       done++
       if (done % 200 === 0 || done === level.length) onProgress({ order, done, total: level.length, ...counts })
     }))
@@ -162,7 +163,7 @@ export async function mirrorSet(store: HipsStore, set: string, onProgress: (p: M
   }
   if (!totals.failed) {
     await mkdir(join(store.dir, set), { recursive: true })
-    await writeFile(join(store.dir, set, MIRROR_MARKER), JSON.stringify({ source: HIPS_SETS[set], date: new Date().toISOString(), ...totals }, null, 1))
+    await writeFile(join(store.dir, set, MIRROR_MARKER), JSON.stringify({ source: url, date: new Date().toISOString(), ...totals }, null, 1))
   }
   return totals
 }

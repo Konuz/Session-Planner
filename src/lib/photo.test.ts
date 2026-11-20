@@ -112,6 +112,16 @@ it('migruje zapis w wersji 1 bez gwiazd i odrzuca nieznane wersje', () => {
   expect(migratePhotoProject(undefined)).toBeNull()
 })
 
+it('przy odczycie ponawia dawny wynik katalogów, zachowując wycinki i późniejsze potwierdzenie', () => {
+  const cuts = [{ id: 'Ced 55p', enabled: false, radius: 12 }]
+  const saved = { version: 3, id: 'ced', width: 100, height: 100, astrometry: { wcs: {} }, cuts }
+  const legacy = migratePhotoProject({ ...saved, catalogObjects: { warnings: [] } })
+  expect(legacy?.cuts).toEqual(cuts)
+  expect(legacy?.catalogObjects).toBeUndefined()
+  const verified = { tablesVerified: true, warnings: [] }
+  expect(migratePhotoProject({ ...saved, catalogObjects: verified })?.catalogObjects).toEqual(verified)
+})
+
 it('migruje wycinki wersji 2: wartość katalogu do odświeżenia, wybór z SIMBAD zostaje, kompleks to populacja', () => {
   const base = { type: 'EN', raDeg: 0, decDeg: 0, x: 1, y: 1, radius: 5, enabled: true, uncertaintyLy: null }
   const v2 = {

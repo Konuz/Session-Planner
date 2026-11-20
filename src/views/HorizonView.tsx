@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useActionFeedback } from '../components/useActionFeedback'
 import { altitudeTrack, nightGrid } from '../lib/night'
 import { exportHorizon, horizonAltitude, normalizeHorizon, parseHorizon, type HorizonPoint } from '../lib/horizon'
 import { fromPanoramaPoint, readHorizonPanorama, toPanoramaPoint, type PanoramaCalibration } from '../lib/horizonPanorama'
@@ -27,6 +28,7 @@ export default function HorizonView() {
   const night = useNight()
   const site = useSite()
   const [message, setMessage] = useState('')
+  const { feedback, confirm } = useActionFeedback()
   const [draft, setDraft] = useState<HorizonPoint[] | null>(null)
   const [panorama, setPanorama] = useState<Awaited<ReturnType<typeof readHorizonPanorama>> | null>(null)
   const [leftAzDraft, setLeftAzDraft] = useState<string | null>(null)
@@ -116,7 +118,10 @@ export default function HorizonView() {
           <span style={{ flex: 1 }} />
           <button className="button small" onClick={() => panoramaRef.current?.click()} disabled={importing}>{importing ? 'Wczytywanie…' : 'Panorama 360°'}</button>
           <button className="button small" onClick={() => fileRef.current?.click()} disabled={!!panorama}>Import pliku</button>
-          <button className="button small" onClick={() => download(`horyzont-${location.name.replace(/\s+/g, '-')}.hrz`, exportHorizon(horizon, location.name), 'text/plain')} disabled={horizon.length < 2}>
+          <button className="button small" data-confirmed={feedback?.action === 'export' || undefined} onClick={() => {
+            download(`horyzont-${location.name.replace(/\s+/g, '-')}.hrz`, exportHorizon(horizon, location.name), 'text/plain')
+            confirm('export', 'Rozpoczęto pobieranie profilu horyzontu.')
+          }} disabled={horizon.length < 2}>
             Eksport (N.I.N.A.)
           </button>
           <button className="button small" onClick={() => setHorizon([])} disabled={!!panorama || !horizon.length}>Wyczyść</button>
@@ -208,9 +213,10 @@ export default function HorizonView() {
                 onBlur={() => setFovDraft(null)}
               />
             </label>
-            <button className="button small active" disabled={activeHorizon.length < 2} onClick={() => {
+            <button className="button small active" data-confirmed={feedback?.action === 'save' || undefined} disabled={activeHorizon.length < 2} onClick={() => {
               setHorizon(activeHorizon.map((p) => ({ ...p, altDeg: Math.max(ALT_MIN, Math.min(ALT_MAX, p.altDeg)) })))
               setMessage('Zapisano profil horyzontu.')
+              confirm('save', 'Zapisano profil horyzontu.')
             }}>Zapisz profil</button>
             <button className="button small" onClick={() => setPanorama(null)}>Zamknij podgląd</button>
           </div>
@@ -352,6 +358,7 @@ export default function HorizonView() {
           <strong><a href="https://360cam.stanford.edu/" target="_blank" rel="noopener noreferrer">VFT Photosphere Camera</a></strong>.
         </p>
         {message && <div className="accent mono" style={{ fontSize: 12 }}>{message}</div>}
+        <span className="action-status" role="status">{feedback?.message}</span>
       </section>
     </div>
   )

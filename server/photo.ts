@@ -156,7 +156,7 @@ export async function photoApi(req: IncomingMessage, res: ServerResponse, env: P
       }
       if (catalogObjects) {
         const result = await loadPhotoCatalogObjects(width, height, project, await getCatalogById(), fetchImpl, abort.signal)
-        if (!abort.signal.aborted) json(200, result)
+        if (!abort.signal.aborted) json(200, { ...result, tablesVerified: result.complete })
         return
       }
       const result = await loadPhotoStars(width, height, project, fetchImpl, abort.signal)

@@ -20,7 +20,7 @@ import {
   type Vec3,
 } from '../lib/astro'
 import { catalogOf, DEFAULT_ANNOTATION_COLORS, displayName, skyGroupOf, skyShown, TYPE_INFO, type DSO, type ObjectType } from '../lib/catalog'
-import { fmtTime } from '../lib/format'
+import { fmtNum, fmtTime } from '../lib/format'
 import { frameCorners, gnomonicInverse } from '../lib/framing'
 import { SURVEYS } from '../lib/hips'
 import { NSNS_EDGE_DEC, skyLookSurvey } from '../lib/hipsSky'
@@ -65,7 +65,8 @@ export function LayersIcon({ filled }: { filled: boolean }) {
   )
 }
 
-const MIN_FOV = 8
+const MIN_FOV = 4
+const NSNS_NARROWBAND_MIN_FOV = 0.5
 
 const reducedMotion = () => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
 const easeInOut = (x: number) => (x < 0.5 ? 4 * x * x * x : 1 - (-2 * x + 2) ** 3 / 2)
@@ -373,7 +374,7 @@ export function SkyDome({ playing = false }: Props) {
     const magLimit = Math.min(6.6, 4.6 + (184 - view.fovDeg) / 50)
     // Niebo NSNS na najniższym płótnie; gdy podkład już jest, gwiazdy katalogu i Droga Mleczna zostają tylko na południe od granicy pokrycia.
     const nsnsSky = skySurvey ? hipsLayer.current : null
-    nsnsSky?.draw({ eqToView: proj.eqToView, zen, scale: proj.scale, cx: proj.cx, cy: proj.cy, width: size.w, height: size.h, dpr, bright, allowDecode: !playing })
+    nsnsSky?.draw({ eqToView: proj.eqToView, zen, scale: proj.scale, cx: proj.cx, cy: proj.cy, width: size.w, height: size.h, dpr, bright, allowDecode: !playing, swapRedBlue: skyLook === 'nsnsSho' })
     const nsnsShown = !!nsnsSky?.ready()
     starGL.current?.draw(proj.eqToView, zen, proj, size.w, size.h, dpr, magLimit, bright, nsnsShown ? Math.sin(NSNS_EDGE_DEC * DEG) : 2, !skySurvey)
     // Moje zdjęcia nad gwiazdami, pod całą nakładką (kontury na wierzchu); jasność niezależna od pory dnia.
@@ -1130,7 +1131,8 @@ export function SkyDome({ playing = false }: Props) {
   const setFov = (target: number) => {
     anim.current = null
     const base = pendingView.current ?? viewRef.current
-    const fovDeg = Math.max(MIN_FOV, Math.min(184, target))
+    const minFov = skySurvey === 'nsnsOhs' ? NSNS_NARROWBAND_MIN_FOV : MIN_FOV
+    const fovDeg = Math.max(Math.min(minFov, base.fovDeg), Math.min(184, target))
     scheduleView(fovDeg >= 184 ? FULL_DOME : { ...base, fovDeg })
   }
 
@@ -1256,14 +1258,14 @@ export function SkyDome({ playing = false }: Props) {
       <div className="sky-hud tl">
         {view === FULL_DOME
           ? isPolarDome ? `NIEBO · BIEGUN ${site.latDeg >= 0 ? 'PÓŁNOCNY' : 'POŁUDNIOWY'}` : 'NIEBO · ZENIT'
-          : `POLE ${Math.round(view.fovDeg)}° · AZ ${Math.round(view.azDeg)}° · H ${Math.round(view.altDeg)}°`}
+          : `POLE ${fmtNum(view.fovDeg, view.fovDeg < 1 ? 1 : 0)}° · AZ ${Math.round(view.azDeg)}° · H ${Math.round(view.altDeg)}°`}
       </div>
       <div className="sky-hud tr">
         {selected ? `${selected.id} ${displayName(selected) ? '· ' + displayName(selected) : ''}` : 'Wybierz obiekt'}
       </div>
       {skySurvey && (
         <div className="sky-hud bl">
-          {hipsLayer.current?.failed() ? 'NSNS: nie udało się pobrać nieba z /api/hips/ · ponawiam co 20 s' : `${SURVEYS[skySurvey].label} · ${SURVEYS[skySurvey].credit}`}
+          {hipsLayer.current?.failed() ? 'NSNS: nie udało się pobrać nieba z /api/hips/ · ponawiam co 20 s' : `${skyLook === 'nsnsSho' ? 'NSNS SHO' : SURVEYS[skySurvey].label} · ${SURVEYS[skySurvey].credit}`}
         </div>
       )}
       <div className="sky-hud br" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>

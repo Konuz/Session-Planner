@@ -25,8 +25,9 @@ import { checkIdentity, cf4Choice, cw21Choice, findCw21, findHr23, findRl22, hr2
 import { cachedBytes, cachedText } from './download.ts'
 import { hiiChoice, parseFosterBrunt, parseRusseil, parseWise, type HiiSources } from './hiiDistances.ts'
 import { GALAXY_TYPES, parseArp, parseCederblad, parseHcg, parseRcw, planNebulae } from './brightNebulae.ts'
-import { MANUAL_OBJECTS, WR_NEBULAE } from './manualObjects.ts'
+import { MANUAL_OBJECTS, MWP_1, WR_NEBULAE } from './manualObjects.ts'
 import { newPlanetaryNebulae, parseLeDu, parseV84, planLeDu, type PlanetaryNebula } from './planetaryNebulae.ts'
+import { applyVerifiedPncatIdentifications, mergePncat, PNCAT_URL } from './pncat.ts'
 import { displayOf, parseHr23Catalog, planClusters, type Hr23Entry } from './openClusters.ts'
 import { inheritSnrComponentDistances, SNR_COMPONENT_PARENT_DISTANCES } from './snrComponents.ts'
 
@@ -429,6 +430,13 @@ async function buildCatalog() {
     if (illuminator) row[18] = illuminator
     return row
   })
+  rows.push(MWP_1)
+  const pncatRows = parseCsv(await cached('mast-pncat-v1.csv', PNCAT_URL))
+  const [, ...verifiedPn] = parseCsv(readFileSync(join(ROOT, 'scripts', 'data', 'pncat-verified.csv'), 'utf8'))
+  const pncat = mergePncat(rows, [...pncatRows, ...verifiedPn])
+  const resolvedPncat = applyVerifiedPncatIdentifications(rows, pncatRows)
+  const remainingPncat = pncat.review.filter(({ id }) => !resolvedPncat.has(id))
+  console.log(`PNcat MAST: ${pncat.added.length} nowych z importu, ${pncat.aliased.length} aliasów, ${resolvedPncat.size} zweryfikowanych dopasowań, ${pncat.disputed.length} rozbieżnych statusów, ${remainingPncat.length} nierozstrzygniętych dopasowań`)
   const inherited = inheritSnrComponentDistances(rows, distancePlan.sources, distancePlan.unresolved, distancePlan.photoAliases)
   const withDist = rows.filter((row) => row[13] !== 0).length
   writeFileSync(join(OUT, 'catalog.json'), JSON.stringify({ v: 2, sources: distancePlan.sources, unresolved: distancePlan.unresolved, photoAliases: distancePlan.photoAliases, rows }))
