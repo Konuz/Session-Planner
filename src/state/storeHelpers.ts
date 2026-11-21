@@ -6,6 +6,7 @@ import type { DomeStyle } from '../lib/space3d'
 import type { SkyLook } from '../lib/hipsSky'
 import type { ThumbSource } from '../lib/thumbs'
 import type { Exposure } from '../lib/exposures'
+import type { Field } from '../lib/fieldTarget'
 import { isValidTimeZone, type WeatherProviderId } from '../lib/services'
 import type { Levels } from '../lib/stretch'
 
@@ -108,6 +109,8 @@ export interface PlanItem {
   key: string
   objectIndex: number
   objectId: string
+  /** Swobodne pole (objectIndex −1, objectId z `fieldId`); brak dla obiektu katalogu. */
+  field?: Field
   startMs: number | null
   endMs: number | null
   framing: Framing
@@ -130,6 +133,10 @@ export interface State {
   nightDate: string
   timeMs: number | null
   selectedIndex: number | null
+  /** Swobodna eksploracja: cel to środek przesuniętej ramki FOV, nie obiekt; `select` ją kończy. */
+  freeField: Field | null
+  /** Ramka FOV na kopule przypięta (false: można ją przeciągać). */
+  framePinned: boolean
   history: number[]
   historyPos: number
   equipment: Equipment
@@ -183,6 +190,8 @@ export interface State {
   setTime(t: number | null): void
   select(index: number | null, find?: boolean): void
   stepHistory(delta: number): void
+  setFreeField(field: Field): void
+  setFramePinned(pinned: boolean): void
   addEquipmentSet(): void
   removeEquipmentSet(): void
   selectEquipmentSet(id: string): void
@@ -198,7 +207,7 @@ export interface State {
   setFraming(patch: Partial<Framing>): void
   setFramingView(patch: Partial<FramingViewState>): void
   setFramingStretch(layer: string, levels: Levels | null): void
-  addToPlan(index: number, id: string): void
+  addToPlan(index: number, id: string, field?: Field): void
   updatePlan(key: string, patch: Partial<PlanItem>): void
   removeFromPlan(key: string): void
   movePlan(key: string, delta: number): void

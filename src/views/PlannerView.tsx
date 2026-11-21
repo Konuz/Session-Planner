@@ -9,6 +9,7 @@ import { angularDistanceDeg, computeOptics, moonJ2000 } from '../lib/astro'
 import { mosaicCenters } from '../lib/framing'
 import { displayName, TYPE_INFO, type DSO } from '../lib/catalog'
 import { exposureSeconds, fitExposures, planExposures, validExposure, type Exposure } from '../lib/exposures'
+import { fieldObject, FIELD_TYPE_LABEL, isField } from '../lib/fieldTarget'
 import { fmtDec, fmtDeg, fmtDuration, fmtRa, fmtTime } from '../lib/format'
 import { altitudeTrack, darkWindow, nightGrid, visibility, type AltSample, type Visibility } from '../lib/night'
 import { download, exposureCsv, ninaCsv, schedulerCsv } from '../lib/nina'
@@ -16,6 +17,8 @@ import { autoSchedule, localTimeToMs, overlaps } from '../lib/planner'
 import { readSavedPlan } from '../lib/planImport'
 import { useCatalog, useNight, useSite } from '../state/data'
 import { useStore, type PlanItem } from '../state/store'
+
+const typeLabel = (o: DSO) => (isField(o) ? FIELD_TYPE_LABEL : TYPE_INFO[o.type].label)
 
 interface Row {
   item: PlanItem
@@ -30,7 +33,8 @@ export default function PlannerView() {
   const night = useNight()
   const site = useSite()
   const plan = useStore((s) => s.plan)
-  const targetIds = useStore(useShallow((s) => s.plan.map((item) => item.objectId)))
+  // Pole jako obiekt z referencją niezmienną przy edycji ekspozycji: widoczność liczy się tylko po zmianie celów.
+  const targetRefs = useStore(useShallow((s) => s.plan.map((item) => item.field ?? item.objectId)))
   const updatePlan = useStore((s) => s.updatePlan)
   const removeFromPlan = useStore((s) => s.removeFromPlan)
   const movePlan = useStore((s) => s.movePlan)
@@ -52,17 +56,17 @@ export default function PlannerView() {
   const [darkStart, darkEnd] = darkWindow(night)
   const grid = useMemo(() => nightGrid(night, site, 5), [night, site])
   const catalogById = useMemo(() => new Map((catalog ?? []).map((o) => [o.id, o])), [catalog])
-  const missingItems = catalog ? plan.filter((item) => !catalogById.has(item.objectId)) : []
+  const missingItems = catalog ? plan.filter((item) => !item.field && !catalogById.has(item.objectId)) : []
   const targets = useMemo(() => {
     const result = new Map<string, Omit<Row, 'item' | 'exposures'>>()
-    for (const id of targetIds) {
-      const o = catalogById.get(id)
-      if (!o || result.has(id)) continue
+    for (const ref of targetRefs) {
+      const o = typeof ref === 'string' ? catalogById.get(ref) : fieldObject(ref)
+      if (!o || result.has(o.id)) continue
       const track = altitudeTrack(o, grid)
-      result.set(id, { o, track, vis: visibility(o, track, night, site, minAlt, horizon) })
+      result.set(o.id, { o, track, vis: visibility(o, track, night, site, minAlt, horizon) })
     }
     return result
-  }, [catalogById, targetIds, grid, night, site, minAlt, horizon])
+  }, [catalogById, targetRefs, grid, night, site, minAlt, horizon])
   const rows: Row[] = useMemo(() => plan.flatMap((item) => {
     const target = targets.get(item.objectId)
     return target ? [{ item, ...target, exposures: planExposures(item) }] : []
@@ -144,7 +148,7 @@ export default function PlannerView() {
       const panels = mosaic && mosaic.cols * mosaic.rows > 1 ? mosaicCenters(center, optics.fovWdeg, optics.fovHdeg, r.item.framing.paDeg, mosaic) : [center]
       return panels.map((p, k) => ({
         name: panels.length > 1 ? `${name} Panel ${k + 1}` : name,
-        type: TYPE_INFO[r.o.type].label,
+        type: typeLabel(r.o),
         raDeg: p.raDeg,
         decDeg: p.decDeg,
         paDeg: r.item.framing.paDeg,
@@ -169,7 +173,7 @@ export default function PlannerView() {
       ...rows.map((r, i) => {
         const s = slots[i]
         return [
-          `${i + 1}. ${r.o.id}${displayName(r.o) ? ` ${displayName(r.o)}` : ''} (${TYPE_INFO[r.o.type].label})`,
+          `${i + 1}. ${r.o.id}${displayName(r.o) ? ` ${displayName(r.o)}` : ''} (${typeLabel(r.o)})`,
           `   Okno: ${s ? `${fmtTime(s.startMs, tz)}–${fmtTime(s.endMs, tz)}` : 'brak'}`,
           `   Środek: RA ${fmtRa(r.item.framing.raDeg ?? r.o.raDeg)}, Dec ${fmtDec(r.item.framing.decDeg ?? r.o.decDeg)}, PA ${r.item.framing.paDeg}°`,
           `   Górowanie: ${r.vis.transitMs === null ? 'poza nocą' : `${fmtTime(r.vis.transitMs, tz)} na ${fmtDeg(r.vis.transitAlt)}`}`,
@@ -243,7 +247,7 @@ export default function PlannerView() {
               <div className="planner-target-head">
                 <span className="planner-number">{String(i + 1).padStart(2, '0')}</span>
                 <Thumb object={r.o} style={{ width: 52, height: 52, flex: 'none' }} />
-                <div className="planner-target-name"><h2>{r.o.id} <span>{displayName(r.o)}</span></h2><div className="dim">{TYPE_INFO[r.o.type].label} · {fmtDuration(seconds / 3600)} integracji</div></div>
+                <div className="planner-target-name"><h2>{r.o.id} <span>{displayName(r.o)}</span></h2><div className="dim">{typeLabel(r.o)} · {fmtDuration(seconds / 3600)} integracji</div></div>
                 <div className="planner-actions">
                   <button className="button ghost icon-button" disabled={i === 0} onClick={() => movePlan(r.item.key, -1)} aria-label={`Przesuń ${r.o.id} w górę`}><ArrowUp size={16} /></button>
                   <button className="button ghost icon-button" disabled={i === rows.length - 1} onClick={() => movePlan(r.item.key, 1)} aria-label={`Przesuń ${r.o.id} w dół`}><ArrowDown size={16} /></button>

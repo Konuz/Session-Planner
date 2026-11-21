@@ -7,6 +7,7 @@ import { isDomeStyle } from '../lib/space3d'
 import { isSkyLook } from '../lib/hipsSky'
 import { isThumbSource } from '../lib/thumbs'
 import { planExposures } from '../lib/exposures'
+import { fieldId, sanitizeField } from '../lib/fieldTarget'
 import { DEFAULT_WEATHER_PROVIDER, isValidTimeZone, normalizeWeatherProvider } from '../lib/services'
 import {
   DEFAULT_EQUIPMENT,
@@ -51,6 +52,8 @@ export const useStore = create<State>()(
       nightDate: nightDateOf(Date.now(), HOME.timeZone),
       timeMs: null,
       selectedIndex: null,
+      freeField: null,
+      framePinned: true,
       history: [],
       historyPos: -1,
       equipment: DEFAULT_EQUIPMENT,
@@ -119,6 +122,8 @@ export const useStore = create<State>()(
       setTime: (timeMs) => set({ timeMs }),
       select: (selectedIndex, find = true) =>
         set((s) => {
+          // Swobodne pole ma indeks −1: nie trafia do historii ani do zapisu wyboru.
+          if (selectedIndex !== null && selectedIndex < 0) return s
           let history = s.history.slice(0, s.historyPos + 1)
           if (!history.length && s.selectedIndex !== null) history = [s.selectedIndex]
           if (selectedIndex !== null && history[history.length - 1] !== selectedIndex) history = [...history, selectedIndex]
@@ -126,21 +131,35 @@ export const useStore = create<State>()(
             selectedIndex,
             history,
             historyPos: history.length - 1,
-            framing: selectedIndex === s.selectedIndex ? s.framing : { ...s.framing, raDeg: null, decDeg: null, mosaic: undefined },
+            freeField: null,
+            framePinned: true,
+            framing: selectedIndex === s.selectedIndex && !s.freeField ? s.framing : { ...s.framing, raDeg: null, decDeg: null, mosaic: undefined },
             findPulse: find ? s.findPulse + 1 : s.findPulse,
           }
         }),
       stepHistory: (delta) =>
         set((s) => {
-          const historyPos = s.historyPos + delta
-          if (historyPos < 0 || historyPos >= s.history.length) return s
+          // Ze swobodnej eksploracji „wstecz” wraca do obiektu, od którego się zaczęła.
+          const fromField = s.freeField !== null && delta < 0
+          if (fromField && s.selectedIndex === null) return s
+          const historyPos = fromField ? s.historyPos : s.historyPos + delta
+          if (!fromField && (historyPos < 0 || historyPos >= s.history.length)) return s
           return {
             historyPos,
-            selectedIndex: s.history[historyPos],
+            selectedIndex: fromField ? s.selectedIndex : s.history[historyPos],
+            freeField: null,
+            framePinned: true,
             framing: { ...s.framing, raDeg: null, decDeg: null, mosaic: undefined },
             findPulse: s.findPulse + 1,
           }
         }),
+      // Nowy środek pola staje się środkiem kadru; mozaika obiektu nie przechodzi na pole, mozaika pola zostaje.
+      setFreeField: (field) => set((s) => ({
+        freeField: field,
+        framing: { ...s.framing, raDeg: null, decDeg: null, mosaic: s.freeField ? s.framing.mosaic : undefined },
+        framingView: { ...s.framingView, photoCenter: null },
+      })),
+      setFramePinned: (framePinned) => set({ framePinned }),
       addEquipmentSet: () => set((s) => {
         const numericIds = s.equipmentSets.map((item) => Number(item.id)).filter(Number.isFinite)
         const id = String(Math.max(0, ...numericIds) + 1)
@@ -221,27 +240,29 @@ export const useStore = create<State>()(
         delete rest[layer]
         return { framingStretch: levels ? { ...rest, [layer]: levels } : rest }
       }),
-      addToPlan: (objectIndex, objectId) =>
-        set((s) =>
-          s.plan.some((p) => p.objectId === objectId)
-            ? s
-            : {
+      addToPlan: (objectIndex, objectId, field) =>
+        set((s) => {
+          if (s.plan.some((p) => p.objectId === objectId)) return s
+          // Bieżący kadr należy do celu na karcie: pola w swobodnej eksploracji albo wybranego obiektu poza nią.
+          const current = field ? !!s.freeField && fieldId(s.freeField) === objectId : !s.freeField && s.selectedIndex === objectIndex
+          return {
                 plan: [
                   ...s.plan,
                   {
                     key: `${objectIndex}-${Date.now()}`,
                     objectIndex,
                     objectId,
+                    ...(field ? { field } : {}),
                     startMs: null,
                     endMs: null,
-                    framing: s.selectedIndex === objectIndex ? s.framing : { raDeg: null, decDeg: null, paDeg: 0 },
+                    framing: current ? s.framing : { raDeg: null, decDeg: null, paDeg: 0 },
                     filters: s.equipment.mono ? 'L, R, G, B' : 'OSC',
                     exposures: planExposures({ filters: s.equipment.mono ? 'L, R, G, B' : 'OSC' }),
                     note: '',
                   },
                 ],
-              },
-        ),
+              }
+        }),
       updatePlan: (key, patch) => set((s) => ({ plan: s.plan.map((p) => (p.key === key ? { ...p, ...patch } : p)) })),
       removeFromPlan: (key) => set((s) => ({ plan: s.plan.filter((p) => p.key !== key) })),
       movePlan: (key, delta) =>
@@ -290,6 +311,7 @@ export const useStore = create<State>()(
         savedLocations: s.savedLocations,
         weatherProvider: s.weatherProvider,
         selectedIndex: s.selectedIndex,
+        freeField: s.freeField,
         equipmentSets: s.equipmentSets,
         activeEquipmentSetId: s.activeEquipmentSetId,
         savedTelescopes: s.savedTelescopes,
@@ -355,6 +377,9 @@ export const useStore = create<State>()(
           location,
           savedLocations: savedLocations.length ? savedLocations : [location],
           nightDate: nightDateOf(Date.now(), location.timeZone),
+          freeField: sanitizeField(p?.freeField),
+          // Cel-pole z uszkodzonymi współrzędnymi wypada z planu (obiekty katalogu sprawdza wczytanie katalogu).
+          plan: Array.isArray(p?.plan) ? p.plan.filter((item) => !item?.field || sanitizeField(item.field)) : current.plan,
           filter: sanitizeFilter(p?.filter),
           sortBy,
           minVisibleMinutes,

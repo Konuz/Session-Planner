@@ -7,7 +7,7 @@ import type { DSO } from '../lib/catalog'
 import { fmtDate, fmtDuration, fmtTime } from '../lib/format'
 import { horizonAltitude } from '../lib/horizon'
 import { altitudeTrack, darkWindow, localHourTicks, nightGrid, visibility } from '../lib/night'
-import { useNight, useSelected, useSite, useTime, useWeather } from '../state/data'
+import { useNight, useSite, useTarget, useTime, useWeather } from '../state/data'
 import { useStore } from '../state/store'
 import { MoonDisc } from './MoonDisc'
 
@@ -73,7 +73,7 @@ export function AltitudeChart({ object, slot, title = 'Widoczność obiektu', to
   const night = useNight()
   const site = useSite()
   const time = useTime()
-  const selected = useSelected()
+  const selected = useTarget()
   const o = object ?? selected
   const tz = useStore((s) => s.location.timeZone)
   const minAlt = useStore((s) => s.minAltDeg)

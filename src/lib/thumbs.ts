@@ -37,13 +37,13 @@ export function thumbSourceInfo(source: ThumbSource) {
   return source === 'nsnsSho' ? { ...SURVEYS.nsnsOhs, label: 'NSNS SHO' } : SURVEYS[source]
 }
 
-/** NSNS, gdy całe pole leży w pokryciu, a skala obrazu odpowiada szczegółowości przeglądu. */
-export function thumbImageOptions(source: ThumbSource, decDeg: number, fovDeg: number, sizePx: number, dssCoarser = 0): SkyImageOptions {
+/** Bez rozmiaru docelowego akceptujemy też powiększenie najdokładniejszych kafelków wybranego przeglądu. */
+export function thumbImageOptions(source: ThumbSource, decDeg: number, fovDeg: number, sizePx?: number, dssCoarser = 0): SkyImageOptions {
   const survey = thumbSourceInfo(source)
   // OHS/SHO mają dwa razy drobniejsze kafelki niż warstwy szerokopasmowe.
   const minScale = survey.id === 'nsnsOhs' ? 7.5 : 15
   const covered = decDeg - fovDeg / 2 >= survey.minDecDeg
-  const scaleFits = arcsecPerPixel(fovDeg, sizePx) >= minScale
+  const scaleFits = sizePx === undefined || arcsecPerPixel(fovDeg, sizePx) >= minScale
   if (source === 'dss2' || !covered || !scaleFits) {
     return { survey: 'dss2', coarser: dssCoarser }
   }

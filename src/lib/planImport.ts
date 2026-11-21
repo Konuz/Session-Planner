@@ -1,5 +1,6 @@
 import { displayName, type DSO } from './catalog'
 import { validExposure, type Exposure } from './exposures'
+import { fieldId, isFieldName } from './fieldTarget'
 import { EXPOSURE_HEADER, NINA_HEADER, ninaName, SCHEDULER_HEADER } from './nina'
 import { localTimeToMs } from './planner'
 import type { Framing, PlanItem } from '../state/storeHelpers'
@@ -139,6 +140,12 @@ export function readSavedPlan(text: string, catalog: readonly DSO[], defaultFilt
     ids.set(object.id, object)
   }
   return targets.map(({ name, exposures, ...settings }) => {
+    const filters = exposures?.map((entry) => entry.filter).join(', ') ?? defaultFilters
+    if (isFieldName(name)) {
+      // Swobodne pole (każdy panel mozaiki osobno): środkiem pola jest zapisany środek kadru.
+      const field = { raDeg: settings.framing.raDeg!, decDeg: settings.framing.decDeg! }
+      return { ...settings, framing: { ...settings.framing, raDeg: null, decDeg: null }, objectId: fieldId(field), objectIndex: -1, field, filters, exposures }
+    }
     const baseName = name.replace(/ Panel \d+$/, '')
     // Starszy eksport może podawać inną nazwę zwyczajową. Identyfikator jest na początku.
     let object = names.get(name) ?? names.get(baseName)
@@ -153,7 +160,7 @@ export function readSavedPlan(text: string, catalog: readonly DSO[], defaultFilt
       ...settings,
       objectId: object.id,
       objectIndex: object.i,
-      filters: exposures?.map((entry) => entry.filter).join(', ') ?? defaultFilters,
+      filters,
       exposures,
     }
   })

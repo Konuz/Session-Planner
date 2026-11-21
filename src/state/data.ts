@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import type { Site } from '../lib/astro'
 import { loadCatalog, type DSO } from '../lib/catalog'
+import { fieldObject } from '../lib/fieldTarget'
 import { darkWindow, nightPhases, type NightPhases } from '../lib/night'
 import { measureSince, perfNow } from '../lib/perf'
 import { fetchWeather, type WeatherHour } from '../lib/services'
@@ -57,6 +58,13 @@ export function useSelected(): DSO | null {
   const { indexed } = useCatalog()
   const index = useStore((s) => s.selectedIndex)
   return indexed && index !== null ? (indexed[index] ?? null) : null
+}
+
+/** Cel widoku Niebo: swobodne pole w swobodnej eksploracji, inaczej wybrany obiekt. */
+export function useTarget(): DSO | null {
+  const selected = useSelected()
+  const field = useStore((s) => s.freeField)
+  return useMemo(() => (field ? fieldObject(field) : selected), [field, selected])
 }
 
 /** Starsze własne zdjęcie pozostaje w IndexedDB pod oznaczeniem użytym przy jego dodaniu. */

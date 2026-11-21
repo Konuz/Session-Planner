@@ -97,7 +97,7 @@ export function ObjectDetails({ onClose }: { onClose: () => void }) {
       <div className="drawer-backdrop" onClick={onClose} />
       <aside className="drawer" role="dialog" aria-label={`Szczegóły ${o.id}`}>
         <div style={{ position: 'relative' }}>
-          <Thumb object={o} className="thumb" style={{ aspectRatio: '16 / 9' }} fovDeg={Math.min(4, Math.max(0.3, (Math.max(o.majArcmin, 3) * 2.6) / 60))} sizePx={560} preferAstroBin />
+          <Thumb object={o} className="thumb" style={{ aspectRatio: '16 / 9' }} fovDeg={Math.min(4, Math.max(0.3, (Math.max(o.majArcmin, 3) * 2.6) / 60))} sizePx={560} followSkySurvey preferAstroBin />
           <CloseButton onClick={onClose} style={{ position: 'absolute', top: 16, right: 16, zIndex: 4 }} />
         </div>
         <div style={{ padding: 22 }}>

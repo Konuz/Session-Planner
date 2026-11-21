@@ -84,6 +84,10 @@ export function SkyView() {
   const [playing, setPlaying] = useState(false)
   const space3DOpen = useStore((s) => s.space3DOpen)
   const setSpace3DOpen = useStore((s) => s.setSpace3DOpen)
+  const freeRoam = useStore((s) => s.freeField !== null)
+  const setFramePinned = useStore((s) => s.setFramePinned)
+  // Poza kopułą ramki nie da się przeciągać: przejście do kadrowania przypina ją (miniatura pokazuje bieżące pole).
+  useEffect(() => { if (mode !== 'dome') setFramePinned(true) }, [mode, setFramePinned])
 
   // Okno „Pozycja 3D” zasłania kopułę: odtwarzanie nocy nie powinno jej przerysowywać w tle.
   useEffect(() => { if (space3DOpen) setPlaying(false) }, [space3DOpen])
@@ -132,7 +136,7 @@ export function SkyView() {
                 {label}
               </button>
             ))}
-            <button className={`button small${space3DOpen ? ' active' : ''}`} data-space3d-opener onPointerEnter={() => void loadSpace3D().catch(() => {})} onFocus={() => void loadSpace3D().catch(() => {})} onClick={() => setSpace3DOpen(true)}>Pozycja 3D</button>
+            <button className={`button small${space3DOpen ? ' active' : ''}`} data-space3d-opener disabled={freeRoam} title={freeRoam ? 'Pozycja 3D wymaga wybranego obiektu' : undefined} onPointerEnter={() => void loadSpace3D().catch(() => {})} onFocus={() => void loadSpace3D().catch(() => {})} onClick={() => setSpace3DOpen(true)}>Pozycja 3D</button>
             <PlaybackControls visible={mode === 'dome'} playing={playing} setPlaying={setPlaying} />
           </div>
         </section>

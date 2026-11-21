@@ -116,6 +116,15 @@ describe('miniatury', () => {
     expect(thumbImageOptions('dss2', 40, 4, 224)).toEqual({ survey: 'dss2', coarser: 0 })
   })
 
+  it('jawnie wybrany przegląd pozostaje aktywny przy małym polu w jego pokryciu', async () => {
+    const { thumbImageOptions } = await import('./thumbs')
+    expect(thumbImageOptions('nsns', 47, 0.3)).toEqual({ survey: 'nsns' })
+    expect(thumbImageOptions('nsnsRgb', 47, 0.3)).toEqual({ survey: 'nsnsRgb' })
+    expect(thumbImageOptions('nsnsOhs', 47, 0.3)).toEqual({ survey: 'nsnsOhs' })
+    expect(thumbImageOptions('nsnsSho', 47, 0.3)).toEqual({ survey: 'nsnsOhs', mode: 'swap-rb' })
+    expect(thumbImageOptions('nsnsSho', -17, 0.3)).toEqual({ survey: 'dss2', coarser: 0 })
+  })
+
   it('błąd workera odrzuca obietnicę', async () => {
     FakeWorker.reply = (msg) => ({ id: msg.id, error: 'brak kafelków' })
     const { getSkyImage } = await import('./thumbs')

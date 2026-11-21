@@ -1,7 +1,7 @@
 // Kopuła nieba: gwiazdy w WebGL, nakładka 2D z liniami i postaciami
 // gwiazdozbiorów, konturami mgławic, horyzontem, torem obiektu i animacją „znajdź obiekt”. Rysuje tylko przy zmianie stanu.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Compass, RefreshCw } from 'lucide-react'
+import { Compass, Pin, PinOff, RefreshCw } from 'lucide-react'
 import {
   altAz,
   bodyAltAz,
@@ -17,9 +17,11 @@ import {
   unitVector,
   vecToEquatorial,
   vecToHorizontal,
+  type Equatorial,
   type Vec3,
 } from '../lib/astro'
 import { catalogOf, DEFAULT_ANNOTATION_COLORS, displayName, skyGroupOf, skyShown, TYPE_INFO, type DSO, type ObjectType } from '../lib/catalog'
+import { FREE_ROAM_LABEL, isField } from '../lib/fieldTarget'
 import { fmtNum, fmtTime } from '../lib/format'
 import { frameCorners, gnomonicInverse } from '../lib/framing'
 import { SURVEYS } from '../lib/hips'
@@ -29,9 +31,10 @@ import { altitudeTrack, localHourTicks, nightGrid } from '../lib/night'
 import { loadOutlines, pointInOutline, polygonArea, type Outline } from '../lib/outlines'
 import { affineFrom3, FULL_DOME, makeProjector, type View } from '../lib/projection'
 import { loadMilkyWay, loadSky, type MilkyWay, type SkyData } from '../lib/sky'
-import { useCatalog, useNight, useSelected, useSite, useTime } from '../state/data'
+import { useCatalog, useNight, useSite, useTarget, useTime } from '../state/data'
 import { measureSince, perfNow } from '../lib/perf'
 import { useStore } from '../state/store'
+import { FrameCoordinates } from './FrameCoordinates'
 import { MoonDisc } from './MoonDisc'
 import { useHipsSkyLayer } from './useHipsSkyLayer'
 import { useSkyPhotoLayer } from './useSkyPhotoLayer'
@@ -100,8 +103,7 @@ export function SkyDome({ playing = false }: Props) {
   const [interacting, setInteracting] = useState(false)
   const interactingRef = useRef(false)
   const interactTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const scheduleView = (next: View) => {
-    pendingView.current = next
+  const markInteracting = () => {
     if (!interactingRef.current) {
       interactingRef.current = true
       setInteracting(true)
@@ -111,6 +113,10 @@ export function SkyDome({ playing = false }: Props) {
       interactingRef.current = false
       setInteracting(false)
     }, 150)
+  }
+  const scheduleView = (next: View) => {
+    pendingView.current = next
+    markInteracting()
     if (viewFrame.current) return
     viewFrame.current = requestAnimationFrame(() => {
       viewFrame.current = 0
@@ -123,8 +129,23 @@ export function SkyDome({ playing = false }: Props) {
     pendingView.current = null
     setView(next)
   }
+  // Przeciąganie odpiętej ramki FOV: środek na żywo (najwyżej raz na klatkę), zapis do store po puszczeniu.
+  const [dragCenter, setDragCenter] = useState<Equatorial | null>(null)
+  const frameDrag = useRef<{ x: number; y: number; grabDx: number; grabDy: number; moved: boolean } | null>(null)
+  const latestDragCenter = useRef<Equatorial | null>(null)
+  const dragFrame = useRef(0)
+  const scheduleDragCenter = (next: Equatorial) => {
+    latestDragCenter.current = next
+    markInteracting()
+    if (dragFrame.current) return
+    dragFrame.current = requestAnimationFrame(() => {
+      dragFrame.current = 0
+      setDragCenter(latestDragCenter.current)
+    })
+  }
   useEffect(() => () => {
     cancelAnimationFrame(viewFrame.current)
+    cancelAnimationFrame(dragFrame.current)
     clearTimeout(interactTimer.current)
   }, [])
   const [isPolarDome, setShowPolarDome] = useState(false)
@@ -154,7 +175,8 @@ export function SkyDome({ playing = false }: Props) {
   const time = useTime()
   const night = useNight()
   const { catalog } = useCatalog()
-  const selected = useSelected()
+  // W swobodnej eksploracji: pole (obiekt z indeksem −1) w środku przesuniętej ramki.
+  const selected = useTarget()
   const horizon = useStore((s) => s.horizon)
   const showGridLabels = useStore((s) => s.showDecLabels)
   const showLines = useStore((s) => s.showLines)
@@ -177,6 +199,9 @@ export function SkyDome({ playing = false }: Props) {
   const framing = useStore((s) => s.framing)
   const plan = useStore((s) => s.plan)
   const select = useStore((s) => s.select)
+  const framePinned = useStore((s) => s.framePinned)
+  const setFramePinned = useStore((s) => s.setFramePinned)
+  const setFreeField = useStore((s) => s.setFreeField)
   const tz = useStore((s) => s.location.timeZone)
 
   useEffect(() => {
@@ -341,6 +366,67 @@ export function SkyDome({ playing = false }: Props) {
     ? catalogMessier.filter((o) => o.majArcmin / 120 >= minMessierRadiusDeg)
     : catalogMessier), [catalogMessier, minMessierRadiusDeg])
   const moonPoint = proj.hor(horizontalToVec({ altDeg: moon.altDeg, azDeg: moon.azDeg }))
+
+  // Pole widzenia zestawu (jak w kadrowaniu: środek i PA z `framing`). Montaż EQ trzyma PA na niebie, więc ramka obraca się
+  // razem z niebem; po górowaniu (meridian flip) kamera jest odwrócona o 180°, co widać po znaczniku górnej krawędzi matrycy.
+  const optics = useMemo(() => computeOptics({ apertureMm: equipment.apertureMm, focalLengthMm: equipment.focalLengthMm, reducer: equipment.reducer, widthPx: equipment.widthPx, heightPx: equipment.heightPx, pixelUm: equipment.pixelUm, binning: equipment.binning }), [equipment])
+  const frameCenter: Equatorial | null = selected ? dragCenter ?? { raDeg: framing.raDeg ?? selected.raDeg, decDeg: framing.decDeg ?? selected.decDeg } : null
+  const frame = (() => {
+    if (!frameCenter) return null
+    const fp = proj.eq(unitVector(frameCenter.raDeg, frameCenter.decDeg))
+    const pa = framing.paDeg + (hourAngleDeg(frameCenter, time, site) > 0 ? 180 : 0)
+    const corners = frameCorners({ xi: 0, eta: 0 }, optics.fovWdeg, optics.fovHdeg, pa).map((c) => {
+      const q = gnomonicInverse(frameCenter, c)
+      return proj.eq(unitVector(q.raDeg, q.decDeg))
+    })
+    if (!fp || corners.some((c) => !c)) return null
+    const diag = Math.hypot(corners[0]![0] - corners[2]![0], corners[0]![1] - corners[2]![1])
+    if (!(diag > 0)) return null
+    // Rzut stereograficzny zmniejsza ramkę ku zenitowi: przy dużym pomniejszeniu powiększamy ją do 18 px przekątnej
+    // (kształt i obrót zostają), zamiast ją chować; tak samo duża jest strefa chwytania odpiętej ramki.
+    const s = Math.max(1, 18 / diag)
+    const pts = corners.map((c) => [fp[0] + (c![0] - fp[0]) * s, fp[1] + (c![1] - fp[1]) * s] as [number, number])
+    return { fp, pts }
+  })()
+  const frameBox = frame && {
+    minX: Math.min(...frame.pts.map((p) => p[0])),
+    maxX: Math.max(...frame.pts.map((p) => p[0])),
+    minY: Math.min(...frame.pts.map((p) => p[1])),
+    maxY: Math.max(...frame.pts.map((p) => p[1])),
+  }
+  const frameOnScreen = !!frameBox && frameBox.maxX > 0 && frameBox.minX < size.w && frameBox.maxY > 0 && frameBox.minY < size.h
+  // Przycisk przypięcia przy górnej (na ekranie) krawędzi ramki: obrócony jak ta krawędź, rozmiar w proporcji do jej długości.
+  const pinPose = (() => {
+    if (!frame) return null
+    const { fp, pts } = frame
+    let best = 0
+    for (let i = 1; i < 4; i++) if (pts[i][1] + pts[(i + 1) % 4][1] < pts[best][1] + pts[(best + 1) % 4][1]) best = i
+    let a = pts[best]
+    let b = pts[(best + 1) % 4]
+    if (b[0] < a[0]) [a, b] = [b, a]
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1
+    const u = [(b[0] - a[0]) / len, (b[1] - a[1]) / len]
+    // Normalna na zewnątrz ramki (od środka ku krawędzi).
+    let n = [-u[1], u[0]]
+    if (n[0] * ((a[0] + b[0]) / 2 - fp[0]) + n[1] * ((a[1] + b[1]) / 2 - fp[1]) < 0) n = [-n[0], -n[1]]
+    const px = Math.max(16, Math.min(40, len * 0.14))
+    // Przycisk w narożniku na zewnątrz: dolny bok leży na krawędzi ramki, boczny przedłuża sąsiednią krawędź.
+    const half = px / 2
+    return {
+      px,
+      x: b[0] - u[0] * half + n[0] * half,
+      y: b[1] - u[1] * half + n[1] * half,
+      angle: Math.atan2(u[1], u[0]) / DEG,
+    }
+  })()
+  const freeRoam = !!selected && isField(selected)
+  // Obiekt pod horyzontem chowa ramkę; odpiętą ramkę i swobodne pole widać zawsze (da się je wyciągnąć i odpiąć).
+  const targetUp = (() => {
+    if (!selected) return false
+    const hv = vecToHorizontal(mulVec(horMatrix, unitVector(selected.raDeg, selected.decDeg)))
+    return hv.altDeg > horizonAltitude(horizon, hv.azDeg)
+  })()
+  const frameShown = !!selected && (!framePinned || freeRoam || targetUp)
 
   // ---------- Rysowanie ----------
   // Canvas i znacznik Księżyca w DOM muszą trafić na ekran w tej samej klatce.
@@ -968,10 +1054,10 @@ export function SkyDome({ playing = false }: Props) {
       }
     }
 
-    // Wybrany obiekt: celownik i animacja namierzania.
-    if (selected && aboveHorizon(unitVector(selected.raDeg, selected.decDeg))) {
+    // Wybrany obiekt (albo swobodne pole): celownik i animacja namierzania (kiedy widać ramkę: `frameShown`).
+    if (selected && frameShown) {
       const p = proj.eq(unitVector(selected.raDeg, selected.decDeg))
-      if (p) {
+      if (p || frame) {
         const now = performance.now()
         const k = Math.max(0, Math.min(1, (now - lockStart.current) / 900))
         const e = 1 - (1 - k) ** 3
@@ -979,25 +1065,12 @@ export function SkyDome({ playing = false }: Props) {
         ctx.strokeStyle = '#00e0ff'
         ctx.lineWidth = 1.5
         ctx.globalAlpha = 0.4 + 0.6 * e
-        // Pole widzenia zestawu (jak w kadrowaniu: środek i PA z `framing`) z małym krzyżykiem w środku.
-        // Montaż EQ trzyma PA na niebie, więc ramka obraca się razem z niebem; po górowaniu (meridian flip)
-        // kamera jest odwrócona o 180°, co widać po znaczniku górnej krawędzi matrycy.
-        const optics = computeOptics({ apertureMm: equipment.apertureMm, focalLengthMm: equipment.focalLengthMm, reducer: equipment.reducer, widthPx: equipment.widthPx, heightPx: equipment.heightPx, pixelUm: equipment.pixelUm, binning: equipment.binning })
-        const fc = { raDeg: framing.raDeg ?? selected.raDeg, decDeg: framing.decDeg ?? selected.decDeg }
-        const fp = proj.eq(unitVector(fc.raDeg, fc.decDeg))
-        const pa = framing.paDeg + (hourAngleDeg(fc, time, site) > 0 ? 180 : 0)
-        const corners = frameCorners({ xi: 0, eta: 0 }, optics.fovWdeg, optics.fovHdeg, pa)
-          .map((c) => {
-            const q = gnomonicInverse(fc, c)
-            return proj.eq(unitVector(q.raDeg, q.decDeg))
-          })
-        const frameOk = fp !== null && corners.every((c) => c !== null)
-        const frameDiag = frameOk ? Math.hypot(corners[0]![0] - corners[2]![0], corners[0]![1] - corners[2]![1]) : 0
-        if (frameOk && frameDiag > 0) {
-          // Rzut stereograficzny zmniejsza ramkę ku zenitowi: przy dużym pomniejszeniu powiększamy ją do 18 px przekątnej
-          // (kształt i obrót zostają), zamiast ją chować. Animacja namierzania: ramka zwęża się do właściwego rozmiaru.
-          const s = Math.max(1, 18 / frameDiag) * (1 + (1 - e) * 1.5)
-          const pts = corners.map((c) => [fp[0] + (c![0] - fp[0]) * s, fp[1] + (c![1] - fp[1]) * s] as const)
+        if (frame) {
+          // Animacja namierzania: ramka zwęża się do właściwego rozmiaru. Odpięta ramka ma linię przerywaną.
+          const { fp } = frame
+          const s = 1 + (1 - e) * 1.5
+          const pts = frame.pts.map(([x, y]) => [fp[0] + (x - fp[0]) * s, fp[1] + (y - fp[1]) * s] as const)
+          if (!framePinned) ctx.setLineDash([6, 4])
           ctx.beginPath()
           pts.forEach(([x, y], i) => {
             if (i) ctx.lineTo(x, y)
@@ -1005,6 +1078,7 @@ export function SkyDome({ playing = false }: Props) {
           })
           ctx.closePath()
           ctx.stroke()
+          ctx.setLineDash([])
           // Znacznik górnej krawędzi matrycy (narożniki 0 i 1): trójkąt na zewnątrz ramki.
           const mx = (pts[0][0] + pts[1][0]) / 2
           const my = (pts[0][1] + pts[1][1]) / 2
@@ -1019,18 +1093,22 @@ export function SkyDome({ playing = false }: Props) {
           ctx.closePath()
           ctx.fill()
         }
-        // Krzyżyk w środku (przy dużym pomniejszeniu, gdy ramka jest za mała, zostaje sam).
-        const cx = frameOk ? fp[0] : p[0]
-        const cy = frameOk ? fp[1] : p[1]
+        // Krzyżyk w środku ramki (bez niej w miejscu obiektu).
+        const [cx, cy] = frame ? frame.fp : p!
         ctx.beginPath()
         ctx.moveTo(cx - 6, cy)
         ctx.lineTo(cx + 6, cy)
         ctx.moveTo(cx, cy - 6)
         ctx.lineTo(cx, cy + 6)
         ctx.stroke()
-        ctx.font = '600 13px ui-monospace, Consolas, monospace'
-        ctx.fillStyle = '#e6fbff'
-        ctx.fillText(selected.id, p[0] + 16, p[1] + 26)
+        // Podpis przy obiekcie; ramka przeciągana albo pole: „Swobodna eksploracja” przy środku ramki.
+        const roaming = freeRoam || !!dragCenter
+        const at = roaming && frame ? frame.fp : p
+        if (at) {
+          ctx.font = '600 13px ui-monospace, Consolas, monospace'
+          ctx.fillStyle = '#e6fbff'
+          ctx.fillText(roaming ? FREE_ROAM_LABEL : selected.id, at[0] + 16, at[1] + 26)
+        }
       }
     }
     measureSince('dome:draw', drawStart)
@@ -1043,7 +1121,7 @@ export function SkyDome({ playing = false }: Props) {
     let best: DSO | null = null
     let bestD = 14
     const candidates = view.fovDeg < 150 ? messier : []
-    for (const o of [...planObjects, ...candidates, ...(selected ? [selected] : [])]) {
+    for (const o of [...planObjects, ...candidates, ...(selected && !freeRoam ? [selected] : [])]) {
       if (!o) continue
       const p = proj.eq(unitVector(o.raDeg, o.decDeg))
       if (!p) continue
@@ -1078,10 +1156,51 @@ export function SkyDome({ playing = false }: Props) {
     return best?.k ?? null
   }
 
+  /** Punkt wewnątrz odpiętej ramki: tam przeciąganie przesuwa ramkę zamiast nieba. */
+  const overFrame = (x: number, y: number) => !framePinned && !!frame && pointInOutline(frame.pts, [], x, y)
+
+  const finishFrameDrag = () => {
+    const fd = frameDrag.current
+    frameDrag.current = null
+    cancelAnimationFrame(dragFrame.current)
+    dragFrame.current = 0
+    const c = latestDragCenter.current
+    latestDragCenter.current = null
+    setDragCenter(null)
+    if (fd?.moved && c) setFreeField(c)
+    return fd
+  }
+
+  /** Środek wpisany ręcznie: ramka przechodzi tam, a widok podąża, gdy nowe miejsce jest poza ekranem. */
+  const applyFrameCoordinates = (c: Equatorial) => {
+    setFreeField(c)
+    const v = unitVector(c.raDeg, c.decDeg)
+    const p = proj.eq(v)
+    if (view.fovDeg > 150 || (p && p[0] >= 0 && p[0] <= size.w && p[1] >= 0 && p[1] <= size.h)) return
+    const h = vecToHorizontal(mulVec(horMatrix, v))
+    const to: View = { azDeg: h.azDeg, altDeg: Math.max(-10, Math.min(89.9, h.altDeg)), fovDeg: view.fovDeg }
+    if (reducedMotion()) {
+      anim.current = null
+      setViewNow(to)
+      return
+    }
+    anim.current = { from: view, to, start: performance.now(), dur: 900 }
+    setAnimationRequest((n) => n + 1)
+  }
+
   const onPointerMove = (e: React.PointerEvent) => {
     const rect = overlayRef.current!.getBoundingClientRect()
     const x = e.clientX - rect.left
     const y = e.clientY - rect.top
+    const fd = frameDrag.current
+    if (fd) {
+      if (!fd.moved && Math.abs(x - fd.x) + Math.abs(y - fd.y) <= 3) return
+      fd.moved = true
+      // Środek ramki idzie za kursorem z zachowaniem miejsca chwytu.
+      const v = proj.unprojectHor(x + fd.grabDx, y + fd.grabDy)
+      scheduleDragCenter(vecToEquatorial(mulVec(transpose(horMatrix), v)))
+      return
+    }
     if (drag.current) {
       const dx = x - drag.current.x
       const dy = y - drag.current.y
@@ -1124,7 +1243,7 @@ export function SkyDome({ playing = false }: Props) {
     }
     const hit = visible ? pick(x, y) : null
     if (hit !== hoverObj) setHoverObj(hit)
-    overlayRef.current!.style.cursor = hit ? 'pointer' : 'grab'
+    overlayRef.current!.style.cursor = overFrame(x, y) ? 'move' : hit ? 'pointer' : 'grab'
   }
 
   // Przybliżanie kółkiem nad kopułą.
@@ -1182,7 +1301,7 @@ export function SkyDome({ playing = false }: Props) {
         style={canvasStyle}
         className="overlay"
         role="img"
-        aria-label={`Niebo${selected ? `, wybrany obiekt ${selected.id}` : ''}`}
+        aria-label={`Niebo${selected ? freeRoam ? `, ${FREE_ROAM_LABEL.toLowerCase()}` : `, wybrany obiekt ${selected.id}` : ''}`}
         onPointerMove={onPointerMove}
         onPointerLeave={() => {
           setHoverCon(null)
@@ -1190,19 +1309,39 @@ export function SkyDome({ playing = false }: Props) {
           setHoverDepth(null)
           setHoverObj(null)
           drag.current = null
+          if (frameDrag.current) finishFrameDrag()
+        }}
+        onPointerCancel={() => {
+          drag.current = null
+          frameDrag.current = null
+          latestDragCenter.current = null
+          setDragCenter(null)
         }}
         onPointerDown={(e) => {
           const rect = overlayRef.current!.getBoundingClientRect()
-          drag.current = { x: e.clientX - rect.left, y: e.clientY - rect.top, view, moved: false }
+          const x = e.clientX - rect.left
+          const y = e.clientY - rect.top
           ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+          if (frame && overFrame(x, y)) {
+            anim.current = null
+            // Podczas przeciągania ramki bez dymków i postaci gwiazdozbioru spod kursora.
+            setHoverCon(null)
+            frameDrag.current = { x, y, grabDx: frame.fp[0] - x, grabDy: frame.fp[1] - y, moved: false }
+            return
+          }
+          drag.current = { x, y, view, moved: false }
         }}
         onPointerUp={(e) => {
+          // Kliknięcie bez ruchu (także w ramce) wybiera obiekt pod kursorem, jak dotąd. Wyjątek: kliknięcie w odpiętą ramkę
+          // na bieżącym obiekcie nie wybiera go ponownie (to przypięłoby ramkę i przeleciało do obiektu).
+          const fd = frameDrag.current ? finishFrameDrag() : null
+          if (fd?.moved) return
           const d = drag.current
           drag.current = null
-          if (d && !d.moved) {
+          if (fd || (d && !d.moved)) {
             const rect = overlayRef.current!.getBoundingClientRect()
             const o = pick(e.clientX - rect.left, e.clientY - rect.top)
-            if (o) select(o.i, true)
+            if (o && !(fd && o.i === selected?.i)) select(o.i, true)
           }
         }}
         onDoubleClick={() => {
@@ -1235,7 +1374,7 @@ export function SkyDome({ playing = false }: Props) {
           <span style={{ color: 'rgba(220, 225, 235, 0.7)', font: '11px Inter, sans-serif', whiteSpace: 'nowrap' }}>Księżyc</span>
         </div>
       )}
-      {hoverCon && !drag.current && (hoveredOutline ? (
+      {hoverCon && !drag.current && !dragCenter && (hoveredOutline ? (
         <div ref={tipRef} className="const-tip" style={{ left: hoverCon.x, top: hoverCon.y }}>
           {hoveredOutline.dso ? (
             <>
@@ -1261,11 +1400,24 @@ export function SkyDome({ playing = false }: Props) {
           : `POLE ${fmtNum(view.fovDeg, view.fovDeg < 1 ? 1 : 0)}° · AZ ${Math.round(view.azDeg)}° · H ${Math.round(view.altDeg)}°`}
       </div>
       <div className="sky-hud tr">
-        {selected ? `${selected.id} ${displayName(selected) ? '· ' + displayName(selected) : ''}` : 'Wybierz obiekt'}
+        {selected ? freeRoam ? FREE_ROAM_LABEL : `${selected.id} ${displayName(selected) ? '· ' + displayName(selected) : ''}` : 'Wybierz obiekt'}
       </div>
-      {skySurvey && (
+      {frameShown && pinPose && frameOnScreen && (
+        <button
+          className="hud-icon frame-pin"
+          style={{ left: pinPose.x - pinPose.px / 2, top: pinPose.y - pinPose.px / 2, width: pinPose.px, height: pinPose.px, transform: `rotate(${pinPose.angle}deg)` }}
+          aria-pressed={!framePinned}
+          title={framePinned ? 'Odepnij ramkę: swobodna eksploracja (przeciągnij ramkę)' : 'Przypnij ramkę'}
+          aria-label={framePinned ? 'Odepnij ramkę pola widzenia' : 'Przypnij ramkę pola widzenia'}
+          onClick={() => setFramePinned(!framePinned)}
+        >
+          {framePinned ? <Pin size={Math.round(pinPose.px * 0.62)} /> : <PinOff size={Math.round(pinPose.px * 0.62)} />}
+        </button>
+      )}
+      {(skySurvey || (!framePinned && frameCenter)) && (
         <div className="sky-hud bl">
-          {hipsLayer.current?.failed() ? 'NSNS: nie udało się pobrać nieba z /api/hips/ · ponawiam co 20 s' : `${skyLook === 'nsnsSho' ? 'NSNS SHO' : SURVEYS[skySurvey].label} · ${SURVEYS[skySurvey].credit}`}
+          {!framePinned && frameCenter && <FrameCoordinates center={frameCenter} onApply={applyFrameCoordinates} />}
+          {skySurvey && (hipsLayer.current?.failed() ? 'NSNS: nie udało się pobrać nieba z /api/hips/ · ponawiam co 20 s' : `${skyLook === 'nsnsSho' ? 'NSNS SHO' : SURVEYS[skySurvey].label} · ${SURVEYS[skySurvey].credit}`)}
         </div>
       )}
       <div className="sky-hud br" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>

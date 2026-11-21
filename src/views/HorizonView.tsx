@@ -4,7 +4,7 @@ import { altitudeTrack, nightGrid } from '../lib/night'
 import { exportHorizon, horizonAltitude, normalizeHorizon, parseHorizon, type HorizonPoint } from '../lib/horizon'
 import { fromPanoramaPoint, readHorizonPanorama, toPanoramaPoint, type PanoramaCalibration } from '../lib/horizonPanorama'
 import { download } from '../lib/nina'
-import { useNight, useSelected, useSite } from '../state/data'
+import { useNight, useSite, useTarget } from '../state/data'
 import { useStore } from '../state/store'
 
 const W = 1100
@@ -24,7 +24,7 @@ export default function HorizonView() {
   const setHorizon = useStore((s) => s.setHorizon)
   const minAlt = useStore((s) => s.minAltDeg)
   const location = useStore((s) => s.location)
-  const o = useSelected()
+  const o = useTarget()
   const night = useNight()
   const site = useSite()
   const [message, setMessage] = useState('')

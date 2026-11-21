@@ -1,11 +1,13 @@
 import { CircleDot, CloudMoon, Droplets, Eye, Gauge, Ruler, Settings, Sparkles, Telescope, Thermometer, Wind, Camera } from 'lucide-react'
-import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { angularDistanceDeg, bodyAltAz, computeOptics, moonInfo, moonJ2000, riseSetMs, sampling } from '../lib/astro'
 import { DEFAULT_ANNOTATION_COLORS, TYPE_INFO } from '../lib/catalog'
-import { fmtDate, fmtDeg, fmtDistance, fmtNum, fmtSize, fmtTime } from '../lib/format'
+import { FIELD_TYPE_LABEL, FREE_ROAM_LABEL, fieldObject, fieldOf, isField, type Field } from '../lib/fieldTarget'
+import { fmtDate, fmtDec, fmtDeg, fmtDistance, fmtNum, fmtRa, fmtSize, fmtTime } from '../lib/format'
+import { frameCorners, gnomonic, tangentToPixel } from '../lib/framing'
 import { darkWindow, nightPhases } from '../lib/night'
 import { WEATHER_PROVIDERS, skyRating, weatherAt, weatherProviderInfo, weatherSeeing, windRating, type WeatherProviderId, type WeatherSeeingResult } from '../lib/services'
-import { useNight, useOwnPhotoKey, useSelected, useSite, useTime, useWeather } from '../state/data'
+import { useNight, useOwnPhotoKey, useSelected, useSite, useTarget, useTime, useWeather } from '../state/data'
 import { useStore } from '../state/store'
 import { MoonDisc } from './MoonDisc'
 import { ObjectSearch } from './ObjectSearch'
@@ -16,31 +18,71 @@ import { OwnPhotoButton } from './OwnPhotoButton'
 import { Select } from './Select'
 import { CONSTELLATION_PL } from '../lib/constellations'
 
+/** Pole miniatury swobodnego pola: przekątna matrycy z zapasem, zmieszczona w krótszym (pionowym) boku karty 16:10. */
+const fieldThumbFov = (fovWdeg: number, fovHdeg: number) => Math.min(30, Math.max(0.25, Math.hypot(fovWdeg, fovHdeg) * 1.3 * 1.6))
+const FIELD_THUMB_PX = 480
+
+/** Ramka matrycy na miniaturze pola (N u góry, PA jak w kadrowaniu); `slice` odpowiada `object-fit: cover` obrazu. */
+function FieldFrameOverlay({ center, frameCenter, fovDeg }: { center: Field; frameCenter: Field; fovDeg: number }) {
+  const eq = useStore((s) => s.equipment)
+  const paDeg = useStore((s) => s.framing.paDeg)
+  const optics = useMemo(() => computeOptics(eq), [eq])
+  const offset = gnomonic(center, frameCenter)
+  if (!Number.isFinite(offset.xi) || !Number.isFinite(offset.eta)) return null
+  const pts = frameCorners(offset, optics.fovWdeg, optics.fovHdeg, paDeg).map((c) => tangentToPixel(c, fovDeg, FIELD_THUMB_PX))
+  const [cx, cy] = tangentToPixel(offset, fovDeg, FIELD_THUMB_PX)
+  return (
+    <svg viewBox={`0 0 ${FIELD_THUMB_PX} ${FIELD_THUMB_PX}`} preserveAspectRatio="xMidYMid slice" aria-hidden style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
+      <polygon points={pts.map((p) => p.join(',')).join(' ')} fill="none" stroke="var(--accent)" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+      <path d={`M${cx - 8} ${cy}h16M${cx} ${cy - 8}v16`} stroke="var(--accent)" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+    </svg>
+  )
+}
+
 export const ObjectCard = memo(function ObjectCard({ onDetails }: { onDetails: () => void }) {
-  const o = useSelected()
+  const o = useTarget()
+  const selected = useSelected()
   const photoKey = useOwnPhotoKey(o)
   const plan = useStore((s) => s.plan)
   const annotationColors = useStore((s) => s.annotationColors)
   const addToPlan = useStore((s) => s.addToPlan)
   const setTab = useStore((s) => s.setTab)
   const setCenterMode = useStore((s) => s.setCenterMode)
-  const canBack = useStore((s) => s.historyPos > 0)
+  const freeField = useStore((s) => s.freeField)
+  const framePinned = useStore((s) => s.framePinned)
+  const framing = useStore((s) => s.framing)
+  const equipment = useStore((s) => s.equipment)
+  const canBack = useStore((s) => (s.freeField ? s.selectedIndex !== null : s.historyPos > 0))
   const canForward = useStore((s) => s.historyPos < s.history.length - 1)
   const stepHistory = useStore((s) => s.stepHistory)
   const inPlan = o ? plan.some((p) => p.objectId === o.id) : false
+  // Miniatura pola zmienia się dopiero po przypięciu ramki; do tego czasu zostaje poprzednia (pole albo obiekt).
+  const [thumbField, setThumbField] = useState(freeField)
+  useEffect(() => {
+    if (framePinned) setThumbField(freeField)
+  }, [framePinned, freeField])
+  const thumbFieldObject = useMemo(() => (freeField && thumbField ? fieldObject(thumbField) : null), [freeField, thumbField])
+  const thumbObject = thumbFieldObject ?? selected
+  const optics = useMemo(() => computeOptics(equipment), [equipment])
+  const fieldFov = fieldThumbFov(optics.fovWdeg, optics.fovHdeg)
+  const free = !!o && isField(o)
+  const frameCenter = o ? { raDeg: framing.raDeg ?? o.raDeg, decDeg: framing.decDeg ?? o.decDeg } : null
   return (
     <section className="card">
       <ObjectSearch />
       {o ? (
-        <div key={o.i} style={{ marginTop: 12, animation: 'fade-in 0.4s ease' }}>
+        <div key={free ? 'field' : o.i} style={{ marginTop: 12, animation: 'fade-in 0.4s ease' }}>
           <div className="object-photo corners">
-            <Thumb object={o} className="thumb" style={{ position: 'absolute', inset: 0 }} fovDeg={Math.min(4, Math.max(0.25, (Math.max(o.majArcmin, 3) * 2.2) / 60))} sizePx={480} />
-            <OwnPhotoButton objectId={photoKey} />
-            <FavoriteButton objectId={o.id} />
+            {thumbObject && (thumbFieldObject
+              ? <Thumb object={thumbFieldObject} className="thumb" style={{ position: 'absolute', inset: 0 }} fovDeg={fieldFov} sizePx={FIELD_THUMB_PX} followSkySurvey />
+              : <Thumb object={thumbObject} className="thumb" style={{ position: 'absolute', inset: 0 }} fovDeg={Math.min(4, Math.max(0.25, (Math.max(thumbObject.majArcmin, 3) * 2.2) / 60))} sizePx={480} followSkySurvey />)}
+            {thumbField && thumbFieldObject && frameCenter && <FieldFrameOverlay center={thumbField} frameCenter={frameCenter} fovDeg={fieldFov} />}
+            {!free && <OwnPhotoButton objectId={photoKey} />}
+            {!free && <FavoriteButton objectId={o.id} />}
           </div>
           <div className="object-head">
             <div className="object-name">
-              <span className="id"><ScrambleText text={o.id} /></span>
+              <span className="id"><ScrambleText text={free ? FREE_ROAM_LABEL : o.id} /></span>
             </div>
             <div className="history-nav">
               <button className="picker-button icon-button" title="Poprzedni obiekt" aria-label="Poprzedni obiekt" disabled={!canBack} onClick={() => stepHistory(-1)}>‹</button>
@@ -48,14 +90,23 @@ export const ObjectCard = memo(function ObjectCard({ onDetails }: { onDetails: (
             </div>
           </div>
           <div className="object-tags">
-            <span className="chip" style={{ color: annotationColors[o.type] ?? DEFAULT_ANNOTATION_COLORS[o.type] }}>
-              {TYPE_INFO[o.type].label}
-            </span>
-            {o.aliases.slice(0, 2).map((a) => (
-              <span key={a} className="chip" style={{ color: 'var(--text-dim)' }}>
-                {a}
-              </span>
-            ))}
+            {free ? (
+              <>
+                <span className="chip" style={{ color: 'var(--accent)' }}>{FIELD_TYPE_LABEL}</span>
+                {frameCenter && <span className="chip figures" style={{ color: 'var(--text-dim)' }}>{fmtRa(frameCenter.raDeg)} · {fmtDec(frameCenter.decDeg)}</span>}
+              </>
+            ) : (
+              <>
+                <span className="chip" style={{ color: annotationColors[o.type] ?? DEFAULT_ANNOTATION_COLORS[o.type] }}>
+                  {TYPE_INFO[o.type].label}
+                </span>
+                {o.aliases.slice(0, 2).map((a) => (
+                  <span key={a} className="chip" style={{ color: 'var(--text-dim)' }}>
+                    {a}
+                  </span>
+                ))}
+              </>
+            )}
           </div>
           <dl className="facts object-facts">
             <dt>Gwiazdozbiór</dt>
@@ -68,13 +119,13 @@ export const ObjectCard = memo(function ObjectCard({ onDetails }: { onDetails: (
             <dd>{fmtDistance(o.distLy)}</dd>
           </dl>
           <div className="object-actions">
-            <button className="button small" onClick={onDetails}>
+            <button className="button small" onClick={onDetails} disabled={free} title={free ? 'Szczegóły są dostępne po wybraniu obiektu' : undefined}>
               Szczegóły obiektu
             </button>
             <button className="button small" onClick={() => setCenterMode('framing')}>
               Kadruj
             </button>
-            <button className={`button small${inPlan ? ' active' : ''}`} onClick={() => { addToPlan(o.i, o.id); setTab('planner') }} disabled={inPlan}>
+            <button className={`button small${inPlan ? ' active' : ''}`} onClick={() => { addToPlan(o.i, o.id, fieldOf(o)); setTab('planner') }} disabled={inPlan}>
               {inPlan ? 'W planie' : 'Do planu'}
             </button>
           </div>
@@ -93,7 +144,7 @@ export function MoonCard() {
   const time = useTime()
   const site = useSite()
   const night = useNight()
-  const o = useSelected()
+  const o = useTarget()
   const tz = useStore((s) => s.location.timeZone)
   const info = useMemo(() => moonInfo(time), [time])
   const pos = useMemo(() => bodyAltAz('moon', time, site), [time, site])

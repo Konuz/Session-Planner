@@ -3,13 +3,14 @@ import { ChartColumn, Eye, EyeOff, Layers2, Trash2 } from 'lucide-react'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { computeOptics } from '../lib/astro'
 import { parseDecCoordinate, parseRaCoordinate } from '../lib/coordinates'
+import { fieldOf } from '../lib/fieldTarget'
 import { fmtDec, fmtNum, fmtRa } from '../lib/format'
 import { frameCorners, gnomonic, gnomonicInverse, mosaicOffsets, pixelToTangent, tangentToPixel, type Mosaic } from '../lib/framing'
 import { SURVEYS } from '../lib/hips'
 import { isDefaultLevels, normalizeLevels, tableValues } from '../lib/stretch'
 import { getOwnSkyImage, OwnPhotoMissingError } from '../lib/ownPhotoImage'
 import { getSkyImage, type SkyImageOptions } from '../lib/thumbs'
-import { useOwnPhotoKey, useSelected } from '../state/data'
+import { useOwnPhotoKey, useTarget } from '../state/data'
 import { useStore, type FramingLayer as Layer } from '../state/store'
 import { Range } from './Range'
 import { Select } from './Select'
@@ -39,7 +40,8 @@ const LAYERS: Record<Layer, Required<Pick<SkyImageOptions, 'survey' | 'mode'>> &
 }
 
 export function FramingPanel() {
-  const o = useSelected()
+  // W swobodnej eksploracji kadrujemy pole (obiekt z indeksem −1 w środku pola).
+  const o = useTarget()
   const { feedback, confirm } = useActionFeedback()
   const eq = useStore((s) => s.equipment)
   const equipmentSets = useStore((s) => s.equipmentSets)
@@ -555,7 +557,7 @@ export function FramingPanel() {
                 if (planItem) {
                   updatePlan(planItem.key, { framing })
                   confirm(planItem.key, 'Zapisano kadr w planie.')
-                } else { addToPlan(o.i, o.id); setTab('planner') }
+                } else { addToPlan(o.i, o.id, fieldOf(o)); setTab('planner') }
               }}
             >
               {planItem ? 'Zapisz kadr w planie' : 'Dodaj do planu'}

@@ -721,6 +721,13 @@ input[type='checkbox']:checked::after {
 .sky-hud.tr { top: 12px; right: 14px; text-align: right; }
 .sky-hud.bl { bottom: 12px; left: 14px; }
 .sky-hud.br { bottom: 12px; right: 14px; text-align: right; pointer-events: auto; }
+/* Przypięcie ramki FOV na kopule i środek odpiętej ramki nad podpisem przeglądu. */
+.hud-icon.frame-pin { position: absolute; z-index: 2; padding: 0; box-sizing: border-box; }
+.hud-icon.frame-pin[aria-pressed='true'] { background: var(--accent); color: #000; }
+.frame-coords { pointer-events: auto; display: grid; gap: 6px; width: max-content; margin-bottom: 8px; padding: 10px 12px; background: rgba(0, 0, 0, 0.8); border: 1px solid var(--border-strong); letter-spacing: normal; }
+.frame-coords-row { display: flex; gap: 6px; align-items: center; }
+.frame-coords .control { width: 124px; min-width: 0; min-height: 30px; height: 30px; padding: 0 6px; font-size: 11px; }
+.frame-coords-error { max-width: 320px; color: var(--warn); font: 11px var(--sans); }
 /* Etykiety na obrazie jak plakietki na zdjęciach strony: czarne 80%, ramka cyjan/30, cyjan 10 px. */
 .sky-hud.tl:not(:has(button)), .sky-hud.tr:not(:has(button)) { padding: 4px 12px; background: rgba(0, 0, 0, 0.8); color: var(--accent); font-size: 10px; letter-spacing: 0.1em; }
 .const-tip {
