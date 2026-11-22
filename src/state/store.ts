@@ -372,14 +372,20 @@ export const useStore = create<State>()(
         const minVisibleMinutes = p?.minVisibleMinutes === 'night' || (typeof p?.minVisibleMinutes === 'number' && Number.isFinite(p.minVisibleMinutes) && p.minVisibleMinutes >= 0)
           ? p.minVisibleMinutes
           : current.minVisibleMinutes
+        const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
+        // Własne modele: tylko rekordy z identyfikatorem (widok Sprzęt szuka po `id`).
+        const savedModels = <T,>(v: unknown, fallback: T[]): T[] => (Array.isArray(v) ? v.filter((item) => isRecord(item) && typeof item.id === 'string') as T[] : fallback)
         return {
           ...current, ...p,
+          savedTelescopes: savedModels(p?.savedTelescopes, current.savedTelescopes),
+          savedCameras: savedModels(p?.savedCameras, current.savedCameras),
+          selectedIndex: Number.isSafeInteger(p?.selectedIndex) ? p!.selectedIndex! : current.selectedIndex,
           location,
           savedLocations: savedLocations.length ? savedLocations : [location],
           nightDate: nightDateOf(Date.now(), location.timeZone),
           freeField: sanitizeField(p?.freeField),
-          // Cel-pole z uszkodzonymi współrzędnymi wypada z planu (obiekty katalogu sprawdza wczytanie katalogu).
-          plan: Array.isArray(p?.plan) ? p.plan.filter((item) => !item?.field || sanitizeField(item.field)) : current.plan,
+          // Cel bez kadru i cel-pole z uszkodzonymi współrzędnymi wypadają z planu (obiekty katalogu sprawdza wczytanie katalogu).
+          plan: Array.isArray(p?.plan) ? p.plan.filter((item) => isRecord(item) && isRecord(item.framing) && (!item.field || sanitizeField(item.field))) : current.plan,
           filter: sanitizeFilter(p?.filter),
           sortBy,
           minVisibleMinutes,
@@ -388,7 +394,7 @@ export const useStore = create<State>()(
           favoriteIds: Array.isArray(p?.favoriteIds) ? p.favoriteIds.filter((id): id is string => typeof id === 'string') : current.favoriteIds,
           skyGroups,
           framingStretch: p?.framingStretch && typeof p.framingStretch === 'object' ? p.framingStretch : {},
-          ownPhotos: p?.ownPhotos && typeof p.ownPhotos === 'object' ? p.ownPhotos : {},
+          ownPhotos: isRecord(p?.ownPhotos) ? Object.fromEntries(Object.entries(p.ownPhotos).filter(([, entry]) => isRecord(entry) && typeof entry.photoId === 'string')) : {},
           equipmentSets, activeEquipmentSetId: activeSet.id, equipment: activeSet.equipment,
           weatherProvider: normalizeWeatherProvider(p?.weatherProvider),
           skyObjectDensity: normalizeSkyObjectDensity(p?.skyObjectDensity),

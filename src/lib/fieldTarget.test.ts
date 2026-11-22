@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { fieldId, fieldObject, fieldOf, isField, isFieldName, sanitizeField } from './fieldTarget'
-import { exposureCsv, ninaCsv, schedulerCsv } from './nina'
-import { readSavedPlan } from './planImport'
 
 describe('swobodne pole', () => {
   const field = { raDeg: 83.8221, decDeg: -5.3911 }
@@ -25,22 +23,5 @@ describe('swobodne pole', () => {
     expect(sanitizeField({ raDeg: Number.NaN, decDeg: 0 })).toBeNull()
     expect(sanitizeField('x')).toBeNull()
     expect(sanitizeField(null)).toBeNull()
-  })
-
-  it('wraca z eksportu planu jako pole, nie jako brakujący obiekt katalogu', () => {
-    const target = { name: fieldId(field), raDeg: field.raDeg, decDeg: field.decDeg, paDeg: 30 }
-    const expected = {
-      objectId: fieldId(field), objectIndex: -1, field: { raDeg: expect.closeTo(field.raDeg, 3), decDeg: expect.closeTo(field.decDeg, 3) },
-      framing: { raDeg: null, decDeg: null, paDeg: 30 },
-    }
-    for (const csv of [ninaCsv([target]), schedulerCsv([{ ...target, type: 'Swobodne pole' }])]) {
-      const [item] = readSavedPlan(csv, [], 'OSC')
-      expect(item).toMatchObject(expected)
-      // Współrzędne z pliku są zaokrąglone do 1″, oznaczenie pochodzi z odczytanego pola.
-      expect(item.objectId).toBe(fieldId(item.field!))
-    }
-    const exposures = [{ filter: 'Ha', count: 10, seconds: 300 }]
-    const [item] = readSavedPlan(exposureCsv([{ ...target, exposures, startMs: null, endMs: null, note: '' }], 'Europe/Warsaw'), [], 'OSC')
-    expect(item).toMatchObject({ ...expected, exposures, filters: 'Ha' })
   })
 })

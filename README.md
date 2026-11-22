@@ -1,6 +1,6 @@
 # KONUZASTRO Tracker
 
-**KONUZASTRO Tracker** is an astrophotography session planner and interactive 3D observatory built for [konuzastro.pl](https://konuzastro.pl). It brings together a real-time sky dome, a curated deep-sky catalog, framing simulation over all-sky surveys, multi-model weather and seeing forecasts, N.I.N.A. session exports, and plate-solved 3D star-field exploration in one browser app.
+**KONUZASTRO Tracker** is an astrophotography session planner and interactive 3D observatory built for [konuzastro.pl](https://konuzastro.pl). It brings together a real-time sky dome, a curated deep-sky catalog, framing simulation over all-sky surveys, multi-model weather and seeing forecasts, session plan exports, and plate-solved 3D star-field exploration in one browser app.
 
 *(Note: the application UI and most source code comments are written in Polish.)*
 
@@ -33,7 +33,7 @@
 * **Object Catalog (`Katalog`)** — virtualized search and filtering across **20,500+ DSOs**, including **2,924 planetary nebulae** with PN G designations and aliases. Filter by catalog, object type, constellation, magnitude, angular size, and nightly visibility. Entries show HiPS thumbnails, AstroBin gallery images, and Wikipedia summaries. The [planetary nebula audit](docs/audits/pncat.md) documents sources and identification corrections.
 * **Framing & Equipment (`Sprzęt`)** — telescope, camera, and reducer/flattener profiles with interactive sensor framing and rotation over a Web Worker HiPS mosaic (TAN gnomonic projection), plus compositing plate-solved user astrophotographs directly onto both the sky dome and the framing canvas.
 * **Altitude, Night Phases & Weather** — target altitude and Moon separation curves, automatic darkest-window detection (handling summer white nights, polar day, and polar night), meridian transit timing, and multi-model forecasts from Open-Meteo (Auto, ECMWF IFS, DWD ICON, NOAA GFS, UK Met Office, CMC GEM) and MET Norway with atmospheric seeing estimates ($C_n^2$ profiles or 250 hPa jet-stream wind).
-* **Session Planner (`Planer`)** — multi-target session ordering, automatic time-slot allocation (`autoSchedule`), a 7-night weather outlook, import of saved plans, and CSV exports for **N.I.N.A.** (Telescopius and Target Scheduler formats).
+* **Session Planner (`Planer`)** — multi-target session ordering, automatic time-slot allocation (`autoSchedule`), a 7-night weather outlook, and exports as a CSV exposure list or a TXT night plan. A JSON backup of the whole app state (plan, locations, equipment sets, horizon, favorites, settings; no photos) can be saved and restored in the Equipment view.
 * **Custom Horizon (`Horyzont`)** — interactive 360° horizon obstruction editor with file import/export and panorama calibration.
 * **3D Position & Photo 3D Observatory** — explores target distances across the **Milky Way** (linear up to 150,000 ly) and the **Local Universe** (logarithmic scale with morphological galaxy models). The selected object’s catalog distance from Earth appears in the header and next to its marker when the scene can place it. The scale switcher and layer controls sit below the scene. Uploading a photo (JPEG, PNG, WebP, TIFF, or FITS) solves its WCS locally via Skyshot, queries up to 1,000 brightest **Gaia DR3** field stars (Bailer-Jones distances) alongside deep extragalactic catalogs (`PGC`, `SDSS DR16Q` quasars, `ACO`/`ACOS` clusters), and flies smoothly into the unfolded 3D photograph with distance histograms and SIMBAD/NED/catalog/ML lookups.
 
@@ -215,7 +215,7 @@ Further deployment notes (in Polish) are in [`docs/uruchomienie.md`](docs/urucho
 * `src/` — frontend application:
   * `src/components/` — UI controls, `SkyDome`, `AltitudeChart`, `FramingPanel`, `space3d/` Universe scenes, and `observatory/` 3D Photo Observatory,
   * `src/views/` — top-level tabs (`SkyView`, `CatalogView`, `PlannerView`, `EquipmentView`, `HorizonView`),
-  * `src/lib/` — domain math (ephemerides, night windows, projections, HEALPix/HiPS, seeing, catalog parser, N.I.N.A. exports) and unit/integration tests (`*.test.ts`),
+  * `src/lib/` — domain math (ephemerides, night windows, projections, HEALPix/HiPS, seeing, catalog parser, plan export) and unit/integration tests (`*.test.ts`),
   * `src/workers/` — Web Workers (`visibility.worker.ts`, `hips.worker.ts`, `photoMask.worker.ts`),
   * `src/state/` — Zustand store (`store.ts`) and data hooks (`data.ts`).
 * `server/` — production HTTP server, NSNS HiPS proxy, AstroBin endpoint, Skyshot wrapper, SIMBAD/NED/Gaia loaders, and regressor queue.

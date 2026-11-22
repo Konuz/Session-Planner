@@ -1,15 +1,19 @@
-// Eksport do N.I.N.A.:
-// - CSV w formacie planu mozaiki Telescopius, który N.I.N.A. importuje w sekwencerze (Import targets):
-//   kolumny Pane, RA, DEC, Position Angle (East); separator „,”, kropka dziesiętna, końce linii CRLF.
-// - Plik tekstowy planu nocy dla operatora (kolejność, okna czasowe, filtry).
+// Eksport planu sesji:
+// - CSV wykazu ekspozycji (jeden wiersz na filtr) do arkusza lub ręcznego przeniesienia ustawień;
+// - formaty RA/Dec/PA wykazu;
+// - pobieranie pliku z przeglądarki.
 import { validExposure, type Exposure } from './exposures'
 
-export interface NinaTarget {
+export interface ExposureTarget {
   name: string
   raDeg: number
   decDeg: number
   /** Kąt pozycyjny kadru od N przez E [°]. */
   paDeg: number
+  exposures: Exposure[]
+  startMs: number | null
+  endMs: number | null
+  note: string
 }
 
 const pad = (n: number, w = 2) => String(n).padStart(w, '0')
@@ -40,35 +44,12 @@ export function formatPa(paDeg: number): string {
   return text.includes('.') ? text : `${text}.0`
 }
 
-export const ninaName = (name: string) => name.replace(/[,"\r\n]/g, ' ').replace(/\s+/g, ' ').trim() || 'Cel'
-
-export const NINA_HEADER = 'Pane,RA,DEC,Position Angle (East)'
-export const SCHEDULER_HEADER = 'Type,Name,Ra,Dec,Rotation,ROI'
 export const EXPOSURE_HEADER = 'Order,Target,RA J2000,DEC J2000,PA East deg,Filter,Frames,Exposure seconds,Integration seconds,Start UTC,End UTC,Time zone,Note'
-
-export function ninaCsv(targets: readonly NinaTarget[]): string {
-  const rows = targets.map((t) => `${ninaName(t.name)},${formatRa(t.raDeg)},${formatDec(t.decDeg)},${formatPa(t.paDeg)}`)
-  return [NINA_HEADER, ...rows].join('\r\n') + '\r\n'
-}
 
 const csvCell = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`
 const safeCsvText = (value: string) => (/^[ \t\r]*[=+\-@]/.test(value) ? `'${value}` : value)
 
-/** Osobny format importera Target Scheduler; ekspozycje ustawia się w jego szablonie. */
-export function schedulerCsv(targets: readonly (NinaTarget & { type: string })[]): string {
-  return [SCHEDULER_HEADER, ...targets.map((t) => [
-    t.type, t.name, formatRa(t.raDeg), formatDec(t.decDeg), formatPa(t.paDeg), 100,
-  ].map(csvCell).join(','))].join('\r\n') + '\r\n'
-}
-
-export interface ExposureTarget extends NinaTarget {
-  exposures: Exposure[]
-  startMs: number | null
-  endMs: number | null
-  note: string
-}
-
-/** Pełny wykaz dla operatora / arkusza, nie format importu sekwencji NINA. */
+/** Pełny wykaz ekspozycji dla operatora / arkusza. */
 export function exposureCsv(targets: readonly ExposureTarget[], timeZone: string): string {
   const rows = targets.flatMap((t, i) => t.exposures.map((e) => {
     if (!validExposure(e)) throw new Error('Uzupełnij poprawnie filtry, liczbę klatek i czas ekspozycji.')

@@ -3,7 +3,7 @@ import { useActionFeedback } from '../components/useActionFeedback'
 import { altitudeTrack, nightGrid } from '../lib/night'
 import { exportHorizon, horizonAltitude, normalizeHorizon, parseHorizon, type HorizonPoint } from '../lib/horizon'
 import { fromPanoramaPoint, readHorizonPanorama, toPanoramaPoint, type PanoramaCalibration } from '../lib/horizonPanorama'
-import { download } from '../lib/nina'
+import { download } from '../lib/planExport'
 import { useNight, useSite, useTarget } from '../state/data'
 import { useStore } from '../state/store'
 

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { exposureSeconds, fitExposures, planExposures, validExposure } from './exposures'
-import { exposureCsv, ninaCsv, schedulerCsv } from './nina'
+import { exposureCsv } from './planExport'
 
 const target = {
-  name: 'M 42, "Orion"', type: 'Mgławica', raDeg: 83.8, decDeg: -5.4, paDeg: 30,
+  name: 'M 42, "Orion"', raDeg: 83.8, decDeg: -5.4, paDeg: 30,
   exposures: [{ filter: 'Ha', count: 12, seconds: 300 }, { filter: 'OIII', count: 6, seconds: 120.5 }],
   startMs: Date.UTC(2026, 9, 25, 20), endMs: Date.UTC(2026, 9, 25, 22), note: 'Test, "notatka"\ndruga linia',
 }
@@ -36,16 +36,6 @@ describe('ekspozycje planera', () => {
 })
 
 describe('eksport planera', () => {
-  it('format NINA zachowuje dokładnie cztery kolumny i jeden cel na wiersz', () => {
-    const csv = ninaCsv([target])
-    expect(csv.split('\r\n')).toHaveLength(3)
-    expect(csv.split('\r\n')[0]).toBe('Pane,RA,DEC,Position Angle (East)')
-    expect(csv).not.toContain('Ha')
-    expect(csv).toContain('05:35:12.00,-05:24:00.0,30.0')
-  })
-  it('Target Scheduler zachowuje jego własny nagłówek i kompletne nazwy', () => {
-    expect(schedulerCsv([target])).toBe('Type,Name,Ra,Dec,Rotation,ROI\r\n"Mgławica","M 42, ""Orion""","05:35:12.00","-05:24:00.0","30.0","100"\r\n')
-  })
   it('pełny wykaz zawiera osobne ekspozycje, poprawne cytowanie i jednoznaczny czas', () => {
     const csv = exposureCsv([target], 'Europe/Warsaw')
     expect(csv).toContain('"Ha","12","300","3600"')
@@ -58,6 +48,5 @@ describe('eksport planera', () => {
   it('eksportuje cel bez okna, ale blokuje niepoprawne ekspozycje', () => {
     expect(exposureCsv([{ ...target, startMs: null, endMs: null }], 'UTC')).toContain('"","","UTC"')
     expect(() => exposureCsv([{ ...target, exposures: [{ filter: 'L', count: -1, seconds: 30 }] }], 'UTC')).toThrow()
-    expect(ninaCsv([])).toBe('Pane,RA,DEC,Position Angle (East)\r\n')
   })
 })

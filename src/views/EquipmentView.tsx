@@ -6,7 +6,11 @@ import telescopes from '../data/telescopes.json'
 import { computeOptics, sampling } from '../lib/astro'
 import { displayName } from '../lib/catalog'
 import { fmtNum, fmtSize } from '../lib/format'
+import { readOwnPhoto } from '../lib/ownPhotoStorage'
+import { download } from '../lib/planExport'
 import { Select } from '../components/Select'
+import { useActionFeedback } from '../components/useActionFeedback'
+import { backupFileName, backupText, parseBackup, restoreBackup } from '../state/backup'
 import { useCatalog } from '../state/data'
 import { useStore } from '../state/store'
 
@@ -63,6 +67,31 @@ export default function EquipmentView() {
   const samp = sampling(optics.scaleArcsecPx, eq.seeingArcsec)
   const showcase = useMemo(() => (catalog ? SHOWCASE.map((id) => catalog.find((o) => o.id === id)).filter((o) => o !== undefined) : []), [catalog])
   const renameLabel = nameDraft === null ? 'Zmień nazwę zestawu' : 'Zatwierdź nazwę zestawu'
+  const { feedback, confirm: confirmAction } = useActionFeedback()
+  const backupInput = useRef<HTMLInputElement>(null)
+  const [restoring, setRestoring] = useState(false)
+  const [backupMessage, setBackupMessage] = useState<{ text: string; error: boolean } | null>(null)
+
+  const saveBackup = () => {
+    const now = Date.now()
+    download(backupFileName(now), backupText(now), 'application/json')
+    confirmAction('backup', 'Rozpoczęto pobieranie kopii.')
+  }
+  const restore = async (file: File) => {
+    setBackupMessage(null)
+    setRestoring(true)
+    try {
+      const backup = parseBackup(await file.text())
+      const date = new Date(backup.savedAtMs).toLocaleString('pl-PL')
+      if (!confirm(`Przywrócić kopię z ${date}? Obecny plan, sprzęt, lokalizacje i ustawienia zostaną zastąpione.`)) return
+      await restoreBackup(backup, async (id) => (await readOwnPhoto(id))?.photoId ?? null)
+      setBackupMessage({ text: `Przywrócono kopię z ${date}.`, error: false })
+    } catch (error) {
+      setBackupMessage({ text: error instanceof Error ? error.message : 'Nie udało się przywrócić kopii.', error: true })
+    } finally {
+      setRestoring(false)
+    }
+  }
 
   const finishRenaming = (save: boolean) => {
     if (save && nameDraft !== null) renameEquipmentSet(nameDraft)
@@ -265,6 +294,24 @@ export default function EquipmentView() {
               })}
             </tbody>
           </table>
+        </section>
+
+        <section className="card">
+          <h2 className="panel-title">Kopia zapasowa</h2>
+          <p className="dim" style={{ fontSize: 12 }}>
+            Plik JSON z planem, lokalizacjami, zestawami sprzętu, horyzontem, ulubionymi i ustawieniami. Nie zawiera zdjęć własnych ani projektu Obserwatorium 3D.
+          </p>
+          <div className="backup-actions">
+            <button className="button primary" data-confirmed={feedback?.action === 'backup' || undefined} onClick={saveBackup}>Zapisz kopię</button>
+            <button className="button" disabled={restoring} onClick={() => backupInput.current?.click()}>{restoring ? 'Przywracanie…' : 'Przywróć kopię'}</button>
+            <input ref={backupInput} type="file" accept=".json,application/json" hidden onChange={async (event) => {
+              const file = event.currentTarget.files?.[0]
+              event.currentTarget.value = ''
+              if (file) await restore(file)
+            }} />
+            <span className="action-status" role="status">{feedback?.message}</span>
+          </div>
+          {backupMessage && <p className={backupMessage.error ? undefined : 'dim'} role={backupMessage.error ? 'alert' : 'status'} style={{ fontSize: 12, marginTop: 12, color: backupMessage.error ? 'var(--warn)' : undefined }}>{backupMessage.text}</p>}
         </section>
       </div>
     </div>

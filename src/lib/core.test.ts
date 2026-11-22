@@ -6,7 +6,7 @@ import { matchesFilter, normalizeQuery, parseCatalog, quickSearch, searchScore, 
 import { frameCorners, gnomonic, gnomonicInverse, pixelToTangent, tangentToPixel } from './framing'
 import { exportHorizon, horizonAltitude, parseHorizon } from './horizon'
 import { darkWindow, nightDateOf, nightPhases, phaseAt, zonedMidnightMs } from './night'
-import { formatDec, formatPa, formatRa, ninaCsv } from './nina'
+import { formatDec, formatPa, formatRa } from './planExport'
 import { pointInOutline, pointInPolygon, polygonArea, prepareRing } from './outlines'
 import { affineFrom3, FULL_DOME, makeProjector } from './projection'
 import { autoSchedule, localTimeToMs, overlaps } from './planner'
@@ -128,16 +128,13 @@ describe('horyzont', () => {
   })
 })
 
-describe('N.I.N.A.', () => {
-  it('formaty współrzędnych i CSV', () => {
+describe('eksport planu', () => {
+  it('formaty współrzędnych', () => {
     expect(formatRa(202.4696)).toBe('13:29:52.70')
     expect(formatDec(47.1952)).toBe('+47:11:42.7')
     expect(formatDec(-0.5)).toBe('-00:30:00.0')
     expect(formatPa(30)).toBe('30.0')
     expect(formatPa(-10)).toBe('350.0')
-    expect(ninaCsv([{ name: 'M 51, Wir', raDeg: 202.4696, decDeg: 47.1952, paDeg: 0 }])).toBe(
-      'Pane,RA,DEC,Position Angle (East)\r\nM 51 Wir,13:29:52.70,+47:11:42.7,0.0\r\n',
-    )
   })
 })
 
