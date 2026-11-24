@@ -686,9 +686,6 @@ input[type='checkbox']:checked::after {
 .layers-choice.layers-inline { align-items: center; justify-content: space-between; gap: 6px 8px; }
 .layers-choice.layers-inline .label { flex: none; white-space: nowrap; }
 .layers-choice.layers-inline > .custom-select { max-width: 100%; min-width: 0; }
-/* Stała szerokość: przycisk nie skacze przy zmianie nazwy stylu. */
-.layers-cycle { width: 100%; justify-content: space-between; }
-.layers-cycle .dim { color: inherit; opacity: 0.6; }
 .layers-choice .layers-range { flex-basis: 100%; padding-left: 0; }
 .layers-choice .layers-galaxy-range { color: var(--accent); }
 .layers-choice .layers-galaxy-range svg { flex: none; }

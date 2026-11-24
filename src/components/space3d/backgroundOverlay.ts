@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import type { DSO, ObjectType } from '../../lib/catalog'
-import { GALACTIC_REGIONS, dotTexture, position } from './galaxyModels'
+import { GALACTIC_REGIONS, LOCAL_GROUP_SHAPES, dotTexture, position } from './galaxyModels'
 
 export type BackgroundPoints = {
   geometry: THREE.BufferGeometry
@@ -117,7 +117,8 @@ export function drawBackgroundLabels(params: {
   for (const l of candidates) {
     if (!annotations) break
     if (boxes.length >= 120) break
-    const tw = ctx.measureText(l.c.id).width
+    const text = l.localGroup && LOCAL_GROUP_SHAPES[l.c.id]?.named && l.c.namePl ? l.c.namePl : l.c.id
+    const tw = ctx.measureText(text).width
     const boxAt = (x: number, y: number): [number, number, number, number] => [x - 2, y - 11, x + tw + 2, y + 3]
     const overlaps = (b: [number, number, number, number]) => boxes.some((x) => b[0] < x[2] && b[2] > x[0] && b[1] < x[3] && b[3] > x[1])
     let labelX = l.x + 6
@@ -141,9 +142,9 @@ export function drawBackgroundLabels(params: {
     boxes.push(b)
     hits.push({ c: l.c, x: l.x, y: l.y, box: [Math.min(l.x - 6, b[0]), b[1], Math.max(l.x + 6, b[2]), b[3]] })
     ctx.strokeStyle = 'rgba(2, 5, 13, 0.85)'
-    ctx.strokeText(l.c.id, labelX, labelY)
+    ctx.strokeText(text, labelX, labelY)
     ctx.fillStyle = `#${typeRGB[l.c.type].toString(16).padStart(6, '0')}c0`
-    ctx.fillText(l.c.id, labelX, labelY)
+    ctx.fillText(text, labelX, labelY)
   }
   if (regionAlpha <= 0) return hits
   for (const p of [sunPos, ...(hasPhoto ? anchors : [target])]) {

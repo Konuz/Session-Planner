@@ -1,4 +1,4 @@
-// Modele i tekstury sceny „Pozycja 3D” (three.js): Droga Mleczna, galaktyki Grupy Lokalnej, kopuły odległości i podpisy.
+// Modele i tekstury sceny „Pozycja 3D” (three.js): Droga Mleczna, galaktyki Grupy Lokalnej i podpisy.
 import * as THREE from 'three'
 import { galacticVector, type Vec3 } from '../../lib/astro'
 import type { DSO } from '../../lib/catalog'
@@ -17,26 +17,39 @@ export type GalaxyProfile = {
   /** Galaktyki nieregularne: długość poprzeczki w jednostkach modelu (średnica = 100). */
   barLength?: number
   knots?: number
+  /** Podpis polską nazwą z katalogu zamiast oznaczenia (oznaczenia Obłoków Magellana, np. ESO 56-115, nic nie mówią). */
+  named?: boolean
 }
 
 // Typy: https://ned.ipac.caltech.edu/level5/Mateo/table1.html
 // M33: https://www.nao.ac.jp/en/gallery/weekly/2017/20170307-subaru.html
 // M33: zgrubienie ok. 3 % światła w podczerwieni (Kam i in. 2015, za https://arxiv.org/abs/1902.07222).
 // LMC: poprzeczka o półosi 2,13 kpc w PA 121° (Rathore i in. 2025, https://doi.org/10.3847/1538-4357/ad93ae).
+// Leo I, WLM, NGC 3109, Sextans A: typ z RC3 (de Vaucouleurs i in. 1991, VizieR VII/155), spłaszczenie 1 − ε
+// z McConnachie 2012 (AJ 144, 4; VizieR J/AJ/144/4). NGC 3109 i Sextans A należą do podgrupy NGC 3109 tuż za
+// Grupą Lokalną, ale leżą w warstwie „Grupa Lokalna (do 5 mln lś)” suwaka galaktyk.
 // Parametry rozkładu gwiazd są ilustracją morfologii, nie rekonstrukcją pojedynczych gwiazd.
 export const LOCAL_GROUP_SHAPES: Record<string, GalaxyProfile> = {
   'M 31': { kind: 'spiral', label: 'Sb - spiralna, duże zgrubienie i pierścień', axisRatio: 1, core: 0.28, bar: true },
   'M 33': { kind: 'flocculent', label: 'Scd - spiralna, luźne i poszarpane ramiona', axisRatio: 1, core: 0.03 },
   // Poprzeczka 4,26 kpc przy średnicy z katalogu (646′, 161 tys. lś ≈ 9,3 kpc) to 46 j. modelu.
-  'ESO 56-115': { kind: 'irregular', label: 'SBm - Magellanowa, poprzeczka i obszary gwiazdotwórcze', axisRatio: 0.85, core: 0, bar: true, barPa: 121, barLength: 46, knots: 8 },
+  'ESO 56-115': { kind: 'irregular', label: 'SBm - Magellanowa, poprzeczka i obszary gwiazdotwórcze', axisRatio: 0.85, core: 0, bar: true, barPa: 121, barLength: 46, knots: 8, named: true },
   'M 32': { kind: 'elliptical', label: 'cE2 - zwarta eliptyczna', axisRatio: 0.8, core: 0.65 },
   'M 110': { kind: 'elliptical', label: 'dE5 - karłowata eliptyczna', axisRatio: 0.5, core: 0.12 },
   'NGC 147': { kind: 'elliptical', label: 'dE5 - rozproszona eliptyczna', axisRatio: 0.5, core: 0 },
   'NGC 185': { kind: 'elliptical', label: 'dE3 - karłowata eliptyczna', axisRatio: 0.7, core: 0.2 },
-  'NGC 292': { kind: 'irregular', label: 'SMC - nieregularna, poprzeczka i skrzydło', axisRatio: 0.5, core: 0, bar: true, knots: 7 },
+  'NGC 292': { kind: 'irregular', label: 'SMC - nieregularna, poprzeczka i skrzydło', axisRatio: 0.5, core: 0, bar: true, knots: 7, named: true },
   'NGC 6822': { kind: 'irregular', label: 'IBm - nieregularna z poprzeczką', axisRatio: 0.7, core: 0, bar: true, knots: 6 },
   'IC 10': { kind: 'irregular', label: 'dIrr - nieregularna, intensywne tworzenie gwiazd', axisRatio: 0.8, core: 0, knots: 16 },
   'IC 1613': { kind: 'irregular', label: 'dIrr - rozproszona nieregularna', axisRatio: 0.8, core: 0, knots: 5 },
+  // Leo I: RC3 dE3, dSph bez jądra; ε = 0,21.
+  'UGC 5470': { kind: 'elliptical', label: 'dE3 - karłowata sferoidalna (Leo I)', axisRatio: 0.79, core: 0 },
+  // WLM: RC3 IB(s)m, mocno wydłużona; ε = 0,65.
+  'PGC 143': { kind: 'irregular', label: 'IB(s)m - wydłużona nieregularna z poprzeczką (WLM)', axisRatio: 0.35, core: 0, bar: true, knots: 6 },
+  // NGC 3109: RC3 SB(s)m widziana z boku; ε = 0,82.
+  'NGC 3109': { kind: 'irregular', label: 'SB(s)m - Magellanowa, widziana z boku', axisRatio: 0.18, core: 0, bar: true, knots: 6 },
+  // Sextans A: RC3 IBm, prawie okrągła; ε = 0,17.
+  'PGC 29653': { kind: 'irregular', label: 'IBm - nieregularna z poprzeczką (Sextans A)', axisRatio: 0.83, core: 0, bar: true, knots: 8 },
 }
 
 export type StarNameLayout = { group: THREE.Group; root: HTMLDivElement; anchors: { position: THREE.Vector3; el: HTMLSpanElement; width: number; height: number }[]; connectors: THREE.BufferAttribute }
@@ -50,9 +63,8 @@ export function position(o: Pick<DSO, 'raDeg' | 'decDeg'>, distLy: number): THRE
 }
 
 /**
- * Punkty modeli galaktyk są deterministyczne (stałe ziarno): bufory liczone raz na stronę (52 tys. punktów Drogi
- * Mlecznej i modele Grupy Lokalnej to ok. 65–160 ms), a kolejne sceny (ponowne otwarcie okna) tworzą z nich tylko
- * geometrię. Bufory nie są potem zmieniane.
+ * Punkty modeli Grupy Lokalnej są deterministyczne (stałe ziarno): bufory liczone raz na stronę, a kolejne sceny
+ * (ponowne otwarcie okna) tworzą z nich tylko geometrię. Bufory nie są potem zmieniane.
  */
 const modelBuffers = new Map<string, { pos: Float32Array; col: Float32Array }>()
 function cachedBuffers(key: string, build: () => { pos: Float32Array; col: Float32Array }) {
@@ -61,13 +73,95 @@ function cachedBuffers(key: string, build: () => { pos: Float32Array; col: Float
   return buffers
 }
 
-export function milkyWay(count: number, texture: THREE.Texture): THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial> {
-  const { pos, col } = cachedBuffers(`mw:${count}`, () => milkyWayBuffers(count))
+/**
+ * Gęstość Drogi Mlecznej zależna od odległości kamery od jej centrum (j. sceny). Z daleka średnia gęstość dysku
+ * (punkty na j.² widoku z góry) jest między modelami M31 (36 tys. punktów na 220 j.: ok. 0,9) i M33 (8,8 tys. na 50 j.:
+ * ok. 4,5), czyli ok. 2; z bliska (do 150 j., kadry zakładki Droga Mleczna) punktów jest 7 razy więcej niż
+ * w dawnym stałym modelu (85 tys.).
+ * Model ma MILKY_WAY_MAX_POINTS punktów, a populacje są losowane punkt po punkcie, więc początek bufora (drawRange)
+ * jest równomierną próbką całej galaktyki: zmiana liczby nie przebudowuje geometrii.
+ */
+export const MILKY_WAY_MAX_POINTS = 600_000
+/** Punkty liczone od razu przy tworzeniu sceny (tyle co dawny stały model, ok. 80 ms); reszta w wolnych chwilach. */
+const MILKY_WAY_START_POINTS = 85_000
+const MILKY_WAY_FAR = { distance: 1200, points: 16_000 }
+const MILKY_WAY_NEAR = { distance: 150, points: MILKY_WAY_MAX_POINTS }
+
+/** Bliskość kamery do Drogi Mlecznej: 0 z daleka (≥ 1200 j.), 1 z bliska (≤ 150 j.), liniowo w log. odległości. */
+export function milkyWayNearness(cameraDistance: number): number {
+  return Math.min(1, Math.max(0, Math.log(MILKY_WAY_FAR.distance / cameraDistance) / Math.log(MILKY_WAY_FAR.distance / MILKY_WAY_NEAR.distance)))
+}
+
+export function milkyWayPointCount(cameraDistance: number): number {
+  // Interpolacja w skali log. odległości i liczby punktów: przy przybliżaniu kółkiem gęstość rośnie płynnie.
+  return Math.round(MILKY_WAY_FAR.points * (MILKY_WAY_NEAR.points / MILKY_WAY_FAR.points) ** milkyWayNearness(cameraDistance))
+}
+
+/**
+ * Wspólny bufor pełnej Drogi Mlecznej (wszystkie okna na stronie). Pełne 600 tys. punktów to ok. 0,5 s pracy, więc
+ * powyżej MILKY_WAY_START_POINTS bufor jest dopisywany porcjami w wolnych chwilach przeglądarki; zamknięte okno
+ * wstrzymuje dopisywanie, następne zaczyna od miejsca, w którym skończyło poprzednie.
+ */
+type MilkyWayFill = { pos: Float32Array; col: Float32Array; filled: number; grow(to: number): void; listeners: Set<(from: number, to: number) => void>; scheduled: boolean }
+let milkyWayFill: MilkyWayFill | null = null
+
+function scheduleMilkyWayFill(fill: MilkyWayFill) {
+  if (fill.scheduled || fill.filled >= MILKY_WAY_MAX_POINTS || !fill.listeners.size) return
+  fill.scheduled = true
+  const work = (deadline: { timeRemaining(): number }) => {
+    fill.scheduled = false
+    if (!fill.listeners.size) return
+    const from = fill.filled
+    // Porcje po 4000 punktów (ok. 3 ms) do końca wolnego czasu; przy przekroczonym limicie jedna porcja.
+    do fill.grow(Math.min(MILKY_WAY_MAX_POINTS, fill.filled + 4000))
+    while (fill.filled < MILKY_WAY_MAX_POINTS && deadline.timeRemaining() > 3)
+    for (const listener of fill.listeners) listener(from, fill.filled)
+    scheduleMilkyWayFill(fill)
+  }
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(work, { timeout: 500 })
+  else setTimeout(() => {
+    // Bez requestIdleCallback (Safari): 8 ms pracy co 16 ms, licząc od początku porcji.
+    const end = performance.now() + 8
+    work({ timeRemaining: () => end - performance.now() })
+  }, 16)
+}
+
+/**
+ * Model Drogi Mlecznej na wspólnym, dopisywanym buforze. `filled()` to liczba gotowych punktów (górna granica dla
+ * drawRange), `onGrow` dostaje zakres dopisanych punktów, `dispose` odłącza model od dopisywania.
+ */
+export function milkyWayProgressive(texture: THREE.Texture, onGrow: (from: number, to: number) => void): {
+  points: THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial>
+  filled(): number
+  dispose(): void
+} {
+  if (!milkyWayFill) {
+    const pos = new Float32Array(MILKY_WAY_MAX_POINTS * 3)
+    const col = new Float32Array(MILKY_WAY_MAX_POINTS * 3)
+    const generate = milkyWayGenerator(pos, col)
+    const fill: MilkyWayFill = { pos, col, filled: 0, grow: (to) => { generate(to); fill.filled = to }, listeners: new Set(), scheduled: false }
+    milkyWayFill = fill
+  }
+  const fill = milkyWayFill
+  if (fill.filled < MILKY_WAY_START_POINTS) fill.grow(MILKY_WAY_START_POINTS)
   const g = new THREE.BufferGeometry()
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
-  g.setAttribute('color', new THREE.BufferAttribute(col, 3))
-  const m = galaxyMaterial(texture)
-  return new THREE.Points(g, m)
+  const position = new THREE.BufferAttribute(fill.pos, 3)
+  const color = new THREE.BufferAttribute(fill.col, 3)
+  g.setAttribute('position', position)
+  g.setAttribute('color', color)
+  // Sfera ograniczająca całego modelu (dysk do 50 j. z rozrzutem), nie z częściowo wypełnionego bufora.
+  g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 60)
+  g.setDrawRange(0, fill.filled)
+  const listener = (from: number, to: number) => {
+    for (const attribute of [position, color]) {
+      attribute.addUpdateRange(from * 3, (to - from) * 3)
+      attribute.needsUpdate = true
+    }
+    onGrow(from, to)
+  }
+  fill.listeners.add(listener)
+  scheduleMilkyWayFill(fill)
+  return { points: new THREE.Points(g, galaxyMaterial(texture)), filled: () => fill.filled, dispose: () => { fill.listeners.delete(listener) } }
 }
 
 // Poglądowe podpisy na grzbietach spiral tego samego modelu co gwiazdy.
@@ -85,15 +179,15 @@ export const GALACTIC_REGIONS = [
   { name: 'Ramię Lokalne (Oriona)', anchor: toThree([-26.7, 5, 0]) },
 ]
 
-function milkyWayBuffers(count: number) {
-  const pos = new Float32Array(count * 3)
-  const col = new Float32Array(count * 3)
+/** Punkty Drogi Mlecznej w buforach pos/col: każde wywołanie dopisuje dalsze punkty tej samej sekwencji (do indeksu `to`). */
+function milkyWayGenerator(pos: Float32Array, col: Float32Array): (to: number) => void {
   const rnd = (() => {
     let s = 7
     return () => ((s = (s * 16807) % 2147483647) / 2147483647)
   })()
   const gauss = () => Math.sqrt(-2 * Math.log(rnd() + 1e-9)) * Math.cos(2 * Math.PI * rnd())
-  for (let i = 0; i < count; i++) {
+  let i = 0
+  return (to) => { for (; i < to; i++) {
     let x: number, y: number, z: number, c: [number, number, number]
     const population = rnd()
     if (population < 0.22) {
@@ -127,11 +221,14 @@ function milkyWayBuffers(count: number) {
       const t = rnd()
       c = t < 0.15 ? [1, 0.55, 0.65] : t < 0.6 ? [0.62, 0.75, 1] : [0.85, 0.88, 1]
     }
-    const p = toThree([x, y, z])
-    pos.set([p.x, p.y, p.z], i * 3)
-    col.set(c, i * 3)
-  }
-  return { pos, col }
+    // toThree([x, y, z]) bez tworzenia obiektów na każdy punkt: (x, z, −y).
+    pos[i * 3] = x
+    pos[i * 3 + 1] = z
+    pos[i * 3 + 2] = -y
+    col[i * 3] = c[0]
+    col[i * 3 + 1] = c[1]
+    col[i * 3 + 2] = c[2]
+  } }
 }
 
 export function galaxyMaterial(texture: THREE.Texture): THREE.PointsMaterial {
@@ -311,35 +408,6 @@ export function dotTexture(): THREE.CanvasTexture {
   ctx.fillStyle = g
   ctx.fillRect(0, 0, 32, 32)
   return new THREE.CanvasTexture(c)
-}
-
-/** Kopuła odległości: prawie przezroczysta, jaśniejsza przy krawędziach (efekt Fresnela), jak szklana bańka. */
-export function domeMaterial(): THREE.ShaderMaterial {
-  return new THREE.ShaderMaterial({
-    uniforms: { color: { value: new THREE.Color(0x00e0ff) }, opacity: { value: 1 } },
-    vertexShader: `
-      varying vec3 vNormal;
-      varying vec3 vView;
-      void main() {
-        vec4 mv = modelViewMatrix * vec4(position, 1.0);
-        vNormal = normalize(normalMatrix * normal);
-        vView = normalize(-mv.xyz);
-        gl_Position = projectionMatrix * mv;
-      }`,
-    fragmentShader: `
-      uniform vec3 color;
-      uniform float opacity;
-      varying vec3 vNormal;
-      varying vec3 vView;
-      void main() {
-        float f = pow(1.0 - abs(dot(normalize(vNormal), normalize(vView))), 3.0);
-        gl_FragColor = vec4(color, (0.0015 + f * 0.018) * opacity);
-      }`,
-    transparent: true,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-    blending: THREE.AdditiveBlending,
-  })
 }
 
 export function textSprite(text: string, color = '#e6edf7', scale = 1): THREE.Sprite {

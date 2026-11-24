@@ -76,8 +76,9 @@ describe('LayersMenu', () => {
     expect(html).toContain('Liczba galaktyk')
     expect(html).toContain('aria-label="Liczba galaktyk"')
     expect(html).toContain('do 50 mln lś')
-    expect(html).toContain('>Kopuły</span>')
-    expect(html).not.toContain('Kopuły (Wszechświat lokalny)')
+    // Płaszczyzna zastąpiła kopuły (23.11.2026): w sekcji jest przełącznik linii, bez wyboru stylu kopuł.
+    expect(html).toContain('Linie do galaktyk')
+    expect(html).not.toContain('Kopuły')
   })
 
   it('po włączeniu gwiazdozbiorów 3D pokazuje przełącznik „Nazwy gwiazd” w sekcji Droga Mleczna', () => {

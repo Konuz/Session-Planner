@@ -314,7 +314,7 @@ export function collectLayers(space: Space3DHandle, guide: PhotoGuide | null, ex
     const material = (object as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined
     for (const m of Array.isArray(material) ? material : material ? [material] : []) {
       if (seen.has(m)) continue
-      // Shadery z własnym kryciem (linie gwiazdozbiorów, kopuły) mają je w uniformie, nie w polu opacity.
+      // Shadery z własnym kryciem (linie, dysk płaszczyzny) mają je w uniformie, nie w polu opacity.
       const uniform = m instanceof THREE.ShaderMaterial && !!m.uniforms.opacity
       if (!uniform && !m.transparent) continue
       seen.add(m)

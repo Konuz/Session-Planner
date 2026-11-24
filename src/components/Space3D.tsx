@@ -20,11 +20,10 @@ import { constellationView, framePose, sideView, SPACE_FAR, SPACE_FOV, type Came
 import { ease, lerpPose, zoomPose, type Pose } from '../lib/spaceDive'
 import {
   LOCAL_GROUP_SHAPES, MILKY_WAY_DIAMETER_LY, addStarNameLabels, dotTexture, fixedSizeTextSprite,
-  galaxyTexture, localGroupGalaxy, milkyWay, position, textSprite, toThree, type StarNameLayout,
+  galaxyTexture, localGroupGalaxy, milkyWayNearness, milkyWayPointCount, milkyWayProgressive, position, textSprite, toThree, type StarNameLayout,
 } from './space3d/galaxyModels'
 import { buildBackgroundPoints, drawBackgroundLabels, hitBackgroundLabel, sameMatrix, showTypes, type BackgroundLabelHit, type BackgroundPoints } from './space3d/backgroundOverlay'
 import { GALAXY_LEVELS, type ConstellationStar, type SpaceSettings } from './space3d/spaceSettings'
-import { createDomeMaterial } from './space3d/domeMaterials'
 import { createEarthAssets, createEarthMesh, EARTH_FRAME_MS, type EarthRig } from './space3d/earthModel'
 
 interface Props {
@@ -81,8 +80,6 @@ const FLY_MS = 900
 const SWITCH_MS = 1600
 /** Powrót pola widzenia i gwiazdozbioru z widoku nieba do 3D, gdy użytkownik przejmie kamerę. */
 const LENS_MS = 600
-/** Krycie modelu Drogi Mlecznej z daleka: 52 tys. punktów sumuje się jak dawne 12 tys. we Wszechświecie lokalnym. */
-const MW_FAR_OPACITY = 0.14
 const easeOut = (t: number) => 1 - (1 - t) ** 3
 
 export default function Space3D({ settings, photo, onSelectObject, onHandle }: Props) {
@@ -125,19 +122,14 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
   const sceneDirty = useRef(true)
   const scheduleFrameRef = useRef<(() => void) | null>(null)
   const showAnnotations = useStore((s) => s.show3DAnnotations)
-  const domeStyle = useStore((s) => s.domeStyle)
-  const domeStyleRef = useRef(domeStyle)
-  domeStyleRef.current = domeStyle
-  const domeOpacity = useStore((s) => s.domeOpacity)
-  const domeOpacityRef = useRef(domeOpacity)
-  domeOpacityRef.current = domeOpacity
-  /** Kopuły odległości: styl zmienia materiał bez przebudowy sceny; userData.fade to ostatnie krycie z wygaszania. */
-  const domesRef = useRef<THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial>[]>([])
   const annotationsRef = useRef(showAnnotations)
   annotationsRef.current = showAnnotations
   const showRegions = useStore((s) => s.showGalaxyRegions)
   const regionsRef = useRef(showRegions)
   regionsRef.current = showRegions
+  const showGalaxyLines = useStore((s) => s.showGalaxyLines)
+  const galaxyLinesRef = useRef(showGalaxyLines)
+  galaxyLinesRef.current = showGalaxyLines
   const annotationColors = useStore((s) => s.annotationColors)
   const typeRGB = useMemo(() => Object.fromEntries(
     (Object.keys(TYPE_INFO) as ObjectType[]).map((type) => [type, Number.parseInt((annotationColors[type] ?? DEFAULT_ANNOTATION_COLORS[type]).slice(1), 16)]),
@@ -223,7 +215,7 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
     const extragalacticPoints = extragalacticRef.current
 
     const localGalaxyModels: THREE.Points[] = []
-    /** Warstwy Wszechświata lokalnego (pierścienie, kopuły, ich podpisy): krycie z odległości kamery. */
+    /** Warstwy Wszechświata lokalnego (płaszczyzna, jej podpisy, linie do galaktyk): krycie z odległości kamery. */
     const extragalacticFaders: ((fade: number, labelFade: number) => void)[] = []
     const constellationPoints: { group: THREE.Group; position: THREE.Vector3 }[] = []
     const constellationFigures = new Map<string, { group: THREE.Group; lines: LineSegments2; dots: THREE.Points; segments: number[]; stars: THREE.Vector3[] }>()
@@ -293,50 +285,98 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
       }
       addConstellationsRef.current()
     }
-    const mw = milkyWay(85000, stars)
+    // Droga Mleczna na dopisywanym buforze: nowa klatka tylko wtedy, gdy dopisane punkty mieszczą się w bieżącej gęstości.
+    const mwModel = milkyWayProgressive(stars, (from) => {
+      if (from >= milkyWayPointCount(camera.position.length())) return
+      sceneDirty.current = true
+      scheduleFrameRef.current?.()
+    })
+    const mw = mwModel.points
     scene.add(mw)
-    disposables.push(mw.geometry, mw.material)
+    disposables.push(mw.geometry, mw.material, { dispose: mwModel.dispose })
     {
-      // Pierścienie odległości (skala logarytmiczna) z kopułami; wymiary dawnej sceny Wszechświata × 1/0,12.
-      const u = 1 / UNIVERSE_GALAXY_SCALE
-      const domes: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial>[] = []
-      domesRef.current = domes
-      // Materiały kopuł zmieniają się ze stylem: sprzątane są te bieżące.
-      disposables.push({ dispose: () => domes.forEach((d) => d.material.dispose()) })
-      for (const [ly, text] of [[1e6, '1 mln lś'], [1e7, '10 mln lś'], [1e8, '100 mln lś'], [1e9, '1 mld lś']] as const) {
-        const r = Math.log10(ly / 1e4) * LOG_UNIT
-        const ringMaterial = new THREE.MeshBasicMaterial({ color: 0x00e0ff, transparent: true, opacity: 0.18, side: THREE.DoubleSide })
-        const ring = new THREE.Mesh(new THREE.RingGeometry(r - 0.08 * u, r + 0.08 * u, 128), ringMaterial)
-        ring.position.copy(sunPos)
-        ring.rotation.x = -Math.PI / 2
-        scene.add(ring)
-        disposables.push(ring.geometry, ringMaterial)
-        // Półprzezroczysta kopuła nad pierścieniem: odległość czytelna także dla wysokości nad płaszczyzną.
-        // Siatka 128 × 48: odblaski szklanych stylów nie łamią się na ściankach.
-        const dome = new THREE.Mesh(new THREE.SphereGeometry(r, 128, 48, 0, Math.PI * 2, 0, Math.PI / 2), createDomeMaterial(domeStyleRef.current))
-        dome.position.copy(sunPos)
-        dome.userData.fade = 1
-        domes.push(dome)
-        scene.add(dome)
-        disposables.push(dome.geometry)
-        const t = label(text, '#6fdcf0')
-        t.position.set(sunPos.x + r + 2 * u, sunPos.y + u, sunPos.z)
-        scene.add(t)
-        extragalacticFaders.push((fade, labelFade) => {
-          ring.visible = dome.visible = fade > 0
+      // Płaszczyzna Galaktyki przez Ziemię jak na plakacie „The Closest Stars”: dysk z poświatą ku krawędzi (1 mld lś),
+      // pierścienie 1, 10 i 100 mln lś, 12 szprych i podpisy pierścieni po jednej stronie; promienie w skali log. jak dotąd.
+      const rings = [[1e6, '1 mln lś'], [1e7, '10 mln lś'], [1e8, '100 mln lś'], [1e9, '1 mld lś']] as const
+      const ringRadius = (ly: number) => Math.log10(ly / 1e4) * LOG_UNIT
+      const discR = ringRadius(1e9)
+      const discMaterial = new THREE.ShaderMaterial({
+        // Krycie w uniformie: wygaszanie warstw i nurkowanie zmieniają je jak przy liniach gwiazdozbiorów.
+        uniforms: { radius: { value: discR }, opacity: { value: 1 } },
+        vertexShader: 'varying vec2 vPos; void main() { vPos = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        fragmentShader: `uniform float radius; uniform float opacity; varying vec2 vPos;
+          void main() {
+            float d = length(vPos) / radius;
+            vec3 col = mix(vec3(0.02, 0.05, 0.16), vec3(0.0, 0.32, 0.62), smoothstep(0.25, 1.0, d));
+            gl_FragColor = vec4(col, (0.14 + 0.3 * smoothstep(0.55, 1.0, d)) * opacity);
+          }`,
+        transparent: true, depthWrite: false, side: THREE.DoubleSide,
+      })
+      const disc = new THREE.Mesh(new THREE.CircleGeometry(discR, 192), discMaterial)
+      disc.rotation.x = -Math.PI / 2
+      disposables.push(disc.geometry, discMaterial)
+      const circle = (r: number) => Array.from({ length: 256 }, (_, i) => {
+        const a0 = (i / 256) * Math.PI * 2, a1 = ((i + 1) / 256) * Math.PI * 2
+        return [r * Math.cos(a0), 0, r * Math.sin(a0), r * Math.cos(a1), 0, r * Math.sin(a1)]
+      }).flat()
+      const spokes = Array.from({ length: 12 }, (_, i) => {
+        const a = (i / 12) * Math.PI * 2
+        return [110 * Math.cos(a), 0, 110 * Math.sin(a), discR * Math.cos(a), 0, discR * Math.sin(a)]
+      }).flat()
+      const planeLines = ([
+        [circle(discR), 0x00e0ff, 2.2, 0.95],
+        ...rings.slice(0, -1).map(([ly]) => [circle(ringRadius(ly)), 0x3aa8ff, 1.2, 0.55] as const),
+        [spokes, 0x3aa8ff, 1, 0.32],
+      ] as const).map(([positions, color, linewidth, opacity]) => {
+        const material = new LineMaterial({ color, linewidth, transparent: true, opacity, depthWrite: false })
+        const line = new LineSegments2(new LineSegmentsGeometry().setPositions(positions), material)
+        disposables.push(line.geometry, material)
+        return { line, material, opacity }
+      })
+      const plane = new THREE.Group()
+      plane.position.copy(sunPos)
+      plane.add(disc, ...planeLines.map((l) => l.line))
+      scene.add(plane)
+      // Podpis nad pierścieniem po stronie antycentrum (−x), w stałej odległości od niego na ekranie.
+      const ringLabels = rings.map(([ly, text]) => label(text, '#6fdcf0', new THREE.Vector3(sunPos.x - ringRadius(ly), sunPos.y, sunPos.z), 10))
+      scene.add(...ringLabels)
+      extragalacticFaders.push((fade, labelFade) => {
+        plane.visible = fade > 0
+        discMaterial.uniforms.opacity.value = fade
+        for (const { material, opacity } of planeLines) material.opacity = opacity * fade
+        for (const t of ringLabels) {
           t.visible = labelFade > 0
-          ringMaterial.opacity = 0.18 * fade
-          dome.userData.fade = fade
-          dome.material.uniforms.opacity.value = fade * domeOpacityRef.current
           t.material.opacity = labelFade
-        })
-      }
+        }
+      })
       localGroup.forEach((c) => {
         const model = localGroupGalaxy(c, LOCAL_GROUP_SHAPES[c.id], stars)
         model.position.copy(position(c, c.distLy!))
         localGalaxyModels.push(model)
         scene.add(model)
         disposables.push(model.geometry, model.material as THREE.Material)
+      })
+      // Linie do galaktyk (warstwa w „Warstwach”): pionowo od galaktyk Grupy Lokalnej (modele i punkty do 5 mln lś) do
+      // płaszczyzny Galaktyki przez Ziemię, z kropką u podstawy. Dalsze galaktyki leżą za gęsto na linie.
+      const segments: number[] = []
+      const feet: number[] = []
+      for (const c of [...localGroup, ...extragalactic.filter((c) => c.type === 'G' && c.distLy! <= GALAXY_LEVELS[0].maxLy)]) {
+        const p = position(c, c.distLy!)
+        segments.push(p.x, p.y, p.z, p.x, sunPos.y, p.z)
+        feet.push(p.x, sunPos.y, p.z)
+      }
+      const lineMaterial = new LineMaterial({ color: 0x00e0ff, linewidth: 1, transparent: true, opacity: 0.55, depthWrite: false })
+      const lines = new LineSegments2(new LineSegmentsGeometry().setPositions(segments), lineMaterial)
+      const footMaterial = new THREE.PointsMaterial({ color: 0x00e0ff, size: 3, sizeAttenuation: false, transparent: true, opacity: 0.8, depthWrite: false })
+      const footPoints = new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(feet, 3)), footMaterial)
+      const galaxyLines = new THREE.Group()
+      galaxyLines.add(lines, footPoints)
+      scene.add(galaxyLines)
+      disposables.push(lines.geometry, lineMaterial, footPoints.geometry, footMaterial)
+      extragalacticFaders.push((fade) => {
+        galaxyLines.visible = fade > 0 && galaxyLinesRef.current
+        lineMaterial.opacity = 0.55 * fade
+        footMaterial.opacity = 0.8 * fade
       })
     }
 
@@ -753,12 +793,13 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
         earthSpinning = earthInView && earthPx >= 10 && !reduced
       }
       {
-        const lyPerPixel = 2000 * camera.position.distanceTo(controls.target) * Math.tan(camera.getEffectiveFOV() * Math.PI / 360) / Math.max(1, sizedH)
-        const overview = THREE.MathUtils.smoothstep(lyPerPixel, 5, 90)
-        const layer = override.layerFade * THREE.MathUtils.lerp(MW_FAR_OPACITY, 1, fades.galactic)
-        mw.geometry.setDrawRange(0, Math.round(35000 + 50000 * overview))
-        mw.material.size = 3.5 - 0.4 * overview
-        mw.material.opacity = (0.38 - 0.08 * overview) * layer
+        // Gęstość Drogi Mlecznej z odległości kamery od jej centrum: z daleka punkty jak modele M31 i M33 z daleka
+        // (rozmiar 2,4 px, krycie 0,1), z bliska do 600 tys. drobniejszych gwiazd.
+        const distance = camera.position.length()
+        const near = milkyWayNearness(distance)
+        mw.geometry.setDrawRange(0, Math.min(milkyWayPointCount(distance), mwModel.filled()))
+        mw.material.size = THREE.MathUtils.lerp(2.4, 2, near)
+        mw.material.opacity = THREE.MathUtils.lerp(0.1, 0.16, near) * override.layerFade
       }
       for (const model of localGalaxyModels) {
         // Zbliżenie względem promienia modelu: także małe galaktyki zachowują czytelne gwiazdy.
@@ -1282,23 +1323,6 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
   }, [galaxyLevel])
 
   useEffect(() => {
-    for (const dome of domesRef.current) {
-      const old = dome.material
-      dome.material = createDomeMaterial(domeStyle)
-      dome.material.uniforms.opacity.value = dome.userData.fade * domeOpacityRef.current
-      old.dispose()
-    }
-    sceneDirty.current = true
-    scheduleFrameRef.current?.()
-  }, [domeStyle])
-
-  useEffect(() => {
-    for (const dome of domesRef.current) dome.material.uniforms.opacity.value = dome.userData.fade * domeOpacity
-    sceneDirty.current = true
-    scheduleFrameRef.current?.()
-  }, [domeOpacity])
-
-  useEffect(() => {
     if (galacticRef.current) showTypes(galacticRef.current, hiddenTypes)
     sceneDirty.current = true
     scheduleFrameRef.current?.()
@@ -1307,7 +1331,7 @@ export default function Space3D({ settings, photo, onSelectObject, onHandle }: P
   useEffect(() => {
     sceneDirty.current = true
     scheduleFrameRef.current?.()
-  }, [showAnnotations, showRegions])
+  }, [showAnnotations, showRegions, showGalaxyLines])
 
   if (!o) return <div className="space-layer space-empty">Wybierz obiekt.</div>
   return (

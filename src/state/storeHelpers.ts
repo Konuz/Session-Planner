@@ -2,7 +2,6 @@ import type { PersistStorage } from 'zustand/middleware'
 import { EMPTY_FILTER, type CatalogFilter, type ObjectType, type SkyGroup } from '../lib/catalog'
 import type { Mosaic } from '../lib/framing'
 import type { HorizonPoint } from '../lib/horizon'
-import type { DomeStyle } from '../lib/space3d'
 import type { SkyLook } from '../lib/hipsSky'
 import type { ThumbSource } from '../lib/thumbs'
 import type { Exposure } from '../lib/exposures'
@@ -172,8 +171,8 @@ export interface State {
   showAnnotations: boolean
   show3DAnnotations: boolean
   showGalaxyRegions: boolean
-  domeStyle: DomeStyle
-  domeOpacity: number
+  /** Linie od galaktyk Grupy Lokalnej do płaszczyzny Galaktyki w oknie „Pozycja 3D”. */
+  showGalaxyLines: boolean
   skyLook: SkyLook
   thumbSource: ThumbSource
   annotationColors: Partial<Record<ObjectType, string>>
@@ -225,11 +224,9 @@ export interface State {
   resetAnnotationColors(): void
   setOwnPhotosOpacity(value: number): void
   setOutlinesOpacity(value: number): void
-  setDomeStyle(style: DomeStyle): void
-  setDomeOpacity(value: number): void
   setSkyLook(look: SkyLook): void
   setThumbSource(source: ThumbSource): void
-  toggle(key: 'showDecLabels' | 'showLines' | 'showTracks' | 'showArt' | 'showOutlines' | 'showOwnPhotos' | 'showEllipses' | 'showObjectMarkers' | 'showLabels' | 'showAnnotations' | 'show3DAnnotations' | 'showGalaxyRegions'): void
+  toggle(key: 'showDecLabels' | 'showLines' | 'showTracks' | 'showArt' | 'showOutlines' | 'showOwnPhotos' | 'showEllipses' | 'showObjectMarkers' | 'showLabels' | 'showAnnotations' | 'show3DAnnotations' | 'showGalaxyRegions' | 'showGalaxyLines'): void
 }
 
 export function sanitizeEquipment(raw: unknown, fallback: Equipment = DEFAULT_EQUIPMENT): Equipment {

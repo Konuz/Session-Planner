@@ -3,7 +3,6 @@ import { persist } from 'zustand/middleware'
 import { EMPTY_FILTER, SKY_GROUPS, type CatalogFilter, type SkyGroup } from '../lib/catalog'
 import type { HorizonPoint } from '../lib/horizon'
 import { nightDateOf } from '../lib/night'
-import { isDomeStyle } from '../lib/space3d'
 import { isSkyLook } from '../lib/hipsSky'
 import { isThumbSource } from '../lib/thumbs'
 import { planExposures } from '../lib/exposures'
@@ -97,8 +96,7 @@ export const useStore = create<State>()(
       showAnnotations: true,
       show3DAnnotations: false,
       showGalaxyRegions: true,
-      domeStyle: 'plain',
-      domeOpacity: 1,
+      showGalaxyLines: true,
       skyLook: 'default',
       thumbSource: 'dss2',
       annotationColors: {},
@@ -295,8 +293,6 @@ export const useStore = create<State>()(
       resetAnnotationColors: () => set({ annotationColors: {} }),
       setOwnPhotosOpacity: (value) => set({ ownPhotosOpacity: Math.max(0.1, Math.min(1, value)) }),
       setOutlinesOpacity: (value) => set({ outlinesOpacity: Math.max(0.1, Math.min(1, value)) }),
-      setDomeStyle: (domeStyle) => set({ domeStyle }),
-      setDomeOpacity: (value) => set({ domeOpacity: Math.max(0.1, Math.min(1, value)) }),
       setSkyLook: (skyLook) => set({ skyLook }),
       setThumbSource: (thumbSource) => set({ thumbSource }),
       toggle: (key) => set((s) => ({ [key]: !s[key] }) as Partial<State>),
@@ -342,8 +338,7 @@ export const useStore = create<State>()(
         showAnnotations: s.showAnnotations,
         show3DAnnotations: s.show3DAnnotations,
         showGalaxyRegions: s.showGalaxyRegions,
-        domeStyle: s.domeStyle,
-        domeOpacity: s.domeOpacity,
+        showGalaxyLines: s.showGalaxyLines,
         skyLook: s.skyLook,
         thumbSource: s.thumbSource,
         annotationColors: s.annotationColors,
@@ -400,9 +395,8 @@ export const useStore = create<State>()(
           skyObjectDensity: normalizeSkyObjectDensity(p?.skyObjectDensity),
           skyExtraHidden: Array.isArray(p?.skyExtraHidden) ? p.skyExtraHidden.filter((id): id is string => typeof id === 'string') : current.skyExtraHidden,
           showGalaxyRegions: typeof p?.showGalaxyRegions === 'boolean' ? p.showGalaxyRegions : current.showGalaxyRegions,
+          showGalaxyLines: typeof p?.showGalaxyLines === 'boolean' ? p.showGalaxyLines : current.showGalaxyLines,
           ownPhotosOpacity: opacity(p?.ownPhotosOpacity), outlinesOpacity: opacity(p?.outlinesOpacity),
-          domeStyle: isDomeStyle(p?.domeStyle) ? p.domeStyle : current.domeStyle,
-          domeOpacity: opacity(p?.domeOpacity),
           skyLook: isSkyLook(p?.skyLook) ? p.skyLook : current.skyLook,
           thumbSource: isThumbSource(p?.thumbSource) ? p.thumbSource : current.thumbSource,
         }

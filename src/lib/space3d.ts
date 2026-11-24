@@ -103,15 +103,3 @@ export function blendFades(blend: FadeBlend, distance: number, scale: SpaceScale
   const from = { galactic: clamp01(base.galactic + blend.offset.galactic), extragalactic: clamp01(base.extragalactic + blend.offset.extragalactic) }
   return { fades: mixFades(from, layerFades(distance, scale), easing(t)), done: t >= 1 }
 }
-
-/** Wygląd kopuł odległości Wszechświata lokalnego (lista „Warstwy” okna „Pozycja 3D”). */
-export type DomeStyle = 'plain' | 'glint' | 'reflection' | 'thick'
-
-export const DOME_STYLES: { id: DomeStyle; label: string; title: string }[] = [
-  { id: 'plain', label: 'Mgiełka', title: 'Prawie przezroczysta kopuła, jaśniejsza przy krawędziach' },
-  { id: 'glint', label: 'Bańka', title: 'Szklana bańka z obwódką i odbiciem światła' },
-  { id: 'reflection', label: 'Odbicie', title: 'Szkło odbijające pas Drogi Mlecznej' },
-  { id: 'thick', label: 'Grube szkło', title: 'Grube szkło: barwna obwódka, wewnętrzna ścianka i krawędź u podstawy' },
-]
-
-export const isDomeStyle = (v: unknown): v is DomeStyle => DOME_STYLES.some((s) => s.id === v)

@@ -314,7 +314,7 @@ describe('kontury mgławic', () => {
       objects: { id: string; dark?: number; name?: string; also?: string[] }[]
     }
     const dark = new Map(data.objects.filter((o) => o.dark === 1).map((o) => [o.id, o]))
-    expect(dark.size).toBe(93)
+    expect(dark.size).toBe(102)
     expect(dark.get('LDN 1235')?.name).toBe('Shark Nebula')
     expect(dark.get('LDN 1251')?.name).toBe('Rotten Fish Nebula')
     expect(dark.get('LDN 1082')?.also).toEqual(['B 150'])
@@ -333,7 +333,7 @@ describe('kontury mgławic', () => {
     const data = JSON.parse(readFileSync(new URL('../../public/data/outlines.json', import.meta.url), 'utf8')) as {
       objects: { id: string; level: number; also?: string[]; rings: number[][] }[]
     }
-    for (const id of ['LDN 1355', 'B 168', 'B 72', 'LDN 935', 'LDN 886', 'B 347', 'LDN 1448', 'LDN 1450', 'LDN 1174', 'B 22', 'LBN 437', 'vdB 141', 'LDN 1503', 'LDN 800', 'LDN 1317', 'LDN 1089', 'LDN 717', 'LDN 1245', 'LDN 1295', 'LDN 1296', 'LDN 1353', 'LDN 1307', 'LDN 1336', 'LDN 988', 'LDN 1015', 'LDN 659', 'B 140', 'LDN 647', 'LDN 684']) {
+    for (const id of ['LDN 1355', 'B 168', 'B 72', 'LDN 935', 'LDN 886', 'B 347', 'LDN 1448', 'LDN 1450', 'LDN 1174', 'B 22', 'LBN 437', 'vdB 141', 'LDN 1503', 'LDN 800', 'LDN 1317', 'LDN 1089', 'LDN 717', 'LDN 1245', 'LDN 1295', 'LDN 1296', 'LDN 1353', 'LDN 1307', 'LDN 1336', 'LDN 988', 'LDN 1015', 'LDN 659', 'B 140', 'LDN 647', 'LDN 684', 'LBN 552', 'LDN 1517', 'LDN 1505', 'LDN 1496', 'LDN 1507', 'LDN 1508', 'LDN 1520', 'LDN 1241', 'LDN 1243']) {
       const layers = data.objects.filter((o) => o.id === id)
       expect(layers.map((o) => o.level).sort(), id).toEqual([1, 2, 3])
       expect(layers.every((o) => o.rings.length > 0), id).toBe(true)
@@ -348,6 +348,9 @@ describe('kontury mgławic', () => {
     expect(aliases('LDN 800')).toEqual(['LDN 803', 'LDN 804', 'LDN 799', 'LDN 806', 'LDN 807', 'LDN 808'])
     expect(aliases('LDN 1317')).toContain('LDN 1313')
     expect(aliases('LDN 1503')).toContain('B 23')
+    expect(aliases('LDN 1503')).toContain('LDN 1504')
+    expect(aliases('LDN 1517')).toContain('LDN 1515')
+    expect(aliases('LDN 1496')).toEqual(['B 221'])
     expect(aliases('LDN 1336')).toContain('LDN 1349')
     expect(aliases('LDN 1336')).toContain('LDN 1327')
     expect(aliases('LDN 988')).toContain('LDN 999')
@@ -360,6 +363,9 @@ describe('kontury mgławic', () => {
     expect(aliases('LDN 647')).toEqual(['B 330', 'LDN 644', 'LDN 645', 'LDN 651', 'LDN 652', 'LDN 655', 'LDN 656'])
     expect(aliases('LDN 684')).toEqual(['LDN 683', 'LDN 686', 'LDN 692'])
     expect(aliases('LDN 684')).not.toContain('LDN 677')
+    expect(aliases('LBN 552')).toEqual(['LBN 555'])
+    expect(aliases('LDN 1241')).toEqual(['LBN 553'])
+    expect(aliases('LDN 1243')).toEqual([])
   })
 
   it('prześwity nie są wypełniane ani wybierane jako część obrysu', () => {

@@ -5,7 +5,6 @@ import type { ObjectType, SkyGroup } from '../lib/catalog'
 import { DEFAULT_ANNOTATION_COLORS, EXTRA_CATALOGS, TYPE_INFO } from '../lib/catalog'
 import { SURVEYS } from '../lib/hips'
 import { SKY_LOOKS, skyLookSurvey, type SkyLook } from '../lib/hipsSky'
-import { DOME_STYLES } from '../lib/space3d'
 import { useStore } from '../state/store'
 import { Range } from './Range'
 import { Select } from './Select'
@@ -140,15 +139,10 @@ export function LayersMenu({ threeD = false, settings, typeCounts = [], defaultO
   const toggleGroup = useStore((s) => s.toggleSkyGroup)
   const extraHidden = useStore((s) => s.skyExtraHidden)
   const toggleExtra = useStore((s) => s.toggleSkyExtra)
-  const domeStyle = useStore((s) => s.domeStyle)
   const showRegions = useStore((s) => s.showGalaxyRegions)
-  const setDomeStyle = useStore((s) => s.setDomeStyle)
-  const domeOpacity = useStore((s) => s.domeOpacity)
+  const showGalaxyLines = useStore((s) => s.showGalaxyLines)
   const skyLook = useStore((s) => s.skyLook)
   const setSkyLook = useStore((s) => s.setSkyLook)
-  const setDomeOpacity = useStore((s) => s.setDomeOpacity)
-  const domeStyleIndex = Math.max(0, DOME_STYLES.findIndex((s) => s.id === domeStyle))
-  const domeStyleInfo = DOME_STYLES[domeStyleIndex]
   // Warstwy z suwakiem krycia pod przełącznikiem (widocznym, gdy warstwa jest włączona).
   const outlinesOpacity = useStore((s) => s.outlinesOpacity)
   const ownPhotosOpacity = useStore((s) => s.ownPhotosOpacity)
@@ -234,16 +228,8 @@ export function LayersMenu({ threeD = false, settings, typeCounts = [], defaultO
                     <span className="layers-note">{GALAXY_LEVELS[settings.galaxyLevel].title.replace(/^Galaktyki \d+:\s*/, '')}</span>
                   </div>
                 )}
-                <div className="layers-choice">
-                  <span className="label">Kopuły</span>
-                  {/* Jeden przycisk: każde kliknięcie przechodzi do następnego stylu (po ostatnim wraca do pierwszego). */}
-                  <button type="button" className="toggle-chip layers-cycle" title={`${domeStyleInfo.title}. Kliknij, aby zmienić wygląd.`}
-                    aria-label={`Wygląd kopuł: ${domeStyleInfo.label}. Kliknij, aby przełączyć na następny.`}
-                    onClick={() => setDomeStyle(DOME_STYLES[(domeStyleIndex + 1) % DOME_STYLES.length].id)}>
-                    {domeStyleInfo.label} <span className="dim">{domeStyleIndex + 1}/{DOME_STYLES.length}</span>
-                  </button>
-                  <OpacityRow value={domeOpacity} onChange={setDomeOpacity} label="Krycie kopuł" />
-                </div>
+                <Switch on={showGalaxyLines} onClick={() => toggle('showGalaxyLines')} label="Linie do galaktyk"
+                  title="Pionowe linie od galaktyk Grupy Lokalnej (do 5 mln lś) do płaszczyzny Galaktyki" />
               </Section>
             </>
           ) : (
